@@ -1,0 +1,97 @@
+name: CI
+
+# Replaces the platform-owner-added deno.yml / webpack.yml templates, which
+# referenced tooling (Deno, Webpack) that does not exist anywhere in this
+# repo and would have failed on the very first run. This workflow targets
+# the actual stack:
+#   - root: React 18 + Vite + TypeScript + Tailwind (frontend)
+#   - backend/: Node.js + TypeScript + Express (separate app, own
+#     package.json/lockfile per ADR-0001's service decomposition)
+#
+# Kept as a single file with two independent jobs (frontend/backend) rather
+# than split into two files: both apps share the same triggers and repo,
+# and a single file makes it obvious at a glance that both surfaces are
+# covered. Split into ci-frontend.yml/ci-backend.yml later if either job's
+# steps diverge significantly (e.g. deploy steps land here) or if PR
+# path-filtering to skip unaffected jobs becomes worth the complexity.
+#
+# Known gap (flagged, not papered over): neither app has a test suite yet.
+# There is no `npm test` script in either package.json, so no test step is
+# included here. This is a real gap for qa-architect/automation-qa-engineer
+# to close — see docs/organization/04-quality-gates.md's "Automated tests
+# pass in CI" Definition-of-Done item, which is currently unmet.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend (root — React/Vite/TS)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # No `engines` field is pinned in the root package.json yet; 24
+          # matches the Node version this repo is currently developed and
+          # verified against. If an `engines` field is added later, this
+          # should be updated to read from it instead of a hardcoded value.
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        # Root package.json previously had no `typecheck` script — `npx
+        # vite build` alone does NOT type-check (esbuild transpiles but
+        # does not type-check TS). Added `"typecheck": "tsc -p
+        # tsconfig.json --noEmit"` to package.json alongside this workflow
+        # so this step reflects a real, existing script rather than an
+        # invented one that silently did nothing.
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  backend:
+    name: Backend (backend/ — Node.js/TS/Express)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
