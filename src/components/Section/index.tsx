@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type SectionBackground = 'white' | 'warm';
+export type SectionBackground = 'white' | 'warm' | 'navy';
 export type SectionSpacing = 'default' | 'compact' | 'none';
 export type SectionWidth = 'default' | 'narrow' | 'wide' | 'full';
 
@@ -20,7 +20,11 @@ export interface SectionProps extends React.HTMLAttributes<HTMLElement> {
 
 const backgroundClasses: Record<SectionBackground, string> = {
   white: 'bg-white',
-  warm: 'bg-stone-50'
+  warm: 'bg-stone-50',
+  // Dark inverse background (e.g. footers). Pair with `text-text-inverse` /
+  // `text-text-inverse-muted` on child text — this variant only sets the
+  // section's own background, it doesn't flip descendant text color.
+  navy: 'bg-surface-navy-deep'
 };
 
 const spacingClasses: Record<SectionSpacing, string> = {

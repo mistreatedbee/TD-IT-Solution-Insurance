@@ -1,12 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ComponentsPage } from './components/ComponentsPage';
 import { ComponentPage } from './components/ComponentPage';
 import { ComponentPreviewPage } from './components/ComponentPreviewPage';
-import { componentRegistry } from './components/registry';
-
-const firstComponentPath = componentRegistry[0] ?
-`/components/${encodeURIComponent(componentRegistry[0].componentName)}` :
-null;
+import { LandingPage } from './pages/LandingPage';
+import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
+import { TermsOfServicePage } from './pages/TermsOfServicePage';
 
 // Deliberately NO `fontFamily` on the wrapper below: an inherited font here
 // would mask components that never declare one, making them look correct in
@@ -44,20 +42,16 @@ export function App() {
           }}>
           
           <Routes>
-            <Route
-              path="/"
-              element={
-              firstComponentPath ?
-              <Navigate to={firstComponentPath} replace /> :
-              null
-              } />
-            
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/terms" element={<TermsOfServicePage />} />
+
             <Route path="/components" element={<ComponentsPage />} />
             <Route path="/components/:name" element={<ComponentPage />} />
             <Route
               path="/components/:name/preview/:previewIdx"
               element={<ComponentPreviewPage />} />
-            
+
           </Routes>
         </main>
       </div>
