@@ -25,6 +25,8 @@ const previews: ComponentPreviewModule = {
           <AssetBadge type="tablet" description="Not covered" />
           <AssetBadge type="tv" description="Not covered" />
           <AssetBadge type="business" description="Add plan" disabled />
+          <AssetBadge type="desktop" description="1 covered" selected />
+          <AssetBadge type="other" description="Not covered" />
         </div>
 
   },

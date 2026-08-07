@@ -1,5 +1,5 @@
-import { CarIcon, LaptopIcon, SmartphoneIcon, TabletIcon, TvIcon, BriefcaseIcon, CheckIcon, type LucideIcon } from "lucide-react";
-export type AssetType = 'vehicle' | 'laptop' | 'phone' | 'tablet' | 'tv' | 'business';
+import { CarIcon, LaptopIcon, SmartphoneIcon, TabletIcon, TvIcon, BriefcaseIcon, CheckIcon, MonitorIcon, CpuIcon, type LucideIcon } from "lucide-react";
+export type AssetType = 'vehicle' | 'laptop' | 'phone' | 'tablet' | 'tv' | 'business' | 'desktop' | 'other';
 export type AssetBadgeSize = 'sm' | 'md';
 export interface AssetBadgeProps {
   /** Asset type to display. Determines the default icon and label. */
@@ -45,6 +45,14 @@ const ASSET_META: Record<AssetType, {
   business: {
     icon: BriefcaseIcon,
     label: 'Business equipment'
+  },
+  desktop: {
+    icon: MonitorIcon,
+    label: 'Desktop computer'
+  },
+  other: {
+    icon: CpuIcon,
+    label: 'Other electronics'
   }
 };
 export function AssetBadge({
