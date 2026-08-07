@@ -10,7 +10,7 @@ interface CardOwnProps<T extends CardAs = 'div'> {
   children?: React.ReactNode;
   /** Inner padding scale */
   padding?: CardPadding;
-  /** Enables hover lift + electric-blue accent edge */
+  /** Enables hover lift + brand-gold accent edge */
   interactive?: boolean;
   /** Renders the card as a semantic element other than div */
   as?: T;
@@ -46,14 +46,14 @@ export function Card<T extends CardAs = 'div'>({
 
   const tagClassName = [
   'group relative overflow-hidden rounded-2xl bg-white',
-  'border border-slate-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.15)]',
+  'border border-border shadow-resting',
   'transition-all duration-300 ease-out',
   paddingClasses[padding],
   interactive ?
-  'hover:-translate-y-1 hover:border-blue-200 hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_18px_40px_-16px_rgba(37,99,235,0.35)]' :
+  'hover:-translate-y-1 hover:border-accent-gold/40 hover:shadow-elevated' :
   '',
   isFocusable ?
-  'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2' :
+  'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2' :
   '',
   className].
 
@@ -77,7 +77,7 @@ export function Card<T extends CardAs = 'div'>({
       {interactive &&
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 left-0 w-1 origin-top scale-y-0 bg-blue-600 transition-transform duration-300 ease-out group-hover:scale-y-100 group-focus-visible:scale-y-100" />
+        className="pointer-events-none absolute inset-y-0 left-0 w-1 origin-top scale-y-0 bg-accent-gold-deep transition-transform duration-300 ease-out group-hover:scale-y-100 group-focus-visible:scale-y-100" />
 
       }
       {children}
@@ -96,7 +96,7 @@ export function CardHeader({ title, description, icon, className = '' }: CardHea
   return (
     <div className={`flex items-start gap-4 ${className}`}>
       {icon &&
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-gold-tint text-primary">
           {icon}
         </span>
       }

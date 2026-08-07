@@ -1,6 +1,8 @@
 # FeatureCard
 
-Icon-led card used to describe services and product benefits. Composed of a duotone icon tile, a title, a thin electric-blue rule, and gray supporting copy.
+Icon-led card used to describe services and product benefits. Composed of a duotone icon tile, a title, a thin warm-gold rule, and gray supporting copy.
+
+_Appearance updated as part of the 2026-08-07 design token refresh (typeface pairing + navy/gold color system); no prop API changes._
 
 ## When to use
 
@@ -22,7 +24,7 @@ Icon-led card used to describe services and product benefits. Composed of a duot
 ## Behavior
 
 - Non-interactive cards render as `<article>`; passing `href` renders an `<a>` with a visible focus ring.
-- On hover of a linked card, the icon tile fills blue and the accent rule extends.
+- On hover of a linked card, the icon tile fills with the deep brand gold and the accent rule extends.
 
 ## Usage
 

@@ -1,6 +1,10 @@
 /* --- MANAGED FONT IMPORTS START (do not edit manually) --- */
 /* INTERNAL USE NAME: Heading */
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+/* 2026-08-07 design refresh: swapped Inter/Inter (zero typographic contrast,
+   the single most common "AI-generated SaaS template" pairing) for a
+   distinctive editorial serif (Fraunces, variable optical-size axis) against
+   a warm, highly-legible grotesque (Public Sans) for body copy. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400;1,9..144,500;1,9..144,600&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500&display=swap');
 
 /* --- MANAGED FONT IMPORTS END --- */
 
@@ -14,53 +18,67 @@
 /* END TAILWIND IMPORTS — ALL OTHER CSS MUST GO BELOW THIS LINE */
 
 :root {
+  /* --- 2026-08-07 design refresh ---------------------------------------
+     Color is now anchored strictly to the three hues actually present in
+     the logo mark (navy #2C3E50, blue #2780B8, orange #F5A022) built out
+     into a fuller system of tints/shades, rather than the old separate
+     --accent-gradient-* trio (#0066FF -> #3385FF -> #00A3FF), which was a
+     generic "AI SaaS template" electric-blue-to-cyan ramp with no relation
+     to the brand mark. That gradient is retired below in favor of a
+     navy -> ember -> gold transition built from the real brand colors. */
   --primary: #2C3E50;
   --primary-foreground: #FFFFFF;
-  --secondary: #2E86C1;
+  --primary-hover: #1C2833;
+  --primary-tint: #E7EBEF;
+  --secondary: #2780B8;
   --secondary-foreground: #FFFFFF;
-  --accent-gradient-start: #0066FF;
-  --accent-gradient-mid: #3385FF;
-  --accent-gradient-end: #00A3FF;
-  --accent-gold: #F5A623;
+  --secondary-tint: #E3F0F8;
+  --accent-gradient-start: #16212C;
+  --accent-gradient-mid: #8A5A2E;
+  --accent-gradient-end: #E08A1B;
+  --accent-gold: #F5A022;
+  --accent-gold-deep: #D9720A;
+  --accent-gold-tint: #FDECD2;
   --surface-navy-deep: #0A1628;
   --surface-navy: #0F1A2C;
   --background: #FFFFFF;
-  --background-alt: #F9FAFB;
-  --background-pattern: #EFF2F6;
-  --card: #F3F4F6;
-  --card-elevated: #E5E7EB;
+  --background-alt: #FAF8F5;
+  --background-pattern: #F2EDE6;
+  --card: #F5F1EA;
+  --card-elevated: #EAE3D8;
   --success: #059669;
   --success-light: #10B981;
-  --text-primary: #111827;
-  --text-secondary: #6B7280;
+  --text-primary: #1C1917;
+  --text-secondary: #6B6156;
   --text-inverse: #FFFFFF;
-  --text-inverse-muted: #F9FAFB;
+  --text-inverse-muted: #F5F1EA;
   --glass-background: rgba(255,255,255,0.75);
   --glass-background-strong: rgba(255,255,255,0.8);
   --glass-background-soft: rgba(255,255,255,0.7);
   --glass-border: rgba(255,255,255,0.3);
-  --hairline: rgba(0,0,0,0.05);
-  --border: #E5E7EB;
+  --hairline: rgba(44,62,80,0.08);
+  --border: #E4DDD1;
   --dark-background: #0A1628;
   --dark-background-alt: #0F1A2C;
   --dark-surface: #111F35;
   --dark-card: #16233B;
   --dark-card-elevated: #1C2B45;
-  --dark-primary: #3385FF;
-  --dark-primary-foreground: #0A1628;
+  --dark-primary: #F0A93E;
+  --dark-primary-foreground: #1A1204;
   --dark-secondary: #5FA8E0;
-  --dark-accent-gradient-start: #3385FF;
-  --dark-accent-gradient-end: #00A3FF;
+  --dark-accent-gradient-start: #0A1628;
+  --dark-accent-gradient-end: #F0A93E;
   --dark-accent-gold: #F7B84D;
+  --dark-accent-gold-deep: #F0A93E;
   --dark-success: #10B981;
   --dark-success-light: #34D399;
-  --dark-text-primary: #F9FAFB;
-  --dark-text-secondary: #9CA3AF;
-  --dark-text-inverse: #111827;
+  --dark-text-primary: #F5F1EA;
+  --dark-text-secondary: #B8AFA0;
+  --dark-text-inverse: #16130F;
   --dark-glass-background: rgba(16,26,44,0.7);
   --dark-glass-border: rgba(255,255,255,0.12);
-  --dark-hairline: rgba(255,255,255,0.06);
-  --dark-border: rgba(255,255,255,0.08);
+  --dark-hairline: rgba(240,169,62,0.1);
+  --dark-border: rgba(232,199,143,0.12);
   --spacing-1: 4px;
   --spacing-2: 8px;
   --spacing-3: 12px;
@@ -91,13 +109,21 @@
   --radius-card: 16px;
   --radius-card-lg: 20px;
   --radius-full: 9999px;
-  --shadow-resting: 0 2px 8px rgba(0,0,0,0.06);
-  --shadow-hover: 0 6px 16px rgba(0,0,0,0.10);
+  /* Layered, brand-tinted shadows (navy, not neutral black) replace the old
+     flat single-layer opacity shadows for genuine depth. */
+  --shadow-resting: 0 1px 2px rgba(28,25,23,0.05), 0 4px 12px -2px rgba(44,62,80,0.10);
+  --shadow-hover: 0 4px 8px rgba(28,25,23,0.06), 0 20px 40px -12px rgba(44,62,80,0.22);
+  --shadow-elevated: 0 8px 16px -4px rgba(44,62,80,0.18), 0 28px 56px -18px rgba(20,15,10,0.30);
+  --shadow-glow-gold: 0 8px 24px -6px rgba(217,114,10,0.35);
   --elevation-card-hover-lift: translateY(-6px);
   --elevation-card-hover-lift-sm: translateY(-4px);
   --blur-glass: blur(12px);
   --glass-background: rgba(255,255,255,0.72);
   --glass-border: 1px solid rgba(255,255,255,0.4);
+  /* Subtle grain for large flat color blocks (navy hero/footer sections) —
+     kills the "flat vector gradient" AI-template tell. Applied via .bg-grain. */
+  --texture-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --divider-brand: linear-gradient(90deg, var(--accent-gold-deep) 0%, var(--accent-gold) 40%, transparent 75%);
   --ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1);
   --duration-fast: 150ms;
   --duration-base: 300ms;
@@ -111,8 +137,8 @@
 }
 /* --- MANAGED TYPOGRAPHY VARS START (do not edit manually) --- */
 html {
-  --font-body: Inter, sans-serif;
-  --font-heading: Inter, sans-serif;
+  --font-body: 'Public Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-heading: 'Fraunces', ui-serif, Georgia, 'Times New Roman', serif;
 }
 /* --- MANAGED TYPOGRAPHY VARS END --- */
 
@@ -128,6 +154,21 @@ html {
   h5,
   h6 {
     font-family: var(--font-heading, var(--font-body, inherit));
+    font-optical-sizing: auto;
   }
 }
 /* --- BASE TYPOGRAPHY END --- */
+
+/* --- TEXTURE / DEPTH UTILITIES (2026-08-07 design refresh) --- */
+.bg-grain {
+  position: relative;
+}
+.bg-grain::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--texture-grain);
+  mix-blend-mode: overlay;
+  opacity: 0.5;
+  pointer-events: none;
+}

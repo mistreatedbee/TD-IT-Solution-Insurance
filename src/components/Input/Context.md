@@ -34,5 +34,6 @@ import { Input } from 'components/Input'
 
 ## Notes
 
-- Focus uses a blue-600 border with a soft blue ring; error states use red-500 / red-600.
+- Focus uses a navy (`primary`) border with a soft warm gold (`accent-gold-deep`) ring; error states use red-500 / red-600.
+- Appearance updated as part of the 2026-08-07 design token refresh (typeface pairing + navy/gold color system); no prop API changes.
 - Messages are linked with `aria-describedby`, so both hints and errors are announced.

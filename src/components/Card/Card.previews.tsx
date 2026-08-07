@@ -37,7 +37,7 @@ const previews: ComponentPreviewModule = {
           <CardFooter>
             <a
           href="#"
-          className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700">
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-accent-gold-deep">
           
               Learn more
               <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />

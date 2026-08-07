@@ -24,7 +24,9 @@ const backgroundClasses: Record<SectionBackground, string> = {
   // Dark inverse background (e.g. footers). Pair with `text-text-inverse` /
   // `text-text-inverse-muted` on child text — this variant only sets the
   // section's own background, it doesn't flip descendant text color.
-  navy: 'bg-surface-navy-deep'
+  // `bg-grain` layers a subtle noise texture (2026-08-07 refresh) so large
+  // flat navy blocks read as considered surfaces, not flat vector fills.
+  navy: 'bg-surface-navy-deep bg-grain'
 };
 
 const spacingClasses: Record<SectionSpacing, string> = {

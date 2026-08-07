@@ -37,6 +37,8 @@ Centered with an action:
 />
 ```
 
+_Appearance updated as part of the 2026-08-07 design token refresh: the eyebrow label now renders in the deep brand gold (`--accent-gold-deep` / `--dark-accent-gold`) instead of generic blue, and headings render in the new Fraunces display serif via the shared `--font-heading` token. No prop API changes._
+
 ## Guidance
 
 - Keep only one `as="h1"` per page; default `h2` fits most sections.

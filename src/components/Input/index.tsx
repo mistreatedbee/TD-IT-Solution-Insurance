@@ -27,7 +27,7 @@ const baseFieldClasses =
 const stateClasses = (hasError: boolean) =>
 hasError ?
 'border-red-500 focus:border-red-500 focus:ring-red-200' :
-'border-slate-300 hover:border-slate-400 focus:border-blue-600 focus:ring-blue-500/30';
+'border-slate-300 hover:border-slate-400 focus:border-primary focus:ring-accent-gold-deep/30';
 
 export const Input = forwardRef<HTMLInputElement | HTMLTextAreaElement, InputProps>(
   function Input(

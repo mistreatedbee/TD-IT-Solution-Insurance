@@ -2,6 +2,8 @@
 
 Inline text link ("Learn more" style) with a trailing arrow that slides on hover. Use it for secondary, low-emphasis actions inside cards and at the end of content sections — not as a primary CTA (use a Button for that).
 
+_Appearance updated as part of the 2026-08-07 design token refresh: the `default` tone now reads brand blue (`--secondary`) transitioning to warm gold (`--accent-gold-deep`) on hover, instead of generic Tailwind blue; no prop API changes._
+
 ## Props
 
 | Prop | Type | Default | Description |

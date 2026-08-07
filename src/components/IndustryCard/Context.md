@@ -2,6 +2,8 @@
 
 Card representing an industry vertical served. Shows a colored top accent bar, an icon, a title, and a short description. Used in grids on marketing and solutions pages.
 
+_Appearance updated as part of the 2026-08-07 design token refresh: the `blue` accent now renders the real brand navy/secondary-blue (`--primary` bar, `--secondary` icon tint) instead of a generic Tailwind blue; `amber` now uses the deeper brand gold. No prop API changes._
+
 ## Props
 
 | Prop | Type | Default | Description |

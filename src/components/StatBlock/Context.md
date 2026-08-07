@@ -1,6 +1,8 @@
 # StatBlock
 
-Displays a headline metric: a large bold navy numeral, an electric-blue accent underline, and an uppercase label. The numeral counts up (ease-out) the first time the block scrolls into view; the underline draws in alongside it. Respects `prefers-reduced-motion`.
+Displays a headline metric: a large bold navy numeral, a warm gold accent underline, and an uppercase label. The numeral counts up (ease-out) the first time the block scrolls into view; the underline draws in alongside it. Respects `prefers-reduced-motion`.
+
+_Appearance updated as part of the 2026-08-07 design token refresh (typeface pairing + navy/gold color system — numeral and underline colors are now sourced from `--primary` / `--accent-gold-deep` instead of hardcoded hex); no prop API changes._
 
 ## Props
 

@@ -1,6 +1,8 @@
 # Avatar
 
-Circular headshot placeholder with an electric-blue tint background. Used in testimonial author blocks and anywhere a person is represented.
+Circular headshot placeholder with a brand-blue tint background (the logo's actual navy-blue, not a generic electric blue). Used in testimonial author blocks and anywhere a person is represented.
+
+_Appearance updated as part of the 2026-08-07 design token refresh (typeface pairing + navy/gold color system); no prop API changes._
 
 ## Props
 

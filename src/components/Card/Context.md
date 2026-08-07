@@ -1,6 +1,8 @@
 # Card
 
-Premium white surface used as the base container for services, benefits, and general content blocks. Rounded 16px corners, soft layered shadow, and — when interactive — a hover lift plus an electric-blue accent edge that wipes in from the left.
+Premium white surface used as the base container for services, benefits, and general content blocks. Rounded 16px corners, soft layered shadow, and — when interactive — a hover lift plus a warm gold accent edge that wipes in from the left.
+
+_Appearance updated as part of the 2026-08-07 design token refresh (typeface pairing + navy/gold color system, layered shadow tokens); no prop API changes._
 
 ## Usage
 
@@ -23,14 +25,14 @@ import { Card, CardHeader, CardBody, CardFooter } from 'components/Card'
 | --- | --- | --- | --- |
 | `children` | `ReactNode` | – | Card contents |
 | `padding` | `'none' \| 'sm' \| 'md' \| 'lg'` | `'md'` | Inner padding scale |
-| `interactive` | `boolean` | `true` | Enables hover lift and blue accent edge |
+| `interactive` | `boolean` | `true` | Enables hover lift and gold accent edge |
 | `as` | `'div' \| 'article' \| 'section' \| 'li'` | `'div'` | Semantic element to render |
 | `className` | `string` | `''` | Extra classes (e.g. width constraints) |
 
 All other `div` props are forwarded. Passing `onClick` automatically makes the card focusable (`role="button"`, `tabIndex=0`) with a visible focus ring.
 
 ### CardHeader
-`title` (string, required), `description` (string), `icon` (ReactNode, rendered in a blue tinted tile), `className`.
+`title` (string, required), `description` (string), `icon` (ReactNode, rendered in a warm gold tinted tile), `className`.
 
 ### CardBody / CardFooter
 `children`, `className`. `CardFooter` adds a top divider and horizontal action row.

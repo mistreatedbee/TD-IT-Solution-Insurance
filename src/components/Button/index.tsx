@@ -14,7 +14,7 @@ export interface ButtonProps extends
 }
 
 const base =
-'inline-flex items-center justify-center gap-2 font-semibold tracking-tight transition-all duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-sky-500 disabled:opacity-50 disabled:pointer-events-none select-none';
+'inline-flex items-center justify-center gap-2 font-semibold tracking-tight transition-all duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-accent-gold-deep disabled:opacity-50 disabled:pointer-events-none select-none';
 
 const sizes: Record<ButtonSize, string> = {
   sm: 'text-sm px-4 py-2',
@@ -23,14 +23,17 @@ const sizes: Record<ButtonSize, string> = {
 };
 
 const variants: Record<ButtonVariant, string> = {
+  // Confident navy-to-ember gradient built from the real brand hues (see
+  // --accent-gradient-* in index.css) instead of the old generic
+  // electric-blue-to-sky pill.
   primary:
-  'rounded-full text-white bg-gradient-to-r from-sky-500 to-blue-600 shadow-md shadow-blue-600/20 hover:scale-[1.03] hover:shadow-lg hover:shadow-blue-600/30 active:scale-100',
+  'rounded-full text-white bg-gradient-to-r from-primary to-accent-gold-deep shadow-md shadow-black/10 hover:scale-[1.03] hover:shadow-glow-gold active:scale-100',
   secondary:
-  'rounded-lg border border-slate-900 text-slate-900 bg-transparent hover:bg-slate-900 hover:text-white active:bg-slate-800',
+  'rounded-lg border border-primary text-primary bg-transparent hover:bg-primary hover:text-white active:bg-primary-hover',
   ghost:
-  'rounded-lg border border-white/70 text-white bg-white/10 backdrop-blur-sm hover:bg-white hover:text-slate-900 focus-visible:ring-white focus-visible:ring-offset-transparent',
+  'rounded-lg border border-white/70 text-white bg-white/10 backdrop-blur-sm hover:bg-white hover:text-primary focus-visible:ring-white focus-visible:ring-offset-transparent',
   tertiary:
-  'rounded-md px-1 py-1 text-sky-600 bg-transparent underline-offset-4 hover:underline hover:text-sky-700'
+  'rounded-md px-1 py-1 text-accent-gold-deep bg-transparent underline-offset-4 hover:underline hover:text-primary'
 };
 
 const Spinner = () =>

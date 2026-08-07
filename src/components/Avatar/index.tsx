@@ -40,7 +40,7 @@ export function Avatar({ src, name, size = 'md', className = '' }: AvatarProps) 
 
   return (
     <span
-      className={`inline-flex shrink-0 select-none items-center justify-center overflow-hidden rounded-full bg-blue-100 font-semibold uppercase tracking-wide text-blue-700 ring-1 ring-inset ring-blue-200 ${sizeClasses[size]} ${className}`}
+      className={`inline-flex shrink-0 select-none items-center justify-center overflow-hidden rounded-full bg-secondary-tint font-semibold uppercase tracking-wide text-secondary ring-1 ring-inset ring-secondary/20 ${sizeClasses[size]} ${className}`}
       role={showImage ? undefined : 'img'}
       aria-label={showImage ? undefined : name || 'User avatar'}>
       
@@ -57,7 +57,7 @@ export function Avatar({ src, name, size = 'md', className = '' }: AvatarProps) 
       <svg
         viewBox="0 0 24 24"
         fill="currentColor"
-        className="h-2/3 w-2/3 text-blue-400"
+        className="h-2/3 w-2/3 text-secondary/60"
         aria-hidden="true">
         
           <path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.418 0-8 2.686-8 6v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1c0-3.314-3.582-6-8-6Z" />

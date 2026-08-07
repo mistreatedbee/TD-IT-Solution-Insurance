@@ -17,6 +17,8 @@ import { Section } from 'components/Section'
 
 Alternate `background` between `white` and `warm` down the page so adjacent sections read as separate blocks.
 
+_Appearance updated as part of the 2026-08-07 design token refresh: the `navy` background variant (used elsewhere, e.g. footers) now layers a subtle grain texture (`bg-grain`, driven by `--texture-grain`) over the deep navy surface for added depth instead of a flat fill. No prop API changes._
+
 ## Props
 
 | Prop | Type | Default | Description |

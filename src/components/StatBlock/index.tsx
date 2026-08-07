@@ -24,8 +24,11 @@ export interface StatBlockProps {
   className?: string;
 }
 
-const NAVY = '#0B2545';
-const ELECTRIC = '#0066FF';
+// Tokenized (2026-08-07 design refresh): pulls from the shared brand
+// palette instead of hardcoded hex literals so this component tracks
+// future token updates automatically.
+const NAVY = 'var(--primary)';
+const ELECTRIC = 'var(--accent-gold-deep)';
 
 const sizeClasses: Record<StatBlockSize, string> = {
   md: 'text-4xl sm:text-5xl',

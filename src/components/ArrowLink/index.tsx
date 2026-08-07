@@ -34,7 +34,7 @@ const iconSizeClasses: Record<ArrowLinkSize, string> = {
 
 const toneClasses: Record<ArrowLinkTone, string> = {
   default:
-  'text-blue-600 hover:text-blue-700 focus-visible:outline-blue-600 dark:text-blue-400 dark:hover:text-blue-300',
+  'text-secondary hover:text-accent-gold-deep focus-visible:outline-primary dark:text-dark-secondary dark:hover:text-dark-accent-gold',
   muted:
   'text-gray-600 hover:text-gray-900 focus-visible:outline-gray-600 dark:text-gray-400 dark:hover:text-gray-100',
   inverse:

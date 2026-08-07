@@ -49,7 +49,7 @@ const previews: ComponentPreviewModule = {
         title="24/7 Help Desk"
         description="Unlimited support tickets with a 15-minute average first response, day or night."
         footer={
-        <span className="inline-flex items-center gap-1 font-medium text-blue-600">
+        <span className="inline-flex items-center gap-1 font-medium text-primary">
                 Explore support plans
                 <ArrowRightIcon className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
               </span>

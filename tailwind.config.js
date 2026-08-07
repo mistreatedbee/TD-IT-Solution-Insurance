@@ -7,12 +7,17 @@ export default {content: [
       colors: {
         primary: 'var(--primary)',
         'primary-foreground': 'var(--primary-foreground)',
+        'primary-hover': 'var(--primary-hover)',
+        'primary-tint': 'var(--primary-tint)',
         secondary: 'var(--secondary)',
         'secondary-foreground': 'var(--secondary-foreground)',
+        'secondary-tint': 'var(--secondary-tint)',
         'accent-gradient-start': 'var(--accent-gradient-start)',
         'accent-gradient-mid': 'var(--accent-gradient-mid)',
         'accent-gradient-end': 'var(--accent-gradient-end)',
         'accent-gold': 'var(--accent-gold)',
+        'accent-gold-deep': 'var(--accent-gold-deep)',
+        'accent-gold-tint': 'var(--accent-gold-tint)',
         'surface-navy-deep': 'var(--surface-navy-deep)',
         'surface-navy': 'var(--surface-navy)',
         background: 'var(--background)',
@@ -43,6 +48,7 @@ export default {content: [
         'dark-accent-gradient-start': 'var(--dark-accent-gradient-start)',
         'dark-accent-gradient-end': 'var(--dark-accent-gradient-end)',
         'dark-accent-gold': 'var(--dark-accent-gold)',
+        'dark-accent-gold-deep': 'var(--dark-accent-gold-deep)',
         'dark-success': 'var(--dark-success)',
         'dark-success-light': 'var(--dark-success-light)',
         'dark-text-primary': 'var(--dark-text-primary)',
@@ -63,11 +69,17 @@ export default {content: [
       },
       boxShadow: {
         resting: 'var(--shadow-resting)',
-        hover: 'var(--shadow-hover)'
+        hover: 'var(--shadow-hover)',
+        elevated: 'var(--shadow-elevated)',
+        'glow-gold': 'var(--shadow-glow-gold)'
+      },
+      backgroundImage: {
+        'grain': 'var(--texture-grain)',
+        'divider-brand': 'var(--divider-brand)'
       },
       fontFamily: {
-        heading: ['Inter', 'sans-serif'],
-        body: ['Inter', 'sans-serif']
+        heading: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
+        body: ['Public Sans', 'ui-sans-serif', 'system-ui', 'sans-serif']
       }
     }
   }

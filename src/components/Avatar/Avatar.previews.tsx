@@ -7,7 +7,7 @@ const previews: ComponentPreviewModule = {
   previews: [
   {
     name: 'Initials',
-    description: 'Placeholder headshot with initials on an electric-blue tint.',
+    description: 'Placeholder headshot with initials on a brand-blue tint.',
     render: () => <Avatar name="Dana Torres" />
   },
   {

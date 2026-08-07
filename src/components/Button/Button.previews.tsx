@@ -8,7 +8,7 @@ const previews: ComponentPreviewModule = {
   previews: [
   {
     name: 'Primary',
-    description: 'Electric-blue gradient pill used for the main call to action.',
+    description: 'Navy-to-gold gradient pill used for the main call to action.',
     render: () =>
     <div className="flex flex-wrap items-center gap-4">
           <Button size="sm">Get started</Button>

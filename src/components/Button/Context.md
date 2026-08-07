@@ -2,9 +2,11 @@
 
 Core call-to-action primitive for TD IT Solutions. Four variants cover the full hierarchy of actions across light, dark, and gradient surfaces.
 
+_Appearance updated as part of the 2026-08-07 design token refresh: `primary` now renders a navy-to-ember gradient (`--primary` → `--accent-gold-deep`) built from the real logo colors, replacing the old generic electric-blue-to-sky gradient; `tertiary` now uses the deep brand gold. No prop API changes._
+
 ## Variants
 
-- `primary` — electric-blue gradient pill with a subtle hover scale. One per view; the main CTA.
+- `primary` — navy-to-gold gradient pill with a subtle hover scale and a warm glow shadow on hover. One per view; the main CTA.
 - `secondary` — outlined navy, rounded rectangle. Inverts to solid navy on hover.
 - `ghost` — white-on-navy reversed treatment. Use only on dark or gradient sections.
 - `tertiary` — text-only link button with underline on hover. Lowest emphasis.

@@ -70,7 +70,7 @@ export function SectionHeading({
         <span
           className={[
           'text-xs font-semibold uppercase tracking-widest',
-          isDark ? 'text-blue-300' : 'text-blue-600'].
+          isDark ? 'text-dark-accent-gold' : 'text-accent-gold-deep'].
           join(' ')}>
           
             {eyebrow}
