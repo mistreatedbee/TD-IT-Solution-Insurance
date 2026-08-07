@@ -10,6 +10,8 @@
 
 ---
 
+> **Addendum note (added after Stage 7):** `api-design.md` (Stage 7, `backend-architect`) flagged two tables this document did not originally define — `app.sessions` (backend-minted refresh-token/session record, FR-20 device-binding columns) and `app.idempotency_keys` (backs the idempotency strategy, api-design.md §4). Both are formalized as full DDL/indexing/RLS in [`architecture/database-addendum-001.md`](./architecture/database-addendum-001.md), **not** in this document — this document's table inventory and migration list (§2, §7) remain exactly as originally written below and should be read together with that addendum, not as the complete picture on their own. The addendum also states explicitly that the Redis-backed revocation set (api-design.md §2.1) needs no Postgres-side table at all. Total table count for Feature 001 as of the addendum: the 8 tables below **plus** `app.sessions` and `app.idempotency_keys` = 10.
+
 ## 0. What this document resolves vs. carries forward
 
 This is Stage 6's DDL/index/RLS formalization of the Stage 5 conceptual model. It is scoped strictly to what Stage 6 owns per the architecture-review gate conditions:
@@ -612,6 +614,8 @@ Ordered list; each is one migration file, purpose stated, no destructive operati
 22. `create_purge_expired_audit_log_function` — §6.
 
 RLS-enabling migrations (15–21) are deliberately separated from the table-creation migrations (3–10) so that `security-engineer`'s FU-05 review can revise policy SQL in place (migrations 15–16 specifically, which carry actual policies) without requiring the table DDL itself to be reopened — a materially smaller diff for review.
+
+**Continued in the addendum:** migrations 23–29 (`app.sessions`, `app.idempotency_keys`, their indexes, RLS, and the idempotency-key purge function) are listed in [`architecture/database-addendum-001.md`](./architecture/database-addendum-001.md) §6, not here — this list is not renumbered or duplicated across both documents.
 
 ---
 
