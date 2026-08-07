@@ -1,5 +1,7 @@
 /**
- * Health-check routes.
+ * Health-check routes. Mounted under /api in index.ts, so these resolve as
+ * GET /api/health and GET /api/health/ready — kept relative here (not
+ * hardcoded with the prefix) so the mount point stays index.ts's decision.
  *
  * GET /health        — liveness. No dependency checks. Confirms the process
  *                       is up and able to handle HTTP requests at all.

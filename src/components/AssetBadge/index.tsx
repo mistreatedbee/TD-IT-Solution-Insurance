@@ -1,5 +1,4 @@
-import React from "react";
-import { CarIcon, LaptopIcon, SmartphoneIcon, TabletIcon, TvIcon, BriefcaseIcon, CheckIcon, BoxIcon } from "lucide-react";
+import { CarIcon, LaptopIcon, SmartphoneIcon, TabletIcon, TvIcon, BriefcaseIcon, CheckIcon, type LucideIcon } from "lucide-react";
 export type AssetType = 'vehicle' | 'laptop' | 'phone' | 'tablet' | 'tv' | 'business';
 export type AssetBadgeSize = 'sm' | 'md';
 export interface AssetBadgeProps {
@@ -20,7 +19,7 @@ export interface AssetBadgeProps {
   className?: string;
 }
 const ASSET_META: Record<AssetType, {
-  icon: BoxIcon;
+  icon: LucideIcon;
   label: string;
 }> = {
   vehicle: {

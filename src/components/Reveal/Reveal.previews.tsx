@@ -1,6 +1,9 @@
 import { Reveal } from './index';
 import type { ComponentPreviewModule } from '../previewTypes';
 
+// react-refresh/only-export-components: intentionally left as a warning.
+// `Card` is a tiny demo-only component scoped to this preview module; it's
+// never imported elsewhere, so a dedicated file would just add noise.
 const Card = ({ title, body }: {title: string;body: string;}) =>
 <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
     <h3 className="text-base font-semibold text-gray-900">{title}</h3>

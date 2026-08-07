@@ -7,7 +7,11 @@ export * from './ArrowLink';
 export { ArrowLink } from './ArrowLink';
 export * from './AssetBadge';
 export { AssetBadge } from './AssetBadge';
-export * from './Avatar';
+// Avatar's `getInitials` is an internal helper (not documented as public
+// API in Avatar/Context.md) and collides with TestimonialCard's documented
+// `getInitials` export, so it's intentionally left out of the flattened
+// barrel here. Import it directly from './Avatar' if ever needed.
+export type { AvatarProps, AvatarSize } from './Avatar';
 export { Avatar } from './Avatar';
 export * from './Badge';
 export { Badge } from './Badge';

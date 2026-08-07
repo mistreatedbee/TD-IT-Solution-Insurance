@@ -2,6 +2,10 @@ import { ShieldCheckIcon, ZapIcon, TrendingUpIcon } from 'lucide-react';
 import { GlassCard } from './index';
 import type { ComponentPreviewModule } from '../previewTypes';
 
+// react-refresh/only-export-components: intentionally left as a warning
+// (×2, DarkBackdrop and LightBackdrop below). Both are tiny demo-only
+// backdrops scoped to this preview module; they're never imported
+// elsewhere, so dedicated files would just add noise.
 const DarkBackdrop = ({ children }: {children: React.ReactNode;}) =>
 <div className="flex w-full items-center justify-center bg-slate-900 p-8">{children}</div>;
 
@@ -22,7 +26,7 @@ const previews: ComponentPreviewModule = {
           <GlassCard
         className="max-w-sm"
         icon={<ShieldCheckIcon className="h-5 w-5" />}
-        title="Enterprise-grade security"
+        heading="Enterprise-grade security"
         description="24/7 monitoring, managed endpoint protection, and compliance-ready reporting." />
       
         </DarkBackdrop>
@@ -39,7 +43,7 @@ const previews: ComponentPreviewModule = {
         role="button"
         className="max-w-sm"
         icon={<ZapIcon className="h-5 w-5" />}
-        title="Faster response times"
+        heading="Faster response times"
         description="Average first response under 12 minutes across all support tiers." />
       
         </DarkBackdrop>

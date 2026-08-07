@@ -33,9 +33,9 @@ const previews: ComponentPreviewModule = {
     description: 'Interactive and small size variants',
     render: () =>
     <div className="grid w-full max-w-sm grid-cols-3 gap-2">
-          <AssetBadge type="phone" size="sm" onClick={() => {}} selected />
-          <AssetBadge type="tablet" size="sm" onClick={() => {}} />
-          <AssetBadge type="tv" size="sm" onClick={() => {}} disabled />
+          <AssetBadge type="phone" size="sm" onClick={() => {/* preview only: no action needed, presence of onClick makes the badge interactive/focusable */}} selected />
+          <AssetBadge type="tablet" size="sm" onClick={() => {/* preview only: no action needed, presence of onClick makes the badge interactive/focusable */}} />
+          <AssetBadge type="tv" size="sm" onClick={() => {/* preview only: no action needed, presence of onClick makes the badge interactive/focusable */}} disabled />
         </div>
 
   }]

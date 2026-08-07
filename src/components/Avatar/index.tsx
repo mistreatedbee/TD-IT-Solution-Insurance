@@ -19,6 +19,10 @@ const sizeClasses: Record<AvatarSize, string> = {
   lg: 'h-16 w-16 text-base'
 };
 
+// react-refresh/only-export-components: intentionally left as a warning.
+// `getInitials` is a small, side-effect-free helper used only by `Avatar`
+// itself; splitting it into its own file for fast-refresh purity would add
+// an extra file/import for a two-line function with no real benefit.
 export function getInitials(name?: string): string {
   if (!name) return '';
   return name.

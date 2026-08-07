@@ -14,15 +14,17 @@ Needs a visually rich background behind it — on a flat solid surface the blur 
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `icon` | `ReactNode` | – | Visual rendered in a tinted square above the title |
-| `title` | `ReactNode` | – | Card heading (renders as `h3`) |
+| `icon` | `ReactNode` | – | Visual rendered in a tinted square above the heading |
+| `heading` | `ReactNode` | – | Card heading (renders as `h3`) |
 | `description` | `ReactNode` | – | Supporting copy under the heading |
 | `tone` | `'light' \| 'dark'` | `'light'` | `light` for dark/gradient backgrounds, `dark` for light ones |
 | `padding` | `'none' \| 'sm' \| 'md' \| 'lg'` | `'md'` | Inner spacing |
 | `interactive` | `boolean` | `false` | Hover lift, brighter surface, focus ring — for clickable cards |
-| `children` | `ReactNode` | – | Custom body content, rendered below title/description |
+| `children` | `ReactNode` | – | Custom body content, rendered below heading/description |
 
-Also accepts all standard `div` attributes (`className`, `onClick`, `role`, `tabIndex`, …).
+Also accepts all standard `div` attributes (`className`, `onClick`, `role`, `tabIndex`, …) — including the native `title` attribute, which renders as a browser tooltip, same as on any `div`. Use `heading` for the card's visible heading text.
+
+> **API change:** this component previously exposed a `title` prop for the card heading. That collided with the native HTML `title` (tooltip) attribute inherited from `HTMLAttributes<HTMLDivElement>` — an incompatible type (`ReactNode` vs `string`) that broke type-checking. The heading prop was renamed to `heading`. There were no consumers outside this component's own previews/registry entry at the time of the rename.
 
 ## Usage
 
@@ -32,7 +34,7 @@ import { GlassCard } from 'components/GlassCard'
 
 <GlassCard
   icon={<ShieldCheckIcon className="h-5 w-5" />}
-  title="Enterprise-grade security"
+  heading="Enterprise-grade security"
   description="24/7 monitoring and compliance-ready reporting."
 />
 ```
@@ -40,7 +42,7 @@ import { GlassCard } from 'components/GlassCard'
 Clickable tile:
 
 ```tsx
-<GlassCard interactive role="button" tabIndex={0} onClick={onSelect} title="Managed IT" />
+<GlassCard interactive role="button" tabIndex={0} onClick={onSelect} heading="Managed IT" />
 ```
 
 Custom content only:
@@ -53,6 +55,6 @@ Custom content only:
 
 ## Accessibility
 
-- Title renders as an `h3` — keep the surrounding heading hierarchy consistent.
-- The icon slot is `aria-hidden`; convey meaning through the title or description.
+- `heading` renders as an `h3` — keep the surrounding heading hierarchy consistent.
+- The icon slot is `aria-hidden`; convey meaning through the heading or description.
 - When `interactive`, supply `role="button"` and `tabIndex={0}` (or wrap in a real link/button) so keyboard users get the focus ring.

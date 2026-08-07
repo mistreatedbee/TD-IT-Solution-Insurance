@@ -24,6 +24,9 @@ export interface RevealProps extends Omit<HTMLMotionProps<'div'>, 'children'> {
   className?: string;
 }
 
+// react-refresh/only-export-components: intentionally left as a warning.
+// `getRevealOffset` is a small pure helper tightly coupled to `Reveal`'s
+// direction/distance props; it's not useful without the component.
 export function getRevealOffset(
 direction: RevealDirection,
 distance: number)

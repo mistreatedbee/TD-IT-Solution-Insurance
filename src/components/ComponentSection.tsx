@@ -1,4 +1,3 @@
-import React from 'react';
 import type { ComponentPreviewModule } from './previewTypes';
 
 const DS_SHELL_FONT = 'Inter, ui-sans-serif, system-ui, -apple-system, sans-serif';

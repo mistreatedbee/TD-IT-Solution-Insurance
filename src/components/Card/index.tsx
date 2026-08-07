@@ -2,7 +2,10 @@ import React from 'react';
 
 export type CardPadding = 'none' | 'sm' | 'md' | 'lg';
 
-export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+/** Tag names Card can render as. Kept in sync with the `as` prop's own union. */
+export type CardAs = 'div' | 'article' | 'section' | 'li';
+
+interface CardOwnProps<T extends CardAs = 'div'> {
   /** Content of the card */
   children?: React.ReactNode;
   /** Inner padding scale */
@@ -10,9 +13,18 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Enables hover lift + electric-blue accent edge */
   interactive?: boolean;
   /** Renders the card as a semantic element other than div */
-  as?: 'div' | 'article' | 'section' | 'li';
+  as?: T;
   className?: string;
 }
+
+/**
+ * Polymorphic props: native attributes are resolved from whichever tag `as`
+ * is set to (defaulting to `div`), so e.g. `onCopy` is correctly typed as a
+ * `ClipboardEventHandler<HTMLLIElement>` when `as="li"`, instead of always
+ * assuming `HTMLDivElement`.
+ */
+export type CardProps<T extends CardAs = 'div'> = CardOwnProps<T> &
+Omit<React.ComponentPropsWithoutRef<T>, keyof CardOwnProps<T>>;
 
 const paddingClasses: Record<CardPadding, string> = {
   none: 'p-0',
@@ -21,36 +33,47 @@ const paddingClasses: Record<CardPadding, string> = {
   lg: 'p-8'
 };
 
-export function Card({
+export function Card<T extends CardAs = 'div'>({
   children,
   padding = 'md',
   interactive = true,
-  as: Tag = 'div',
+  as,
   className = '',
   ...rest
-}: CardProps) {
-  const isFocusable = typeof rest.onClick === 'function';
+}: CardProps<T>) {
+  const Tag = as ?? 'div';
+  const isFocusable = typeof (rest as { onClick?: unknown }).onClick === 'function';
 
-  return (
-    <Tag
-      className={[
-      'group relative overflow-hidden rounded-2xl bg-white',
-      'border border-slate-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.15)]',
-      'transition-all duration-300 ease-out',
-      paddingClasses[padding],
-      interactive ?
-      'hover:-translate-y-1 hover:border-blue-200 hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_18px_40px_-16px_rgba(37,99,235,0.35)]' :
-      '',
-      isFocusable ?
-      'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2' :
-      '',
-      className].
+  const tagClassName = [
+  'group relative overflow-hidden rounded-2xl bg-white',
+  'border border-slate-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.15)]',
+  'transition-all duration-300 ease-out',
+  paddingClasses[padding],
+  interactive ?
+  'hover:-translate-y-1 hover:border-blue-200 hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_18px_40px_-16px_rgba(37,99,235,0.35)]' :
+  '',
+  isFocusable ?
+  'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2' :
+  '',
+  className].
 
-      filter(Boolean).
-      join(' ')}
-      {...isFocusable ? { tabIndex: 0, role: 'button' } : {}}
-      {...rest}>
-      
+  filter(Boolean).
+  join(' ');
+
+  // TypeScript can't fully resolve a JSX element whose tag name is a type
+  // parameter (`T extends CardAs`) against `IntrinsicElements`; the public
+  // `CardProps<T>` type above is what actually keeps consumers type-safe
+  // (e.g. `onCopy` narrows to `ClipboardEventHandler<HTMLLIElement>` when
+  // `as="li"`). `createElement` sidesteps that generic-tag limitation for
+  // the render itself.
+  return React.createElement(
+    Tag,
+    {
+      className: tagClassName,
+      ...(isFocusable ? { tabIndex: 0, role: 'button' } : {}),
+      ...rest
+    },
+    <>
       {interactive &&
       <span
         aria-hidden="true"
@@ -58,8 +81,8 @@ export function Card({
 
       }
       {children}
-    </Tag>);
-
+    </>
+  );
 }
 
 export interface CardHeaderProps {

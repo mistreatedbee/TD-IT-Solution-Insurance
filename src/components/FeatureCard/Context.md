@@ -11,7 +11,7 @@ Icon-led card used to describe services and product benefits. Composed of a duot
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `icon` | `ComponentType<{ className?: string; strokeWidth?: number }>` | — | Icon component (e.g. from `lucide-react`), rendered inside the duotone tile. |
+| `icon` | `ComponentType<{ className?: string; strokeWidth?: number \| string }>` | — | Icon component (e.g. from `lucide-react`), rendered inside the duotone tile. |
 | `title` | `string` | — | Card heading (`h3`). |
 | `description` | `ReactNode` | — | Supporting copy below the accent rule. |
 | `footer` | `ReactNode` | — | Optional footer, e.g. a CTA link or tag row. |

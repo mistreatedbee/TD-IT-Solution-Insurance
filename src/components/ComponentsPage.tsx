@@ -1,4 +1,3 @@
-import React from 'react';
 import { ComponentSection } from './ComponentSection';
 import { componentRegistry } from './registry';
 

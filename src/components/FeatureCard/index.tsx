@@ -5,7 +5,7 @@ export type FeatureCardAlign = 'left' | 'center';
 
 export interface FeatureCardProps {
   /** Lucide (or any SVG) icon component rendered in the duotone icon tile. */
-  icon: ComponentType<{className?: string;strokeWidth?: number;}>;
+  icon: ComponentType<{className?: string;strokeWidth?: number | string;}>;
   /** Card heading. */
   title: string;
   /** Supporting copy shown under the accent rule. */

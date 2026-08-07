@@ -4,10 +4,14 @@ export type GlassCardTone = 'light' | 'dark';
 export type GlassCardPadding = 'none' | 'sm' | 'md' | 'lg';
 
 export interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** Optional icon or visual slot rendered above the title. */
+  /** Optional icon or visual slot rendered above the heading. */
   icon?: React.ReactNode;
-  /** Card heading. */
-  title?: React.ReactNode;
+  /**
+   * Card heading. Named `heading` (not `title`) because this component
+   * extends `HTMLAttributes<HTMLDivElement>`, whose native `title` is a
+   * plain-string tooltip attribute — an incompatible, unrelated meaning.
+   */
+  heading?: React.ReactNode;
   /** Supporting copy under the heading. */
   description?: React.ReactNode;
   /** Surface tint. `light` sits on dark/gradient backgrounds, `dark` on light ones. */
@@ -44,7 +48,7 @@ const iconToneClasses: Record<GlassCardTone, string> = {
 
 export function GlassCard({
   icon,
-  title,
+  heading,
   description,
   tone = 'light',
   padding = 'md',
@@ -79,15 +83,15 @@ export function GlassCard({
         </div> :
       null}
 
-      {title ?
-      <h3 className="text-base font-semibold leading-6 tracking-tight">{title}</h3> :
+      {heading ?
+      <h3 className="text-base font-semibold leading-6 tracking-tight">{heading}</h3> :
       null}
 
       {description ?
       <p className={`mt-2 text-sm leading-6 ${descriptionToneClasses[tone]}`}>{description}</p> :
       null}
 
-      {children ? <div className={title || description || icon ? 'mt-4' : ''}>{children}</div> : null}
+      {children ? <div className={heading || description || icon ? 'mt-4' : ''}>{children}</div> : null}
     </div>);
 
 }

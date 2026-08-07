@@ -1,5 +1,3 @@
-import React from 'react';
-
 export type TestimonialCardProps = {
   /** The testimonial text, shown in italics. */
   quote: string;
@@ -18,6 +16,10 @@ export type TestimonialCardProps = {
   className?: string;
 };
 
+// react-refresh/only-export-components: intentionally left as a warning.
+// `getInitials` is documented as a reusable export of this module
+// (see Context.md "Exports getInitials(name) for reuse") and is small
+// enough that a dedicated file would be overkill.
 export function getInitials(name: string): string {
   return name.
   trim().

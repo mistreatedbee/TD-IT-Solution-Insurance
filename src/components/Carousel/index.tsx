@@ -25,6 +25,11 @@ interface CarouselContextValue {
 
 const CarouselContext = createContext<CarouselContextValue | null>(null);
 
+// react-refresh/only-export-components: intentionally left as a warning.
+// `useCarousel` is the public hook for consuming `Carousel`'s context and
+// is meant to be imported alongside the `Carousel` component itself;
+// moving it to a separate file would split a tightly-coupled
+// component+hook pair across two modules for no real gain.
 export function useCarousel(): CarouselContextValue {
   const ctx = useContext(CarouselContext);
   if (!ctx) throw new Error('useCarousel must be used within a <Carousel />');

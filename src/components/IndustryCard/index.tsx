@@ -1,5 +1,4 @@
-import React from "react";
-import { BuildingIcon, BoxIcon } from "lucide-react";
+import { BuildingIcon, type LucideIcon } from "lucide-react";
 export type IndustryCardAccent = 'blue' | 'green' | 'amber' | 'purple' | 'red' | 'slate';
 export interface IndustryCardProps {
   /** Industry name shown as the card title. */
@@ -7,7 +6,7 @@ export interface IndustryCardProps {
   /** Short supporting copy describing the industry vertical. */
   description: string;
   /** Lucide icon rendered above the title. */
-  icon?: BoxIcon;
+  icon?: LucideIcon;
   /** Color of the top accent bar and icon. */
   accent?: IndustryCardAccent;
   /** Optional click handler. Renders the card as a button when provided. */

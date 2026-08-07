@@ -1,13 +1,15 @@
-import React from 'react';
+import type { ComponentPropsWithoutRef } from 'react';
 import { useParams } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ComponentSection } from './ComponentSection';
 import { componentRegistry } from './registry';
 
 const DS_SHELL_FONT = 'Inter, ui-sans-serif, system-ui, -apple-system, sans-serif';
 
-const mdComponents = {
+type CodeProps = ComponentPropsWithoutRef<'code'> & ExtraProps;
+
+const mdComponents: Components = {
   h1: (props) => <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#111827', marginTop: '1.5rem', marginBottom: '0.5rem' }} {...props} />,
   h2: (props) => <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#111827', marginTop: '1.25rem', marginBottom: '0.5rem' }} {...props} />,
   h3: (props) => <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#111827', marginTop: '1rem', marginBottom: '0.5rem' }} {...props} />,
@@ -15,7 +17,7 @@ const mdComponents = {
   ul: (props) => <ul style={{ paddingLeft: '1.5rem', listStyleType: 'disc', marginTop: '0.5rem', marginBottom: '0.5rem' }} {...props} />,
   ol: (props) => <ol style={{ paddingLeft: '1.5rem', listStyleType: 'decimal', marginTop: '0.5rem', marginBottom: '0.5rem' }} {...props} />,
   li: (props) => <li style={{ marginTop: '0.25rem', marginBottom: '0.25rem', lineHeight: 1.7 }} {...props} />,
-  code: ({ node, className, children, ...props }) => {
+  code: ({ node, children, ...props }: CodeProps) => {
     const isBlock = node?.position?.start?.line !== node?.position?.end?.line || String(children).includes('\n');
     return isBlock ?
     <code style={{ display: 'block', fontFamily: 'monospace', fontSize: '0.85em', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '0.5rem', padding: '1rem', overflowX: 'auto', whiteSpace: 'pre', marginTop: '0.5rem', marginBottom: '0.5rem' }} {...props}>{children}</code> :

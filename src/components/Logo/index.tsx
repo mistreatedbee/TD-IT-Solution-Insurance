@@ -1,5 +1,3 @@
-import React from 'react';
-
 export type LogoSize = 'sm' | 'md' | 'lg';
 export type LogoVariant = 'full' | 'glyph' | 'wordmark';
 export type LogoTone = 'navy' | 'light';

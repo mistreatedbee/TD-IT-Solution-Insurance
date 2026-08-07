@@ -1,6 +1,10 @@
 import { Section } from './index';
 import type { ComponentPreviewModule } from '../previewTypes';
 
+// react-refresh/only-export-components: intentionally left as a warning.
+// `SampleContent` is a tiny demo-only component scoped to this preview
+// module; it's never imported elsewhere, so a dedicated file would just
+// add noise.
 const SampleContent = ({ title }: {title: string;}) =>
 <div className="max-w-2xl">
     <h2 className="text-3xl font-semibold tracking-tight text-gray-900">

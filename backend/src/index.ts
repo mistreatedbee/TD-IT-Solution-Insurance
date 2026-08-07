@@ -42,11 +42,19 @@ async function main(): Promise<void> {
   app.use(express.json());
   app.use(requestIdMiddleware);
 
-  app.use(healthRouter);
+  // Platform-wide prefix ratified as /api (see docs/organization/
+  // 05-development-standards.md and the deployment-time resolution note in
+  // docs/features/001-authentication/api-design.md §6) — mounted here so it
+  // also matches the Vercel multi-service rewrite (/api/* -> this service,
+  // everything else -> the frontend). Health checks live under it too
+  // (/api/health, /api/health/ready), not at bare /health, so they're
+  // actually reachable through that same rewrite rule.
+  app.use('/api', healthRouter);
 
-  // NOTE: No /v1/auth/*, /v1/session/*, /v1/mfa/* routes are mounted here.
-  // Feature 001's business-logic endpoints await Stage 7 (API Design) and
-  // Stage 8 (Security Review) sign-off — see backend/README.md.
+  // NOTE: No /api/v1/auth/*, /api/v1/session/*, /api/v1/mfa/* routes are
+  // mounted here. Feature 001's business-logic endpoints await Stage 7
+  // (API Design, done) sign-off carrying into Stage 8 (Security Review,
+  // not yet done) and Stage 9 (Development) — see backend/README.md.
 
   app.use(notFoundHandler);
   app.use(errorHandler);

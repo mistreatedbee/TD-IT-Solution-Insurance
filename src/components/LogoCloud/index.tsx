@@ -24,6 +24,10 @@ export type LogoCloudProps = {
   className?: string;
 };
 
+// react-refresh/only-export-components: intentionally left as a warning.
+// `DEFAULT_LOGOS` is documented, reusable sample data for `LogoCloud`
+// consumers (see Context.md); it's small and only meaningful next to the
+// component that uses its shape.
 export const DEFAULT_LOGOS: LogoCloudItem[] = [
 { name: 'Northwind' },
 { name: 'Acme Corp' },
