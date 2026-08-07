@@ -1,0 +1,133 @@
+/* --- MANAGED FONT IMPORTS START (do not edit manually) --- */
+/* INTERNAL USE NAME: Heading */
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+
+/* --- MANAGED FONT IMPORTS END --- */
+
+/* @import url() FONT IMPORTS MUST ALWAYS BE AT THE VERY TOP OF THIS FILE, ABOVE THE TAILWIND IMPORTS — DO NOT DELETE THIS COMMENT */
+
+/* CRITICAL: THE FOLLOWING TAILWIND IMPORTS MUST NEVER BE DELETED OR REORDERED — DO NOT DELETE THIS COMMENT */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* END TAILWIND IMPORTS — ALL OTHER CSS MUST GO BELOW THIS LINE */
+
+:root {
+  --primary: #2C3E50;
+  --primary-foreground: #FFFFFF;
+  --secondary: #2E86C1;
+  --secondary-foreground: #FFFFFF;
+  --accent-gradient-start: #0066FF;
+  --accent-gradient-mid: #3385FF;
+  --accent-gradient-end: #00A3FF;
+  --accent-gold: #F5A623;
+  --surface-navy-deep: #0A1628;
+  --surface-navy: #0F1A2C;
+  --background: #FFFFFF;
+  --background-alt: #F9FAFB;
+  --background-pattern: #EFF2F6;
+  --card: #F3F4F6;
+  --card-elevated: #E5E7EB;
+  --success: #059669;
+  --success-light: #10B981;
+  --text-primary: #111827;
+  --text-secondary: #6B7280;
+  --text-inverse: #FFFFFF;
+  --text-inverse-muted: #F9FAFB;
+  --glass-background: rgba(255,255,255,0.75);
+  --glass-background-strong: rgba(255,255,255,0.8);
+  --glass-background-soft: rgba(255,255,255,0.7);
+  --glass-border: rgba(255,255,255,0.3);
+  --hairline: rgba(0,0,0,0.05);
+  --border: #E5E7EB;
+  --dark-background: #0A1628;
+  --dark-background-alt: #0F1A2C;
+  --dark-surface: #111F35;
+  --dark-card: #16233B;
+  --dark-card-elevated: #1C2B45;
+  --dark-primary: #3385FF;
+  --dark-primary-foreground: #0A1628;
+  --dark-secondary: #5FA8E0;
+  --dark-accent-gradient-start: #3385FF;
+  --dark-accent-gradient-end: #00A3FF;
+  --dark-accent-gold: #F7B84D;
+  --dark-success: #10B981;
+  --dark-success-light: #34D399;
+  --dark-text-primary: #F9FAFB;
+  --dark-text-secondary: #9CA3AF;
+  --dark-text-inverse: #111827;
+  --dark-glass-background: rgba(16,26,44,0.7);
+  --dark-glass-border: rgba(255,255,255,0.12);
+  --dark-hairline: rgba(255,255,255,0.06);
+  --dark-border: rgba(255,255,255,0.08);
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --spacing-20: 80px;
+  --spacing-24: 96px;
+  --spacing-30: 120px;
+  --gutter-desktop: 24px;
+  --gutter-tablet: 16px;
+  --gutter-mobile: 16px;
+  --section-padding-desktop: 120px;
+  --section-padding-mobile: 80px;
+  --card-padding-min: 32px;
+  --card-padding-max: 40px;
+  --container-max-width: 1440px;
+  --breakpoint-tablet: 768px;
+  --breakpoint-mobile: 375px;
+  --grid-columns: 12;
+  --radius-input: 8px;
+  --radius-sm: 10px;
+  --radius-button: 12px;
+  --radius-card: 16px;
+  --radius-card-lg: 20px;
+  --radius-full: 9999px;
+  --shadow-resting: 0 2px 8px rgba(0,0,0,0.06);
+  --shadow-hover: 0 6px 16px rgba(0,0,0,0.10);
+  --elevation-card-hover-lift: translateY(-6px);
+  --elevation-card-hover-lift-sm: translateY(-4px);
+  --blur-glass: blur(12px);
+  --glass-background: rgba(255,255,255,0.72);
+  --glass-border: 1px solid rgba(255,255,255,0.4);
+  --ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --duration-fast: 150ms;
+  --duration-base: 300ms;
+  --duration-slow: 600ms;
+  --transition-fade-up: opacity 600ms cubic-bezier(0.25, 0.1, 0.25, 1), transform 600ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --transform-fade-up-offset: translateY(24px);
+  --transition-button-hover: transform 150ms cubic-bezier(0.25, 0.1, 0.25, 1), box-shadow 150ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --transform-button-hover-scale: scale(1.02);
+  --transition-card-hover: transform 300ms cubic-bezier(0.25, 0.1, 0.25, 1), box-shadow 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --transition-accordion: height 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+/* --- MANAGED TYPOGRAPHY VARS START (do not edit manually) --- */
+html {
+  --font-body: Inter, sans-serif;
+  --font-heading: Inter, sans-serif;
+}
+/* --- MANAGED TYPOGRAPHY VARS END --- */
+
+/* --- BASE TYPOGRAPHY START (do not edit manually) --- */
+@layer base {
+  body {
+    font-family: var(--font-body, inherit);
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-heading, var(--font-body, inherit));
+  }
+}
+/* --- BASE TYPOGRAPHY END --- */
