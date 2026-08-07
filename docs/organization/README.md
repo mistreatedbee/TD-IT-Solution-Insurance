@@ -17,6 +17,7 @@ Every role described here also exists as a real, invocable Claude Code subagent 
 | [06-security-standards.md](06-security-standards.md) | AuthN/Z, encryption, data handling, pentest cadence |
 | [07-documentation-standards.md](07-documentation-standards.md) | Doc types, ADR template, changelog policy |
 | [08-roadmap.md](08-roadmap.md) | Product roadmap and how the org itself scales with it |
+| [09-business-continuity-policy.md](09-business-continuity-policy.md) | BCM/disaster-recovery framework, critical-activity priorities, current maturity level |
 | [adr/](adr/) | Architecture Decision Records, starting with [ADR-0001](adr/0001-baseline-architecture.md) |
 
 ## Current reality check

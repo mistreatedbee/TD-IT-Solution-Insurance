@@ -65,6 +65,10 @@
 - `security-engineer` and `compliance-specialist` report into `cybersecurity-architect` but hold **independent veto authority** at the Security Review gate — they are never overruled by a delivery deadline (see [04-quality-gates.md](04-quality-gates.md)).
 - Engineering roles report into their respective architecture counterpart for technical direction (e.g. `backend-engineer` ↔ `backend-architect`) and into `technical-project-manager` for delivery tracking.
 
+## Business continuity mapping
+
+This org chart's roles are also how business continuity/disaster-recovery responsibility is assigned — there is no separate BCM committee structure invented outside these 35 roles. See [09-business-continuity-policy.md](09-business-continuity-policy.md) Section 4 for the full mapping (`cto`-led strategic oversight, `site-reliability-engineer`-led disaster recovery, `technical-project-manager`-led business recovery, plus explicitly flagged organizational gaps — physical-safety/SHERQ and independent internal audit — that this engineering org does not currently have a real counterpart for).
+
 ## Headcount-equivalents today vs. at scale
 
 This chart is deliberately sized for a platform that is starting from zero and scaling to thousands of customers — see [08-roadmap.md](08-roadmap.md) for when single roles are expected to split into multiple specialists (e.g. `backend-engineer` → domain-specific squads) as load grows.
