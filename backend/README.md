@@ -27,12 +27,13 @@ This app loads environment variables from the **repo-root** `.env.local`
 (`../.env.local` relative to `backend/`), not from a `backend/.env` file —
 the MongoDB/Supabase credentials already live there. See
 [`.env.example`](./.env.example) for the variables it reads
-(`MONGODB_URI`, `SUPABASE_DB_URL`, `PORT`).
+(`MONGODB_URI`, `SUPABASE_DB_URL`, `PORT`, `CORS_ALLOWED_ORIGINS`).
 
 `MONGODB_URI` is required — the server fails fast at startup if it's
 missing. `SUPABASE_DB_URL` is optional right now (warn-only); no live
 Supabase credential is configured yet (see the comment in the repo-root
-`.env.local`).
+`.env.local`). `CORS_ALLOWED_ORIGINS` fails **closed** (no cross-origin
+requests permitted) if unset — see [ADR-0003](../docs/organization/adr/0003-backend-hosting-platform.md).
 
 ## Run
 
@@ -51,12 +52,31 @@ npm start
 npm run lint
 ```
 
-Once running, verify:
+Once running, verify (routes are mounted under `/api`, per the deployment-time
+prefix resolution in
+[`api-design.md`](../docs/features/001-authentication/api-design.md) §6):
 
 ```bash
-curl http://localhost:3000/health         # liveness — no DB check
-curl http://localhost:3000/health/ready   # readiness — pings MongoDB, reports Supabase config status
+curl http://localhost:3000/api/health         # liveness — no DB check
+curl http://localhost:3000/api/health/ready   # readiness — pings MongoDB, reports Supabase config status
 ```
+
+## Deployment
+
+Per [ADR-0003](../docs/organization/adr/0003-backend-hosting-platform.md),
+this backend deploys to **Render** as a persistent-process Web Service —
+not Vercel, and not as a serverless Function. Render root directory:
+`backend/`. Build command: `npm install && npm run build`. Start command:
+`npm start`. Environment variables to set in Render's dashboard:
+`MONGODB_URI`, `SUPABASE_DB_URL` (once available), `CORS_ALLOWED_ORIGINS`
+(the frontend's real origin, e.g. its Vercel URL), `NODE_ENV=production`.
+Do **not** set `PORT` manually — Render provides it.
+
+The frontend (deployed separately on Vercel) reaches this backend via an
+explicit `VITE_API_BASE_URL` build-time env var pointing at the Render
+service's public URL — the two are genuinely cross-origin deployables, not
+same-origin, so no frontend code should assume a relative `/api/*` path
+resolves to this backend.
 
 ## Running frontend + backend together
 

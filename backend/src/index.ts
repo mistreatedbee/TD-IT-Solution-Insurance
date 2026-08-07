@@ -38,7 +38,16 @@ async function main(): Promise<void> {
   const app = express();
 
   app.use(helmet());
-  app.use(cors());
+  // Explicit origin allowlist, not the permissive default — required once
+  // frontend (Vercel) and backend (Render, per ADR-0003) are genuinely
+  // cross-origin rather than same-origin. Fails closed: an empty allowlist
+  // means no origin is permitted, not "allow all" (see config/env.ts).
+  app.use(
+    cors({
+      origin: env.corsAllowedOrigins.length > 0 ? env.corsAllowedOrigins : false,
+      credentials: true, // required once Feature 001's auth uses cookies/sessions
+    }),
+  );
   app.use(express.json());
   app.use(requestIdMiddleware);
 

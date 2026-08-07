@@ -1,8 +1,8 @@
 # ADR-0003: Backend Hosting Platform — Move to a Persistent-Process Host
 
-Status: Proposed (pending `cto` ratification)
+Status: Accepted
 Date: 2026-08-07
-Deciders: `cloud-infrastructure-architect` (proposing), `backend-architect` (consulted), ratification pending `cto`
+Deciders: `cloud-infrastructure-architect` (proposing), `backend-architect` (consulted), ratified 2026-08-07 by `cto` (platform owner)
 
 ## Context
 

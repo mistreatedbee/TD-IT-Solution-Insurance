@@ -17,6 +17,9 @@ export interface Env {
   port: number;
   mongodbUri: string;
   supabaseDbUrl: string | undefined;
+  /** Parsed, trimmed origin list. Empty array means "no origins allowed"
+   * (fail closed), not "allow all" — see index.ts's cors() call. */
+  corsAllowedOrigins: string[];
 }
 
 function requireEnv(name: string): string {
@@ -48,10 +51,25 @@ export function loadEnv(): Env {
     throw new Error(`[config/env] Invalid PORT value: ${process.env.PORT}`);
   }
 
+  const corsAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (corsAllowedOrigins.length === 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[config/env] CORS_ALLOWED_ORIGINS is not set. Per ADR-0003, this fails ' +
+        'closed (no cross-origin requests permitted) rather than falling back ' +
+        'to a permissive default. Set it once the frontend is calling this ' +
+        'backend cross-origin (e.g. https://your-frontend.vercel.app).',
+    );
+  }
+
   return {
     nodeEnv: process.env.NODE_ENV ?? 'development',
     port,
     mongodbUri,
     supabaseDbUrl,
+    corsAllowedOrigins,
   };
 }

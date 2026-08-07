@@ -1,31 +1,5 @@
 {
-  "services": {
-    "frontend": {
-      "root": ".",
-      "framework": "vite",
-      "rewrites": [
-        { "source": "/(.*)", "destination": "/index.html" }
-      ]
-    },
-    "backend": {
-      "root": "backend",
-      "entrypoint": "src/index.ts"
-    }
-  },
   "rewrites": [
-    {
-      "source": "/api(/.*)?",
-      "destination": {
-        "type": "service",
-        "service": "backend"
-      }
-    },
-    {
-      "source": "/(.*)",
-      "destination": {
-        "type": "service",
-        "service": "frontend"
-      }
-    }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
