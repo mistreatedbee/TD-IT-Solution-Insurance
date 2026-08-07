@@ -1,8 +1,8 @@
 # ADR-0002: Polyglot Persistence — Supabase for Identity, MongoDB for Domain Data
 
-Status: Proposed
+Status: Accepted
 Date: 2026-08-07
-Deciders: `database-architect`, `backend-architect`, `cybersecurity-architect` — proposed for ratification by `solution-architect` + `cto`
+Deciders: `database-architect`, `backend-architect`, `cybersecurity-architect` — ratified 2026-08-07 by `cto` (platform owner), on the condition that all three items in "Required Follow-ups Before Implementation" are completed before Feature 001's Development stage (lifecycle stage 9) begins.
 
 ## Context
 
