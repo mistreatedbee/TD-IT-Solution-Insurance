@@ -20,6 +20,7 @@ dist-ssr
 
 # Claude Code local session state
 .claude/scheduled_tasks.lock
+.claude/settings.json
 
 # Supabase CLI local session state (regenerated per machine/session)
 supabase/.temp/
