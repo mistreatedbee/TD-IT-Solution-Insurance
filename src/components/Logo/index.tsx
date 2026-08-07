@@ -81,6 +81,24 @@ export function LogoGlyph({
 
 }
 
+// Real brand asset (public/logo.png) — navy wordmark + orange "INSURANCE"
+// on a transparent background. Used verbatim for `tone="navy"` (light-
+// background contexts: header, footer columns on white/warm sections),
+// since that's an exact match for the file's own color treatment.
+//
+// It is NOT used for `tone="light"` (dark/navy-background contexts, e.g.
+// the site footer): the logo file's navy wordmark would go near-invisible
+// against a navy section background. No reversed/white version of the
+// mark exists yet, so `tone="light"` falls back to the hand-drawn
+// LogoGlyph + white text below, which does invert correctly. Flagged
+// follow-up for design-system-manager: commission a proper light/reversed
+// lockup of the real mark so this fallback isn't needed long-term.
+const REAL_LOGO_HEIGHT: Record<LogoSize, string> = {
+  sm: 'h-8',
+  md: 'h-10',
+  lg: 'h-14'
+};
+
 export function Logo({
   variant = 'full',
   size = 'md',
@@ -93,11 +111,19 @@ export function Logo({
   const subColor = tone === 'navy' ? 'text-[#5A7492]' : 'text-white/70';
 
   const content =
+  tone === 'navy' ?
+  <img
+    src="/logo.png"
+    alt={label}
+    className={`${REAL_LOGO_HEIGHT[size]} w-auto ${
+    href ? 'transition-opacity hover:opacity-80' : ''} ${
+    className}`} /> :
+
   <span
     className={`inline-flex items-center ${GAP[size]} ${
     href ? 'transition-opacity hover:opacity-80' : ''} ${
     className}`}>
-    
+
       {variant !== 'wordmark' &&
     <LogoGlyph tone={tone} className={GLYPH_SIZE[size]} />
     }
@@ -105,12 +131,12 @@ export function Logo({
     <span className="flex flex-col leading-none">
           <span
         className={`font-semibold tracking-tight ${PRIMARY_TEXT[size]} ${textColor}`}>
-        
+
             TD IT Solution
           </span>
           <span
         className={`mt-1 font-medium uppercase tracking-[0.18em] ${SECONDARY_TEXT[size]} ${subColor}`}>
-        
+
             Insurance
           </span>
         </span>

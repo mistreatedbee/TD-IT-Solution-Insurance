@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 export type StepItemOrientation = 'horizontal' | 'vertical';
+export type StepItemTone = 'light' | 'dark';
 
 export interface StepItemProps {
   /** Step position in the timeline, rendered as the large watermark numeral. */
@@ -18,6 +19,12 @@ export interface StepItemProps {
   isActive?: boolean;
   /** Connector direction. Horizontal is the default 4-across timeline. */
   orientation?: StepItemOrientation;
+  /**
+   * Color treatment. `light` (default) is tuned for white/warm section
+   * backgrounds. `dark` swaps text/tile tokens for legibility on navy
+   * (`background="navy"`) sections — same layout, no other behavior change.
+   */
+  tone?: StepItemTone;
   /** Stagger delay (seconds) for the entrance animation. */
   delay?: number;
   className?: string;
@@ -31,10 +38,12 @@ export function StepItem({
   isLast = false,
   isActive = false,
   orientation = 'horizontal',
+  tone = 'light',
   delay = 0,
   className = ''
 }: StepItemProps) {
   const isHorizontal = orientation === 'horizontal';
+  const isDark = tone === 'dark';
 
   return (
     <motion.li
@@ -48,7 +57,9 @@ export function StepItem({
       <span
         aria-hidden="true"
         className={`pointer-events-none absolute -top-4 left-0 select-none font-heading text-[80px] font-bold leading-none tracking-tight sm:text-[96px] ${
-        isActive ? 'text-secondary/20' : 'text-card-elevated/70'}`
+        isActive ?
+        isDark ? 'text-dark-accent-gold/30' : 'text-secondary/20' :
+        isDark ? 'text-white/10' : 'text-card-elevated/70'}`
         }>
         
         {step}
@@ -59,21 +70,21 @@ export function StepItem({
         <div
           className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-[var(--radius-button)] ${
           isActive ?
-          'bg-secondary text-secondary-foreground' :
-          'bg-card text-primary'}`
+          isDark ? 'bg-dark-accent-gold text-dark-primary-foreground' : 'bg-secondary text-secondary-foreground' :
+          isDark ? 'bg-white/10 text-dark-accent-gold' : 'bg-card text-primary'}`
           }>
-          
+
             {icon}
           </div> :
         null}
 
-        <p className="mb-2 font-body text-xs font-semibold uppercase tracking-[0.14em] text-secondary">
+        <p className={`mb-2 font-body text-xs font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-dark-accent-gold' : 'text-secondary'}`}>
           Step {step}
         </p>
-        <h3 className="font-heading text-lg font-semibold leading-snug text-text-primary sm:text-xl">
+        <h3 className={`font-heading text-lg font-semibold leading-snug sm:text-xl ${isDark ? 'text-text-inverse' : 'text-text-primary'}`}>
           {title}
         </h3>
-        <p className="mt-2 max-w-xs font-body text-sm leading-relaxed text-text-secondary">
+        <p className={`mt-2 max-w-xs font-body text-sm leading-relaxed ${isDark ? 'text-text-inverse-muted' : 'text-text-secondary'}`}>
           {description}
         </p>
       </div>

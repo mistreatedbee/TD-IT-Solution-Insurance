@@ -1,6 +1,8 @@
 # Logo
 
-Brand mark for TD IT Solution Insurance: a minimal geometric shield/lock glyph paired with a navy typographic wordmark. This is a **placeholder** — no final brand art was supplied, so the glyph and type are designed to be swapped for the real asset without changing the component API.
+Brand mark for TD IT Solution Insurance. **Updated 2026-08-07**: the real brand asset (`public/logo.png` — navy wordmark + orange "INSURANCE", supplied by the platform owner) is now used verbatim for `tone="navy"` (light-background contexts), rendered as an `<img>` at a fixed height per `size`. `variant` (`full`/`glyph`/`wordmark`) has no effect when `tone="navy"` — the real asset is one combined lockup, not separable into parts.
+
+For `tone="light"` (dark/navy-background contexts, e.g. the site footer), no reversed/white version of the real mark exists yet, so this still falls back to the original placeholder: a minimal geometric shield/lock glyph (`LogoGlyph`) paired with a white typographic wordmark, where `variant` still applies normally. Follow-up flagged for `design-system-manager`: commission a proper light/reversed lockup of the real mark so the placeholder fallback isn't needed long-term.
 
 ## Usage
 

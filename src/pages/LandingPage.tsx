@@ -7,6 +7,7 @@ import {
   PhoneCallIcon,
   CheckCircleIcon
 } from 'lucide-react';
+import type { ComponentType } from 'react';
 import { Section } from '../components/Section';
 import { SectionHeading } from '../components/SectionHeading';
 import { FeatureCard } from '../components/FeatureCard';
@@ -18,12 +19,17 @@ import { Reveal } from '../components/Reveal';
 import { Logo } from '../components/Logo';
 import { AssetBadge, type AssetType } from '../components/AssetBadge';
 import { WaitlistForm } from './WaitlistForm';
+import { ChevronMotif, ChevronMotifField, ChevronDivider } from './ChevronMotif';
 import {
   Accordion,
   AccordionItem
 } from '../components/Accordion';
 
-const ASSET_TYPES: AssetType[] = ['vehicle', 'laptop', 'phone', 'tablet', 'tv', 'desktop', 'business', 'other'];
+// The two highest-value/most-differentiating categories (vehicle = biggest-
+// ticket asset; business = the category that must not read as an
+// afterthought) are rendered larger (col-span-2) and separately below;
+// this list drives the six standard-size badges in between.
+const STANDARD_ASSET_TYPES: AssetType[] = ['laptop', 'phone', 'tablet', 'tv', 'desktop', 'other'];
 
 function scrollToWaitlist() {
   document.getElementById('waitlist')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -32,6 +38,17 @@ function scrollToWaitlist() {
   window.setTimeout(() => {
     document.getElementById('waitlist-email')?.focus();
   }, 400);
+}
+
+/** Small icon tile used in the "What to Expect" alternating rows (§6). Not
+ * a new component — this is the same inline markup previously used inline
+ * in this file, extracted as a local fragment for readability only. */
+function IconTile({ icon: Icon }: {icon: ComponentType<{className?: string;}>;}) {
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+      <Icon className="h-5 w-5" />
+    </div>
+  );
 }
 
 export function LandingPage() {
@@ -44,32 +61,43 @@ export function LandingPage() {
         </div>
       </Section>
 
-      {/* 1. Hero */}
-      <Section spacing="default" width="wide">
-        <Reveal>
-          <div className="max-w-2xl">
-            <SectionHeading
-              as="h1"
-              size="lg"
-              eyebrow="Asset insurance, built for recovery"
-              title="Insurance that helps you get your stuff back."
-              subtitle="TD IT Solution Insurance covers your vehicles, laptops, phones, tablets, TVs, desktops and business equipment — and works with GPS-assisted recovery and security-company partners when something is lost or stolen. Cover is subject to policy terms, underwriting and claims assessment."
-            />
-            <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
-              <Button variant="primary" size="lg" fullWidth onClick={scrollToWaitlist} className="sm:w-auto">
-                Get Notified
-              </Button>
-              <ArrowLink href="#how-it-works" tone="default">
-                See how it works
-              </ArrowLink>
+      {/* 1. Hero — asymmetric split: copy left, chevron motif field right */}
+      <Section spacing="none" width="full" bleed className="relative overflow-hidden bg-white">
+        <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-12 px-6 pb-20 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-8 lg:px-8 lg:pb-28 lg:pt-24">
+          {/* Left: copy column, unchanged content/copy from ui-design.md §1 */}
+          <Reveal direction="left" distance={32}>
+            <div className="max-w-xl">
+              <SectionHeading
+                as="h1"
+                size="lg"
+                align="left"
+                eyebrow="Asset insurance, built for recovery"
+                title="Insurance that helps you get your stuff back."
+                subtitle="TD IT Solution Insurance covers your vehicles, laptops, phones, tablets, TVs, desktops and business equipment — and works with GPS-assisted recovery and security-company partners when something is lost or stolen. Cover is subject to policy terms, underwriting and claims assessment."
+              />
+              <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
+                <Button variant="primary" size="lg" fullWidth onClick={scrollToWaitlist} className="sm:w-auto">
+                  Get Notified
+                </Button>
+                <ArrowLink href="#how-it-works" tone="default">
+                  See how it works
+                </ArrowLink>
+              </div>
             </div>
-          </div>
-        </Reveal>
+          </Reveal>
+
+          {/* Right: large-scale chevron motif field, decorative, desktop only */}
+          <Reveal direction="right" delay={0.1} distance={32} className="relative hidden lg:block">
+            <ChevronMotifField />
+          </Reveal>
+        </div>
       </Section>
 
-      {/* 2. How It Works */}
-      <Section background="warm" id="how-it-works">
+      {/* 2. How It Works — full-bleed navy band, first rhythm break */}
+      <Section background="navy" id="how-it-works" className="relative overflow-hidden text-text-inverse">
+        <ChevronDivider tone="gold" className="absolute -top-px left-1/2 -translate-x-1/2" />
         <SectionHeading
+          tone="dark"
           eyebrow="How It Works"
           title="Three steps, from sign-up to recovery"
           subtitle="Here's the model we're building — clearly, so you know exactly what you're signing up for."
@@ -81,6 +109,7 @@ export function LandingPage() {
             description="Choose a plan that fits what you want covered."
             icon={<ClipboardCheckIcon className="h-5 w-5" />}
             orientation="horizontal"
+            tone="dark"
             delay={0}
           />
           <StepItem
@@ -89,7 +118,8 @@ export function LandingPage() {
             description="Add the vehicles, devices and equipment you want protected."
             icon={<LaptopIcon className="h-5 w-5" />}
             orientation="horizontal"
-            delay={0.1}
+            tone="dark"
+            delay={0.12}
           />
           <StepItem
             step={3}
@@ -97,64 +127,83 @@ export function LandingPage() {
             description="If something's lost or stolen, we work with our security-company partners to try to recover it. Recovery is best-effort and depends on the asset's tracking status and on-the-ground conditions — subject to policy terms, underwriting and claims assessment."
             icon={<ShieldCheckIcon className="h-5 w-5" />}
             orientation="horizontal"
+            tone="dark"
             isLast
-            delay={0.2}
+            delay={0.24}
           />
         </ol>
       </Section>
 
-      {/* 3. Asset Types Covered */}
+      {/* 3. Asset Types Covered — staggered/uneven grid */}
       <Section background="white">
         <SectionHeading
           eyebrow="What's Covered"
           title="Cover for the assets you actually own"
           subtitle="From the car in your driveway to the laptop on your desk. Cover is subject to policy terms, underwriting and claims assessment."
         />
-        <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {ASSET_TYPES.map((type, i) => (
-            <Reveal key={type} delay={i * 0.05}>
+        <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+          {/* vehicle + business are emphasized (2-col span, small chevron
+              corner accent) — everything else is a standard 1-col badge. */}
+          <Reveal className="relative col-span-2" delay={0}>
+            <ChevronMotif tone="gold" className="pointer-events-none absolute -right-2 -top-2 h-6 w-10 opacity-10" />
+            <AssetBadge type="vehicle" size="md" className="h-full" />
+          </Reveal>
+          {STANDARD_ASSET_TYPES.slice(0, 5).map((type, i) => (
+            <Reveal key={type} delay={0.05 + i * 0.05}>
               <AssetBadge type={type} size="md" />
             </Reveal>
           ))}
+          <Reveal className="relative col-span-2" delay={0.3}>
+            <ChevronMotif tone="gold" className="pointer-events-none absolute -right-2 -top-2 h-6 w-10 opacity-10" />
+            <AssetBadge type="business" size="md" className="h-full" />
+          </Reveal>
+          <Reveal delay={0.35}>
+            <AssetBadge type={STANDARD_ASSET_TYPES[5]} size="md" />
+          </Reveal>
         </div>
       </Section>
 
-      {/* 4. Trust / Credibility */}
+      {/* 4. Trust / Credibility — two-column asymmetric */}
       <Section background="warm">
-        <SectionHeading
-          eyebrow="Why Trust Us"
-          title="Built to be transparent about what's live and what's coming"
-          subtitle="We'd rather tell you exactly where we are than oversell it."
-        />
-        <div className="mt-10 grid gap-6 md:grid-cols-2">
-          <Reveal>
-            <FeatureCard
-              icon={ShieldCheckIcon}
-              title="Licensed insurer"
-              description="TD IT Solution Insurance is the underwriter — not a broker or a platform placing your business with someone else. Full regulatory details are in the footer of every page."
+        <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
+          <Reveal direction="left">
+            <SectionHeading
               align="left"
+              eyebrow="Why Trust Us"
+              title="Built to be transparent about what's live and what's coming"
+              subtitle="We'd rather tell you exactly where we are than oversell it."
             />
+            <p className="mt-6 max-w-md text-base text-text-secondary">
+              We only collect what we need, and we handle personal information under South African
+              data protection law (POPIA). See our{' '}
+              <ArrowLink href="/privacy" size="sm">
+                Privacy Policy
+              </ArrowLink>{' '}
+              for details.
+            </p>
           </Reveal>
-          <Reveal delay={0.08}>
-            <FeatureCard
-              icon={MapPinIcon}
-              title="GPS-assisted recovery, coordinated with security-company partners"
-              description="When you report an asset stolen, we work with security-company partners to try to recover it. This is best-effort, not a guarantee — recovery depends on tracking status and on-the-ground conditions."
-              align="left"
-            />
-          </Reveal>
+          <div className="flex flex-col gap-6">
+            <Reveal direction="right" delay={0.05}>
+              <FeatureCard
+                icon={ShieldCheckIcon}
+                title="Licensed insurer"
+                description="TD IT Solution Insurance is the underwriter — not a broker or a platform placing your business with someone else. Full regulatory details are in the footer of every page."
+                align="left"
+              />
+            </Reveal>
+            <Reveal direction="right" delay={0.15}>
+              <FeatureCard
+                icon={MapPinIcon}
+                title="GPS-assisted recovery, coordinated with security-company partners"
+                description="When you report an asset stolen, we work with security-company partners to try to recover it. This is best-effort, not a guarantee — recovery depends on tracking status and on-the-ground conditions."
+                align="left"
+              />
+            </Reveal>
+          </div>
         </div>
-        <p className="mt-8 text-base text-text-secondary">
-          We only collect what we need, and we handle personal information under South African
-          data protection law (POPIA). See our{' '}
-          <ArrowLink href="/privacy" size="sm">
-            Privacy Policy
-          </ArrowLink>{' '}
-          for details.
-        </p>
       </Section>
 
-      {/* 5. Pricing / Plans Teaser */}
+      {/* 5. Pricing / Plans Teaser — kept close to original rhythm, intentionally */}
       <Section background="white">
         <SectionHeading
           eyebrow="Plans"
@@ -163,7 +212,8 @@ export function LandingPage() {
         />
         <div className="mt-10 grid items-stretch gap-6 sm:grid-cols-3">
           <Reveal>
-            <Card interactive={false} className="h-full">
+            <Card interactive={false} className="relative h-full">
+              <ChevronMotif tone="navy" className="pointer-events-none absolute right-0 top-0 h-8 w-14 opacity-[0.06]" />
               <CardHeader title="Basic" description="Core cover for a single asset." />
               <CardFooter>
                 <span className="text-sm text-text-secondary">Coming soon</span>
@@ -171,7 +221,8 @@ export function LandingPage() {
             </Card>
           </Reveal>
           <Reveal delay={0.06}>
-            <Card interactive={false} className="h-full">
+            <Card interactive={false} className="relative h-full">
+              <ChevronMotif tone="navy" className="pointer-events-none absolute right-0 top-0 h-8 w-14 opacity-[0.06]" />
               <CardHeader title="Standard" description="Cover for multiple everyday assets." />
               <CardFooter>
                 <span className="text-sm text-text-secondary">Coming soon</span>
@@ -179,7 +230,8 @@ export function LandingPage() {
             </Card>
           </Reveal>
           <Reveal delay={0.12}>
-            <Card interactive={false} className="h-full">
+            <Card interactive={false} className="relative h-full">
+              <ChevronMotif tone="navy" className="pointer-events-none absolute right-0 top-0 h-8 w-14 opacity-[0.06]" />
               <CardHeader title="Premium" description="Broader cover, including business equipment." />
               <CardFooter>
                 <span className="text-sm text-text-secondary">Coming soon</span>
@@ -194,48 +246,49 @@ export function LandingPage() {
         </div>
       </Section>
 
-      {/* 6. What to Expect (testimonials placeholder, Option B) */}
+      {/* 6. What to Expect — alternating left/right rows, one per row */}
       <Section background="warm">
         <SectionHeading
+          align="center"
           eyebrow="What to Expect"
           title="Here's what happens if your laptop is stolen"
           subtitle="This is how the product is designed to work — not a customer story, since we're pre-launch."
         />
-        <div className="mt-10 grid gap-6 md:grid-cols-3">
-          <Reveal>
-            <Card interactive={false} className="h-full">
-              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700">
-                <AlertTriangleIcon className="h-5 w-5" />
+        <div className="mx-auto mt-12 flex max-w-3xl flex-col gap-8">
+          <Reveal direction="left">
+            <div className="flex items-start gap-6">
+              <IconTile icon={AlertTriangleIcon} />
+              <div>
+                <h3 className="text-lg font-semibold text-text-primary">You report it.</h3>
+                <p className="mt-2 text-base text-text-secondary">
+                  You'd flag the laptop as stolen in the app, in a couple of taps.
+                </p>
               </div>
-              <h3 className="text-lg font-semibold text-text-primary">You report it.</h3>
-              <p className="mt-2 text-base text-text-secondary">
-                You'd flag the laptop as stolen in the app, in a couple of taps.
-              </p>
-            </Card>
+            </div>
           </Reveal>
-          <Reveal delay={0.08}>
-            <Card interactive={false} className="h-full">
-              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700">
-                <PhoneCallIcon className="h-5 w-5" />
+          <Reveal direction="right" delay={0.1}>
+            <div className="flex items-start gap-6 sm:flex-row-reverse sm:text-right">
+              <IconTile icon={PhoneCallIcon} />
+              <div>
+                <h3 className="text-lg font-semibold text-text-primary">We coordinate.</h3>
+                <p className="mt-2 text-base text-text-secondary">
+                  We'd notify our security-company partners and start working the case.
+                </p>
               </div>
-              <h3 className="text-lg font-semibold text-text-primary">We coordinate.</h3>
-              <p className="mt-2 text-base text-text-secondary">
-                We'd notify our security-company partners and start working the case.
-              </p>
-            </Card>
+            </div>
           </Reveal>
-          <Reveal delay={0.16}>
-            <Card interactive={false} className="h-full">
-              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700">
-                <CheckCircleIcon className="h-5 w-5" />
+          <Reveal direction="left" delay={0.2}>
+            <div className="flex items-start gap-6">
+              <IconTile icon={CheckCircleIcon} />
+              <div>
+                <h3 className="text-lg font-semibold text-text-primary">You're kept in the loop.</h3>
+                <p className="mt-2 text-base text-text-secondary">
+                  You'd get updates as things progress — recovery is best-effort and depends on
+                  tracking status and on-the-ground conditions, subject to policy terms,
+                  underwriting and claims assessment.
+                </p>
               </div>
-              <h3 className="text-lg font-semibold text-text-primary">You're kept in the loop.</h3>
-              <p className="mt-2 text-base text-text-secondary">
-                You'd get updates as things progress — recovery is best-effort and depends on
-                tracking status and on-the-ground conditions, subject to policy terms,
-                underwriting and claims assessment.
-              </p>
-            </Card>
+            </div>
           </Reveal>
         </div>
       </Section>
@@ -278,7 +331,7 @@ export function LandingPage() {
         </div>
       </Section>
 
-      {/* 8. Final CTA */}
+      {/* 8. Final CTA — calm, centered, unchanged rhythm */}
       <Section background="warm" id="waitlist">
         <SectionHeading
           align="center"
@@ -301,7 +354,10 @@ export function LandingPage() {
         <div className="grid gap-10 lg:grid-cols-4">
           {/* Column A — Brand */}
           <div>
-            <Logo tone="light" size="lg" label="TD IT Solution Insurance" />
+            <div className="flex items-center gap-3">
+              <Logo tone="light" size="lg" label="TD IT Solution Insurance" />
+              <ChevronMotif tone="gold" className="h-5 w-8 opacity-80" />
+            </div>
             <p className="mt-4 text-sm text-text-inverse-muted">
               Insurance for the things you can't afford to lose.
             </p>

@@ -15,6 +15,7 @@ Render inside an `<ol>` — the component is an `<li>`.
 | `isLast` | `boolean` | `false` | Hides the connector — use on the final step. |
 | `isActive` | `boolean` | `false` | Highlights the numeral and icon tile with the secondary color. |
 | `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | Connector direction. Horizontal connectors only render at `lg` and up. |
+| `tone` | `'light' \| 'dark'` | `'light'` | Color treatment. `dark` swaps text/tile tokens (`text-inverse`, `dark-accent-gold`, `white/10`) for legibility on `Section background="navy"`; layout is unchanged. Added 2026-08-07 for the landing page's navy "How It Works" band — verified against WCAG AA. |
 | `delay` | `number` | `0` | Stagger delay in seconds for the fade-up entrance. |
 | `className` | `string` | `''` | Extra classes on the root `li`. |
 
@@ -38,6 +39,6 @@ Render inside an `<ol>` — the component is an `<li>`.
 
 ## Notes
 
-- Uses design system tokens: `text-primary`, `text-secondary`, `secondary`, `card`, `card-elevated`, `--radius-button`.
+- Uses design system tokens: `text-primary`, `text-secondary`, `secondary`, `card`, `card-elevated`, `--radius-button` (`tone="light"`, default); `text-inverse`, `text-inverse-muted`, `dark-accent-gold`, `dark-primary-foreground`, `white/10` (`tone="dark"`).
 - Entrance and connector animation use framer-motion; the connector marquee loops continuously.
 - Watermark numeral and connector are `aria-hidden`; the "Step N" label carries the ordinal for screen readers.
