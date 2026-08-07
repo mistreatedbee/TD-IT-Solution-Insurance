@@ -79,13 +79,9 @@ Used throughout: `Input`, `Button`, `Card` (+`CardHeader`/`CardBody`/`CardFooter
 **States:**
 - *Empty:* fields unfilled, primary button disabled (not hidden — visible-but-disabled, so the action is discoverable).
 - *Loading:* `Button loading` spinner + `aria-busy`, fields locked to prevent double submission.
-- *Error — duplicate email (FR-5/AC-2, anti-enumeration):* **[NEW: Alert/banner, tone=warning]** rendered above the form, non-field-specific (this is deliberately not attached to the email `Input` via `aria-describedby`, since it is not a validation error about the *format* of the email — it's a business-rule rejection that must not read as "your email is wrong"):
-  > **We couldn't create this account.**
-  > If you already have an account with this email, try logging in — or reset your password if you've forgotten it.
-  > [Log in] [Reset password]
-  (Two `ArrowLink` or `secondary`/`tertiary` `Button` actions inline.)
-- *Error — field validation (password mismatch, weak password, invalid email format):* standard `Input error=""` prop, per-field, `aria-invalid`+`aria-describedby` already wired by the component.
-- *Success:* transitions immediately to Screen C — no separate success screen for account creation itself, since verification is the actual milestone.
+- ~~Error — duplicate email~~ **does not exist as a UI state — corrected per `api-design.md` §6/§8 (FU-20).** `POST /v1/auth/signup` returns the identical `202` "check your email" response whether the email is new or already registered (FR-5/AC-2) — there is no duplicate-email error path for the backend to return, so this screen has no way to distinguish the two cases and must not attempt to. Screen B transitions to Screen C **unconditionally** on any structurally-valid submission; a user re-submitting an already-registered email sees the exact same "check your email" confirmation as a genuinely new signup. (What actually happens server-side for the duplicate case — e.g. an "someone tried to sign up with your email, log in instead" notice sent to the *existing* account's real inbox rather than a new verification link — is a backend/notification-engineer concern outside this document's scope, not something the UI branches on.)
+- *Error — field validation (password mismatch, weak password, invalid email format):* standard `Input error=""` prop, per-field, `aria-invalid`+`aria-describedby` already wired by the component. This is a true client-side format check, not a business-rule/enumeration concern, so it's exempt from the anti-enumeration constraint above.
+- *Success:* transitions immediately to Screen C — no separate success screen for account creation itself, since verification is the actual milestone. This is now also the *only* outcome of a structurally-valid submission (see the corrected state above).
 
 ### Screen C — "Check Your Email" Confirmation
 - `SectionHeading` — title: "Check your email", subtitle rendered as body text, not subtitle prop (needs the interpolated address): "We've sent a verification link to **thabo@example.com**. It usually arrives within a couple of minutes."
@@ -369,7 +365,7 @@ Per this role's Pre-Approval Checklist requirement to document default/hover/foc
 - ~~Recovery codes render as selectable/copyable text, never an image~~ — moot; no recovery-code mechanism exists in this feature (§4.4 Screen C removed, see `design-system-additions.md` §0). The underlying "never an image" principle still applies to the QR manual-entry-key fallback above.
 - Tap targets ≥44×44pt on mobile screens throughout (signup, login, OTP entry, gate screen).
 - Color is never the sole carrier of state — every `Badge`/`Alert` danger/warning/success instance in this document pairs the tone with an explicit text label (e.g., "One more incorrect attempt will temporarily lock this account," not a bare red dot) — consistent with the existing `Badge` component's own documented guidance.
-- Generic anti-enumeration copy (signup duplicate-email, password-reset confirmation) is written to state the outcome and offer a concrete next action, never a bare "something went wrong" (WCAG 3.3.1) — verified against the exact copy blocks in §4.1 and §4.3 above.
+- Generic anti-enumeration copy (password-reset confirmation, §4.3) is written to state the outcome and offer a concrete next action, never a bare "something went wrong" (WCAG 3.3.1). Signup (§4.1) achieves anti-enumeration more strongly still — there is no duplicate-email copy at all, generic or otherwise, since Screen B has exactly one outcome per `api-design.md`'s corrected contract (see §4.1 Screen B).
 
 ---
 
@@ -378,7 +374,7 @@ Per this role's Pre-Approval Checklist requirement to document default/hover/foc
 - **`design-system-manager`:** five new components (§0) — this document references them by name and plain-language behavior only; visual/prop spec is theirs to own. Please confirm Badge's 4th tone naming (`danger` vs `error` vs `critical`) so copy/dev references in this doc and theirs stay aligned.
 - ~~`authentication-engineer` / `cybersecurity-architect`: §4.4 Screen C (recovery codes) scope decision~~ — **resolved.** `design-system-manager`'s §0 ruling (design-system-additions.md) confirmed no recovery-code mechanism exists for either the compound-lockout case or single-factor MFA-device loss; both route to the same `Alert`-based support-escalation pattern. `cybersecurity-architect` still owns defining the actual support-assisted-reset *process* (what an admin/support agent does to verify identity and re-enroll MFA), which this document deliberately does not design — that's an operational runbook, not a UI screen.
 - **`authentication-engineer` / `cybersecurity-architect`:** §4.9's exact support-contact routing (who admins contact internally) is a placeholder pending their defined process.
-- **`technical-writer`:** flagged per `ux-research.md` §1.1 step 4 — the duplicate-email rejection copy in §4.1 Screen B and the compound-lockout copy in §4.9 are both trust-critical enough to warrant a dedicated copy pass beyond this draft.
+- **`technical-writer`:** flagged per `ux-research.md` §1.1 step 4 — the "check your email" confirmation copy in §4.1 Screen C (now the sole outcome of signup, per the FU-20 correction above) and the compound-lockout copy in §4.9 are both trust-critical enough to warrant a dedicated copy pass beyond this draft.
 - **`compliance-specialist`:** please confirm the ToS/Privacy Notice consent checkbox copy in §4.1 Screen B satisfies POPIA's unbundled-consent requirement as worded (business-requirements.md §9.2) — this document assumes it does but has not been formally reviewed by that role.
 - **`product-manager`:** MFA re-prompt cadence (FR-9, `ux-research.md` §2.2/§3) affects how often Naledi hits §4.5 Screen B — this document designs for "every login" as the safe baseline per FR-9's literal text, per `ux-research.md`'s own instruction, and does not resolve the cadence tradeoff.
 
