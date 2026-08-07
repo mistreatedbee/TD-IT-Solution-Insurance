@@ -20,6 +20,9 @@ dist-ssr
 # Claude Code local session state
 .claude/scheduled_tasks.lock
 
+# Supabase CLI local session state (regenerated per machine/session)
+supabase/.temp/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
