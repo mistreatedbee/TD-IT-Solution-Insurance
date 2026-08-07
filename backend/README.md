@@ -66,11 +66,24 @@ curl http://localhost:3000/api/health/ready   # readiness — pings MongoDB, rep
 Per [ADR-0003](../docs/organization/adr/0003-backend-hosting-platform.md),
 this backend deploys to **Render** as a persistent-process Web Service —
 not Vercel, and not as a serverless Function. Render root directory:
-`backend/`. Build command: `npm install && npm run build`. Start command:
-`npm start`. Environment variables to set in Render's dashboard:
-`MONGODB_URI`, `SUPABASE_DB_URL` (once available), `CORS_ALLOWED_ORIGINS`
-(the frontend's real origin, e.g. its Vercel URL), `NODE_ENV=production`.
-Do **not** set `PORT` manually — Render provides it.
+`backend/`. Start command: `npm start`. Environment variables to set in
+Render's dashboard: `MONGODB_URI`, `SUPABASE_DB_URL` (once available),
+`CORS_ALLOWED_ORIGINS` (the frontend's real origin, e.g. its Vercel URL),
+`NODE_ENV=production`. Do **not** set `PORT` manually — Render provides it.
+
+**Build command — must explicitly include dev dependencies:**
+
+```
+npm install --include=dev && npm run build
+```
+
+Not plain `npm install && npm run build`. With `NODE_ENV=production` set
+(above), a bare `npm install` skips `devDependencies` — which is exactly
+where `typescript`, `@types/node`, `@types/express`, and `@types/cors`
+live, so the build fails with "Cannot find name 'process'" /
+"Cannot find name 'console'" / missing module declarations even though
+the code is correct. `--include=dev` forces them in regardless of
+`NODE_ENV`.
 
 The frontend (deployed separately on Vercel) reaches this backend via an
 explicit `VITE_API_BASE_URL` build-time env var pointing at the Render

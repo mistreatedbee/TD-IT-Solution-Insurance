@@ -76,7 +76,7 @@ The `services.backend` block and the `/api(/.*)?` → backend-service rewrite ar
 
 1. **Create the Render account/service.** Sign up (or use existing account), create a new **Web Service**, connect it to this repo, root directory `backend/`.
 2. **Build/start commands** (map directly from `backend/package.json`, no script changes needed):
-   - Build command: `npm install && npm run build` (runs `tsc -p tsconfig.json`, emitting `dist/`)
+   - Build command: `npm install --include=dev && npm run build` (runs `tsc -p tsconfig.json`, emitting `dist/`) — **must** be `--include=dev`, not plain `npm install`: with `NODE_ENV=production` set (step 3 below), a bare install skips `devDependencies`, silently dropping `typescript`/`@types/node`/`@types/express`/`@types/cors` and breaking the build with misleading "Cannot find name 'process'"-style errors. Confirmed empirically during this migration, not theoretical.
    - Start command: `npm start` (runs `node dist/index.js`)
 3. **Environment variables to carry over from Vercel/`.env.local`:**
    - `MONGODB_URI` — copy from the current Vercel project env config (or repo-root `.env.local`) into Render's environment settings. Do not commit it.
