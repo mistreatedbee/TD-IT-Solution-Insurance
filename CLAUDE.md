@@ -4,7 +4,14 @@ Enterprise InsurTech platform: customers subscribe to monthly plans and register
 
 ## Current repo state — read this before assuming anything exists
 
-Only a Magic Patterns-generated **React 18 + Vite + TypeScript + Tailwind CSS** design-system showcase exists (`src/components/*`, `src/App.tsx` routes only to `/components/*`). **No backend, no mobile app, no database, no infrastructure, no real product pages.** Don't describe or build against systems that aren't there yet — check before assuming.
+**Read [`HANDOFF.md`](HANDOFF.md) first** — point-in-time status as of 2026-08-12.
+
+- **Web** (`src/`): design-system component library + marketing site — no Admin or Security Company dashboards yet.
+- **Backend** (`backend/`): Feature 001 auth + Feature 004 **customer** policies/assets API — **85 tests green**. Recovery, claims, payments, admin routes **not built**.
+- **Mobile** (`mobile/`): Expo app with auth + Policy/Assets on live API; Phase 2 recovery/claims UI scaffold (stub APIs). **30 tests green**.
+- **Databases**: Supabase Postgres (identity) + MongoDB Atlas (domain), per ADR-0002. Both live with applied schemas.
+
+Don't describe or build against systems that aren't there yet — check code before assuming.
 
 ## This project has a full engineering organization — use it
 
@@ -21,8 +28,8 @@ Full governance lives in [`docs/organization/`](docs/organization/README.md) (or
 
 - Web (marketing site, Admin Dashboard, Security Company Dashboard): the existing React/Vite/TS/Tailwind stack.
 - Mobile (Customer App): Expo (React Native) + TypeScript.
-- Backend API: Node.js + TypeScript.
-- Database: MongoDB.
+- Backend API: Node.js + TypeScript (`/api/v1`).
+- **Identity → Supabase Postgres; domain data → MongoDB** (ADR-0002 polyglot split).
 - Payment gateway, GPS hardware vendor, and hosting provider are **open decisions**, owned by `integration-architect` / `cloud-infrastructure-architect` — don't hardcode an assumed vendor.
 
 ## House rules

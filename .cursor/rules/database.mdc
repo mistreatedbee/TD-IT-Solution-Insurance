@@ -1,0 +1,45 @@
+---
+description: Schema/migration conventions for both stores (MongoDB + Supabase Postgres).
+globs: backend/migrations/**,docs/features/**/database-design.md,docs/features/**/database-addendum*.md
+alwaysApply: false
+---
+
+# Database design & migrations
+
+Relevant role spec: `.claude/agents/database-architect.md`.
+
+## Split of ownership (ADR-0002 — don't reopen without a named revisit trigger firing)
+
+- **Supabase (Postgres)**: identity/account/session/MFA/invitation/auth-audit data. Schema
+  lives in `docs/features/001-authentication/database-design.md` +
+  `architecture/database-addendum-001.md`, applied via `backend/migrations/*.sql`.
+- **MongoDB**: policies, assets (polymorphic — see
+  `docs/features/004-policy-asset-management/database-design.md` for the base-shape +
+  type-specific-`details` pattern across all 8 asset types), GPS/location history (not built
+  yet), claims (not built yet).
+
+## Patterns to reuse, not reinvent
+
+- **Retention/deletion**: never a naive cascade delete across a subject's history. Use the
+  `legalHold` flag + scheduled-purge pattern (`app.purge_expired_audit_log()` on the Postgres
+  side; the equivalent addendum pattern on the Mongo side) — a vendor- or dashboard-triggered
+  cascade destroying an audit trail was flagged as a real risk, not a hypothetical one.
+- **Actor vs. subject**: any table logging a privileged action needs separate columns for who
+  did it (`actor_account_id` / `actorAccountId`) and who it was done to (`account_id` /
+  `targetAccountId`) — collapsing these into one column was a real bug (see migration 031 and
+  ADR-0006). Don't add a new audit-shaped table without both from the start.
+- **TTL indexes**: reserved for genuinely time-bound, non-evidentiary data (raw GPS pings are
+  the one intended future use case). Anything that needs to survive as evidence (audit logs,
+  access logs) goes on the scheduled-purge + `legalHold` path instead, never a bare TTL index.
+- **Cross-store references**: a Mongo document referencing a Supabase account uses `accountId`
+  as a soft reference — no FK, the backend enforces existence. Don't design as if a foreign
+  key constraint exists across the two stores.
+
+## Migration file convention
+
+New migrations continue the existing sequential numbering in `backend/migrations/`. Check the
+latest file's header comment for its stated review status before assuming any migration has
+actually been applied to a live database — this repo's convention is "paper design until a
+named reviewer signs off," and several migrations have gone from paper to actually-applied
+mid-session, so the file's own header is the source of truth, not an assumption based on its
+existence.

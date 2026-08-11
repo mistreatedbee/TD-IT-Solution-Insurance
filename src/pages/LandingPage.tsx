@@ -19,7 +19,7 @@ import { Reveal } from '../components/Reveal';
 import { Logo } from '../components/Logo';
 import { AssetBadge, type AssetType } from '../components/AssetBadge';
 import { WaitlistForm } from './WaitlistForm';
-import { ChevronMotif, ChevronMotifField, ChevronDivider } from './ChevronMotif';
+import { ChevronMotif, ChevronDivider } from './ChevronMotif';
 import {
   Accordion,
   AccordionItem
@@ -57,7 +57,7 @@ export function LandingPage() {
       {/* Header chrome — not one of the 9 numbered sections */}
       <Section spacing="compact" as="header">
         <div className="flex items-center justify-between">
-          <Logo variant="full" tone="navy" href="/" />
+          <Logo variant="full" tone="navy" size="lg" href="/" />
         </div>
       </Section>
 
@@ -67,6 +67,12 @@ export function LandingPage() {
           {/* Left: copy column, unchanged content/copy from ui-design.md §1 */}
           <Reveal direction="left" distance={32}>
             <div className="max-w-xl">
+              <Logo
+                tone="navy"
+                size="xl"
+                className="mb-6 lg:hidden"
+                label="TD IT Solution Insurance"
+              />
               <SectionHeading
                 as="h1"
                 size="lg"
@@ -86,9 +92,18 @@ export function LandingPage() {
             </div>
           </Reveal>
 
-          {/* Right: large-scale chevron motif field, decorative, desktop only */}
-          <Reveal direction="right" delay={0.1} distance={32} className="relative hidden lg:block">
-            <ChevronMotifField />
+          {/* Right: brand logo at hero scale (desktop) */}
+          <Reveal
+            direction="right"
+            delay={0.1}
+            distance={32}
+            className="relative hidden lg:flex lg:items-center lg:justify-center"
+          >
+            <Logo
+              tone="navy"
+              imageClassName="h-auto max-h-[min(420px,45vh)] w-full max-w-md object-contain"
+              label="TD IT Solution Insurance"
+            />
           </Reveal>
         </div>
       </Section>
@@ -354,9 +369,8 @@ export function LandingPage() {
         <div className="grid gap-10 lg:grid-cols-4">
           {/* Column A — Brand */}
           <div>
-            <div className="flex items-center gap-3">
-              <Logo tone="light" size="lg" label="TD IT Solution Insurance" />
-              <ChevronMotif tone="gold" className="h-5 w-8 opacity-80" />
+            <div className="inline-flex rounded-xl bg-white px-4 py-3">
+              <Logo tone="navy" size="lg" label="TD IT Solution Insurance" />
             </div>
             <p className="mt-4 text-sm text-text-inverse-muted">
               Insurance for the things you can't afford to lose.

@@ -1,0 +1,23 @@
+---
+description: Web frontend / design-system conventions.
+globs: src/**
+alwaysApply: false
+---
+
+# Web frontend (`src/`)
+
+Relevant role specs: `.claude/agents/frontend-architect.md`, `.claude/agents/frontend-engineer.md`,
+`.claude/agents/design-system-manager.md`, `.claude/agents/ui-designer.md`.
+
+- **Reuse `src/components/*` first.** This is the shared design-system library (Button, Card,
+  Badge, AssetBadge, StatBlock, GlassCard, IndustryCard, TestimonialCard, StepItem, LogoCloud,
+  Accordion, Carousel, Input, Section, SectionHeading, FeatureCard, ArrowLink, Avatar, Logo,
+  Reveal) also referenced by the mobile app's temporary RN bridge
+  (`mobile/src/theme/primitives/*`) — a change here has a downstream consumer, check
+  `mobile.mdc`'s note on that bridge before assuming a component change is web-only.
+- **New one-off components need design-system sign-off** — check whether an existing
+  component can be extended/composed before adding a new one; this repo has a documented
+  house rule against ad-hoc parallel components.
+- No real product pages exist yet beyond the marketing site and component showcase, per
+  `HANDOFF.md` — an Admin Dashboard and Security Company Dashboard are planned (Phase 1/2 of
+  `docs/organization/08-roadmap.md`) but not started. Don't describe either as existing.

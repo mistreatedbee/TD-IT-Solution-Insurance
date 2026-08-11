@@ -1,0 +1,649 @@
+# Source of truth: docs/features/004-policy-asset-management/api-design.md §6.
+#
+# Customer-facing paths in this contract are consumed by the mobile app
+# (architecture.md §5.2). Admin paths are included for contract fidelity
+# with api-design.md §6 — this mobile app does not call them in Phase 1.
+# Re-sync from api-design.md §6 whenever that document changes, then run:
+#   npm run generate:api-types
+
+openapi: 3.1.0
+info:
+  title: TD IT Solutions — Policy & Asset Service API
+  version: "1.0.0"
+  description: >
+    Feature 004 (Policy, Subscription & Asset Management), Phase 1 scope only:
+    customer self-service create/view of own policies and assets; Admin
+    Dashboard list/view across all customers. Payment/billing mechanics, GPS
+    pairing/ingestion, and claims are explicitly out of scope (§1). Reuses
+    001-authentication/api-design.md's error envelope, pagination, rate-limit
+    header, and idempotency conventions verbatim (§5) — this is a second
+    service's contract, not a second convention set.
+servers:
+  - url: /v1
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Identical scheme to 001-authentication/api-design.md's bearerAuth —
+        the same backend-minted access token, verified in-process (§2). Not a
+        second token type.
+    internalServiceAuth:
+      type: apiKey
+      in: header
+      name: X-Internal-Service-Key
+      description: >
+        Not exposed by any endpoint in THIS contract — named here only
+        because §4.3 describes Policy & Asset Service calling Identity
+        Service's existing GET /v1/internal/accounts/{id}/status
+        (001-authentication/api-design.md §7) using this same scheme. No
+        client of this document's endpoints ever presents this header.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+      description: Client-generated UUID v4. Reused verbatim from 001-authentication/api-design.md §4.
+    CursorParam:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string }
+      description: Opaque pagination cursor from a prior response's pagination.nextCursor.
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    AccountIdFilterParam:
+      name: accountId
+      in: query
+      required: false
+      schema: { type: string, format: uuid }
+      description: Admin-only filter — scope the list to one customer's records.
+    StatusFilterParam:
+      name: status
+      in: query
+      required: false
+      schema: { type: string }
+      description: Filter by the resource's own status field (see PolicyStatus/AssetStatus).
+
+  headers:
+    RateLimitLimit: { schema: { type: integer } }
+    RateLimitRemaining: { schema: { type: integer } }
+    RateLimitReset: { schema: { type: integer, description: Unix timestamp. } }
+    RetryAfter: { schema: { type: integer, description: Seconds. } }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string }
+            requestId: { type: string, format: uuid }
+
+    AssetType:
+      type: string
+      enum: [vehicle, laptop, smartphone, tablet, tv, desktop, business_equipment, other_electronics]
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: number, minimum: 0 }
+        currency: { type: string, minLength: 3, maxLength: 3, example: ZAR }
+
+    CoverageLimit:
+      type: object
+      properties:
+        assetType: { $ref: '#/components/schemas/AssetType' }
+        amount: { type: number }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+
+    PolicyStatus:
+      type: string
+      description: >
+        PROPOSED vocabulary per database-design.md §3.1, not ratified by
+        business-analyst. Do not assume this list is final.
+      enum: [pending_activation, active, past_due, suspended, cancelled, expired]
+
+    PolicyBilling:
+      type: object
+      description: >
+        Minimized on purpose — omits database-design.md §3.1's
+        billing.provider / externalCustomerId / externalSubscriptionId (raw
+        PSP-side linkage). No client of this contract, admin included, has a
+        stated need to see those values, and exposing them is unnecessary
+        surface per this role's "input validation, secrets handling" review
+        obligation. If a real need surfaces, it is an additive field, not a
+        breaking change.
+      properties:
+        billingStatus: { type: string, enum: [not_configured, active, past_due, canceled] }
+        currentPeriodEnd: { type: string, format: date-time, nullable: true }
+        nextBillingAt: { type: string, format: date-time, nullable: true }
+        cancelAt: { type: string, format: date-time, nullable: true }
+
+    Policy:
+      type: object
+      description: Customer-facing shape — no accountId (implicitly the caller's own).
+      properties:
+        id: { type: string, description: MongoDB ObjectId as a string. }
+        planTier:
+          type: string
+          description: >
+            Free-form (database-design.md §3.1) — NOT validated against a
+            fixed list. business-analyst has not ratified a tier vocabulary
+            (P-01). Do not build client UI that assumes a closed set.
+        status: { $ref: '#/components/schemas/PolicyStatus' }
+        coverageLimits:
+          type: array
+          items: { $ref: '#/components/schemas/CoverageLimit' }
+          description: >
+            Empty on every policy today. No business rule exists yet mapping
+            planTier to coverage limits (P-01) — this field is not
+            populated by POST /v1/policies and this contract does not
+            pretend otherwise.
+        billing: { $ref: '#/components/schemas/PolicyBilling' }
+        effectiveDate: { type: string, format: date-time }
+        renewalDate: { type: string, format: date-time, nullable: true }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdminPolicy:
+      description: Admin-facing shape — adds the two fields the customer view omits.
+      allOf:
+        - $ref: '#/components/schemas/Policy'
+        - type: object
+          properties:
+            accountId: { type: string, format: uuid }
+            legalHold: { type: boolean }
+
+    PolicyListPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Policy' } }
+        pagination:
+          type: object
+          properties:
+            nextCursor: { type: string, nullable: true }
+            hasMore: { type: boolean }
+
+    AdminPolicyListPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/AdminPolicy' } }
+        pagination:
+          type: object
+          properties:
+            nextCursor: { type: string, nullable: true }
+            hasMore: { type: boolean }
+
+    CreatePolicyRequest:
+      type: object
+      required: [planTier]
+      properties:
+        planTier:
+          type: string
+          minLength: 1
+          description: >
+            Accepted as-is, not validated against an enum (P-01 open — see
+            Policy.planTier's description). This endpoint does not compute
+            or accept coverageLimits or pricing — see §0's named business-
+            rule gaps.
+
+    AssetStatus:
+      type: string
+      enum: [active, inactive, removed]
+
+    AssetDetailsVehicle:
+      type: object
+      required: [make, model, year, vin]
+      properties:
+        make: { type: string }
+        model: { type: string }
+        year: { type: integer }
+        vin: { type: string }
+        licensePlate: { type: string, nullable: true }
+        color: { type: string, nullable: true }
+        mileage: { type: integer, nullable: true }
+      additionalProperties: false
+
+    AssetDetailsLaptop:
+      type: object
+      required: [brand, model, serialNumber]
+      properties:
+        brand: { type: string }
+        model: { type: string }
+        serialNumber: { type: string }
+        operatingSystem: { type: string, nullable: true }
+      additionalProperties: false
+
+    AssetDetailsSmartphone:
+      type: object
+      required: [brand, model, imei]
+      properties:
+        brand: { type: string }
+        model: { type: string }
+        imei: { type: string }
+        serialNumber: { type: string, nullable: true }
+      additionalProperties: false
+
+    AssetDetailsTablet:
+      type: object
+      required: [brand, model, serialNumber]
+      properties:
+        brand: { type: string }
+        model: { type: string }
+        serialNumber: { type: string }
+        imei: { type: string, nullable: true, description: Cellular-capable tablets only. }
+      additionalProperties: false
+
+    AssetDetailsTv:
+      type: object
+      required: [brand, model, serialNumber]
+      properties:
+        brand: { type: string }
+        model: { type: string }
+        serialNumber: { type: string }
+        screenSizeInches: { type: number, nullable: true }
+      additionalProperties: false
+
+    AssetDetailsDesktop:
+      type: object
+      required: [brand, model, serialNumber]
+      properties:
+        brand: { type: string }
+        model: { type: string }
+        serialNumber: { type: string }
+        components: { type: string, nullable: true }
+      additionalProperties: false
+
+    AssetDetailsBusinessEquipment:
+      type: object
+      required: [category, brand, model, serialNumber]
+      properties:
+        category: { type: string }
+        brand: { type: string }
+        model: { type: string }
+        serialNumber: { type: string }
+        description: { type: string, nullable: true }
+      additionalProperties: false
+
+    AssetDetailsOtherElectronics:
+      type: object
+      required: [category, brand, model, serialNumber]
+      description: The deliberate catch-all (database-design.md §3.3).
+      properties:
+        category: { type: string }
+        brand: { type: string }
+        model: { type: string }
+        serialNumber: { type: string }
+        description: { type: string, nullable: true }
+      additionalProperties: false
+
+    Asset:
+      type: object
+      description: Customer-facing shape — no accountId (implicitly the caller's own).
+      properties:
+        id: { type: string, description: MongoDB ObjectId as a string. }
+        assetType: { $ref: '#/components/schemas/AssetType' }
+        displayName: { type: string }
+        status: { $ref: '#/components/schemas/AssetStatus' }
+        registeredAt: { type: string, format: date-time }
+        estimatedValue:
+          type: object
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          properties:
+            asOf: { type: string, format: date-time }
+        photos: { type: array, items: { type: string } }
+        gpsDeviceId:
+          type: string
+          nullable: true
+          description: Always null in Phase 1 (database-design.md §6) — no GPS endpoint exists to populate it.
+        gpsPairedAt: { type: string, format: date-time, nullable: true }
+        details:
+          description: Shape depends on assetType — see the per-type schemas above.
+          oneOf:
+            - $ref: '#/components/schemas/AssetDetailsVehicle'
+            - $ref: '#/components/schemas/AssetDetailsLaptop'
+            - $ref: '#/components/schemas/AssetDetailsSmartphone'
+            - $ref: '#/components/schemas/AssetDetailsTablet'
+            - $ref: '#/components/schemas/AssetDetailsTv'
+            - $ref: '#/components/schemas/AssetDetailsDesktop'
+            - $ref: '#/components/schemas/AssetDetailsBusinessEquipment'
+            - $ref: '#/components/schemas/AssetDetailsOtherElectronics'
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdminAsset:
+      allOf:
+        - $ref: '#/components/schemas/Asset'
+        - type: object
+          properties:
+            accountId: { type: string, format: uuid }
+            legalHold: { type: boolean }
+
+    AssetListPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Asset' } }
+        pagination:
+          type: object
+          properties:
+            nextCursor: { type: string, nullable: true }
+            hasMore: { type: boolean }
+
+    AdminAssetListPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/AdminAsset' } }
+        pagination:
+          type: object
+          properties:
+            nextCursor: { type: string, nullable: true }
+            hasMore: { type: boolean }
+
+    CreateAssetRequest:
+      type: object
+      required: [assetType, displayName, details]
+      properties:
+        assetType: { $ref: '#/components/schemas/AssetType' }
+        displayName: { type: string, minLength: 1, maxLength: 120 }
+        estimatedValue:
+          type: object
+          nullable: true
+          required: [amount, currency]
+          properties:
+            amount: { type: number, minimum: 0 }
+            currency: { type: string, minLength: 3, maxLength: 3 }
+          description: >
+            Optional. Persisted as given; NOT validated against any
+            coverage limit (§0 — no such rule exists yet).
+        details:
+          description: >
+            Required. Shape MUST match assetType per the table in
+            database-design.md §3.3 — validated server-side using the same
+            oneOf-by-assetType discriminator the $jsonSchema validator
+            applies at the database layer, so a malformed details object is
+            rejected at the API edge (400), not silently persisted and
+            caught only by the database validator throwing a 500-shaped
+            failure.
+          oneOf:
+            - $ref: '#/components/schemas/AssetDetailsVehicle'
+            - $ref: '#/components/schemas/AssetDetailsLaptop'
+            - $ref: '#/components/schemas/AssetDetailsSmartphone'
+            - $ref: '#/components/schemas/AssetDetailsTablet'
+            - $ref: '#/components/schemas/AssetDetailsTv'
+            - $ref: '#/components/schemas/AssetDetailsDesktop'
+            - $ref: '#/components/schemas/AssetDetailsBusinessEquipment'
+            - $ref: '#/components/schemas/AssetDetailsOtherElectronics'
+
+  responses:
+    BadRequest:
+      description: Validation error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing/invalid/expired/revoked bearer token — identical semantics to 001-authentication/api-design.md.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Authenticated, but role/account-state does not permit this action.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: >
+        Resource does not exist OR exists but is not owned by the caller —
+        identical shape for both, no enumeration of which, mirroring
+        001-authentication/api-design.md's invitation-lookup pattern.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Idempotency-key reuse with a different body.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+paths:
+  /policies:
+    post:
+      operationId: createPolicy
+      summary: >
+        Creates a policy for the caller's own account (accountId derived
+        from the bearer token — §4.2). Live-checks account_state == 'active'
+        before writing (§4.3, BR-2-equivalent gate).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePolicyRequest' }
+      responses:
+        '201':
+          description: Policy created, status = pending_activation, billing.billingStatus = not_configured.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Policy' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: account_state is not 'active' (§4.3) — code ACCOUNT_NOT_ACTIVE.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    get:
+      operationId: listOwnPolicies
+      summary: >
+        Lists the caller's own policies (there may legitimately be more than
+        one, per database-design.md §2 — this is a list, not a singular
+        "my policy" endpoint, even though Phase 1 usage is expected to be
+        0 or 1 per account).
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyListPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /policies/{policyId}:
+    get:
+      operationId: getOwnPolicy
+      summary: Detail view of one of the caller's own policies.
+      parameters:
+        - name: policyId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Policy' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /assets:
+    post:
+      operationId: createAsset
+      summary: >
+        Registers an asset for the caller's own account. Live-checks
+        account_state == 'active' before writing (§4.3).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAssetRequest' }
+      responses:
+        '201':
+          description: Asset created, status = active, registeredAt = now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Asset' }
+        '400':
+          description: >
+            Validation error — includes the case where `details` does not
+            match the shape required for the given `assetType`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: account_state is not 'active' — code ACCOUNT_NOT_ACTIVE.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    get:
+      operationId: listOwnAssets
+      summary: Lists the caller's own registered assets.
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/StatusFilterParam'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetListPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /assets/{assetId}:
+    get:
+      operationId: getOwnAsset
+      summary: Detail view of one of the caller's own assets.
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Asset' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/policies:
+    get:
+      operationId: adminListPolicies
+      summary: Admin-only list (not used by mobile app).
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/AccountIdFilterParam'
+        - $ref: '#/components/parameters/StatusFilterParam'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPolicyListPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /admin/policies/{policyId}:
+    get:
+      operationId: adminGetPolicy
+      summary: Admin-only detail (not used by mobile app).
+      parameters:
+        - name: policyId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminPolicy' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/assets:
+    get:
+      operationId: adminListAssets
+      summary: Admin-only list (not used by mobile app).
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/AccountIdFilterParam'
+        - $ref: '#/components/parameters/StatusFilterParam'
+        - name: assetType
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/AssetType' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminAssetListPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /admin/assets/{assetId}:
+    get:
+      operationId: adminGetAsset
+      summary: Admin-only detail (not used by mobile app).
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminAsset' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }

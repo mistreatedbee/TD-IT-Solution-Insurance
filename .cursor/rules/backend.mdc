@@ -1,0 +1,57 @@
+---
+description: Backend API conventions (Node.js/TS) — ratified contracts, security posture, secrets handling.
+globs: backend/**
+alwaysApply: false
+---
+
+# Backend (`backend/`)
+
+Relevant role specs: `.claude/agents/backend-architect.md`, `.claude/agents/backend-engineer.md`,
+`.claude/agents/authentication-engineer.md`, `.claude/agents/security-engineer.md`.
+
+## Before touching an endpoint
+
+Read the feature's `api-design.md` first — every ratified contract lives there, including a
+**Contract Amendment Log** section tracking every change made after initial design (Feature
+001's is at v1.2.0 as of this handoff; check its §11 for the full amendment history before
+assuming the original OpenAPI block is current). Never invent a field name or status code
+that contract doesn't already define — add an amendment entry instead.
+
+## Non-negotiable patterns already established (don't relitigate, don't drift from them)
+
+- **Error envelope**: exactly `{ "error": { "code": string, "message": string, "requestId": string } }`
+  — see `src/middleware/error-handler.ts`. Never return a raw `err.message` on a 4xx response
+  (anti-enumeration requirement, FR-5/AC-2 — this was a real bug once, don't reintroduce it).
+- **Pagination**: cursor-based only (`limit` + opaque base64 `cursor`), response wraps
+  `data` + `pagination: { nextCursor, hasMore }`.
+- **Rate limiting**: surfaced via `X-RateLimit-Limit` / `X-RateLimit-Remaining` /
+  `X-RateLimit-Reset` headers, `Retry-After` on 429/423.
+- **Auth**: backend-minted opaque session tokens only. **Never** a Supabase-issued JWT handed
+  to a client, and **never** the Supabase `anon` key provisioned anywhere in this codebase —
+  it bypasses this platform's own rate-limiting and audit-logging (see
+  `docs/features/001-authentication/security-review.md` SR-4). The `service_role` key is for
+  `src/db/supabase.ts`'s GoTrue Admin calls only, never for direct data access — use
+  `src/db/pg.ts`'s least-privilege pool for that (SR-3).
+- **Privileged-access audit**: any admin endpoint that reads another account's data must
+  write a `privileged_data_access` event to `app.account_audit_log`, populating **both**
+  `account_id` (subject) and `actor_account_id` (actor) — see migration 031 and
+  `docs/organization/adr/0006-privileged-access-audit-correlation.md` for why both columns
+  exist and what they mean. A bulk/unfiltered list call must still record a subject-side
+  entry per affected record — this was a live gap once (ADR-0006 AUD-3), don't reintroduce it.
+- **Secrets**: env vars only, loaded from repo-root `.env.local` (see `src/config/env.ts`'s
+  fail-fast validation). Never a secret literal in code, a migration file, or a test fixture.
+
+## MongoDB vs. Supabase — which store owns what
+
+Per ADR-0002: **Supabase (Postgres) = identity/account/session data. MongoDB = policies,
+assets, GPS/location history, claims.** A MongoDB document referencing an account uses
+`accountId` as a **soft reference** (no FK enforcement across stores) — the backend must
+validate existence itself. Don't add a cross-store foreign key or assume one exists.
+
+## Migrations
+
+SQL migration files under `backend/migrations/` are numbered sequentially and, per this
+project's convention, are written and reviewed as **paper design first** — check the header
+comment on the latest-numbered file for the current status/review requirement before assuming
+a migration has been applied to any live project. If you do apply one to a live database,
+say so explicitly (which environment, when) rather than leaving that undocumented.

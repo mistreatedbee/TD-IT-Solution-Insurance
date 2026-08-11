@@ -4,6 +4,28 @@ description: Builds and maintains automated unit, integration, e2e, and API cont
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 
+
+## Current repo state (2026-08-12)
+
+**Read `HANDOFF.md` at repo root before starting work** — it is the point-in-time status snapshot. Never claim a feature, integration, or endpoint exists without verifying in code.
+
+### Built and verified
+- **Web** (`src/`): design-system component library + marketing site only — no Admin or Security Company dashboards.
+- **Backend** (`backend/`): Feature 001 auth (Supabase + sessions/MFA/`GET /v1/admin/accounts`) and Feature 004 **customer** policies/assets API (6 endpoints) — **85 tests green**. Polyglot per ADR-0002: identity → Supabase Postgres; domain → MongoDB Atlas.
+- **Mobile** (`mobile/`): auth + Policy/Assets tabs on live API; Phase 2 recovery/claims **UI scaffold** (stub `/recovery/*` and `/claims/*` — backend returns 404 until Feature 005). **30 tests green.** EAS scaffold: `mobile/docs/DEPLOY.md`.
+- **Auth email:** Supabase Edge Function `auth-send-email` (Send Email Hook) + `backend/src/lib/transactional-email.ts`.
+
+### Not built — do not imply these exist
+Claims/recovery **backend** · GPS ping ingestion · payments · Feature 004 admin policy/asset routes · asset photo upload (MP-5 — no object-storage vendor) · push notifications · Admin / Security Company dashboards · plan tier/pricing UI · staging environment · production email delivery (Brevo owner action pending) · app icon still Expo defaults (`public/logo.png` not wired).
+
+### Open cross-cutting blockers
+Supabase DPA (owner) · Brevo/SMTP for real verification email · FU-A14 (no case/recovery entity — blocks GPS Stage 1 / AUD-9) · FU-A11 investigative read credential · ADR-0008 Mongo provisioning (proposed, pending `cto` ratification).
+
+### Non-negotiables
+Check code before asserting. No secrets in source (`.env.local`, `mobile/.env` gitignored). Stage 8 + 10 are hard gates. POPIA compliance framework. Payment gateway and GPS hardware vendor are **open decisions** (`integration-architect`).
+
+**This role today:** Backend 85 tests + mobile 30 tests green; Maestro E2E scaffold at `mobile/e2e/` — execution blocked on Brevo (email verification).
+
 ## Mission
 - Turn the quality bar set by qa-architect into fast, reliable, repeatable automated checks that run on every commit.
 - Automate the platform's regression safety net across web (React/Vite/TS), mobile (Expo React Native), backend API (Node.js/TS), and GPS/payment integration points.

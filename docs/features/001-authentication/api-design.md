@@ -7,6 +7,7 @@
 **Consulted:** `ui-design.md` (Stage 4, for client-consumed shapes), `backend/src/middleware/error-handler.ts` (running code — this contract is written to match it, not the reverse)
 **Status:** Draft — submitted for `solution-architect` review per Stage 7 exit criteria. **No SQL is applied by this document.** The two schema additions named in §3 are proposals for `database-architect`, not migrations.
 **Exit artifact:** OpenAPI 3.1 contract (§7), reviewed and versioned as `/v1`.
+**Contract version: 1.3.0 (amended 2026-08-11 — see §11 "Contract Amendment Log" for the full, dated record, now spanning three same-day amendments: v1.1.0, §§11.A–11.D; v1.2.0, §11.E; and v1.3.0, §11.F).** The v1.3.0 amendment carries ADR-0006's ratified consequences into this contract: `POST /v1/invitations` emits the `privilege_granted` audit event rather than `privileged_data_access`, and `GET /v1/admin/accounts` records one audit row per disclosed subject rather than one row naming the calling admin. It changes no path, request body, response body, status code or field — the affected surface is the audit trail behind these endpoints, which §11.E described in prose and is therefore amended in prose. **The two admin endpoints §11.E added remain unimplemented**, so v1.3.0's list-call rule binds their future implementation rather than describing running behaviour; the `POST /v1/invitations` half is live. The v1.1.0 amendment (a) formally ratified two Stage-9 contract extensions flagged by `authentication-engineer` and `mobile-engineer` for `backend-architect` sign-off rather than self-certified, and (b) transcribed a change `security-review.md`'s SR-1 already mandated on 2026-08-08 but that was never written into this document before code shipped against it. The v1.2.0 amendment is a separate, later, purely additive change on the same day: two new admin endpoints, `GET /v1/admin/accounts` (list) and `GET /v1/admin/accounts/{id}` (detail) — closing **P-10**, the "view customers" third of `08-roadmap.md` Phase 1's named Admin Dashboard need, which `004-policy-asset-management/api-design.md` correctly flagged as belonging to this contract rather than its own (customer identity lives in Supabase, not MongoDB). No existing path, schema, or field is changed or removed by v1.2.0. §11 is the authoritative changelog; every other section below reflects the *current* (v1.2.0) contract, not a redline against any prior version — this role's own convention (per `05-development-standards.md`/`03-communication-workflow.md`) is that a single OpenAPI contract file stays the one artifact codegen and review both point at, so amendments are applied in place with a dated log, not forked into a parallel addendum document the way `database-addendum-001.md` extends `database-design.md`'s append-only DDL — a REST contract is one artifact tools regenerate from, and a second, partial file would risk `mobile-engineer`/`backend-engineer` generating types against the wrong one silently.
 
 ---
 
@@ -155,6 +156,7 @@ Enforcement point per Stage 5 §5.1: the Redis-class counter store in front of I
 | `POST /v1/auth/resend-verification` | `account_id` | 5 requests | 1 hour | Ceiling above the per-minute cooldown, prevents cooldown-cycling abuse. |
 | `POST /v1/invitations` | admin `account_id` | 50 requests | 1 hour | Abuse guard only, not security-lockout — an admin issuing invitations is a trusted, authenticated actor. |
 | `GET /v1/admin/audit-log` | admin `account_id` | 60 requests | 1 min | Standard API-shape rate limit, not a security lockout — protects against an accidental tight polling loop, not an attacker. |
+| `GET /v1/admin/accounts` | admin `account_id` | 60 requests | 1 min | **Added v1.2.0, §11 Amendment E.** Copied verbatim from the `GET /v1/admin/audit-log` row above — same reasoning, same number, not a new policy decision. `GET /v1/admin/accounts/{id}` is deliberately left off this table, under the platform-wide baseline row below, matching how `004-policy-asset-management/api-design.md` does not give its own `{id}` detail endpoints a bespoke limit either. |
 | All other authenticated endpoints (baseline) | `account_id` | 100 requests | 1 min | Platform-wide default guard, not enumerated per-endpoint above. |
 
 **Honest limitation, disclosed rather than glossed:** the password-reset anti-enumeration guarantee (FR-15) and the per-identifier rate limit above are in slight tension — if an attacker sends 4 reset requests for the same non-existent email and gets identical `202`-shaped responses for all 4 (because the response never reveals whether the account exists), the *rate limit itself* still fires identically for existing and non-existing identifiers (the counter is keyed on the attempted identifier regardless), so no distinguishing signal leaks through status code or body shape — only through response *timing*, which is exactly the residual risk FU-07 (§8) exists to verify against Supabase's actual behavior, not something this document can close by design alone.
@@ -178,11 +180,15 @@ Enforcement point per Stage 5 §5.1: the Redis-class counter store in front of I
 openapi: 3.1.0
 info:
   title: TD IT Solutions — Identity Service API
-  version: "1.0.0"
+  version: "1.3.0"
   description: >
     Feature 001 (Customer Account Creation & Authentication). Mediates all
     client access to Supabase Auth per ADR-0002's mediation principle —
     no client ever holds a Supabase-honoured credential (see api-design.md §1).
+    v1.2.0 adds GET /admin/accounts and GET /admin/accounts/{id} (§11
+    Amendment E) — the "view customers" endpoint pair, additive only.
+    v1.3.0 (§11 Amendment F) changes no request or response shape: it carries
+    ADR-0006's ratified audit-trail rules into this contract's audit behaviour.
 servers:
   - url: /v1
 security:
@@ -301,6 +307,31 @@ components:
         mfaChallengeToken: { type: string }
         expiresIn: { type: integer, example: 300 }
 
+    MfaEnrollmentRequired:
+      type: object
+      description: >
+        Added v1.1.0 (§11 Amendment B, ratifying SR-14(a)). Returned by
+        `POST /auth/login` in place of `SessionTokens`/`MfaChallengeRequired`
+        when the account has `mfa_required = true` but the backend cannot
+        confirm a currently-verified TOTP factor exists — e.g. enrollment was
+        never completed, or a factor was removed out-of-band via
+        `service_role` (the case security-review.md SR-14(b)'s reconciliation
+        job exists to catch and alert on). A session is never minted in this
+        state (SR-14(a) is absolute, not best-effort). `enrollmentTicket` is
+        the same server-issued, single-use, account-bound artifact SR-1
+        defines for the invitation-acceptance path (`app.enrollment_tickets`)
+        — this is a second issuance point for one mechanism, not a new one.
+      required: [mfaEnrollmentRequired, enrollmentTicket, expiresIn]
+      properties:
+        mfaEnrollmentRequired: { type: boolean, enum: [true] }
+        enrollmentTicket:
+          type: string
+          description: >
+            Opaque, single-use, 10-minute-TTL token. Present this value —
+            never `accountId` — to `POST /mfa/enroll` and
+            `POST /mfa/enroll/verify` on their pre-session path.
+        expiresIn: { type: integer, example: 600, description: Seconds until the ticket expires. }
+
     InvitationStatus:
       type: string
       enum: [pending, accepted, expired, revoked]
@@ -335,6 +366,65 @@ components:
         data:
           type: array
           items: { $ref: '#/components/schemas/AuditLogEntry' }
+        pagination:
+          type: object
+          properties:
+            nextCursor: { type: string, nullable: true }
+            hasMore: { type: boolean }
+
+    AdminAccountSummary:
+      type: object
+      description: >
+        Added v1.2.0 (§11 Amendment E). List-view shape for
+        GET /admin/accounts. Deliberately narrower than AdminAccountDetail —
+        POPIA s10 minimality (compliance-review-supabase.md §2.1 classifies
+        app.accounts as Identity PII + authorisation attributes): a bulk scan
+        across potentially thousands of accounts is a materially larger
+        exposure surface than one deliberate lookup, so `phone` (the one
+        field here that is itself PII rather than an authorization
+        attribute) is withheld at list scope and returned only by the detail
+        shape below. Never includes any auth.users field (password hash,
+        recovery-token state, provider metadata, last_sign_in_at) — this
+        endpoint reads app.accounts only, exactly as GET /account/me and
+        GET /internal/accounts/{id}/status already do. Does NOT include
+        `mfaEnrolled` — see §11 Amendment E for why that field, though
+        present on the Account schema above, is not populated here.
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        userType: { $ref: '#/components/schemas/UserType' }
+        accountState: { $ref: '#/components/schemas/AccountState' }
+        partnerOrganizationId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AdminAccountDetail:
+      type: object
+      description: >
+        Added v1.2.0 (§11 Amendment E). Detail-view shape for
+        GET /admin/accounts/{id}. Adds the fields withheld at list scope
+        (`phone`) plus accountability/authorization fields relevant to a
+        single-record admin decision. Same exclusions as
+        AdminAccountSummary: no auth.users field, no `mfaEnrolled`.
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true }
+        userType: { $ref: '#/components/schemas/UserType' }
+        accountState: { $ref: '#/components/schemas/AccountState' }
+        mfaRequired: { type: boolean }
+        partnerOrganizationId: { type: string, format: uuid, nullable: true }
+        invitedBy: { type: string, format: uuid, nullable: true }
+        suspendedAt: { type: string, format: date-time, nullable: true }
+        deactivatedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdminAccountListPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AdminAccountSummary' }
         pagination:
           type: object
           properties:
@@ -569,13 +659,24 @@ paths:
             Account created, invitation marked accepted. Does NOT issue a
             session — the caller must proceed to mandatory MFA enrollment
             (BR-4) before any session is minted; see /mfa/enroll.
+            `enrollmentTicket` added v1.1.0 (§11 Amendment A) — this
+            transcribes SR-1's mandated fix, which shipped in code before it
+            was ever written into this contract.
           content:
             application/json:
               schema:
                 type: object
+                required: [accountId, mfaEnrollmentRequired, enrollmentTicket]
                 properties:
                   accountId: { type: string, format: uuid }
                   mfaEnrollmentRequired: { type: boolean, enum: [true] }
+                  enrollmentTicket:
+                    type: string
+                    description: >
+                      SR-1. Opaque, single-use, 10-minute-TTL token, bound
+                      server-side to accountId. Present this value — never
+                      accountId — to POST /mfa/enroll and
+                      POST /mfa/enroll/verify.
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '410':
@@ -591,7 +692,23 @@ paths:
   /mfa/enroll:
     post:
       operationId: mfaEnroll
-      summary: Starts TOTP enrollment. Callable by an unauthenticated-but-invitation-verified privileged user (first login) or an authenticated customer opting in.
+      summary: >
+        Starts TOTP enrollment. **v1.1.0, §11 Amendment A** — the security
+        scheme and request body below transcribe SR-1's mandated fix for the
+        privileged-account-takeover path the original contract text left
+        open (security-review.md §5.1/§7: this operation did not declare
+        `security: []` and yet claimed to be callable pre-session — an
+        internally contradictory contract). Now unambiguous: two mutually
+        exclusive callers. (1) Pre-session — no bearer token; presents a
+        server-issued `enrollmentTicket` (from `POST /invitations/{token}/accept`
+        or the forced-re-enrollment branch of `POST /auth/login`, §11
+        Amendment B); the account is derived ONLY from that ticket. (2)
+        Authenticated — bearer token present (customer opt-in, FR-25);
+        account derived from the token. **A client-supplied `accountId` is
+        never accepted, on either path, full stop.**
+      security:
+        - {}
+        - bearerAuth: []
       requestBody:
         required: false
         content:
@@ -599,10 +716,13 @@ paths:
             schema:
               type: object
               properties:
-                accountId:
+                enrollmentTicket:
                   type: string
-                  format: uuid
-                  description: Required only for the forced-first-login (post-accept, pre-session) path; omitted when called with a bearer token.
+                  description: >
+                    Required on the pre-session path; omitted when called
+                    with a bearer token. SR-1's server-issued, single-use,
+                    account-bound artifact — never a client-supplied
+                    accountId, which this schema does not even accept.
       responses:
         '200':
           content:
@@ -619,6 +739,16 @@ paths:
   /mfa/enroll/verify:
     post:
       operationId: mfaEnrollVerify
+      summary: >
+        v1.1.0, §11 Amendment A: `security: []` made explicit — this
+        operation is unauthenticated on the wire on both the pre-session and
+        authenticated-opt-in paths. The caller is correlated by
+        `enrollmentId` (the GoTrue factor id) against server-side pending
+        state, not by a bearer token; a bearer token would be redundant here
+        and the original contract's silence on this operation's security
+        scheme (inheriting global `bearerAuth`) was itself part of the SR-1
+        ambiguity being closed.
+      security: []
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -666,15 +796,30 @@ paths:
                   type: string
                   nullable: true
                   description: Mobile clients only (FR-20). See api-design.md §3.1 / FU-09.
+                deviceName:
+                  type: string
+                  nullable: true
+                  description: >
+                    Added v1.1.0 (§11 Amendment C, ratifying
+                    mobile-app-foundation/architecture.md §3.1's M-01
+                    request). Mobile clients only. Human-readable device
+                    label (e.g. "iPhone 15"), persisted to
+                    `app.sessions.device_name` for a future device-list UI.
+                    Not an authenticator and carries no security weight on
+                    its own — `deviceId` is the field the device-binding and
+                    device-mismatch checks (§3.1/§11) actually key on.
       responses:
         '200':
-          description: Either a full session (no MFA required/enabled) or an MFA challenge.
+          description: >
+            A full session (no MFA required/enabled), an MFA challenge, or
+            (v1.1.0, §11 Amendment B) a forced re-enrollment requirement.
           content:
             application/json:
               schema:
                 oneOf:
                   - $ref: '#/components/schemas/SessionTokens'
                   - $ref: '#/components/schemas/MfaChallengeRequired'
+                  - $ref: '#/components/schemas/MfaEnrollmentRequired'
         '401':
           description: >
             Generic "incorrect email or password" (AC-5) — never distinguishes
@@ -755,7 +900,15 @@ paths:
       summary: >
         Exchanges a refresh token for a new access token. This is the
         Mechanism-2 chokepoint (api-design.md §2.3) — always performs a live
-        account_status_cache read before minting a new access token.
+        account_status_cache read before minting a new access token. Also
+        (v1.1.0, §11 Amendment C, ratifying mobile-app-foundation/
+        architecture.md §3.2's M-01) the device-consistency chokepoint for
+        FR-20 device-binding: if `deviceId` is presented and does not match
+        the session's stored device, the refresh is rejected and the entire
+        rotation family plus every other active session for the account is
+        revoked (`device_mismatch` — treated at least as seriously as
+        refresh-token-rotation reuse, same blast-radius response as §3.1's
+        reuse detection).
       security: []
       requestBody:
         required: true
@@ -766,13 +919,31 @@ paths:
               required: [refreshToken]
               properties:
                 refreshToken: { type: string }
+                deviceId:
+                  type: string
+                  nullable: true
+                  description: >
+                    Added v1.1.0. Optional, additive — omitting it (or
+                    sending null) does not itself trigger a mismatch; it
+                    simply means this refresh isn't checked against the
+                    session's stored device. Mobile clients SHOULD send the
+                    same `deviceId` presented at login for the device-
+                    mismatch protection to actually engage — see §11 for a
+                    flagged gap where the current mobile client does not yet
+                    do this.
       responses:
         '200':
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SessionTokens' }
         '401':
-          description: Refresh token invalid, expired, revoked, or reuse-detected (rotation chain break — api-design.md §3.1).
+          description: >
+            Refresh token invalid, expired, revoked, reuse-detected
+            (rotation chain break — api-design.md §3.1), or (v1.1.0)
+            device-mismatch detected — identical status code and error
+            envelope for all four; the client cannot and must not
+            distinguish them beyond forcing a full local logout in every
+            case (mobile-app-foundation/architecture.md §2.4).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -964,6 +1135,98 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ---------------------------------------------------------------
+  # Accounts (admin surface only) — added v1.2.0, §11 Amendment E,
+  # closing 004-policy-asset-management/api-design.md's P-10 ("view
+  # customers", the third of 08-roadmap.md Phase 1's three named
+  # Admin Dashboard needs — the other two ship in Feature 004's own contract)
+  # ---------------------------------------------------------------
+  /admin/accounts:
+    get:
+      operationId: adminListAccounts
+      summary: >
+        Admin-only (ruling C8's posture, applied here identically). Lists
+        accounts across all user types, optionally filtered. Writes one
+        `privileged_data_access` audit event per call to app.account_audit_log
+        (SR-10; §11 Amendment E) — same mechanism GET /admin/audit-log and
+        POST /invitations already use, no new audit mechanism introduced.
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: userType
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/UserType' }
+        - name: accountState
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/AccountState' }
+        - name: partnerOrganizationId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Scope to one partner organization's accounts (e.g., all operators for a security company).
+        - name: email
+          in: query
+          required: false
+          schema: { type: string, format: email }
+          description: >
+            Exact match only, backed by the existing accounts_email_unique
+            index (database-design.md §3). Not a prefix/partial-text search —
+            no trigram index exists for that; adding one would be a future,
+            separately-justified index change, not assumed here.
+      responses:
+        '200':
+          description: >
+            CAPACITY NOTE (§11 Amendment E, disclosed rather than assumed
+            free): a call filtered only by userType and/or accountState (no
+            partnerOrganizationId, no email) is not backed by a dedicated
+            index today. database-design.md §3 explicitly deferred
+            "app.accounts.user_type, app.accounts.account_state as standalone
+            indexes" to "the future Admin Dashboard feature" by name — that
+            feature is this endpoint. Flagged to `database-architect` as a
+            required follow-up before this is exercised at real volume, not
+            silently assumed free, mirroring 004-policy-asset-management/
+            api-design.md's identical disclosure for its own unfiltered
+            admin list endpoints.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminAccountListPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Caller is not admin (ruling C8, applied identically to this endpoint).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /admin/accounts/{id}:
+    get:
+      operationId: adminGetAccount
+      summary: >
+        Admin-only detail view. Writes one `privileged_data_access` audit
+        event, keyed to the account being viewed (§11 Amendment E — see that
+        section for why this differs from the list endpoint's audit-subject
+        convention).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminAccountDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Caller is not admin (ruling C8, applied identically to this endpoint).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 ```
 
 ---
@@ -979,7 +1242,7 @@ Per architecture-review.md §6, cross-checked item by item. Stage 7's hard exit 
 | **FU-01** | Session-assertion contract: claim set, TTL, immediacy protocol | **CLOSED** | §§1–2 of this document. Final number: **10-minute access-token TTL**, two-mechanism protocol (exact revocation via Redis `jti` check; bounded 10-min drift via `account_status_cache` at defined chokepoints). Table in §2.3 names exactly which decisions may never be made from a claim alone. |
 | **FU-02(a)** | Supabase-outage client-visible error shape | **CLOSED** | §6: `503 UPSTREAM_UNAVAILABLE` + `Retry-After`, scoped to write paths only; §7 OpenAPI marks it on every Supabase-dependent operation. FU-02(b)/(c) (monitoring hook, SRE-facing) remain **open**, correctly Stage-8-scoped per architecture-review's own split — owner `site-reliability-engineer`. |
 | **FU-07** | Verify Supabase's actual duplicate-signup/reset-for-unknown-email responses | **PARTIALLY CLOSED — contract-level closed, live verification still open.** | The *contract* no longer depends on Supabase's raw response shape: §7's `/auth/signup` and `/auth/reset-password/request` always return the same normalized envelope/status regardless of what Supabase returns underneath (§6, §5's honest-limitation note). This satisfies Stage 7's actual need (a contract client engineers can build against now). The literal verification-against-a-live-project action is **still open** — it requires calling Supabase's Admin API directly, which is an execution/spike action this document (a paper artifact) cannot perform even with the CLI link now confirmed live. **Owner: `backend-architect` + `authentication-engineer`, to run as a pre-Stage-9 spike** — the now-live `supabase link` unblocks it but does not discharge it. If verification surfaces a timing side-channel, the fix is internal normalization logic, not a contract change. |
-| **FU-09** | FR-20 mobile device-binding architectural review | **OPEN — owner `mobile-architect`.** | This document supplies the contract surface that review needs (`deviceId` on `/auth/login`, `app.sessions.device_id`/`device_name` in §3.1) so the review is unblocked, not skipped. The review itself has not happened and this document cannot substitute for it. |
+| **FU-09** | FR-20 mobile device-binding architectural review | **OPEN — owner `mobile-architect`; contract piece now ratified.** | This document supplies the contract surface that review needs (`deviceId` on `/auth/login`, `app.sessions.device_id`/`device_name` in §3.1) so the review is unblocked, not skipped. **v1.1.0 (§11 Amendment C) ratifies M-01 in full**: `deviceName` on `/auth/login` and `deviceId` on `/session/refresh` are both now part of the published contract, matching what shipped in code. The full FU-09 review (biometric-unlock posture, keystore-backed proof-of-possession as a Phase-2 upgrade, etc.) remains `mobile-architect`'s to complete — this contract update discharges only the piece that was blocking implementation. **A real client/server drift was found while ratifying this and is flagged in §11, not silently closed**: the mobile client does not currently send `deviceId` on refresh, so the mechanism this amendment ratifies is not yet exercised end-to-end. |
 | **FU-10** | FR-21 dashboard idle-timeout review | **OPEN — owner `frontend-architect`.** | This document's 10-minute access-token TTL plus refresh-on-demand model is compatible with an idle-timeout policy (a web client simply stops calling `/session/refresh` after inactivity, letting the session lapse), but the actual idle-timeout **value** and enforcement UX (ui-design.md §4.7's banner) is `frontend-architect`'s call, not made here. |
 | **FU-18** | Session token shape | **DESIGN-RESOLVED, pending ADR-0005 ratification.** | §1. Backend-minted opaque tokens, not Supabase pass-through. This fires the ADR-0005 trigger architecture-review.md §7 already registered — that ADR must still be drafted and ratified by `solution-architect`+`cto` before this is fully closed in governance terms, but the *design content* Stage 7 needed is delivered here, on schedule. |
 | **FU-19** | `GET /v1/admin/audit-log` — confirm contract-only, no UI expected | **CLOSED.** | Cross-referenced against the full `ui-design.md` (read in full for this document) — none of its 9 specified flows include an audit-log screen, consistent with D-5/ruling C8. §7's endpoint is marked accordingly. Formal `product-manager` sign-off is still the named owner of record, but nothing in this contract is blocked pending it — if product later wants a screen, that's correctly a Stage 3/4 re-entry per architecture-review's own framing, not a Stage 7 blocker. |
@@ -1020,3 +1283,107 @@ Per architecture-review.md §6, cross-checked item by item. Stage 7's hard exit 
 - **Stage 6 addendum required:** two new tables, `app.sessions` and `app.idempotency_keys` (§3), proposed in column-shape form for `database-architect` to formalize as DDL/RLS — not applied here.
 - **One new gap surfaced by this document, not previously caught:** `ui-design.md` §4.1 Screen B's duplicate-signup copy contradicts FR-5/AC-2's binding anti-enumeration requirement (§8.2, FU-20) — the OpenAPI contract implements the binding requirement; the mockup needs a corresponding revision before Stage 9.
 - **One item honestly left unresolved:** FU-13 (deletion-event outbox contract shape), due at Stage 7 per architecture-review, not delivered in this document — flagged rather than fabricated.
+
+---
+
+## 11. Contract Amendment Log
+
+This section accumulates every amendment across every contract version, in chronological order, never rewritten in place — the pattern established here is: append a new dated, lettered entry, bump the version in §0/§7 to match, and leave every prior entry's text exactly as it was written, even after later entries. Two versions' amendments are recorded to date: **v1.1.0 (2026-08-11), §§11.A–11.D** below, and **v1.2.0 (2026-08-11), §11.E**, appended after it.
+
+### v1.1.0 (2026-08-11)
+
+**Author of this amendment:** `backend-architect`, exercising this role's standing final authority over API contract structure (per this role's charter — engineers may extend a contract under implementation pressure but may not self-certify the extension). Two engineers flagged extensions made during Stage 9 implementation and explicitly asked for this sign-off rather than treating their own change as authoritative; this section is that sign-off, plus one piece of retroactive bookkeeping this review surfaced along the way. Nothing below was invented by this amendment — every shape ratified here already exists in shipped code (`backend/src/routes/auth.ts`, `session.ts`, `invitations.ts`, `mfa.ts`, `lib/refresh-session.ts`, `lib/enrollment-ticket.ts`) or in a prior, higher-authority ruling (`security-review.md`) that had simply never been transcribed here. Ratifying reality, not redesigning it, per this task's own framing.
+
+### 11.A — Retroactive transcription: SR-1's pre-session MFA-enrollment ticket
+
+**What changed:** `POST /invitations/{token}/accept`'s response gains `enrollmentTicket`; `POST /mfa/enroll`'s request body drops `accountId` entirely and gains `enrollmentTicket`, and its `security` scheme is made explicit (`[{}, {bearerAuth: []}]`) instead of silently inheriting global `bearerAuth`; `POST /mfa/enroll/verify` gets an explicit `security: []`.
+
+**Why this is in an "amendment log" rather than being treated as already-settled:** `security-review.md` (Stage 8, 2026-08-08) ruled SR-1 a **scoped hold** — a privileged-account-takeover path (an unauthenticated caller naming any `accountId` in `/mfa/enroll`'s body, then minting a session at `/verify`) — and its required fix explicitly reads *"Amend `api-design.md` §7 and declare each operation's security unambiguously"*, with `backend-architect` named as the accountable owner for the contract half. That amendment never happened as a document edit; `authentication-engineer` built directly against SR-1's prose description instead (correctly — the fix in code matches SR-1's own wording exactly: `app.enrollment_tickets`, 10-minute TTL, single-use, ticket consumed at `/verify` not at `/enroll`). The result was a contract document that no longer described the code it was supposed to govern, on a security-load-bearing surface, for three days. **Disposition: ratified as shipped, no correction needed to the code** — I reviewed `lib/enrollment-ticket.ts`, `routes/invitations.ts` and `routes/mfa.ts` against SR-1's text and they match it precisely, including the detail that the ticket is issued at `/accept` but only consumed (marked `used_at`) at `/verify` success, not at `/enroll`. This document was simply wrong until now; it is not this amendment ratifying a new engineering decision, it is this amendment catching up to one `cybersecurity-architect` already made with binding authority.
+
+**Process note, not a criticism of any one engineer:** the scoped hold's own text names `backend-architect` as the owner of the contract-side fix, and that ownership was not exercised in the three days between the security review landing and Stage 9 code being written against SR-1 directly. Recording this plainly so it doesn't recur: a Stage-8 required change that amends a Stage-7 artifact should be applied to that artifact in the same work session the gate decision lands, not left to be reconstructed by whoever next reads both documents side by side.
+
+### 11.B — Ratified: `mfaEnrollmentRequired` / `enrollmentTicket` / `expiresIn` on `POST /auth/login` (SR-14)
+
+**Proposed by:** `authentication-engineer`, implementing `security-review.md` SR-14(a) — *"a session may be minted for an `mfa_required` account only after the backend has confirmed a verified factor exists... and if none exists, the flow must force enrollment rather than issue a session."* SR-14 specified the enforcement requirement, not a wire shape; the wire shape (reusing SR-1's `enrollmentTicket` mechanism as a second issuance point rather than inventing a parallel one) was the engineer's own design choice, correctly flagged as needing sign-off since `api-design.md` §7 had no response shape at all for this case.
+
+**Ratified as implemented, unchanged.** This is good design, not merely acceptable design: reusing one server-issued-ticket mechanism for both "never enrolled" (post-invitation-accept) and "no longer has a verified factor" (SR-14, at login) means `/mfa/enroll` and `/mfa/enroll/verify` have exactly one pre-session code path to secure and review, not two. Field names (`mfaEnrollmentRequired`, `enrollmentTicket`, `expiresIn`) are consistent with the existing `MfaChallengeRequired` schema's naming convention and with `/invitations/{token}/accept`'s own `mfaEnrollmentRequired` field — no renaming required. Added to the contract as `#/components/schemas/MfaEnrollmentRequired`, and as a third `oneOf` branch on `POST /auth/login`'s `200` response, per §7 above.
+
+**Verification performed — client and server checked against each other, not assumed to agree:**
+- Field names match exactly between `backend/src/routes/auth.ts`'s response (`mfaEnrollmentRequired`, `enrollmentTicket`, `expiresIn`) and this now-published schema. No drift here.
+- The mobile client (`mobile/src/api/auth.ts`'s `LoginResult` type, `mobile/src/api/generated/identity-service.ts`) does **not** currently model this third response shape — its `LoginResult` union is still `SessionTokens | MfaChallengeRequired`. **This is not corrected as a blocking defect**, because customers (the mobile app's only user population, per `business-requirements.md` BR-4 and `architecture.md` §2.5) are not in the mandatory-MFA role set and cannot reach this branch under the current, still-open OQ-3 policy. It **is** flagged as a real gap the mobile client should close before OQ-3 (customer-MFA-mandatory-above-a-threshold) is ever resolved in a way that reaches customers, and mechanically the moment `mobile/src/api/generated/identity-service.ts` is regenerated from this contract, `LoginResult` will need a third arm and `isMfaChallenge`-style narrowing for it — filed as a forward note to `mobile-engineer`, not a bug against code that is correct for its current, actual user population.
+- **BUG — filed against `authentication-engineer`, blocking, found during this ratification:** `POST /auth/login`'s SR-14 branch (`backend/src/routes/auth.ts`) calls `issueEnrollmentTicket(ctx.enrollmentTickets, account.id)` and returns the ticket, but — unlike the equivalent branch in `routes/invitations.ts`'s `/accept` handler — it never calls `storePendingEnrollment(ctx.kv, ticket.token, { accountId, userAccessToken: verification.userAccessToken })`. `POST /mfa/enroll`'s pre-session path requires **both** a valid DB-backed ticket (`validateEnrollmentTicket`) **and** a matching KV-backed pending-enrollment record (`getPendingEnrollment`) — the second holds the transient Supabase user access token GoTrue's own enrollment call needs, and does not exist for a ticket issued this way. **Concretely: a ticket issued by this login branch will pass `validateEnrollmentTicket` and then immediately fail at `getPendingEnrollment` with `ENROLLMENT_TICKET_INVALID`.** The forced-re-enrollment flow SR-14(a) exists to implement is therefore broken end-to-end today, not merely undocumented. **Contract ratification is not conditioned on this fix** (the wire shape is correct and stable regardless of the bug), but the fix is required before this branch can be considered Stage-9-complete: add the same `storePendingEnrollment` call, keyed off the `verification.userAccessToken` already in scope at that point in `auth.ts`, immediately after `issueEnrollmentTicket`.
+- **Minor, non-blocking asymmetry noted:** `/invitations/{token}/accept`'s response does not include `expiresIn` for its `enrollmentTicket`, while this new login branch does, even though both tickets share the same `ENROLLMENT_TICKET_TTL_SECONDS` (10 minutes) constant. Recommend adding `expiresIn` to `/accept`'s response too for client symmetry — cosmetic, not required for this sign-off.
+
+### 11.C — Ratified: `deviceName` on `POST /auth/login`; `deviceId` on `POST /session/refresh` (M-01)
+
+**Proposed by:** `mobile-architect`, `mobile-app-foundation/architecture.md` §3.1–§3.2 (M-01), for FR-20 device-binding. `deviceName` is a low-stakes, additive display field; `deviceId` on refresh is the actual security-relevant piece — it lets `/session/refresh` detect a same-generation refresh token presented from an unexpected device, ahead of (not instead of) the existing rotation-reuse detection, which only catches a token replayed *after* legitimate rotation has already moved past it.
+
+**Ratified as implemented, with one correction and one flagged client-side gap:**
+- `deviceName` on `/auth/login`: exact field-name match between `backend/src/routes/auth.ts` (`loginSchema` accepts `deviceName`) and `mobile/src/api/auth.ts` (`LoginParams.deviceName`, sent on every call). **No drift. Ratified verbatim.**
+- `deviceId` on `/session/refresh`: the backend's implementation (`backend/src/lib/refresh-session.ts`'s `rotateRefreshToken`, wired through `backend/src/routes/session.ts`) matches `architecture.md` §3.2's proposal exactly, including the specific choice — which that document left open to `cybersecurity-architect` — to treat a mismatch **at least as seriously as rotation reuse** (revoke the whole family plus every active session for the account), realized as a distinct `device_mismatch` revoked-reason value per `migrations/030`. Ratified as designed.
+- **Client/server drift found and flagged, not papered over, per this task's explicit instruction:** `mobile/src/api/client.ts`'s `refreshAccessToken()` posts only `{ refreshToken }` — it never includes `deviceId`, despite `mobile/src/auth/device.ts` already generating and persisting one specifically for this purpose, and despite `architecture.md` §3.2 proposing exactly this wiring. **The contract supports the mechanism end-to-end; the one client FR-20 was written for does not yet exercise it.** Net practical effect: a stolen mobile refresh token replayed from an attacker's device today rotates successfully and is only caught later, if at all, by ordinary reuse detection (which requires the legitimate device to attempt its own rotation first and collide) — not by the faster, purpose-built check this amendment ratifies. **Filed as a required fix against `mobile-engineer`, blocking full realization of FR-20 (not blocking this contract ratification, since the field is correctly optional/additive and the server-side behavior is correct and safe in its absence):** `refreshAccessToken()` in `mobile/src/api/client.ts` must include `deviceId: await getOrCreateDeviceId()` in its request body to `/session/refresh`.
+
+### 11.D — Net disposition
+
+| Item | Disposition |
+|---|---|
+| SR-1 pre-session ticket contract (§11.A) | **Ratified as shipped** — retroactive transcription only, no code change required. |
+| `mfaEnrollmentRequired`/`enrollmentTicket`/`expiresIn` on login (§11.B) | **Ratified as proposed.** Blocking bug filed against `authentication-engineer` (missing `storePendingEnrollment` call). Non-blocking forward note to `mobile-engineer` (type coverage for a branch customers cannot currently reach). |
+| `deviceName` on login (§11.C) | **Ratified as shipped.** No drift, no action required. |
+| `deviceId` on refresh (§11.C) | **Ratified as designed.** Blocking-for-FR-20 (not for this contract) bug filed against `mobile-engineer` (client never sends the field). |
+| `/mfa/enroll` + `/mfa/enroll/verify` security-scheme ambiguity (§11.A) | **Closed** — both operations now declare `security` explicitly, discharging the specific piece of SR-1's required change that had gone undone. |
+| `GET /v1/admin/accounts` + `GET /v1/admin/accounts/{id}` (§11.E, v1.2.0) | **Added.** Closes `004-policy-asset-management/api-design.md`'s P-10. Three new open items filed, none closed by this amendment: an index gap on `(user_type, account_state)` filtering (`database-architect`), a pre-existing actor-vs-subject ambiguity in `app.account_audit_log`'s single `account_id` column surfaced while wiring this endpoint's audit event (`database-architect`), and a cross-store admin-audit-trail fragmentation risk against `004`'s MongoDB `admin_access_log` collection (`security-engineer` + `solution-architect`, cross-domain). |
+
+**What the v1.1.0 amendment (§§11.A–11.D) does not do:** it does not re-open or re-litigate SR-1, SR-14, or M-01's underlying security rulings — those are `cybersecurity-architect`'s and stand as ratified in `security-review.md` §6/§8. It does not certify that the two filed bugs are fixed — they are open items for their named owners, tracked here so they are not lost, not closed by fiat. It does not extend to any endpoint or flow not named in §§11.A–11.C; nothing in v1.1.0 touches the endpoints v1.2.0 (§11.E) later adds.
+
+### v1.2.0 (2026-08-11)
+
+### 11.E — New: `GET /v1/admin/accounts` (list) and `GET /v1/admin/accounts/{id}` (detail) — closing `004-policy-asset-management/api-design.md`'s P-10
+
+**Proposed by:** this role, closing an item this role itself flagged — unlike §§11.A–11.C, this is not an engineer surfacing a drift for sign-off, it is this document's own author following through on its own prior cross-reference. `004-policy-asset-management/api-design.md` §1 named the gap precisely: *"customer identity lives entirely in Supabase (`app.accounts`), not MongoDB — there is nothing in this domain's data for such an endpoint to query... Filed as P-10 — a small, additive amendment to `001-authentication/api-design.md`, owned by `backend-architect` (this role, on Identity Service's own contract)."* This closes the third of `08-roadmap.md` Phase 1's three named Admin Dashboard needs — "view customers, policies, assets" — the other two (`GET /v1/admin/policies*`, `GET /v1/admin/assets*`) already shipped in `004`'s own contract.
+
+**Convention reuse, not reinvention — cross-checked against `004`'s admin endpoints for platform-wide consistency, since one Admin Dashboard calls both contracts:**
+- **Auth:** `requireUserType('admin')`, the identical middleware and posture as `GET /v1/admin/audit-log` (ruling C8, this document) and `004`'s `/v1/admin/policies*`/`/v1/admin/assets*` (its §4.4) — `support_agent` and `security_company_operator` get no access here either, consistent across every admin surface built so far.
+- **Pagination:** the identical cursor convention (§6: `limit`/`cursor` query params, opaque base64 `created_at,id` cursor, `data` + `pagination: { nextCursor, hasMore }` envelope) as `AuditLogPage` here and `AdminPolicyListPage`/`AdminAssetListPage` in `004`.
+- **Rate limiting:** one row added to §5, copied verbatim from the existing `GET /v1/admin/audit-log` row (60/1min, same reasoning). The detail endpoint is left under the platform-wide baseline, matching how `004` does not give its own `{id}` endpoints a bespoke limit either.
+- **Error shape / `403` wording / `404` reuse:** copied verbatim from this document's own `/admin/audit-log` and from `004`'s four admin endpoints.
+
+**Field design — list vs. detail, POPIA-minimality-driven:** `app.accounts` is classified by `compliance-review-supabase.md` §2.1 as "Identity PII + authorisation attributes." Two new schemas, deliberately unequal in width (full field lists in §7's `AdminAccountSummary`/`AdminAccountDetail`):
+- **List (`AdminAccountSummary`):** `id`, `email`, `userType`, `accountState`, `partnerOrganizationId`, `createdAt` only. A bulk scan across potentially thousands of accounts (`08-roadmap.md`'s own scaling projection) is a materially larger exposure surface than one deliberate lookup, so `phone` — the one field on this table besides email that is PII rather than an authorization attribute — is withheld here, matching the same POPIA s10 minimality principle `compliance-review-supabase.md` §9.2 already applied to signup *collection*; there is no reason that principle should apply only to collection and not to bulk admin *read*.
+- **Detail (`AdminAccountDetail`):** adds `phone`, `mfaRequired`, `invitedBy`, `suspendedAt`, `deactivatedAt`, `updatedAt`.
+- **Never returned by either shape, on principle:** any `auth.users` column — password hash, confirmation/recovery token state, provider metadata, `last_sign_in_at`. This endpoint reads `app.accounts` only, exactly as `GET /account/me` and `GET /internal/accounts/{id}/status` already do (§2.2's own comment in `database-design.md`: "never read `raw_user_meta_data`/`user_metadata`... for these"). This is the third endpoint to hold that line, not a new one.
+- **Deliberately excluded even though the customer-facing `Account` schema (§7) declares it: `mfaEnrolled`.** Whether a currently-verified TOTP factor exists is not backed by `app.accounts`/`app.account_status_cache` — it requires a live Supabase Admin API check per account, the exact class of check SR-14(b)'s reconciliation job exists to run on a schedule, not per-request. Populating it on a paginated list would mean one Supabase Admin API call per row per page — precisely the kind of per-request Supabase dependency §1's backend-minted-token design exists to avoid on the hot path. Rather than give the two shapes inconsistent semantics for the same field, it is omitted from both. **Flagged, not silently dropped:** if the Admin Dashboard needs an "MFA enrolled" column, the correct source is a materialized field synced by SR-14(b)'s reconciliation job, not a live per-row call here — a `database-architect` question, not resolved in this amendment. **Noted in passing, not a defect of this amendment:** `GET /account/me`'s live handler (`backend/src/routes/session.ts`) does not populate `mfaEnrolled` today either, despite the `Account` schema declaring it — a pre-existing drift this amendment did not introduce and is out of this task's scope to fix, but it is the same underlying gap (no cheap source for this field exists yet) surfacing a second time.
+
+**Index gap, flagged rather than assumed free — reopens a Stage-6 deferral by name.** `database-design.md` §3 states, verbatim: *"Deliberately not indexed: `app.accounts.user_type`, `app.accounts.account_state` as standalone indexes... that's the future Admin Dashboard feature's job... and it will define its own index needs against its own query plan when it exists."* That feature now exists. `GET /v1/admin/accounts` filtered by `userType` and/or `accountState` alone (no `partnerOrganizationId`, no `email`) has no supporting index today and falls back to a sequential scan. At `08-roadmap.md`'s stated "hundreds today, thousands projected" scale this is not yet a correctness problem, but it is a stated, testable capacity gap, not a silent one — **flagged to `database-architect`: an index on `(user_type, account_state, created_at desc)` or equivalent, sized against real Admin Dashboard query patterns once observed**, the same honesty pattern `004`'s own document used for its unfiltered `/admin/policies` call.
+
+**Audit logging — reusing the existing SR-10 mechanism, and the tension this creates with `004`'s separate `admin_access_log`, stated explicitly rather than resolved unilaterally:**
+
+Both endpoints write one `privileged_data_access` event to `app.account_audit_log` per call, via the existing `ctx.auditLog.record()` repository (`backend/src/repositories/audit-log.ts`) — the same event type and mechanism SR-10 mandated and `POST /v1/invitations`/`GET /v1/internal/accounts/{id}/status` already use. **No new audit-event type, table, or mechanism is introduced.** This is the correct, minimal answer for this specific pair of endpoints, because their subject data (`app.accounts`) lives in the exact store that mechanism already covers — unlike `004`'s admin policy/asset reads, whose subject data lives in MongoDB, which is why that document proposed a separate `admin_access_log` collection rather than take a synchronous cross-service dependency on this one (`004` §3.1's own stated reasoning — not second-guessed here).
+
+Two problems surfaced while wiring this into the existing mechanism, both disclosed rather than papered over:
+
+1. **The existing two `privileged_data_access` call sites disagree about what `account_id` means, and this amendment has to pick a convention for each new endpoint rather than invent a third one.** `routes/invitations.ts` records the **actor** (`req.auth!.accountId`, the admin issuing the invitation). `routes/internal.ts` records the **subject** (`status.id`, the account whose status was read). `app.account_audit_log` has exactly one `account_id` column — it cannot hold both at once. For the two endpoints added here: `GET /v1/admin/accounts/{id}` has exactly one natural subject, so it records `accountId: id` (the account being viewed), following `internal.ts`'s precedent — a single-record detail lookup is that route's closest existing analogue. `GET /v1/admin/accounts` (list) has no single subject once unfiltered or filtered to more than one account, so it records `accountId` = the calling admin's own id, following `invitations.ts`'s precedent for an admin action with no single natural target. **This is a real, pre-existing schema limitation this amendment inherits rather than fixes.** `004`'s proposed `admin_access_log` shape (`actorAccountId` and `targetAccountId` as two separate fields, the latter nullable for a list call) is strictly more expressive than what `app.account_audit_log` can record today, and the fact that `invitations.ts` and `internal.ts` already disagree on this point should have been caught at SR-10's own review. Filed here as a genuine open item for `database-architect` (changing `app.account_audit_log`'s columns is not this document's call) — not fixed unilaterally.
+2. **The bigger, platform-level tension this task asked to be named rather than silently resolved.** An Admin Dashboard session that looks up one customer's account (`GET /v1/admin/accounts/{id}`, this document) and then that same customer's policies and assets (`GET /v1/admin/policies?accountId=`, `GET /v1/admin/assets?accountId=`, `004`'s contract) produces audit records in **two different stores** — Postgres `app.account_audit_log` for the first, MongoDB `admin_access_log` for the second two — with no shared correlation identifier between them and no single query that reconstructs "everything this admin looked at, in what order, in one sitting." This is conceptually one event class ("an admin looked at a customer's data") realized as two disconnected trails, purely because the two domains' systems of record differ (ADR-0002: identity in Supabase, policy/asset in MongoDB). **I am not resolving this — I do not own `004`'s collection, and `004`'s own §3.1 already left that collection's storage location (Mongo vs. Postgres) open for `database-architect`/`security-engineer` to decide.** What can be stated precisely here: if that open question resolves toward Postgres (`admin_access_log`'s content moving into or alongside `app.account_audit_log`), the natural outcome is `004`'s admin policy/asset reads start emitting this same `privileged_data_access` event type and the two trails converge — at which point problem (1) above needs fixing once, for both domains, not twice. If it resolves toward keeping Mongo, the cross-store correlation gap is real and currently unowned by either document — someone with authority spanning both stores' audit posture (`security-engineer` and/or `solution-architect`, per this role's own charter boundary on cross-domain disputes) needs to either accept the fragmentation explicitly, residual-risk-style (per `security-review.md` §10's own pattern), or mandate a cheap shared correlation field (e.g., a request-scoped id written into both trails). **Filed as a new open item, not decided here.**
+
+**What §11.E does not do:** it does not touch `004-policy-asset-management/api-design.md` itself — that document's P-10 asked for the endpoint to exist in *this* contract, not for this contract to reach into that one. It does not add, remove, or rename any field on the existing `Account` schema or any endpoint from v1.0.0/v1.1.0. It does not resolve `004`'s open `admin_access_log` storage-location question, and it does not fix the `account_id` actor/subject inconsistency named above — both are filed for their respective owners, exactly as v1.1.0's own amendments filed rather than fixed the bugs they found.
+
+### v1.3.0 (2026-08-11)
+
+### 11.F — Audit-trail semantics, as ratified by ADR-0006: `privilege_granted` for invitation issuance, one row per disclosed subject for list calls
+
+**Proposed by:** `cto`, on ratification of [`ADR-0006`](../../organization/adr/0006-privileged-access-audit-correlation.md) (§16, rulings R-1 and R-2). Filed here rather than applied silently because §11.E's two problems (1) and (2) were *both* explicitly filed as open items for other owners, and this amendment is the answer coming back — including the part §11.E had to guess at. **Neither of the two conventions §11.E chose survives, and that is the point: it flagged them as inherited limitations, not as decisions it wanted to keep.**
+
+**(a) `POST /v1/invitations` emits `privilege_granted`, not `privileged_data_access`** (ADR-0006 R-2, `migrations/032`). §11.E recorded that this call site "records the **actor**… following `invitations.ts`'s precedent for an admin action with no single natural target." The deeper problem, which ADR-0006's RR-4 named and this amendment closes: issuing an invitation is not a *read of anyone's data* at all. It mints a privileged account. Emitting the access event type meant every subject-keyed audit query returned rows that were not accesses, and the only way to exclude them was the heuristic `account_id is null and actor_account_id is not null` — reliable today only because invitation issuance is currently the sole actor-only row type, and silently wrong the moment a second one exists. A real event type replaces an inferred filter. **Live change:** this is the one part of v1.3.0 that alters running behaviour. Any consumer reading `app.account_audit_log` directly and filtering on `privileged_data_access` to find invitation issuance must switch to `privilege_granted`. No such consumer exists today (`GET /v1/admin/audit-log` is still unimplemented), which is why this is affordable now and would not have been later.
+
+**(b) `GET /v1/admin/accounts` (list) records one audit row per disclosed subject, plus one call-scoped row** (ADR-0006 R-1/AUD-3(b), `migrations/033`). §11.E chose: *"`GET /v1/admin/accounts` (list) has no single subject once unfiltered or filtered to more than one account, so it records `accountId` = the calling admin's own id."* **That convention is withdrawn.** ADR-0006 §2.3(3) identified it as a direct failure of SR-10's guarantee — an admin who pulls an unfiltered page has read hundreds of customers' records and no row says so for any of them — and `compliance-specialist` upgraded it to an independent POPIA s22 exposure (breach scoping cannot enumerate affected subjects) with a block on Feature 004's Stage 8. The ratified shape, binding on this endpoint's future implementation:
+
+- One `privileged_data_access` row **per distinct account id present in the returned page** — shaped identically to a detail read, so **`account_audit_log_account_id_created_at`** (designed at `001-authentication/database-design.md` §3, created by migration `034` / FU-A13) answers the subject-keyed query with no array containment and no new column. *(Prior text here read "the existing … index"; that index did not exist until FU-A13 — ADR-0006 §17.1.)*
+- **Plus** one `privileged_bulk_access` row: no subject, actor populated, `result_count` set — **including `result_count = 0`**, so a filtered list that matched nothing still records the attempt (`compliance-specialist` §14.5.5: audit rows for empty results may not be optimised away).
+- **Ordering, because a naive reading of AUD-10 and AUD-3(b) makes them look mutually unsatisfiable:** query → materialise the result → derive the disclosed subjects → write the audit rows → *then* serialise the response. AUD-10 requires the write to precede serialisation, not to precede the query.
+- **Fail closed (AUD-10):** if the audit write fails, the request fails 5xx and no account data is returned.
+- **C-17, standing prohibition:** record the disclosed subject *ids*. Never the query, filter or search values that produced them — on this platform an admin search term is routinely a customer's name, email, VIN or device serial, including of people who are not customers.
+- `GET /v1/admin/accounts/{id}` (detail) is **unchanged** — one row, subject = the account viewed, exactly as §11.E specified. §11.E's detail-call convention was right and is ratified.
+
+**(c) Every privileged-access row on this contract now carries the platform join key** (AUD-1): `actor_account_id` **and** `actor_session_id` for a bearer-authenticated admin, `actor_service` for an internal caller (`GET /v1/internal/accounts/{id}/status`, previously unattributed — the trail recorded that an account's status was read but not by whom), plus `audit_request_id`, which is **always server-generated and never the client-suppliable `x-request-id`** (AUD-4: a caller-chosen correlation value lets an insider split or merge their own trail, so it cannot be evidence). `x-request-id`'s existing SR-18 behaviour — accepted when UUID-shaped, echoed in the response header and error envelope — is unchanged.
+
+**What §11.F does not do:** it adds, removes and renames nothing in §7's OpenAPI document beyond the `info.version` bump; no path, parameter, request body, response body or status code changes. It does not implement §11.E's two endpoints — they remain unbuilt, and this amendment binds their implementation rather than describing it. Feature 004's `admin_access_log` shape is resolved in addendum-001 Amendment A1 (ADR-0006 FU-A2, discharged 2026-08-11). It does not constitute a Stage 8 sign-off for Feature 004: AUD-3, C-13 and C-14 are conditions on that gate and two roles hold independent blocks there.

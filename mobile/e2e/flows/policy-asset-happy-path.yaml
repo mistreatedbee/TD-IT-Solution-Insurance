@@ -1,0 +1,6 @@
+# Feature 004 — policy/asset happy path (scaffold)
+# Requires: logged-in session or login steps added; verified account (Brevo).
+appId: co.za.tditsolutions.insurance
+---
+- launchApp
+- assertVisible: "Welcome"

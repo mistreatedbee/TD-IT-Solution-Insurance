@@ -1,0 +1,61 @@
+---
+description: Security review gate + POPIA compliance posture — what's already ruled on, what still needs review.
+globs: docs/features/**,backend/**,mobile/**
+alwaysApply: false
+---
+
+# Security & compliance posture
+
+Relevant role specs: `.claude/agents/cybersecurity-architect.md`, `.claude/agents/security-engineer.md`,
+`.claude/agents/compliance-specialist.md`.
+
+## Standing rulings already made — apply these, don't re-derive
+
+- **No server-side biometric MFA factor** may ever be enrolled against the Supabase identity
+  project — POPIA s57 prior-authorization risk. On-device biometrics (Face ID/Touch ID/
+  passkeys where the template never leaves the device) are fine; the platform must never
+  receive or store a biometric template itself.
+- **No Supabase AI-assistant/LLM feature** may be enabled against the identity project — an
+  OpenAI sub-processor entry was found on Supabase's own sub-processor list with no way to
+  confirm it doesn't touch identity data. Same standing prohibition extends to any SMTP
+  vendor's AI features (Brevo's DPA names AI sub-processors too).
+- **No Supabase log drain to a third-party destination** without a fresh compliance review —
+  each one is a new, undocumented transborder PII flow.
+- **Any new third-party operator touching PII** (a new SMTP vendor, analytics tool, error-
+  tracking service, etc.) needs the same treatment `compliance-review-supabase.md` gave
+  Supabase: an operator/s72 lawfulness analysis, a written DPA, a retention check, and an
+  entry in the RoPA (`compliance-review-supabase.md` C-8) — not a separate untracked record.
+  See `compliance-review-smtp-vendor.md` for the second worked example of this method.
+- **Token TTLs for anything that leaves the platform's own store** (email links, especially)
+  must stay short enough that a copy retained in a third-party vendor's logs is inert — see
+  C-5.3's reasoning (60min reset / 24h verification / 72h invitation) if adding a new token
+  type that transits a vendor.
+
+## Open items as of this handoff (check `HANDOFF.md` for current status before assuming closed)
+
+- Supabase DPA execution — was still unexecuted as of last check; a hard blocker on real
+  production use, not just a nice-to-have.
+- ADR-0006 (privileged-access audit correlation) — **ratified 2026-08-11 (§16), with §17
+  appended as a post-ratification correction.** Its migrations (032, 033) are applied to the
+  live Supabase project.
+- AUD-3 (bulk admin list calls not recording a per-subject audit entry) — shape ruled (R-1);
+  **closed on Trail A**: `GET /v1/admin/accounts` calls `recordBulkDisclosure()`. **Open on
+  Trail B** — the `admin_access_log` design is complete but there is no collection, no writer
+  and no `/admin/policies*`/`/admin/assets*` route. Any new admin list endpoint must write one
+  row per disclosed subject **plus** one call-scoped row; C-14 (purpose-documented,
+  role-restricted) binds to every such endpoint, Feature 001's included.
+- **FU-A13** — `account_audit_log_account_id_created_at` and the partial
+  `account_audit_log_created_at` are designed at `001-authentication/database-design.md` §3,
+  described as existing by several documents, and **absent from the live database**. Don't
+  repeat the claim. Likewise `app.purge_expired_audit_log()` exists but nothing schedules it —
+  retention is not enforced today, whatever the compliance review says.
+- **FU-A14** — AUD-9 requires a purpose/case reference on location and partner-operator
+  access that resolves to a real case; **no case entity exists on this platform.** A free-text
+  purpose string is explicitly ruled out (ADR-0006 §17.3).
+
+## Process
+
+Stage 8 (Security Review) and Stage 10 (QA Testing) in the 15-stage lifecycle
+(`docs/organization/02-feature-lifecycle.md`) are hard gates. A feature's `security-review.md`
+verdict format is: sign-off granted / granted with required changes / withheld — check for an
+existing one before assuming a feature is clear to build against in production.

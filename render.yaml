@@ -1,0 +1,42 @@
+# Render Blueprint — TD IT Solution Insurance
+# See backend/docs/DEPLOY.md and ADR-0003.
+
+services:
+  - type: web
+    name: td-it-insurance-api
+    runtime: node
+    region: frankfurt
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: SUPABASE_DB_CA_CERT_PATH
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SESSION_JWT_SIGNING_KEYS
+        sync: false
+      - key: SESSION_JWT_ACTIVE_KID
+        sync: false
+      - key: INTERNAL_SERVICE_KEYS
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: TD IT Solution Insurance

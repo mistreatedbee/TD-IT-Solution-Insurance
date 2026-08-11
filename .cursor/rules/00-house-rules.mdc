@@ -1,0 +1,93 @@
+---
+description: TD IT Solution Insurance — non-negotiable house rules and role index. Always active.
+alwaysApply: true
+---
+
+# TD IT Solution Insurance — Asset Protection & Recovery Platform
+
+Enterprise InsurTech platform: customers subscribe to monthly plans and register valuable
+assets (vehicles, laptops, phones, tablets, TVs, desktops, business equipment). Registered
+assets can carry GPS tracking hardware; the platform ingests location data to help locate
+and recover lost/stolen assets, coordinating with security-company partners.
+
+## Current repo state — verify before assuming anything
+
+This repo has moved well past a design-system showcase. As of this handoff:
+- **Web** (`src/`): React 18 + Vite + TS + Tailwind design-system components, marketing site.
+- **Backend** (`backend/`): real Node.js + TS API — Feature 001 (auth) and Feature 004 **customer**
+  policies/assets API are built and tested (**85 tests green**). Recovery, claims, payments, and
+  Feature 004 admin routes are **not built**.
+- **Mobile** (`mobile/`): real Expo + TS app — auth + Policy/Assets tabs wired to live API; Phase 2
+  recovery/claims **UI scaffold** (stub APIs). **30 tests green.** App icon still Expo defaults.
+- **Databases**: MongoDB Atlas (domain data) + Supabase Postgres (identity/session data), per
+  ADR-0002's polyglot split. Both have real, applied schemas.
+
+Read `HANDOFF.md` at repo root before starting any new work — it has the full current-state
+snapshot, open items, and what's mid-flight. Don't re-derive from git log alone.
+
+## Non-negotiable rules
+
+- **Never claim a system/integration/feature exists if it hasn't been built** — this repo has
+  a documented history of catching exactly this kind of false claim. Check before asserting.
+- **No secrets/credentials in source.** `.env.local` (repo root) and `mobile/.env` hold real
+  local dev credentials — both gitignored, never commit them, never paste secret values into
+  chat/rules/docs. See `docs/features/001-authentication/secrets-management-plan.md`.
+- **New UI components reuse `src/components/*` first**; new one-off components need
+  `design-system-manager` standards sign-off (see role index below) even without that role
+  literally reviewing — apply its documented conventions.
+- **Every non-trivial feature passes through the 15-stage lifecycle** in
+  `docs/organization/02-feature-lifecycle.md`. Stage 8 (Security Review) and Stage 10 (QA
+  Testing) are hard gates — never skipped for speed, even under time pressure.
+- **Architecture-significant decisions become ADRs** under `docs/organization/adr/`, following
+  ADR-0001 through ADR-0006 as precedent for format and rigor. Check existing ADRs before
+  reopening a settled decision — but do reopen one if a named revisit trigger fires.
+- **Compliance framework is POPIA** (South Africa) — see
+  `docs/features/001-authentication/compliance-review-supabase.md` for the governing analysis
+  on cross-border data flows, retention, and third-party operators. Any new third-party
+  service touching PII needs the same s72/DPA/RoPA treatment before going live, not after.
+
+## Stack baseline (ADR-0001, refined by ADR-0002)
+
+- Web: React/Vite/TS/Tailwind (existing).
+- Mobile: Expo (React Native) + TypeScript.
+- Backend: Node.js + TypeScript, `/api/v1` prefix, cursor-based pagination, uniform error
+  envelope `{ error: { code, message, requestId } }` — see `api-design.md` files for the
+  ratified contract, don't invent a parallel convention.
+- **Identity/session data → Supabase** (Postgres + Supabase Auth). **Everything else
+  (policies, assets, GPS/location history, claims) → MongoDB.** The backend is the *only*
+  layer permitted to talk to either store directly — no client (mobile, admin dashboard)
+  ever holds a Supabase or MongoDB credential.
+- Payment gateway and GPS hardware vendor remain open decisions (`integration-architect`
+  territory) — don't hardcode an assumed vendor.
+
+## Role index
+
+This project's governance model (`docs/organization/`) defines 35 specialized roles, each
+with a detailed spec at `.claude/agents/<role-name>.md` (mission, responsibilities, standards).
+Those files were written for a different tool's subagent-spawning system, but the
+**standards and conventions inside them are still the source of truth** — read the relevant
+file(s) below before doing non-trivial work in that domain, the same way you'd read a style
+guide.
+
+| Domain | Roles (file: `.claude/agents/<name>.md`) |
+|---|---|
+| Cross-cutting / strategy | `cto`, `solution-architect`\*, `product-manager`, `technical-project-manager` |
+| Backend | `backend-architect`, `backend-engineer`, `authentication-engineer` |
+| Database | `database-architect` |
+| Mobile | `mobile-architect`, `mobile-engineer` |
+| Web frontend | `frontend-architect`, `frontend-engineer`, `design-system-manager`, `ui-designer` |
+| Security | `cybersecurity-architect`, `security-engineer` |
+| Compliance | `compliance-specialist` |
+| Integrations/vendors | `integration-architect`, `gps-integration-engineer`, `payment-engineer`, `notification-engineer` |
+| Infra/ops | `cloud-infrastructure-architect`, `devops-engineer`, `site-reliability-engineer`, `performance-engineer` |
+| QA | `qa-architect`, `automation-qa-engineer`, `manual-qa-engineer` |
+| Data/analytics | `analytics-specialist`, `reporting-engineer`, `ai-solutions-architect`, `recommendation-engine-specialist` |
+| Research/product | `ux-researcher`, `business-analyst` |
+| Docs | `technical-writer` |
+
+\* `solution-architect` is referenced by the governance docs (chairs Architecture Review,
+co-ratifies ADRs) but has no corresponding file in `.claude/agents/` — treat `cto` as the
+fallback owner for that stage until/unless the org docs are updated.
+
+Domain-specific rules in this `.cursor/rules/` directory attach the relevant subset of these
+automatically based on file path; this table is for anything that falls outside those globs.

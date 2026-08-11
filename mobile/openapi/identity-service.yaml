@@ -1,0 +1,829 @@
+# Source of truth: docs/features/001-authentication/api-design.md §7.
+#
+# This file is a byte-for-byte copy of that document's OpenAPI 3.1 contract
+# block, checked in here so `openapi-typescript` has a concrete file to
+# generate `src/api/generated/identity-service.ts` from (architecture.md
+# §1.6). Do NOT hand-edit this file to "fix" a mismatch with the backend's
+# real behavior — if the backend and this contract diverge, that is either
+# a backend bug (against its own published contract) or a contract change
+# that needs a new revision of api-design.md from `backend-architect` first.
+# Re-sync this file from api-design.md §7 whenever that document changes.
+#
+# Only the paths this mobile app's Phase 1 scope actually consumes are
+# required to be correct here (architecture.md §2.2's endpoint list), but
+# the full contract is copied for fidelity rather than a hand-picked subset
+# that could silently drift from the published spec.
+
+openapi: 3.1.0
+info:
+  title: TD IT Solutions — Identity Service API
+  version: "1.0.0"
+  description: >
+    Feature 001 (Customer Account Creation & Authentication). Mediates all
+    client access to Supabase Auth per ADR-0002's mediation principle —
+    no client ever holds a Supabase-honoured credential (see api-design.md §1).
+servers:
+  - url: /v1
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Backend-minted access token (api-design.md §1). Never a Supabase-issued JWT.
+    internalServiceAuth:
+      type: apiKey
+      in: header
+      name: X-Internal-Service-Key
+      description: Service-to-service auth for the internal-only account-status surface (§2.3 row 4). Not reachable by any client.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Client-generated UUID v4. See api-design.md §4.
+    CursorParam:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Opaque pagination cursor from a prior response's pagination.nextCursor.
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+  headers:
+    RateLimitLimit:
+      schema: { type: integer }
+    RateLimitRemaining:
+      schema: { type: integer }
+    RateLimitReset:
+      schema: { type: integer, description: Unix timestamp. }
+    RetryAfter:
+      schema: { type: integer, description: Seconds. }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string }
+            requestId: { type: string, format: uuid }
+
+    GenericAcceptedMessage:
+      type: object
+      description: >
+        Anti-enumeration response shape (FR-5/FR-15/AC-2). Identical status
+        code and body regardless of whether the underlying identifier exists.
+        Used by signup and password-reset-request.
+      required: [message]
+      properties:
+        message: { type: string }
+        retryAfterSeconds:
+          type: integer
+          nullable: true
+          description: Present only on resend-style endpoints (api-design.md §5).
+
+    UserType:
+      type: string
+      enum: [customer, admin, security_company_operator, support_agent]
+
+    AccountState:
+      type: string
+      enum: [pending_verification, active, suspended, deactivated]
+
+    Account:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        userType: { $ref: '#/components/schemas/UserType' }
+        accountState: { $ref: '#/components/schemas/AccountState' }
+        mfaRequired: { type: boolean }
+        mfaEnrolled: { type: boolean }
+        partnerOrganizationId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    SessionTokens:
+      type: object
+      required: [accessToken, refreshToken, expiresIn, sessionId]
+      properties:
+        accessToken: { type: string, description: Backend-minted JWT, api-design.md §1. }
+        refreshToken: { type: string }
+        expiresIn: { type: integer, example: 600, description: Seconds (10 min ceiling, api-design.md §2). }
+        sessionId: { type: string, format: uuid }
+
+    MfaChallengeRequired:
+      type: object
+      required: [mfaRequired, mfaChallengeToken, expiresIn]
+      properties:
+        mfaRequired: { type: boolean, enum: [true] }
+        mfaChallengeToken: { type: string }
+        expiresIn: { type: integer, example: 300 }
+
+    InvitationStatus:
+      type: string
+      enum: [pending, accepted, expired, revoked]
+
+    InvitationPublic:
+      type: object
+      description: Invitee-facing view — never exposes token_hash.
+      properties:
+        email: { type: string, format: email }
+        userType: { $ref: '#/components/schemas/UserType' }
+        partnerOrganizationName: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/InvitationStatus' }
+        expiresAt: { type: string, format: date-time }
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        accountId: { type: string, format: uuid, nullable: true }
+        eventType:
+          type: string
+          enum: [login_success, login_failure, logout, password_reset_requested,
+                 password_reset_completed, mfa_enrolled, mfa_verified,
+                 mfa_challenge_failed, session_revoked]
+        attemptedIdentifier: { type: string, nullable: true }
+        ipAddress: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AuditLogPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AuditLogEntry' }
+        pagination:
+          type: object
+          properties:
+            nextCursor: { type: string, nullable: true }
+            hasMore: { type: boolean }
+
+  responses:
+    BadRequest:
+      description: Validation error.
+      headers:
+        X-Request-Id: { schema: { type: string } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing/invalid/expired/revoked bearer token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Authenticated, but role/RBAC does not permit this action.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Idempotency-key reuse with a different body, or a state conflict.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Locked:
+      description: Account temporarily locked (rate-limit escalation, api-design.md §5).
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UpstreamUnavailable:
+      description: Supabase Admin API unreachable/timed out (api-design.md §6).
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalError:
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+paths:
+  # ---------------------------------------------------------------
+  # Signup & verification
+  # ---------------------------------------------------------------
+  /auth/signup:
+    post:
+      operationId: signup
+      summary: Customer self-service signup.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, consentAccepted]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                consentAccepted: { type: boolean, enum: [true] }
+      responses:
+        '202':
+          description: >
+            Always this shape, always this status — identical whether the
+            email is new or already registered (FR-5/AC-2). See api-design.md
+            §6/§8 (FU-20) for the required ui-design.md correction this implies.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericAcceptedMessage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/UpstreamUnavailable' }
+
+  /auth/verify-email:
+    post:
+      operationId: verifyEmail
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: Email verified; account_state transitions pending_verification → active.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '410':
+          description: Link expired or already used.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/UpstreamUnavailable' }
+
+  /auth/resend-verification:
+    post:
+      operationId: resendVerification
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '202':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericAcceptedMessage' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ---------------------------------------------------------------
+  # Invitation & privileged provisioning
+  # ---------------------------------------------------------------
+  /invitations:
+    post:
+      operationId: createInvitation
+      summary: Admin-only. Issues an invitation for admin/security_company_operator/support_agent.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, userType]
+              properties:
+                email: { type: string, format: email }
+                userType:
+                  type: string
+                  enum: [admin, security_company_operator, support_agent]
+                partnerOrganizationId:
+                  type: string
+                  format: uuid
+                  description: Required if userType = security_company_operator (BR-7).
+      responses:
+        '201':
+          description: Invitation created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { $ref: '#/components/schemas/InvitationStatus' }
+                  expiresAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Caller is not admin (ruling C4 — support agents may not issue invitations).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /invitations/{token}:
+    get:
+      operationId: getInvitation
+      summary: Invitee views invite details before accepting. Token is opaque; backend hashes and looks up server-side (never a direct table query — database-design.md §5.4).
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitationPublic' }
+        '404':
+          description: Token not found, expired, or revoked — same shape for all three (no enumeration of *why* it's invalid).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /invitations/{token}/accept:
+    post:
+      operationId: acceptInvitation
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, minLength: 8 }
+      responses:
+        '200':
+          description: >
+            Account created, invitation marked accepted. Does NOT issue a
+            session — the caller must proceed to mandatory MFA enrollment
+            (BR-4) before any session is minted; see /mfa/enroll.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accountId: { type: string, format: uuid }
+                  mfaEnrollmentRequired: { type: boolean, enum: [true] }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '410':
+          description: Invitation expired or already accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/UpstreamUnavailable' }
+
+  # ---------------------------------------------------------------
+  # MFA enrollment
+  # ---------------------------------------------------------------
+  /mfa/enroll:
+    post:
+      operationId: mfaEnroll
+      summary: Starts TOTP enrollment. Callable by an unauthenticated-but-invitation-verified privileged user (first login) or an authenticated customer opting in.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accountId:
+                  type: string
+                  format: uuid
+                  description: Required only for the forced-first-login (post-accept, pre-session) path; omitted when called with a bearer token.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  qrCodeImage: { type: string, description: Base64-encoded PNG. }
+                  manualEntryKey: { type: string }
+                  enrollmentId: { type: string, format: uuid }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/UpstreamUnavailable' }
+
+  /mfa/enroll/verify:
+    post:
+      operationId: mfaEnrollVerify
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enrollmentId, code]
+              properties:
+                enrollmentId: { type: string, format: uuid }
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        '200':
+          description: Enrollment confirmed. For the forced-first-login path, this now issues session tokens (mandatory MFA gate cleared).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionTokens' }
+        '400':
+          description: Wrong/expired code. No attempt-count lockout at enrollment (ui-design.md §4.4).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ---------------------------------------------------------------
+  # Login & session issuance
+  # ---------------------------------------------------------------
+  /auth/login:
+    post:
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                deviceId:
+                  type: string
+                  nullable: true
+                  description: Mobile clients only (FR-20). See api-design.md §3.1 / FU-09.
+      responses:
+        '200':
+          description: Either a full session (no MFA required/enabled) or an MFA challenge.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/SessionTokens'
+                  - $ref: '#/components/schemas/MfaChallengeRequired'
+        '401':
+          description: >
+            Generic "incorrect email or password" (AC-5) — never distinguishes
+            unknown-email from wrong-password. Body includes attemptsRemaining
+            when ≤1 (api-design.md §5 escalating-warning contract).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/Error' }
+                  - type: object
+                    properties:
+                      attemptsRemaining: { type: integer, nullable: true }
+        '423': { $ref: '#/components/responses/Locked' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/UpstreamUnavailable' }
+
+  /auth/mfa/challenge:
+    post:
+      operationId: mfaChallenge
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfaChallengeToken, code]
+              properties:
+                mfaChallengeToken: { type: string }
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionTokens' }
+        '400':
+          description: Wrong/expired code — attempt counter separate from the password counter (api-design.md §5).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/Error' }
+                  - type: object
+                    properties:
+                      attemptsRemaining: { type: integer, nullable: true }
+        '410':
+          description: Challenge token expired/exhausted — restart login from /auth/login.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ---------------------------------------------------------------
+  # Logout & session management
+  # ---------------------------------------------------------------
+  /session/logout:
+    post:
+      operationId: logout
+      responses:
+        '204':
+          description: Current session revoked immediately (api-design.md §2.1, Mechanism 1).
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /session/logout-all:
+    post:
+      operationId: logoutAll
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: All sessions for this account revoked immediately.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /session/refresh:
+    post:
+      operationId: refreshSession
+      summary: >
+        Exchanges a refresh token for a new access token. This is the
+        Mechanism-2 chokepoint (api-design.md §2.3) — always performs a live
+        account_status_cache read before minting a new access token. Also
+        (v1.1.0, §11 Amendment C, ratifying mobile-app-foundation/
+        architecture.md §3.2's M-01) the device-consistency chokepoint for
+        FR-20 device-binding: if `deviceId` is presented and does not match
+        the session's stored device, the refresh is rejected and the entire
+        rotation family plus every other active session for the account is
+        revoked (`device_mismatch` — treated at least as seriously as
+        refresh-token-rotation reuse, same blast-radius response as §3.1's
+        reuse detection).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+                deviceId:
+                  type: string
+                  nullable: true
+                  description: >
+                    Added v1.1.0. Optional, additive — omitting it (or
+                    sending null) does not itself trigger a mismatch; it
+                    simply means this refresh isn't checked against the
+                    session's stored device. Mobile clients SHOULD send the
+                    same `deviceId` presented at login for the device-
+                    mismatch protection to actually engage.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionTokens' }
+        '401':
+          description: >
+            Refresh token invalid, expired, revoked, reuse-detected
+            (rotation chain break — api-design.md §3.1), or (v1.1.0)
+            device-mismatch detected — identical status code and error
+            envelope for all four; the client cannot and must not
+            distinguish them beyond forcing a full local logout in every
+            case (mobile-app-foundation/architecture.md §2.4).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '423':
+          description: Account is suspended/deactivated — refusing to mint a new access token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/UpstreamUnavailable' }
+
+  # ---------------------------------------------------------------
+  # Password reset
+  # ---------------------------------------------------------------
+  /auth/reset-password/request:
+    post:
+      operationId: resetPasswordRequest
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '202':
+          description: Always this shape (FR-15, AC anti-enumeration) regardless of whether the account exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericAcceptedMessage' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/reset-password/confirm:
+    post:
+      operationId: resetPasswordConfirm
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resetToken, newPassword]
+              properties:
+                resetToken: { type: string }
+                newPassword: { type: string, minLength: 8 }
+      responses:
+        '200':
+          description: >
+            For customer accounts: password reset complete, all sessions
+            invalidated (FR-17/AC-9, Mechanism 1). For privileged accounts,
+            returns mfaVerificationRequired instead of completing — see
+            /auth/reset-password/mfa-verify (FR-18/AC-10).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      message: { type: string }
+                      allSessionsRevoked: { type: boolean, enum: [true] }
+                  - type: object
+                    properties:
+                      mfaVerificationRequired: { type: boolean, enum: [true] }
+                      mfaVerificationToken: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '410':
+          description: Reset link expired or already used.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/UpstreamUnavailable' }
+
+  /auth/reset-password/mfa-verify:
+    post:
+      operationId: resetPasswordMfaVerify
+      summary: Privileged-role-only finalization step (FR-18/AC-10). Distinguished in ui-design.md §4.6 Screen D so it doesn't read as a bug.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfaVerificationToken, code]
+              properties:
+                mfaVerificationToken: { type: string }
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        '200':
+          description: Reset finalized. All sessions invalidated (FR-17/AC-9, Mechanism 1).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  allSessionsRevoked: { type: boolean, enum: [true] }
+        '400':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '410': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ---------------------------------------------------------------
+  # Account-state read
+  # ---------------------------------------------------------------
+  /account/me:
+    get:
+      operationId: getCurrentAccount
+      summary: >
+        Always a live account_status_cache read (api-design.md §2.3) — never
+        served from the JWT claim alone. Drives client-side BR-2 gating UI.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Account' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------
+  # Internal-only surface (server-to-server, not client-facing)
+  # ---------------------------------------------------------------
+  /internal/accounts/{id}/status:
+    x-internal: true
+    get:
+      operationId: internalGetAccountStatus
+      summary: >
+        Consumed by future domain services (Policy/Subscription, Asset
+        Registry) to re-derive the BR-2 commerce gate live at the point of a
+        gated action, per D-2(c). Never reachable by any client — service-to-
+        service credential only. Contract published now so those services'
+        auth middleware can be built against it before they exist.
+      security: [{ internalServiceAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accountState: { $ref: '#/components/schemas/AccountState' }
+                  mfaRequired: { type: boolean }
+                  updatedAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------
+  # Audit log (internal/admin surface only)
+  # ---------------------------------------------------------------
+  /admin/audit-log:
+    get:
+      operationId: getAuditLog
+      summary: Admin-only (ruling C8). Contract-only in Feature 001 — no dashboard screen ships yet (FU-19).
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: accountId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: eventType
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditLogPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Caller is not admin (ruling C8 — support-agent read is not granted in Feature 001).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }

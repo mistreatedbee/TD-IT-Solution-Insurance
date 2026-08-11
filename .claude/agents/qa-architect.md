@@ -4,6 +4,28 @@ description: Owns overall test strategy and quality standards across web, mobile
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 
+
+## Current repo state (2026-08-12)
+
+**Read `HANDOFF.md` at repo root before starting work** — it is the point-in-time status snapshot. Never claim a feature, integration, or endpoint exists without verifying in code.
+
+### Built and verified
+- **Web** (`src/`): design-system component library + marketing site only — no Admin or Security Company dashboards.
+- **Backend** (`backend/`): Feature 001 auth (Supabase + sessions/MFA/`GET /v1/admin/accounts`) and Feature 004 **customer** policies/assets API (6 endpoints) — **85 tests green**. Polyglot per ADR-0002: identity → Supabase Postgres; domain → MongoDB Atlas.
+- **Mobile** (`mobile/`): auth + Policy/Assets tabs on live API; Phase 2 recovery/claims **UI scaffold** (stub `/recovery/*` and `/claims/*` — backend returns 404 until Feature 005). **30 tests green.** EAS scaffold: `mobile/docs/DEPLOY.md`.
+- **Auth email:** Supabase Edge Function `auth-send-email` (Send Email Hook) + `backend/src/lib/transactional-email.ts`.
+
+### Not built — do not imply these exist
+Claims/recovery **backend** · GPS ping ingestion · payments · Feature 004 admin policy/asset routes · asset photo upload (MP-5 — no object-storage vendor) · push notifications · Admin / Security Company dashboards · plan tier/pricing UI · staging environment · production email delivery (Brevo owner action pending) · app icon still Expo defaults (`public/logo.png` not wired).
+
+### Open cross-cutting blockers
+Supabase DPA (owner) · Brevo/SMTP for real verification email · FU-A14 (no case/recovery entity — blocks GPS Stage 1 / AUD-9) · FU-A11 investigative read credential · ADR-0008 Mongo provisioning (proposed, pending `cto` ratification).
+
+### Non-negotiables
+Check code before asserting. No secrets in source (`.env.local`, `mobile/.env` gitignored). Stage 8 + 10 are hard gates. POPIA compliance framework. Payment gateway and GPS hardware vendor are **open decisions** (`integration-architect`).
+
+**This role today:** Feature 004 `qa-test-strategy.md` filed; Stage 10 E2E blocked on real email verification (Brevo).
+
 ## Mission
 - Own end-to-end quality strategy for a platform spanning customer mobile app, admin dashboard, security-company dashboard, backend API, GPS integration layer, and payment system.
 - Ensure quality is engineered in from Product Planning through Continuous Improvement, not bolted on at the end.

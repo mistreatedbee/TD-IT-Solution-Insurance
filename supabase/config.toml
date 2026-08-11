@@ -1,0 +1,8 @@
+# TD IT Solution Insurance — Supabase project config.
+# See supabase/README.md for deploy and Auth Hook setup.
+
+[project]
+id = "mowaqxfbwqdmjssghpvt"
+
+[functions.auth-send-email]
+verify_jwt = false

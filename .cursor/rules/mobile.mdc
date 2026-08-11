@@ -1,0 +1,36 @@
+---
+description: Mobile app (Expo/React Native) conventions — auth/token handling, design-system bridge.
+globs: mobile/**
+alwaysApply: false
+---
+
+# Mobile (`mobile/`)
+
+Relevant role specs: `.claude/agents/mobile-architect.md`, `.claude/agents/mobile-engineer.md`.
+Architecture foundation doc: `docs/features/003-mobile-app-foundation/architecture.md` — read
+this before adding any new screen or changing navigation/auth structure.
+
+## Non-negotiable patterns already established
+
+- **Never talk to Supabase or MongoDB directly from the app.** Every request goes through the
+  backend's `/api/v1/*` contract. The base URL is `EXPO_PUBLIC_API_BASE_URL` (see
+  `mobile/.env`, `src/api/config.ts`) — a host, not a secret, fine to inline at build time.
+- **Token handling**: refresh token → `expo-secure-store`. Access token → in-memory only,
+  never persisted. Auto-refresh on 401 via `src/api/client.ts`.
+- **Device binding (FR-20)**: a locally-generated `deviceId` (`src/auth/device.ts`,
+  `getOrCreateDeviceId()`) is sent on **both** login and session-refresh calls — this exact
+  omission on refresh was a real, already-fixed bug (api-design.md v1.1.0 §11 Amendment C).
+  Reuse that one function; don't create a second device-identity mechanism.
+- **API types are generated, not hand-written**: `mobile/openapi/identity-service.yaml` is
+  copied from the backend's `api-design.md` OpenAPI block; `src/api/generated/*.ts` is
+  produced via `npm run generate:api-types`. If the backend contract has a new amendment,
+  update the yaml first, then regenerate — don't hand-edit the generated file, and don't
+  assume the generator script's output is fresh without checking (it silently produced a
+  stale file once when invoked via a different path than expected).
+- **Design system**: `src/theme/primitives/*` is an explicitly **temporary** bridge from the
+  web design system (`src/components/*` at repo root) — every file in it is headed with a
+  "temporary, do not extend independently" note. Don't add new primitives here without
+  checking whether `design-system-manager`'s planned RN port has landed first.
+- **Policy/asset screens are placeholders.** No backend contract exists for that domain yet
+  beyond a design doc (`docs/features/004-policy-asset-management/api-design.md`) — don't
+  build real screens against it until a backend implementation exists to call.

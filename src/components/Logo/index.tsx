@@ -1,4 +1,4 @@
-export type LogoSize = 'sm' | 'md' | 'lg';
+export type LogoSize = 'sm' | 'md' | 'lg' | 'xl';
 export type LogoVariant = 'full' | 'glyph' | 'wordmark';
 export type LogoTone = 'navy' | 'light';
 
@@ -14,30 +14,36 @@ export interface LogoProps {
   /** Accessible label for the mark. */
   label?: string;
   className?: string;
+  /** Override default height classes on the real logo image (`tone="navy"` only). */
+  imageClassName?: string;
 }
 
 const GLYPH_SIZE: Record<LogoSize, string> = {
   sm: 'h-6 w-6',
   md: 'h-8 w-8',
-  lg: 'h-11 w-11'
+  lg: 'h-11 w-11',
+  xl: 'h-11 w-11'
 };
 
 const PRIMARY_TEXT: Record<LogoSize, string> = {
   sm: 'text-sm',
   md: 'text-base',
-  lg: 'text-xl'
+  lg: 'text-xl',
+  xl: 'text-xl'
 };
 
 const SECONDARY_TEXT: Record<LogoSize, string> = {
   sm: 'text-[10px]',
   md: 'text-xs',
-  lg: 'text-sm'
+  lg: 'text-sm',
+  xl: 'text-sm'
 };
 
 const GAP: Record<LogoSize, string> = {
   sm: 'gap-2',
   md: 'gap-2.5',
-  lg: 'gap-3'
+  lg: 'gap-3',
+  xl: 'gap-3'
 };
 
 export function LogoGlyph({
@@ -96,7 +102,8 @@ export function LogoGlyph({
 const REAL_LOGO_HEIGHT: Record<LogoSize, string> = {
   sm: 'h-8',
   md: 'h-10',
-  lg: 'h-14'
+  lg: 'h-14',
+  xl: 'h-24'
 };
 
 export function Logo({
@@ -105,7 +112,8 @@ export function Logo({
   tone = 'navy',
   href,
   label = 'TD IT Solution Insurance',
-  className = ''
+  className = '',
+  imageClassName
 }: LogoProps) {
   const textColor = tone === 'navy' ? 'text-[#0B2A4A]' : 'text-white';
   const subColor = tone === 'navy' ? 'text-[#5A7492]' : 'text-white/70';
@@ -115,7 +123,7 @@ export function Logo({
   <img
     src="/logo.png"
     alt={label}
-    className={`${REAL_LOGO_HEIGHT[size]} w-auto ${
+    className={`${imageClassName ?? REAL_LOGO_HEIGHT[size]} w-auto ${
     href ? 'transition-opacity hover:opacity-80' : ''} ${
     className}`} /> :
 
