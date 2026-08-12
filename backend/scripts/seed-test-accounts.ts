@@ -26,7 +26,9 @@ import { generateTotpCode } from './lib/totp.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, '../../.env.local') });
+const repoRoot = path.resolve(__dirname, '../..');
+dotenv.config({ path: path.join(repoRoot, '.env') });
+dotenv.config({ path: path.join(repoRoot, '.env.local'), override: true });
 
 /** Seed script only needs Supabase + Postgres — not MongoDB or JWT signing keys. */
 function loadSeedEnv(): Env {

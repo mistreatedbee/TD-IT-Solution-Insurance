@@ -3,9 +3,8 @@ import { Link } from 'react-router-dom';
 import { Badge, Button, Input, SectionHeading } from '../components';
 import { ArrowLink } from '../components/ArrowLink';
 import { InlineAlert } from '../dashboard/components/ui';
-import { signup } from '../customer/api/auth';
-import { ApiError } from '../customer/api/errors';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
+import { mapSupabaseAuthError, resendSignupVerification, signUpWithSupabase } from '../customer/supabase/auth';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 10;
@@ -47,10 +46,22 @@ export function CustomerSignupPage() {
 
     setLoading(true);
     try {
-      await signup(trimmedEmail, password);
+      await signUpWithSupabase(trimmedEmail, password);
       setSubmitted(true);
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
+      setFormError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Something went wrong.' }));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onResend() {
+    setFormError(null);
+    setLoading(true);
+    try {
+      await resendSignupVerification(email.trim());
+    } catch (err) {
+      setFormError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Could not resend email.' }));
     } finally {
       setLoading(false);
     }
@@ -67,23 +78,25 @@ export function CustomerSignupPage() {
           className="mt-4 mb-2"
         />
         <p className="text-base text-text-secondary">
-          If this email is new, we&apos;ve sent a verification link to{' '}
-          <span className="font-medium text-text-primary">{email.trim()}</span>. Open it to
-          activate your account, then log in on the mobile app or here on the web.
+          Supabase Auth sent a verification link to{' '}
+          <span className="font-medium text-text-primary">{email.trim()}</span>. Open it on this
+          device to activate your account, then log in here.
         </p>
         <p className="mt-4 text-sm text-text-secondary">
-          Didn&apos;t receive it? Check your spam folder, or try signing up again — we send the
-          same confirmation message either way.
+          Didn&apos;t receive it? Check spam, or resend below.
         </p>
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+        {formError ? (
+          <div className="mt-4">
+            <InlineAlert tone="danger">{formError}</InlineAlert>
+          </div>
+        ) : null}
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <Button variant="secondary" fullWidth loading={loading} onClick={() => void onResend()}>
+            Resend verification email
+          </Button>
           <Link to="/login" className="flex-1">
             <Button variant="primary" fullWidth>
               Log in
-            </Button>
-          </Link>
-          <Link to="/" className="flex-1">
-            <Button variant="secondary" fullWidth>
-              Back to home
             </Button>
           </Link>
         </div>
@@ -94,7 +107,7 @@ export function CustomerSignupPage() {
   return (
     <MarketingAuthShell>
       <SectionHeading as="h1" title="Create your account" size="md" className="mb-1" />
-      <p className="mb-6 text-sm text-text-secondary">Takes about a minute.</p>
+      <p className="mb-6 text-sm text-text-secondary">Takes about a minute. Secured by Supabase Auth.</p>
 
       {formError ? <InlineAlert tone="danger">{formError}</InlineAlert> : null}
 

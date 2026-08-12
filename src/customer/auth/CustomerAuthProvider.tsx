@@ -8,9 +8,10 @@ import {
   type ReactNode,
 } from 'react';
 import { configureCustomerClient } from '../api/client';
-import { getAccountMe, login, logout, verifyMfaChallenge } from '../api/auth';
+import { getAccountMe, logout, verifyMfaChallenge } from '../api/auth';
 import { ApiError } from '../api/errors';
 import { getOrCreateWebDeviceId } from './deviceId';
+import { mapSupabaseAuthError, signInWithSupabase } from '../supabase/auth';
 
 const REFRESH_STORAGE_KEY = 'td-customer-web-refresh';
 
@@ -65,6 +66,12 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       } catch {
         /* local session already cleared */
       }
+    }
+    try {
+      const { supabase } = await import('../supabase/client');
+      await supabase.auth.signOut();
+    } catch {
+      /* best effort */
     }
   }, []);
 
@@ -130,17 +137,19 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   );
 
   const loginWithPassword = useCallback(async (email: string, password: string) => {
-    const result = await login(email.trim().toLowerCase(), password);
-    if (result.mfaRequired && result.mfaChallengeToken) {
-      return { kind: 'mfa' as const, mfaChallengeToken: result.mfaChallengeToken, expiresIn: result.expiresIn ?? 300 };
+    try {
+      const tokens = await signInWithSupabase(email, password);
+      return {
+        kind: 'tokens' as const,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      };
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(401, {
+        error: { message: mapSupabaseAuthError(err instanceof Error ? err : { message: 'Sign in failed.' }) },
+      });
     }
-    if (result.mfaEnrollmentRequired && result.enrollmentTicket) {
-      return { kind: 'enrollment' as const, enrollmentTicket: result.enrollmentTicket };
-    }
-    if (result.accessToken && result.refreshToken) {
-      return { kind: 'tokens' as const, accessToken: result.accessToken, refreshToken: result.refreshToken };
-    }
-    throw new ApiError(500, { error: { message: 'Unexpected login response' } });
   }, []);
 
   const completeMfa = useCallback(

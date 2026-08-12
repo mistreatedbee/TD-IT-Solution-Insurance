@@ -95,10 +95,20 @@ export function createAuthRouter(ctx: AppContext): Router {
           try {
             const created = await ctx.supabase.createUser(normalizedEmail, password, false);
             await ctx.accounts.createCustomerAccount(created.userId, normalizedEmail);
-            await ctx.supabase.sendSignupConfirmationEmail(
-              normalizedEmail,
-              ctx.env.emailVerificationRedirectUrl,
-            );
+            try {
+              await ctx.supabase.sendSignupConfirmationEmail(
+                normalizedEmail,
+                ctx.env.emailVerificationRedirectUrl,
+              );
+            } catch (emailErr) {
+              // Account creation succeeded — do not fail the signup response (FR-5/AC-2).
+              // Email delivery is best-effort; ops can resend from Supabase or fix the hook/SMTP.
+              // eslint-disable-next-line no-console
+              console.warn(
+                `[auth/signup] Account created for ${normalizedEmail} but confirmation email failed:`,
+                emailErr instanceof Error ? emailErr.message : String(emailErr),
+              );
+            }
           } catch (err) {
             if (err instanceof SupabaseUnavailableError) {
               next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
@@ -188,6 +198,109 @@ export function createAuthRouter(ctx: AppContext): Router {
           );
         }
         res.status(202).json({ message: 'If this account needs verifying, check your inbox.', retryAfterSeconds: RESEND_VERIFICATION_LIMIT.cooldownSeconds });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------
+  // POST /auth/supabase/exchange
+  // Customer web: Supabase Auth (signup/login/verify/reset) → backend session.
+  // ---------------------------------------------------------------
+  const supabaseExchangeSchema = z.object({
+    accessToken: z.string().min(1),
+    deviceId: z.string().nullable().optional(),
+    deviceName: z.string().nullable().optional(),
+  });
+
+  router.post(
+    '/auth/supabase/exchange',
+    createRateLimiter(ctx.kv, { attempts: LOGIN_LOCKOUT.perIpAttempts, windowSeconds: LOGIN_LOCKOUT.perIpWindowSeconds }, (req) => `supabase-exchange:${clientIp(req)}`),
+    validateBody(supabaseExchangeSchema),
+    async (req, res, next) => {
+      try {
+        const { accessToken, deviceId, deviceName } = req.body as z.infer<typeof supabaseExchangeSchema>;
+        const ip = clientIp(req);
+
+        let supabaseUser: { userId: string; email: string };
+        try {
+          supabaseUser = await ctx.supabase.getUserFromAccessToken(accessToken);
+        } catch (err) {
+          if (err instanceof SupabaseUnavailableError) {
+            next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
+            return;
+          }
+          next(apiError('INVALID_CREDENTIALS'));
+          return;
+        }
+
+        let account = await ctx.accounts.findById(supabaseUser.userId);
+        if (!account) {
+          try {
+            await ctx.accounts.createCustomerAccount(supabaseUser.userId, supabaseUser.email);
+            account = await ctx.accounts.findById(supabaseUser.userId);
+          } catch (err) {
+            next(err);
+            return;
+          }
+        }
+
+        if (!account || account.userType !== 'customer') {
+          next(apiError('INVALID_CREDENTIALS'));
+          return;
+        }
+
+        let activeAccount = account;
+        try {
+          activeAccount = await syncAppAccountIfSupabaseEmailConfirmed(ctx.accounts, ctx.supabase, account);
+        } catch (err) {
+          if (err instanceof SupabaseUnavailableError) {
+            next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
+            return;
+          }
+          throw err;
+        }
+
+        if (activeAccount.accountState === 'pending_verification') {
+          next(apiError('ACCOUNT_NOT_ACTIVE'));
+          return;
+        }
+        if (activeAccount.accountState === 'suspended' || activeAccount.accountState === 'deactivated') {
+          next(apiError('ACCOUNT_SUSPENDED'));
+          return;
+        }
+
+        const { session, refreshToken } = await mintNewSession(ctx.sessions, {
+          accountId: activeAccount.id,
+          deviceId: deviceId ?? null,
+          deviceName: deviceName ?? null,
+          ipAddress: ip,
+          userAgent: req.header('user-agent') ?? null,
+          surface: surfaceFor(activeAccount.userType),
+          mfaVerifiedAt: null,
+        });
+        await ctx.auditLog.record({ accountId: activeAccount.id, eventType: 'login_success', ipAddress: ip });
+
+        const { token, expiresIn } = signAccessToken(
+          {
+            sub: session.accountId,
+            user_type: activeAccount.userType,
+            mfa_required: activeAccount.mfaRequired,
+            account_state: activeAccount.accountState,
+            partner_organization_id: activeAccount.partnerOrganizationId,
+            session_id: session.id,
+          },
+          ctx.env.jwtSigningKeys,
+          ctx.env.jwtActiveKid,
+        );
+
+        res.status(200).json({
+          accessToken: token,
+          refreshToken,
+          expiresIn,
+          sessionId: session.id,
+        });
       } catch (err) {
         next(err);
       }

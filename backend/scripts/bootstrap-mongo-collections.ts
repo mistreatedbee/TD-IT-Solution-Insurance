@@ -5,7 +5,7 @@
  * Idempotently creates policies, policy_status_history, assets, admin_access_log,
  * and recovery_cases; applies validators and indexes.
  *
- * Run from repo root (requires MONGODB_URI in repo-root .env.local):
+ * Run from repo root (requires MONGODB_URI in repo-root `.env`):
  *
  *   npx tsx backend/scripts/bootstrap-mongo-collections.ts
  *
@@ -21,15 +21,15 @@ import { bootstrapRecoveryCollections } from '../src/db/recovery-collections.js'
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRootEnvPath = path.resolve(__dirname, '../../.env.local');
-
-dotenv.config({ path: repoRootEnvPath });
+const repoRoot = path.resolve(__dirname, '../..');
+dotenv.config({ path: path.join(repoRoot, '.env') });
+dotenv.config({ path: path.join(repoRoot, '.env.local'), override: true });
 
 function requireMongoUri(): string {
   const uri = process.env.MONGODB_URI?.trim();
   if (!uri) {
     throw new Error(
-      '[bootstrap-mongo] Missing MONGODB_URI. Set it in the repo-root .env.local before running.',
+      '[bootstrap-mongo] Missing MONGODB_URI. Set it in the repo-root .env before running.',
     );
   }
   return uri;

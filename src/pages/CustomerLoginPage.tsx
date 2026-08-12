@@ -61,6 +61,8 @@ export function CustomerLoginPage() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError('Incorrect email or password.');
+      } else if (err instanceof ApiError && err.status === 403) {
+        setError(err.message);
       } else if (err instanceof ApiError && err.status === 423) {
         setError('Too many failed attempts. Please wait a few minutes and try again.');
       } else {

@@ -265,15 +265,20 @@ export function getSupabaseAdmin(env: Env): SupabaseAdmin {
     },
 
     async findVerifiedTotpFactor(userAccessToken) {
-      const response = await gotrueFetch(env, '/factors', {
+      // GoTrue GET /factors returns 405 on current Supabase — factors live on GET /user.
+      const response = await gotrueFetch(env, '/user', {
         method: 'GET',
         authToken: userAccessToken,
       });
       if (!response.ok) {
-        throw new SupabaseUnavailableError(`factors list returned ${response.status}`);
+        throw new SupabaseUnavailableError(`user fetch returned ${response.status}`);
       }
-      const body = (await response.json()) as Array<{ id: string; status: string; factor_type: string }>;
-      const verified = body.find((f) => f.factor_type === 'totp' && f.status === 'verified');
+      const body = (await response.json()) as {
+        factors?: Array<{ id: string; status: string; factor_type: string }>;
+      };
+      const verified = (body.factors ?? []).find(
+        (f) => f.factor_type === 'totp' && f.status === 'verified',
+      );
       return verified ? { factorId: verified.id } : null;
     },
 

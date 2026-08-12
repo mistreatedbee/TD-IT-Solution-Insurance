@@ -46,7 +46,14 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
   if (response.status === 204) return undefined as T;
 
   const text = await response.text();
-  const json: unknown = text ? JSON.parse(text) : undefined;
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : undefined;
+  } catch {
+    throw new ApiError(response.status, {
+      error: { message: response.ok ? 'Invalid response from server.' : `Server error (${response.status}). Is the API running?` },
+    });
+  }
 
   if (!response.ok) throw new ApiError(response.status, json as import('./errors').ApiErrorBody);
 

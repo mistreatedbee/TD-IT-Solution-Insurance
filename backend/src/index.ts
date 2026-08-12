@@ -15,8 +15,9 @@ import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRootEnvPath = path.resolve(__dirname, '../../.env.local');
-dotenv.config({ path: repoRootEnvPath });
+const repoRoot = path.resolve(__dirname, '../..');
+dotenv.config({ path: path.join(repoRoot, '.env') });
+dotenv.config({ path: path.join(repoRoot, '.env.local'), override: true });
 
 import express from 'express';
 import helmet from 'helmet';
