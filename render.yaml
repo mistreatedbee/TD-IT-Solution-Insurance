@@ -1,7 +1,8 @@
 # Render Blueprint — TD IT Solution Insurance
-# See backend/docs/DEPLOY.md and ADR-0003.
+# API (Node/Express) + static web (Vite/React). See docs/DEPLOY.md and ADR-0003.
 
 services:
+  # --- Backend API ---
   - type: web
     name: td-it-insurance-api
     runtime: node
@@ -14,6 +15,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: TRUST_PROXY_HOPS
+        value: "1"
       - key: MONGODB_URI
         sync: false
       - key: SUPABASE_URL
@@ -32,11 +35,41 @@ services:
         sync: false
       - key: INTERNAL_SERVICE_KEYS
         sync: false
-      - key: CORS_ALLOWED_ORIGINS
-        sync: false
       - key: BREVO_API_KEY
         sync: false
       - key: EMAIL_FROM
         sync: false
       - key: EMAIL_FROM_NAME
         value: TD IT Solution Insurance
+      - key: EMAIL_VERIFICATION_REDIRECT_URL
+        value: tditinsurance://verify-email
+      - key: PASSWORD_RESET_REDIRECT_URL
+        value: tditinsurance://reset-password
+      - key: INVITATION_ACCEPT_REDIRECT_URL
+        value: tditinsurance://invitations/accept
+      # Render `host` is hostname only — backend normalizes to https:// origin.
+      - key: CORS_ALLOWED_ORIGINS
+        fromService:
+          type: web
+          name: td-it-insurance-web
+          property: host
+
+  # --- Marketing site + Admin + Security dashboards (SPA) ---
+  - type: web
+    name: td-it-insurance-web
+    runtime: static
+    region: frankfurt
+    plan: free
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # Injected at build time — host only; src/dashboard/api/config.ts adds https://
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: td-it-insurance-api
+          property: host

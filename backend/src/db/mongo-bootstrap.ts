@@ -12,4 +12,6 @@ import { bootstrapRecoveryCollections } from './recovery-collections.js';
 export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
   await bootstrapFeature004Collections(db);
   await bootstrapRecoveryCollections(db);
+  // eslint-disable-next-line no-console — startup banner in index.ts references policy/asset;
+  // recovery_cases is ensured in the same pass.
 }

@@ -1,19 +1,15 @@
 #!/usr/bin/env node
 /**
- * Feature 004 — MongoDB collection bootstrap (Atlas / local).
+ * MongoDB collection bootstrap (Atlas / local) — Feature 004 + recovery_cases.
  *
- * Idempotently creates policies, policy_status_history, assets, and
- * admin_access_log collections; applies $jsonSchema validators (assets
- * polymorphic details; admin_access_log ADR-0006 R-1 shape); and ensures
- * secondary indexes from database-design.md §5 and database-addendum-001.md §2.
+ * Idempotently creates policies, policy_status_history, assets, admin_access_log,
+ * and recovery_cases; applies validators and indexes.
  *
  * Run from repo root (requires MONGODB_URI in repo-root .env.local):
  *
  *   npx tsx backend/scripts/bootstrap-mongo-collections.ts
  *
- * Source:
- * - docs/features/004-policy-asset-management/database-design.md
- * - docs/features/004-policy-asset-management/database-addendum-001.md
+ * Safe to re-run — same logic as server startup (`mongo-bootstrap.ts`).
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +17,7 @@ import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 
 import { bootstrapFeature004Collections } from '../src/db/feature004-collections.js';
+import { bootstrapRecoveryCollections } from '../src/db/recovery-collections.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,22 +49,31 @@ async function main(): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(`[bootstrap-mongo] Connected to database "${dbName}".`);
 
-    const result = await bootstrapFeature004Collections(db);
+    const feature004 = await bootstrapFeature004Collections(db);
 
     // eslint-disable-next-line no-console
-    console.log('[bootstrap-mongo] Collections created this run:', result.collectionsEnsured.length
-      ? result.collectionsEnsured.join(', ')
+    console.log('[bootstrap-mongo] Feature 004 collections created this run:', feature004.collectionsEnsured.length
+      ? feature004.collectionsEnsured.join(', ')
       : '(none — already existed)');
 
     // eslint-disable-next-line no-console
-    console.log('[bootstrap-mongo] Validator applied/updated on:', result.validatorApplied.join(', '));
+    console.log('[bootstrap-mongo] Validators applied/updated on:', feature004.validatorApplied.join(', '));
 
     // eslint-disable-next-line no-console
-    console.log('[bootstrap-mongo] Indexes ensured:');
-    for (const idx of result.indexesEnsured) {
+    console.log('[bootstrap-mongo] Feature 004 indexes ensured:');
+    for (const idx of feature004.indexesEnsured) {
       // eslint-disable-next-line no-console
       console.log(`  - ${idx.collection}.${idx.name}`);
     }
+
+    const recovery = await bootstrapRecoveryCollections(db);
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[bootstrap-mongo] recovery_cases: ${recovery.created ? 'created' : 'already existed'}, validator applied`,
+    );
+    // eslint-disable-next-line no-console
+    console.log('[bootstrap-mongo] recovery_cases indexes:', recovery.indexes.join(', ') || '(none new)');
 
     // eslint-disable-next-line no-console
     console.log('[bootstrap-mongo] Done.');

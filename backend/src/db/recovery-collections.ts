@@ -55,15 +55,21 @@ const recoveryCaseIndexes: IndexDescription[] = [
   { key: { assetId: 1, status: 1 } },
 ];
 
-export async function bootstrapRecoveryCollections(db: Db): Promise<void> {
+export async function bootstrapRecoveryCollections(db: Db): Promise<{
+  collection: string;
+  created: boolean;
+  indexes: string[];
+}> {
   const name = RECOVERY_COLLECTIONS.recoveryCases;
   const collections = await db.listCollections({ name }).toArray();
+  let created = false;
   if (collections.length === 0) {
     await db.createCollection(name, {
       validator: recoveryCasesJsonSchemaValidator,
       validationLevel: 'strict',
       validationAction: 'error',
     });
+    created = true;
   } else {
     await db.command({
       collMod: name,
@@ -72,5 +78,10 @@ export async function bootstrapRecoveryCollections(db: Db): Promise<void> {
       validationAction: 'error',
     });
   }
-  await db.collection(name).createIndexes(recoveryCaseIndexes);
+  const indexResults = await db.collection(name).createIndexes(recoveryCaseIndexes);
+  return {
+    collection: name,
+    created,
+    indexes: indexResults,
+  };
 }

@@ -24,6 +24,14 @@ export interface JwtSigningKey {
   secret: string;
 }
 
+/** Render blueprint `fromService` host values are often bare hostnames — CORS needs full origins. */
+export function normalizeWebOrigin(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, '');
+  if (!trimmed) return trimmed;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  return `https://${trimmed}`;
+}
+
 export interface InternalServiceCredential {
   callerName: string;
   key: string;
@@ -252,7 +260,7 @@ export function loadEnv(): Env {
 
   const corsAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? '')
     .split(',')
-    .map((origin) => origin.trim())
+    .map((origin) => normalizeWebOrigin(origin))
     .filter(Boolean);
   if (corsAllowedOrigins.length === 0) {
     // eslint-disable-next-line no-console

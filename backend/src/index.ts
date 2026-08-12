@@ -121,9 +121,9 @@ async function main(): Promise<void> {
   app.use(notFoundHandler);
   app.use(errorHandler);
 
-  const server = app.listen(env.port, () => {
+  const server = app.listen(env.port, '0.0.0.0', () => {
     // eslint-disable-next-line no-console
-    console.log(`[startup] Backend listening on port ${env.port} (env=${env.nodeEnv}).`);
+    console.log(`[startup] Backend listening on 0.0.0.0:${env.port} (env=${env.nodeEnv}).`);
   });
 
   async function shutdown(signal: string): Promise<void> {
