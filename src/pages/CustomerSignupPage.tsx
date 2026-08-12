@@ -71,6 +71,7 @@ export function CustomerSignupPage() {
   if (submitted) {
     return (
       <MarketingAuthShell>
+        <SupabaseAuthConfigNotice />
         <Badge tone="emerald">Check your email</Badge>
         <SectionHeading
           as="h1"

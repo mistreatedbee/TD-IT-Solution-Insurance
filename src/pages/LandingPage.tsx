@@ -3,24 +3,28 @@ import {
   LaptopIcon,
   ShieldCheckIcon,
   MapPinIcon,
-  AlertTriangleIcon,
-  PhoneCallIcon,
-  CheckCircleIcon
+  LockIcon,
+  RadarIcon,
+  MapPinnedIcon
 } from 'lucide-react';
-import type { ComponentType } from 'react';
 import { Link } from 'react-router-dom';
 import { Section } from '../components/Section';
 import { SectionHeading } from '../components/SectionHeading';
 import { FeatureCard } from '../components/FeatureCard';
 import { StepItem } from '../components/StepItem';
-import { Card, CardHeader, CardFooter } from '../components/Card';
 import { Button } from '../components/Button';
 import { ArrowLink } from '../components/ArrowLink';
 import { Reveal } from '../components/Reveal';
 import { Logo } from '../components/Logo';
+import { Badge } from '../components/Badge';
+import { StatBlock } from '../components/StatBlock';
 import { AssetBadge, type AssetType } from '../components/AssetBadge';
 import { WaitlistForm } from './WaitlistForm';
 import { ChevronMotif, ChevronDivider } from './ChevronMotif';
+import { LandingHeader } from './LandingHeader';
+import { HeroVisual } from './HeroVisual';
+import { PlansSection } from './PlansSection';
+import { WhatToExpectSection } from './WhatToExpectSection';
 import { COMPANY_CONTACT } from '../lib/companyContact';
 import {
   Accordion,
@@ -42,45 +46,46 @@ function scrollToWaitlist() {
   }, 400);
 }
 
-/** Small icon tile used in the "What to Expect" alternating rows (§6). Not
- * a new component — this is the same inline markup previously used inline
- * in this file, extracted as a local fragment for readability only. */
-function IconTile({ icon: Icon }: {icon: ComponentType<{className?: string;}>;}) {
-  return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700">
-      <Icon className="h-5 w-5" />
-    </div>
-  );
-}
+const HERO_ASSET_TYPES: AssetType[] = ['vehicle', 'laptop', 'phone', 'tablet', 'tv', 'desktop', 'business'];
+
+const HERO_TRUST_BADGES = [
+  { tone: 'gold' as const, icon: MapPinnedIcon, label: 'Nelspruit-based' },
+  { tone: 'emerald' as const, icon: LockIcon, label: 'POPIA-aligned' },
+  { tone: 'neutral' as const, icon: RadarIcon, label: 'GPS-assisted recovery' },
+];
 
 export function LandingPage() {
   return (
     <>
-      {/* Header chrome — not one of the 9 numbered sections */}
-      <Section spacing="compact" as="header">
-        <div className="flex items-center justify-between gap-4">
-          <Logo variant="full" tone="navy" size="lg" href="/" />
-          <nav className="flex shrink-0 items-center gap-2 sm:gap-3" aria-label="Account">
-            <Link to="/login">
-              <Button variant="secondary" size="sm">
-                Log in
-              </Button>
-            </Link>
-            <Link to="/signup">
-              <Button variant="primary" size="sm">
-                Sign up
-              </Button>
-            </Link>
-          </nav>
-        </div>
-      </Section>
+      <LandingHeader />
 
-      {/* 1. Hero — asymmetric split: copy left, chevron motif field right */}
-      <Section spacing="none" width="full" bleed className="relative overflow-hidden bg-white">
-        <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-12 px-6 pb-20 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-8 lg:px-8 lg:pb-28 lg:pt-24">
-          {/* Left: copy column, unchanged content/copy from ui-design.md §1 */}
+      {/* 1. Hero — asymmetric split with motif field, trust signals, and asset preview */}
+      <Section spacing="none" width="full" bleed className="relative overflow-hidden bg-gradient-to-b from-white via-stone-50/80 to-white">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(245,160,34,0.12),transparent)]"
+        />
+        <ChevronMotif
+          tone="gold"
+          className="pointer-events-none absolute -right-16 top-24 hidden h-32 w-56 opacity-[0.07] lg:block"
+        />
+        <ChevronMotif
+          tone="navy"
+          className="pointer-events-none absolute -left-20 bottom-32 hidden h-24 w-40 rotate-12 opacity-[0.05] lg:block"
+        />
+
+        <div className="relative mx-auto grid w-full max-w-7xl grid-cols-1 gap-12 px-6 pb-16 pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-10 lg:px-8 lg:pb-24 lg:pt-16">
           <Reveal direction="left" distance={32}>
             <div className="max-w-xl">
+              <div className="mb-5 flex flex-wrap items-center gap-2">
+                <Badge tone="gold" size="md" icon={<ShieldCheckIcon className="h-3.5 w-3.5" />}>
+                  Recovery-first insurance
+                </Badge>
+                <Badge tone="neutral" size="md">
+                  Launching soon
+                </Badge>
+              </div>
+
               <Logo
                 tone="navy"
                 size="xl"
@@ -95,30 +100,74 @@ export function LandingPage() {
                 title="Insurance that helps you get your stuff back."
                 subtitle="TD IT Solution Insurance covers your vehicles, laptops, phones, tablets, TVs, desktops and business equipment — and works with GPS-assisted recovery and security-company partners when something is lost or stolen. Cover is subject to policy terms, underwriting and claims assessment."
               />
+
               <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
                 <Button variant="primary" size="lg" fullWidth onClick={scrollToWaitlist} className="sm:w-auto">
                   Get Notified
                 </Button>
+                <Link to="/signup">
+                  <Button variant="secondary" size="lg" fullWidth className="sm:w-auto">
+                    Create account
+                  </Button>
+                </Link>
+              </div>
+              <div className="mt-4">
                 <ArrowLink href="#how-it-works" tone="default">
                   See how it works
                 </ArrowLink>
               </div>
+
+              <ul className="mt-8 flex flex-wrap gap-2" aria-label="Trust highlights">
+                {HERO_TRUST_BADGES.map((item) => (
+                  <li key={item.label}>
+                    <Badge tone={item.tone} size="md" icon={<item.icon className="h-3.5 w-3.5" />}>
+                      {item.label}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-10 grid grid-cols-2 gap-4 border-t border-slate-200/80 pt-8 sm:grid-cols-3 sm:gap-6">
+                <StatBlock value={8} suffix="+" label="Asset categories" size="md" animate />
+                <StatBlock value={3} label="Simple steps" size="md" animate />
+                <div className="col-span-2 flex flex-col sm:col-span-1 sm:items-start sm:text-left">
+                  <p className="text-2xl font-bold leading-none tracking-tight text-primary sm:text-3xl">
+                    Monthly
+                  </p>
+                  <span
+                    aria-hidden="true"
+                    className="mt-4 block h-1 w-10 rounded-full bg-accent-gold-deep"
+                  />
+                  <span className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 sm:text-sm">
+                    Per asset billing
+                  </span>
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-text-secondary sm:text-sm">
+                Simple monthly subscription per registered item — pricing finalizing at launch.
+              </p>
             </div>
           </Reveal>
 
-          {/* Right: brand logo at hero scale (desktop) */}
-          <Reveal
-            direction="right"
-            delay={0.1}
-            distance={32}
-            className="relative hidden lg:flex lg:items-center lg:justify-center"
-          >
-            <Logo
-              tone="navy"
-              imageClassName="h-auto max-h-[min(420px,45vh)] w-full max-w-md object-contain"
-              label="TD IT Solution Insurance"
-            />
+          <Reveal direction="right" delay={0.1} distance={32} className="relative lg:pt-4">
+            <HeroVisual />
           </Reveal>
+        </div>
+
+        <div className="relative mx-auto w-full max-w-7xl px-6 pb-14 lg:px-8">
+          <Reveal>
+            <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm sm:p-5">
+              <p className="text-center text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary sm:text-left">
+                Cover the assets you rely on every day
+              </p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
+                {HERO_ASSET_TYPES.map((type) => (
+                  <AssetBadge key={type} type={type} size="sm" />
+                ))}
+              </div>
+            </div>
+          </Reveal>
+          <ChevronDivider tone="gold" className="mx-auto mt-10" />
         </div>
       </Section>
 
@@ -164,7 +213,7 @@ export function LandingPage() {
       </Section>
 
       {/* 3. Asset Types Covered — staggered/uneven grid */}
-      <Section background="white">
+      <Section background="white" id="coverage">
         <SectionHeading
           eyebrow="What's Covered"
           title="Cover for the assets you actually own"
@@ -232,98 +281,12 @@ export function LandingPage() {
         </div>
       </Section>
 
-      {/* 5. Pricing / Plans Teaser — kept close to original rhythm, intentionally */}
-      <Section background="white">
-        <SectionHeading
-          eyebrow="Plans"
-          title="Simple monthly plans per asset"
-          subtitle="Pay monthly for each appliance or device you register with us. We're finalizing tier pricing — join the waitlist to see plans first."
-        />
-        <div className="mt-10 grid items-stretch gap-6 sm:grid-cols-3">
-          <Reveal>
-            <Card interactive={false} className="relative h-full">
-              <ChevronMotif tone="navy" className="pointer-events-none absolute right-0 top-0 h-8 w-14 opacity-[0.06]" />
-              <CardHeader title="Basic" description="Core cover for a single asset." />
-              <CardFooter>
-                <span className="text-sm text-text-secondary">Coming soon</span>
-              </CardFooter>
-            </Card>
-          </Reveal>
-          <Reveal delay={0.06}>
-            <Card interactive={false} className="relative h-full">
-              <ChevronMotif tone="navy" className="pointer-events-none absolute right-0 top-0 h-8 w-14 opacity-[0.06]" />
-              <CardHeader title="Standard" description="Cover for multiple everyday assets." />
-              <CardFooter>
-                <span className="text-sm text-text-secondary">Coming soon</span>
-              </CardFooter>
-            </Card>
-          </Reveal>
-          <Reveal delay={0.12}>
-            <Card interactive={false} className="relative h-full">
-              <ChevronMotif tone="navy" className="pointer-events-none absolute right-0 top-0 h-8 w-14 opacity-[0.06]" />
-              <CardHeader title="Premium" description="Broader cover, including business equipment." />
-              <CardFooter>
-                <span className="text-sm text-text-secondary">Coming soon</span>
-              </CardFooter>
-            </Card>
-          </Reveal>
-        </div>
-        <div className="mt-8">
-          <Button variant="secondary" size="md" onClick={scrollToWaitlist}>
-            Get Notified When Plans Launch
-          </Button>
-        </div>
-      </Section>
+      <PlansSection onJoinWaitlist={scrollToWaitlist} />
 
-      {/* 6. What to Expect — alternating left/right rows, one per row */}
-      <Section background="warm">
-        <SectionHeading
-          align="center"
-          eyebrow="What to Expect"
-          title="Here's what happens if your laptop is stolen"
-          subtitle="This is how the product is designed to work — not a customer story, since we're pre-launch."
-        />
-        <div className="mx-auto mt-12 flex max-w-3xl flex-col gap-8">
-          <Reveal direction="left">
-            <div className="flex items-start gap-6">
-              <IconTile icon={AlertTriangleIcon} />
-              <div>
-                <h3 className="text-lg font-semibold text-text-primary">You report it.</h3>
-                <p className="mt-2 text-base text-text-secondary">
-                  You'd flag the laptop as stolen in the app, in a couple of taps.
-                </p>
-              </div>
-            </div>
-          </Reveal>
-          <Reveal direction="right" delay={0.1}>
-            <div className="flex items-start gap-6 sm:flex-row-reverse sm:text-right">
-              <IconTile icon={PhoneCallIcon} />
-              <div>
-                <h3 className="text-lg font-semibold text-text-primary">We coordinate.</h3>
-                <p className="mt-2 text-base text-text-secondary">
-                  We'd notify our security-company partners and start working the case.
-                </p>
-              </div>
-            </div>
-          </Reveal>
-          <Reveal direction="left" delay={0.2}>
-            <div className="flex items-start gap-6">
-              <IconTile icon={CheckCircleIcon} />
-              <div>
-                <h3 className="text-lg font-semibold text-text-primary">You're kept in the loop.</h3>
-                <p className="mt-2 text-base text-text-secondary">
-                  You'd get updates as things progress — recovery is best-effort and depends on
-                  tracking status and on-the-ground conditions, subject to policy terms,
-                  underwriting and claims assessment.
-                </p>
-              </div>
-            </div>
-          </Reveal>
-        </div>
-      </Section>
+      <WhatToExpectSection />
 
       {/* 7. FAQ */}
-      <Section background="white" width="default">
+      <Section background="white" width="default" id="faq">
         <SectionHeading eyebrow="Questions" title="Frequently asked questions" />
         <div className="mt-10">
           <Reveal>
