@@ -10,12 +10,10 @@ describe('auth/device', () => {
     let resultPromise: Promise<string>;
 
     jest.isolateModules(() => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const secureStorage = require('../secure-storage');
       jest.spyOn(secureStorage, 'getStoredDeviceId').mockResolvedValueOnce(null);
       jest.spyOn(secureStorage, 'setStoredDeviceId').mockResolvedValue(undefined);
 
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { getOrCreateDeviceId } = require('../device');
       resultPromise = getOrCreateDeviceId();
     });
@@ -29,12 +27,10 @@ describe('auth/device', () => {
     let setSpy: jest.SpyInstance;
 
     jest.isolateModules(() => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const secureStorage = require('../secure-storage');
       jest.spyOn(secureStorage, 'getStoredDeviceId').mockResolvedValueOnce('existing-device-id');
       setSpy = jest.spyOn(secureStorage, 'setStoredDeviceId');
 
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { getOrCreateDeviceId } = require('../device');
       resultPromise = getOrCreateDeviceId();
     });

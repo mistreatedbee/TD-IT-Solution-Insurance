@@ -36,10 +36,7 @@ export function AcceptInvitationScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) {
-      setStep('invalid');
-      return;
-    }
+    if (!token) return;
     getInvitation(token)
       .then((invite) => {
         setEmail(invite.email ?? null);
@@ -52,6 +49,8 @@ export function AcceptInvitationScreen() {
       })
       .catch(() => setStep('invalid'));
   }, [token]);
+
+  const displayStep: Step = !token ? 'invalid' : step;
 
   async function handleAccept() {
     if (!token) return;
@@ -110,7 +109,7 @@ export function AcceptInvitationScreen() {
     }
   }
 
-  if (step === 'loading') {
+  if (displayStep === 'loading') {
     return (
       <Screen>
         <Text style={styles.title}>Loading invitation&hellip;</Text>
@@ -118,7 +117,7 @@ export function AcceptInvitationScreen() {
     );
   }
 
-  if (step === 'invalid') {
+  if (displayStep === 'invalid') {
     return (
       <Screen>
         <Text style={styles.title}>Invitation unavailable</Text>
@@ -133,7 +132,7 @@ export function AcceptInvitationScreen() {
     );
   }
 
-  if (step === 'done') {
+  if (displayStep === 'done') {
     return (
       <Screen>
         <Alert tone="success">
@@ -149,7 +148,7 @@ export function AcceptInvitationScreen() {
     );
   }
 
-  if (step === 'mfa' && enrollment) {
+  if (displayStep === 'mfa' && enrollment) {
     return (
       <Screen>
         <Text style={styles.title}>Set up two-factor authentication</Text>
