@@ -2,6 +2,7 @@ import { Section } from '../components/Section';
 import { SectionHeading } from '../components/SectionHeading';
 import { Logo } from '../components/Logo';
 import { ArrowLink } from '../components/ArrowLink';
+import { COMPANY_CONTACT } from '../lib/companyContact';
 
 /**
  * Minimal, real (not "coming soon") Privacy Policy page.
@@ -55,7 +56,10 @@ export function PrivacyPolicyPage() {
             <h2 className="text-lg font-semibold text-text-primary">Your rights</h2>
             <p>
               You can ask us to delete your details at any time by contacting{' '}
-              [SUPPORT EMAIL — pending]. We handle personal information under the Protection of
+              <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-primary hover:underline">
+                {COMPANY_CONTACT.email}
+              </a>
+              . We handle personal information under the Protection of
               Personal Information Act 4 of 2013 (POPIA).
             </p>
           </div>

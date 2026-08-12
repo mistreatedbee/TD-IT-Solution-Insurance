@@ -4,6 +4,7 @@ import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { ArrowLink } from '../components/ArrowLink';
 import { submitToWaitlist, WaitlistNotConnectedError } from '../lib/waitlistApi';
+import { COMPANY_CONTACT } from '../lib/companyContact';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -66,9 +67,11 @@ export function WaitlistForm() {
         <p className="mt-3 text-base text-text-secondary">
           Thanks for your interest — we're not able to save waitlist entries yet, because this
           form isn't connected to a backend. Nothing you entered was stored. Please check back
-          soon, or once it's available, email us at{' '}
-          <span className="font-medium">[SUPPORT EMAIL — pending]</span> and we'll add you to the
-          list directly.
+          soon, or email us at{' '}
+          <a href={`mailto:${COMPANY_CONTACT.email}`} className="font-medium text-primary hover:underline">
+            {COMPANY_CONTACT.email}
+          </a>{' '}
+          and we&apos;ll add you to the list directly.
         </p>
       </div>
     );
@@ -115,7 +118,10 @@ export function WaitlistForm() {
       {status === 'error' && (
         <p aria-live="polite" className="mt-4 text-sm text-red-600">
           Something went wrong submitting the form. Try again, or email us directly at{' '}
-          [SUPPORT EMAIL — pending] and we'll add you to the list.
+          <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-primary hover:underline">
+            {COMPANY_CONTACT.email}
+          </a>{' '}
+          and we&apos;ll add you to the list.
         </p>
       )}
     </form>

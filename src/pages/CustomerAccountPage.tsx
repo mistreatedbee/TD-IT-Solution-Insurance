@@ -4,6 +4,7 @@ import { ArrowLink } from '../components/ArrowLink';
 import { InlineAlert } from '../dashboard/components/ui';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
+import { COMPANY_CONTACT } from '../lib/companyContact';
 
 export function CustomerAccountPage() {
   const auth = useCustomerAuth();
@@ -62,6 +63,16 @@ export function CustomerAccountPage() {
         <div className="flex flex-col gap-2 text-sm text-text-secondary">
           <span>Bundle ID (iOS): co.za.tditsolutions.insurance</span>
           <span>Package (Android): co.za.tditsolutions.insurance</span>
+        </div>
+        <div className="border-t border-border pt-4">
+          <p className="text-sm font-semibold text-text-primary">Need help?</p>
+          <p className="mt-1 text-sm text-text-secondary">
+            <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-primary hover:underline">
+              {COMPANY_CONTACT.email}
+            </a>
+            {' · '}
+            {COMPANY_CONTACT.phones.map((p) => p.display).join(' · ')}
+          </p>
         </div>
       </div>
 

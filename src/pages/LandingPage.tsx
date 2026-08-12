@@ -21,6 +21,7 @@ import { Logo } from '../components/Logo';
 import { AssetBadge, type AssetType } from '../components/AssetBadge';
 import { WaitlistForm } from './WaitlistForm';
 import { ChevronMotif, ChevronDivider } from './ChevronMotif';
+import { COMPANY_CONTACT } from '../lib/companyContact';
 import {
   Accordion,
   AccordionItem
@@ -198,8 +199,8 @@ export function LandingPage() {
             <SectionHeading
               align="left"
               eyebrow="Why Trust Us"
-              title="Built to be transparent about what's live and what's coming"
-              subtitle="We'd rather tell you exactly where we are than oversell it."
+              title="Recovery-first protection, built in Nelspruit"
+              subtitle="TD IT Solution (Pty) Ltd was established by Thabo Derrick Magagula to help South Africans protect electrically movable assets — from TVs and laptops to phones and business equipment — with discreet GPS tracking and coordinated recovery when something goes missing."
             />
             <p className="mt-6 max-w-md text-base text-text-secondary">
               We only collect what we need, and we handle personal information under South African
@@ -214,16 +215,16 @@ export function LandingPage() {
             <Reveal direction="right" delay={0.05}>
               <FeatureCard
                 icon={ShieldCheckIcon}
-                title="Licensed insurer"
-                description="TD IT Solution Insurance is the underwriter — not a broker or a platform placing your business with someone else. Full regulatory details are in the footer of every page."
+                title="Monthly cover for registered assets"
+                description="Insure as many appliances and devices as you need. Each registered asset can carry a small, discreet GPS tracker, with a simple monthly subscription per item — subject to policy terms, underwriting and claims assessment."
                 align="left"
               />
             </Reveal>
             <Reveal direction="right" delay={0.15}>
               <FeatureCard
                 icon={MapPinIcon}
-                title="GPS-assisted recovery, coordinated with security-company partners"
-                description="When you report an asset stolen, we work with security-company partners to try to recover it. This is best-effort, not a guarantee — recovery depends on tracking status and on-the-ground conditions."
+                title="GPS location plus partner-led recovery"
+                description="When you report an asset stolen, we use GPS telemetry to guide recovery efforts and work with trained security-company partners. Where appropriate, cases are handed to the South African Police Service (SAPS) for further action. Recovery is best-effort, not guaranteed."
                 align="left"
               />
             </Reveal>
@@ -235,8 +236,8 @@ export function LandingPage() {
       <Section background="white">
         <SectionHeading
           eyebrow="Plans"
-          title="Plans for every asset type"
-          subtitle="We're finalizing pricing. Join the waitlist and you'll be the first to see it — before anyone else."
+          title="Simple monthly plans per asset"
+          subtitle="Pay monthly for each appliance or device you register with us. We're finalizing tier pricing — join the waitlist to see plans first."
         />
         <div className="mt-10 grid items-stretch gap-6 sm:grid-cols-3">
           <Reveal>
@@ -344,10 +345,16 @@ export function LandingPage() {
                 before you commit to anything.
               </AccordionItem>
               <AccordionItem value="gps" title="How does GPS-assisted recovery actually work?">
-                The model: your asset has GPS tracking hardware, and if it's reported lost or
-                stolen, we work with security-company partners to try to locate and recover it.
-                This is a coordinated, best-effort process, not real-time live tracking you can
-                watch yourself today.
+                Registered assets can carry a small GPS tracking device that is difficult to spot
+                once installed. If an item is reported lost or stolen, we use location data to
+                guide recovery and coordinate with security-company partners. Where a crime is
+                suspected, matters may be referred to SAPS. Recovery is a coordinated, best-effort
+                process — not a guarantee.
+              </AccordionItem>
+              <AccordionItem value="monthly" title="How does monthly billing work?">
+                You pay a monthly subscription for each asset you register and want covered. You
+                can insure multiple items on one account. Exact amounts and billing dates will be
+                set out in your policy documents at launch.
               </AccordionItem>
               <AccordionItem value="privacy" title="How do you handle my personal information?">
                 We collect only what we need, for the purpose we tell you about at the time — for
@@ -359,7 +366,53 @@ export function LandingPage() {
         </div>
       </Section>
 
-      {/* 8. Final CTA — calm, centered, unchanged rhythm */}
+      {/* 8. Contact */}
+      <Section background="white" id="contact">
+        <SectionHeading
+          align="center"
+          eyebrow="Contact"
+          title="Visit or call our Nelspruit office"
+          subtitle="We're happy to answer questions about cover, GPS tracking, and recovery."
+        />
+        <div className="mx-auto mt-10 grid max-w-3xl gap-8 text-center sm:grid-cols-2 sm:text-left">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Address</p>
+            <address className="mt-2 not-italic text-base text-text-primary">
+              {COMPANY_CONTACT.addressLines.map((line) => (
+                <span key={line} className="block">
+                  {line}
+                </span>
+              ))}
+            </address>
+            <p className="mt-4 text-sm text-text-secondary">{COMPANY_CONTACT.officeHours}</p>
+          </div>
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Phone & email</p>
+            <ul className="mt-2 space-y-2 text-base text-text-primary">
+              {COMPANY_CONTACT.phones.map((phone) => (
+                <li key={phone.href}>
+                  <a href={phone.href} className="font-medium text-primary hover:underline">
+                    {phone.display}
+                  </a>
+                </li>
+              ))}
+              <li>
+                <a
+                  href={`mailto:${COMPANY_CONTACT.email}`}
+                  className="font-medium text-primary hover:underline"
+                >
+                  {COMPANY_CONTACT.email}
+                </a>
+              </li>
+            </ul>
+            <p className="mt-4 text-sm text-text-secondary">
+              Contact: {COMPANY_CONTACT.founderName}
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      {/* 9. Final CTA — calm, centered, unchanged rhythm */}
       <Section background="warm" id="waitlist">
         <SectionHeading
           align="center"
@@ -374,7 +427,7 @@ export function LandingPage() {
         </div>
       </Section>
 
-      {/* 9. Footer */}
+      {/* 10. Footer */}
       <Section as="footer" spacing="default" background="navy" className="text-text-inverse">
         <h2 id="footer-heading" className="sr-only">
           Site footer
@@ -386,20 +439,21 @@ export function LandingPage() {
               <Logo tone="navy" size="lg" label="TD IT Solution Insurance" />
             </div>
             <p className="mt-4 text-sm text-text-inverse-muted">
-              Insurance for the things you can't afford to lose.
+              Insurance and GPS-assisted recovery for the assets you can&apos;t afford to lose.
+              Based in Nelspruit, Mpumalanga.
             </p>
           </div>
 
           {/* Column B — Company / Legal (compliance-mandated disclosure block) */}
           <div className="text-sm text-text-inverse-muted">
             <p>
-              [REGISTERED ENTITY NAME — pending] (Pty) Ltd, trading as{' '}
-              <span className="text-text-inverse">TD IT Solution Insurance</span>
+              {COMPANY_CONTACT.legalName}, trading as{' '}
+              <span className="text-text-inverse">{COMPANY_CONTACT.tradingName}</span>
             </p>
             <p className="mt-2">Reg. No. [COMPANY REG NO — pending]</p>
             <p className="mt-2">
-              TD IT Solution Insurance is a licensed non-life insurer in terms of the Insurance
-              Act 18 of 2017. [INSURER LICENCE — pending confirmation]
+              {COMPANY_CONTACT.tradingName} is being registered as a licensed non-life insurer in
+              terms of the Insurance Act 18 of 2017. [INSURER LICENCE — pending confirmation]
             </p>
             <p className="mt-2">
               Authorised financial services provider, FSP No. [FSP NUMBER — pending]
@@ -408,8 +462,29 @@ export function LandingPage() {
 
           {/* Column C — Contact */}
           <div className="text-sm text-text-inverse-muted">
-            <p>[REGISTERED ADDRESS — pending]</p>
-            <p className="mt-2">[SUPPORT EMAIL — pending]</p>
+            <address className="not-italic">
+              {COMPANY_CONTACT.addressLines.map((line) => (
+                <span key={line} className="block">
+                  {line}
+                </span>
+              ))}
+            </address>
+            <p className="mt-2">
+              <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-text-inverse hover:underline">
+                {COMPANY_CONTACT.email}
+              </a>
+            </p>
+            <p className="mt-2">
+              {COMPANY_CONTACT.phones.map((phone, index) => (
+                <span key={phone.href}>
+                  {index > 0 ? ' · ' : null}
+                  <a href={phone.href} className="text-text-inverse hover:underline">
+                    {phone.display}
+                  </a>
+                </span>
+              ))}
+            </p>
+            <p className="mt-2">{COMPANY_CONTACT.officeHours}</p>
           </div>
 
           {/* Column D — Legal & Complaints */}
@@ -421,6 +496,9 @@ export function LandingPage() {
               </ArrowLink>
               <ArrowLink tone="inverse" href="/signup" size="sm">
                 Create account
+              </ArrowLink>
+              <ArrowLink tone="inverse" href="#contact" size="sm">
+                Contact us
               </ArrowLink>
               <ArrowLink tone="inverse" href="/privacy" size="sm">
                 Privacy Policy
@@ -436,15 +514,18 @@ export function LandingPage() {
               </ArrowLink>
             </div>
             <p className="mt-4">
-              Not happy with something? Contact us at [SUPPORT EMAIL — pending] first. If we
-              can't resolve it, you can escalate to the{' '}
-              [OMBUD FOR SHORT-TERM INSURANCE — pending].
+              Not happy with something? Contact us at{' '}
+              <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-text-inverse hover:underline">
+                {COMPANY_CONTACT.email}
+              </a>{' '}
+              first. If we can&apos;t resolve it, you can escalate to the{' '}
+              Ombudsman for Short-Term Insurance (OSTI).
             </p>
           </div>
         </div>
 
         <div className="mt-10 border-t border-white/10 pt-6 text-sm text-text-inverse-muted">
-          © {new Date().getFullYear()} TD IT Solution Insurance. All rights reserved.
+          © {new Date().getFullYear()} {COMPANY_CONTACT.tradingName}. All rights reserved.
         </div>
       </Section>
     </>

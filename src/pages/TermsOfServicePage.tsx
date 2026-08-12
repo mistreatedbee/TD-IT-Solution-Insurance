@@ -2,6 +2,7 @@ import { Section } from '../components/Section';
 import { SectionHeading } from '../components/SectionHeading';
 import { Logo } from '../components/Logo';
 import { ArrowLink } from '../components/ArrowLink';
+import { COMPANY_CONTACT } from '../lib/companyContact';
 
 /**
  * Minimal, real website-terms-of-use page (not policy wording, not a
@@ -23,9 +24,9 @@ export function TermsOfServicePage() {
           <div>
             <h2 className="text-lg font-semibold text-text-primary">Use of this site</h2>
             <p>
-              This site is for informational purposes and to let you join our pre-launch
-              waitlist. It does not currently offer account creation, policy purchase, or claims
-              submission.
+              This site provides information about TD IT Solution Insurance, lets you create a
+              customer account, and join our pre-launch waitlist. Policy purchase and claims
+              submission are not yet available on the web.
             </p>
           </div>
           <div>
@@ -49,7 +50,16 @@ export function TermsOfServicePage() {
           </div>
           <div>
             <h2 className="text-lg font-semibold text-text-primary">Contact</h2>
-            <p>Questions about these terms: [SUPPORT EMAIL — pending].</p>
+            <p>
+              Questions about these terms:{' '}
+              <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-primary hover:underline">
+                {COMPANY_CONTACT.email}
+              </a>
+              .
+            </p>
+            <p className="mt-2 text-sm">
+              {COMPANY_CONTACT.legalName} · {COMPANY_CONTACT.addressLines.join(', ')}
+            </p>
           </div>
         </div>
         <div className="mt-10">
