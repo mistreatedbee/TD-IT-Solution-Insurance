@@ -4,6 +4,7 @@ import { Badge, Button, Input, SectionHeading } from '../components';
 import { ArrowLink } from '../components/ArrowLink';
 import { InlineAlert } from '../dashboard/components/ui';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
+import { SupabaseAuthConfigNotice } from '../customer/components/SupabaseAuthConfigNotice';
 import { mapSupabaseAuthError, resendSignupVerification, signUpWithSupabase } from '../customer/supabase/auth';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -110,6 +111,7 @@ export function CustomerSignupPage() {
       <p className="mb-6 text-sm text-text-secondary">Takes about a minute. Secured by Supabase Auth.</p>
 
       {formError ? <InlineAlert tone="danger">{formError}</InlineAlert> : null}
+      <SupabaseAuthConfigNotice />
 
       <form className="mt-4 space-y-4" onSubmit={onSubmit} noValidate>
         <Input

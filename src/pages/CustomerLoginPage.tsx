@@ -6,6 +6,7 @@ import { InlineAlert } from '../dashboard/components/ui';
 import { ApiError } from '../customer/api/errors';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
+import { SupabaseAuthConfigNotice } from '../customer/components/SupabaseAuthConfigNotice';
 
 export function CustomerLoginPage() {
   const auth = useCustomerAuth();
@@ -96,6 +97,7 @@ export function CustomerLoginPage() {
       </p>
 
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+      <SupabaseAuthConfigNotice />
 
       {mfaToken ? (
         <form className="mt-4 space-y-4" onSubmit={onSubmitMfa}>

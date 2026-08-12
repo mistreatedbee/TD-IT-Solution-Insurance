@@ -5,7 +5,7 @@ import { InlineAlert } from '../dashboard/components/ui';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { exchangeSupabaseSession, mapSupabaseAuthError } from '../customer/supabase/auth';
-import { supabase } from '../customer/supabase/client';
+import { getSupabase } from '../customer/supabase/client';
 import { ApiError } from '../customer/api/errors';
 
 type CallbackState = 'working' | 'verified' | 'error';
@@ -42,7 +42,7 @@ export function CustomerAuthCallbackPage() {
 
         const code = params.get('code');
         if (code) {
-          const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          const { data, error: exchangeError } = await getSupabase().auth.exchangeCodeForSession(code);
           if (exchangeError || !data.session?.access_token) {
             throw exchangeError ?? new Error('Could not complete sign-in from email link.');
           }
@@ -50,7 +50,7 @@ export function CustomerAuthCallbackPage() {
           return;
         }
 
-        const { data, error: sessionError } = await supabase.auth.getSession();
+        const { data, error: sessionError } = await getSupabase().auth.getSession();
         if (sessionError) throw sessionError;
         if (data.session?.access_token) {
           await completeWithSession(data.session.access_token);

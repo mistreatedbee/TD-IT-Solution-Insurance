@@ -68,8 +68,8 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       }
     }
     try {
-      const { supabase } = await import('../supabase/client');
-      await supabase.auth.signOut();
+      const { getSupabase } = await import('../supabase/client');
+      await getSupabase().auth.signOut();
     } catch {
       /* best effort */
     }

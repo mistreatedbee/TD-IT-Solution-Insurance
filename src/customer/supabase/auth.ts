@@ -1,7 +1,11 @@
 import { API_BASE_URL } from '../api/config';
 import { ApiError } from '../api/errors';
 import { getOrCreateWebDeviceId } from '../auth/deviceId';
-import { supabase, supabaseAuthRedirectUrl } from './client';
+import { getSupabase, supabaseAuthRedirectUrl } from './client';
+
+function requireSupabase() {
+  return getSupabase();
+}
 
 export interface BackendSessionTokens {
   accessToken: string;
@@ -41,7 +45,7 @@ export async function exchangeSupabaseSession(
 }
 
 export async function signUpWithSupabase(email: string, password: string): Promise<void> {
-  const { error } = await supabase.auth.signUp({
+  const { error } = await requireSupabase().auth.signUp({
     email: email.trim().toLowerCase(),
     password,
     options: {
@@ -55,7 +59,7 @@ export async function signInWithSupabase(
   email: string,
   password: string,
 ): Promise<BackendSessionTokens> {
-  const { data, error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await requireSupabase().auth.signInWithPassword({
     email: email.trim().toLowerCase(),
     password,
   });
@@ -67,14 +71,14 @@ export async function signInWithSupabase(
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {
-  const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+  const { error } = await requireSupabase().auth.resetPasswordForEmail(email.trim().toLowerCase(), {
     redirectTo: supabaseAuthRedirectUrl('recovery'),
   });
   if (error) throw error;
 }
 
 export async function resendSignupVerification(email: string): Promise<void> {
-  const { error } = await supabase.auth.resend({
+  const { error } = await requireSupabase().auth.resend({
     type: 'signup',
     email: email.trim().toLowerCase(),
     options: {
@@ -85,10 +89,10 @@ export async function resendSignupVerification(email: string): Promise<void> {
 }
 
 export async function updatePasswordWithSupabase(newPassword: string): Promise<BackendSessionTokens> {
-  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  const { error } = await requireSupabase().auth.updateUser({ password: newPassword });
   if (error) throw error;
 
-  const { data, error: sessionError } = await supabase.auth.getSession();
+  const { data, error: sessionError } = await requireSupabase().auth.getSession();
   if (sessionError) throw sessionError;
   if (!data.session?.access_token) {
     throw new Error('Password updated but no active session.');

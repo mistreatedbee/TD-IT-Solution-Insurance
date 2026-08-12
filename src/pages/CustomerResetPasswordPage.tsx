@@ -5,7 +5,7 @@ import { InlineAlert } from '../dashboard/components/ui';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { mapSupabaseAuthError, updatePasswordWithSupabase } from '../customer/supabase/auth';
-import { supabase } from '../customer/supabase/client';
+import { getSupabase } from '../customer/supabase/client';
 
 const PASSWORD_MIN_LENGTH = 10;
 
@@ -19,9 +19,12 @@ export function CustomerResetPasswordPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      setReady(Boolean(data.session));
-    });
+    void getSupabase()
+      .auth.getSession()
+      .then(({ data }) => {
+        setReady(Boolean(data.session));
+      })
+      .catch(() => setReady(false));
   }, []);
 
   async function onSubmit(e: FormEvent) {
