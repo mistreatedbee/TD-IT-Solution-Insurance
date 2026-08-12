@@ -8,6 +8,7 @@ import {
   CheckCircleIcon
 } from 'lucide-react';
 import type { ComponentType } from 'react';
+import { Link } from 'react-router-dom';
 import { Section } from '../components/Section';
 import { SectionHeading } from '../components/SectionHeading';
 import { FeatureCard } from '../components/FeatureCard';
@@ -56,8 +57,20 @@ export function LandingPage() {
     <>
       {/* Header chrome — not one of the 9 numbered sections */}
       <Section spacing="compact" as="header">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <Logo variant="full" tone="navy" size="lg" href="/" />
+          <nav className="flex shrink-0 items-center gap-2 sm:gap-3" aria-label="Account">
+            <Link to="/login">
+              <Button variant="secondary" size="sm">
+                Log in
+              </Button>
+            </Link>
+            <Link to="/signup">
+              <Button variant="primary" size="sm">
+                Sign up
+              </Button>
+            </Link>
+          </nav>
         </div>
       </Section>
 
@@ -401,7 +414,14 @@ export function LandingPage() {
 
           {/* Column D — Legal & Complaints */}
           <div className="text-sm text-text-inverse-muted">
+            <p className="mb-2 text-xs uppercase tracking-wide text-text-inverse-muted">Customer account</p>
             <div className="flex flex-col gap-2">
+              <ArrowLink tone="inverse" href="/login" size="sm">
+                Log in
+              </ArrowLink>
+              <ArrowLink tone="inverse" href="/signup" size="sm">
+                Create account
+              </ArrowLink>
               <ArrowLink tone="inverse" href="/privacy" size="sm">
                 Privacy Policy
               </ArrowLink>

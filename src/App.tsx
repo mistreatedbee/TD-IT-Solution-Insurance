@@ -1,5 +1,10 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Outlet, Routes, Route } from 'react-router-dom';
+import { CustomerAuthProvider } from './customer/auth/CustomerAuthProvider';
+import { CustomerAccountPage } from './pages/CustomerAccountPage';
+import { CustomerForgotPasswordPage } from './pages/CustomerForgotPasswordPage';
+import { CustomerLoginPage } from './pages/CustomerLoginPage';
+import { CustomerSignupPage } from './pages/CustomerSignupPage';
 import { LandingPage } from './pages/LandingPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsOfServicePage } from './pages/TermsOfServicePage';
@@ -46,6 +51,18 @@ export function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/terms" element={<TermsOfServicePage />} />
+            <Route
+              element={
+                <CustomerAuthProvider>
+                  <Outlet />
+                </CustomerAuthProvider>
+              }
+            >
+              <Route path="/login" element={<CustomerLoginPage />} />
+              <Route path="/signup" element={<CustomerSignupPage />} />
+              <Route path="/forgot-password" element={<CustomerForgotPasswordPage />} />
+              <Route path="/account" element={<CustomerAccountPage />} />
+            </Route>
 
             <Route
               path="/admin/*"
