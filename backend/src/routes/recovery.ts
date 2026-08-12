@@ -11,7 +11,7 @@ import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { serializeRecoveryCase } from '../repositories/recovery-cases.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
-import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
+import { createRateLimiter } from '../middleware/rate-limit.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
 
 const createCaseSchema = z.object({

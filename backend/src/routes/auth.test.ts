@@ -341,6 +341,7 @@ describe('POST /auth/login SR-14 forced-re-enrollment (api-design.md §11 Amendm
       assets: undefined as unknown as AppContext['assets'],
       policyStatusHistory: undefined as unknown as AppContext['policyStatusHistory'],
       adminAccessLog: undefined as unknown as AppContext['adminAccessLog'],
+      recoveryCases: undefined as unknown as AppContext['recoveryCases'],
     };
 
     const started = await startTestServer(ctx);
