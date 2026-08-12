@@ -41,8 +41,11 @@ describe('db/feature004-collections — admin_access_log bootstrap specs', () =>
     };
     const schema = validator.$and[0]?.$jsonSchema;
     expect(schema).toBeDefined();
+    if (!schema) {
+      throw new Error('admin_access_log validator missing $jsonSchema branch');
+    }
 
-    expect(schema!.required).toEqual(
+    expect(schema.required).toEqual(
       expect.arrayContaining([
         'eventType',
         'actorAccountId',
@@ -53,7 +56,7 @@ describe('db/feature004-collections — admin_access_log bootstrap specs', () =>
         'createdAt',
       ]),
     );
-    expect(schema!.properties.eventType?.enum).toEqual([
+    expect(schema.properties.eventType?.enum).toEqual([
       'privileged_data_access',
       'privileged_bulk_access',
     ]);

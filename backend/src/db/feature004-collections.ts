@@ -468,15 +468,18 @@ export async function bootstrapFeature004Collections(db: Db): Promise<BootstrapF
     specs: IndexDescription[],
   ): Promise<void> => {
     for (const spec of specs) {
-      const options: Omit<IndexDescription, 'key'> = {};
-      if (spec.name !== undefined) options.name = spec.name;
+      const indexName = spec.name;
+      if (indexName === undefined) {
+        throw new Error(`Index spec for ${collectionName} is missing name`);
+      }
+      const options: Omit<IndexDescription, 'key'> = { name: indexName };
       if (spec.sparse === true) options.sparse = true;
       if (spec.unique === true) options.unique = true;
       if (spec.partialFilterExpression !== undefined) {
         options.partialFilterExpression = spec.partialFilterExpression;
       }
       await db.collection(collectionName).createIndex(spec.key, options);
-      indexesEnsured.push({ collection: collectionName, name: spec.name! });
+      indexesEnsured.push({ collection: collectionName, name: indexName });
     }
   };
 
