@@ -1,24 +1,17 @@
 import { Logo } from '../components/Logo';
-import { ChevronMotifField } from './ChevronMotif';
 
 /**
- * Hero brand visual: chevron motif field with centered logo.
- * Page-local — decorative composition for the landing hero.
+ * Hero brand visual: large logo mark without decorative motif behind it.
  */
 export function HeroVisual() {
   return (
-    <div className="relative mx-auto w-full max-w-sm sm:max-w-md lg:max-w-none">
-      <div className="relative">
-        <ChevronMotifField className="mx-auto ring-1 ring-slate-900/5" />
-
-        <div className="absolute left-1/2 top-1/2 w-[min(72%,220px)] -translate-x-1/2 -translate-y-1/2">
-          <Logo
-            tone="navy"
-            imageClassName="h-auto w-full object-contain"
-            label="TD IT Solution Insurance"
-          />
-        </div>
-      </div>
+    <div className="relative mx-auto flex w-full max-w-lg items-center justify-center lg:max-w-xl">
+      <Logo
+        tone="navy"
+        size="xl"
+        imageClassName="h-auto w-full max-h-[min(420px,48vh)] max-w-xl object-contain"
+        label="TD IT Solution Insurance"
+      />
     </div>
   );
 }

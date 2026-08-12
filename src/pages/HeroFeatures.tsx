@@ -1,6 +1,5 @@
 import { MapPinIcon, ShieldCheckIcon, SmartphoneIcon } from 'lucide-react';
 import type { ComponentType } from 'react';
-import { AssetBadge, type AssetType } from '../components/AssetBadge';
 import { Reveal } from '../components/Reveal';
 import { StatBlock } from '../components/StatBlock';
 
@@ -21,8 +20,6 @@ const HERO_HIGHLIGHTS = [
     description: 'Coordinated response with trained recovery partners — best-effort, not guaranteed.',
   },
 ] as const;
-
-const HERO_ASSET_TYPES: AssetType[] = ['vehicle', 'laptop', 'phone', 'tablet', 'tv', 'desktop', 'business'];
 
 function HighlightItem({
   icon: Icon,
@@ -68,19 +65,6 @@ export function HeroFeatures() {
             <span className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary sm:text-sm">
               Per asset billing
             </span>
-          </div>
-        </div>
-      </Reveal>
-
-      <Reveal delay={0.12}>
-        <div className="rounded-2xl border border-border bg-white p-5 shadow-resting">
-          <p className="text-center text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary sm:text-left">
-            Cover the assets you rely on every day
-          </p>
-          <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
-            {HERO_ASSET_TYPES.map((type) => (
-              <AssetBadge key={type} type={type} size="sm" />
-            ))}
           </div>
         </div>
       </Reveal>
