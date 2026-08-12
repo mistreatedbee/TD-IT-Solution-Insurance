@@ -51,9 +51,7 @@ export function LiveTrackingScreen() {
       <Text style={styles.title}>Live recovery</Text>
 
       {caseError ? (
-        <Alert tone="warning">
-          Recovery case details are unavailable — the recovery API may not be deployed yet.
-        </Alert>
+        <Alert tone="warning">Could not load this recovery case. It may have been closed or removed.</Alert>
       ) : recoveryCase ? (
         <Card style={styles.card}>
           <View style={styles.headerRow}>
@@ -73,7 +71,7 @@ export function LiveTrackingScreen() {
           recordedAt={location?.recordedAt}
           emptyMessage={
             apiMissing
-              ? 'GPS location data is not available yet. The location API has not been deployed.'
+              ? 'No GPS location data for this case yet. Location appears after the first device ping.'
               : 'Waiting for the first GPS ping from your device…'
           }
         />

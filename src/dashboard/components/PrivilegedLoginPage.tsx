@@ -24,6 +24,7 @@ export function PrivilegedLoginPage({
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const redirect = params.get('redirect') ?? defaultRedirect;
+  const idleLogout = params.get('reason') === 'idle-timeout';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -79,6 +80,10 @@ export function PrivilegedLoginPage({
       <Card padding="lg" interactive={false} className="w-full max-w-md">
         <SectionHeading as="h1" title={title} size="md" className="mb-1" />
         <p className="mb-6 text-sm text-text-secondary">{subtitle}</p>
+
+        {idleLogout ? (
+          <InlineAlert tone="info">You were signed out after 15 minutes of inactivity. Sign in again to continue.</InlineAlert>
+        ) : null}
 
         {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
 

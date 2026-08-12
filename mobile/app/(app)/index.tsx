@@ -98,8 +98,9 @@ export default function HomeScreen() {
       <Card style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Recovery</Text>
         <Text style={styles.sectionBody}>
-          Report theft, track recovery on a live map, and file insurance claims. The recovery and
-          claims APIs are not live yet — flows preview the Phase 2 experience.
+          Report a theft to open a recovery case with our security partners. Live GPS map tracking
+          requires paired hardware and the GPS ingestion pipeline (not connected yet). Insurance
+          claims are not available in this release.
         </Text>
         <View style={styles.linkRow}>
           <Link href={'/report-theft' as Href} style={styles.link}>

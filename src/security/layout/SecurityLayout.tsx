@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Card, SectionHeading } from '../../components';
 import { useDashboardAuth } from '../../dashboard/auth/DashboardAuthProvider';
+import { usePrivilegedIdleTimeout } from '../../dashboard/auth/usePrivilegedIdleTimeout';
 import { DashboardShell } from '../../dashboard/components/PrivilegedLoginPage';
 import { LoadingState } from '../../dashboard/components/ui';
 
@@ -39,6 +40,7 @@ export function SecurityAuthGate() {
 
 export function SecurityLayout() {
   const { signOut, account } = useDashboardAuth();
+  usePrivilegedIdleTimeout('/security/login');
 
   return (
     <DashboardShell

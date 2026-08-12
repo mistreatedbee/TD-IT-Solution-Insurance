@@ -36,10 +36,8 @@ export function ReportTheftConfirmScreen() {
     } catch (err) {
       if (err instanceof NetworkUnavailableError) {
         setErrorMessage(err.message);
-      } else if (err instanceof ApiError && err.status === 404) {
-        setErrorMessage(
-          'Recovery service is not available yet. The theft-report API has not been deployed — your report was not submitted.',
-        );
+      } else if (err instanceof ApiError && err.status === 409) {
+        setErrorMessage('An open recovery case already exists for this asset.');
       } else if (err instanceof ApiError) {
         setErrorMessage(err.message || 'Could not submit your report. Try again.');
       } else {

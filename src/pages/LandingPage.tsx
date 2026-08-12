@@ -408,6 +408,12 @@ export function LandingPage() {
               <ArrowLink tone="inverse" href="/terms" size="sm">
                 Terms of Service
               </ArrowLink>
+              <ArrowLink tone="inverse" href="/admin/login" size="sm">
+                Admin portal
+              </ArrowLink>
+              <ArrowLink tone="inverse" href="/security/login" size="sm">
+                Security partner portal
+              </ArrowLink>
             </div>
             <p className="mt-4">
               Not happy with something? Contact us at [SUPPORT EMAIL — pending] first. If we

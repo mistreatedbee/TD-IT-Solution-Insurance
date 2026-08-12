@@ -5,7 +5,6 @@ import { useRouter, type Href } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRecoveryCasesQuery } from '../../../src/api/hooks/useRecovery';
-import { ApiError } from '../../../src/api/errors';
 import { Alert, Badge, Button, Card, Screen } from '../../../src/theme/primitives';
 import { colors, spacing, typography } from '../../../src/theme/tokens';
 
@@ -14,26 +13,19 @@ export default function LiveTrackingIndexScreen() {
   const { data, isLoading, isError, error } = useRecoveryCasesQuery();
 
   const cases = data?.data ?? [];
-  const apiMissing = isError && error instanceof ApiError && error.status === 404;
 
   return (
     <Screen>
       <Text style={styles.subtitle}>
-        Monitor active recovery cases when GPS hardware is paired and the recovery service is live.
+        Active recovery cases for your account. Location updates appear once GPS hardware sends its
+        first ping.
       </Text>
-
-      {apiMissing ? (
-        <Alert tone="info">
-          Recovery service is not deployed yet. Report a theft to preview the flow — live location
-          data will appear here once the GPS pipeline ships.
-        </Alert>
-      ) : null}
 
       {isLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : isError && !apiMissing ? (
+      ) : isError ? (
         <Alert tone="danger">
           {error instanceof Error ? error.message : 'Could not load recovery cases.'}
         </Alert>
