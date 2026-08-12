@@ -285,7 +285,7 @@ const adminAccessLogJsonSchemaBase: Document = {
 
 /**
  * Full collection validator. MongoDB $jsonSchema does not support JSON Schema
- * `if`/`then` — R-1 row-type invariants use $expr instead (database-addendum-001 §1.3).
+ * `if`/`then` — R-1 row-type invariants use $expr (aggregation syntax) instead.
  */
 export const adminAccessLogJsonSchemaValidator: Document = {
   $and: [
@@ -293,19 +293,23 @@ export const adminAccessLogJsonSchemaValidator: Document = {
     {
       $or: [
         {
-          $and: [
-            { $eq: ['$eventType', 'privileged_data_access'] },
-            { $ne: ['$targetAccountId', null] },
-            { $eq: ['$resultCount', null] },
-          ],
+          $expr: {
+            $and: [
+              { $eq: ['$eventType', 'privileged_data_access'] },
+              { $ne: ['$targetAccountId', null] },
+              { $eq: ['$resultCount', null] },
+            ],
+          },
         },
         {
-          $and: [
-            { $eq: ['$eventType', 'privileged_bulk_access'] },
-            { $eq: ['$targetAccountId', null] },
-            { $ne: ['$resultCount', null] },
-            { $gte: ['$resultCount', 0] },
-          ],
+          $expr: {
+            $and: [
+              { $eq: ['$eventType', 'privileged_bulk_access'] },
+              { $eq: ['$targetAccountId', null] },
+              { $ne: ['$resultCount', null] },
+              { $gte: ['$resultCount', 0] },
+            ],
+          },
         },
       ],
     },

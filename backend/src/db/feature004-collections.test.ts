@@ -65,7 +65,9 @@ describe('db/feature004-collections — admin_access_log bootstrap specs', () =>
     };
     const exprBranch = validator.$and[1];
     expect(exprBranch).toHaveProperty('$or');
-    const branches = (exprBranch as { $or: unknown[] }).$or;
+    const branches = (exprBranch as { $or: Array<{ $expr?: unknown }> }).$or;
     expect(branches).toHaveLength(2);
+    expect(branches[0]).toHaveProperty('$expr');
+    expect(branches[1]).toHaveProperty('$expr');
   });
 });
