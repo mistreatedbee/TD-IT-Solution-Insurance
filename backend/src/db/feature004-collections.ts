@@ -214,103 +214,102 @@ export const assetsJsonSchemaValidator: Document = {
 };
 
 /** database-addendum-001.md §1.3 — admin privileged-read audit trail (ADR-0006 R-1). */
-export const adminAccessLogJsonSchemaValidator: Document = {
-  $jsonSchema: {
-    bsonType: 'object',
-    required: [
-      'eventType',
-      'actorAccountId',
-      'actorSessionId',
-      'resourceType',
-      'endpoint',
-      'legalHold',
-      'createdAt',
-    ],
-    properties: {
-      eventType: {
-        enum: ['privileged_data_access', 'privileged_bulk_access'],
-        description:
-          'Row-type discriminator. Same two values as app.audit_event_type after migrations/032.',
-      },
-      actorAccountId: {
-        bsonType: 'string',
-        description:
-          'Soft reference to Supabase app.accounts.id (UUID string) — the admin who performed the read. Never null: every entry in this collection exists because an authenticated admin request was made.',
-      },
-      actorSessionId: {
-        bsonType: 'string',
-        description:
-          'AUD-1. Soft reference to Supabase app.sessions.id — sitting element of the join key. Required; no FK (referent routinely ages out).',
-      },
-      auditRequestId: {
-        bsonType: ['string', 'null'],
-        description:
-          'AUD-5. Server-generated only (req.auditRequestId). Not the cross-store join key. Best-effort within-call grouping.',
-      },
-      targetAccountId: {
-        bsonType: ['string', 'null'],
-        description:
-          'Soft reference to Supabase app.accounts.id. Non-null on privileged_data_access; null on privileged_bulk_access (enforced below).',
-      },
-      resourceType: { enum: ['policy', 'asset'] },
-      resourceId: {
-        bsonType: ['objectId', 'null'],
-        description:
-          'References policies._id or assets._id per resourceType. Null for list-level / call-scoped rows.',
-      },
-      resultCount: {
-        bsonType: ['int', 'long', 'null'],
-        minimum: 0,
-        description:
-          'R-1. Set on privileged_bulk_access only (including 0); null on every privileged_data_access row.',
-      },
-      endpoint: {
-        bsonType: 'string',
-        minLength: 1,
-        description:
-          'Method + path TEMPLATE only (e.g. GET /v1/admin/policies). Never req.originalUrl — C-17.',
-      },
-      ipAddress: {
-        bsonType: ['string', 'null'],
-        description:
-          'AUD-12: behavioural PII about an internal user; retention-bounded; not field-encrypted.',
-      },
-      userAgent: {
-        bsonType: ['string', 'null'],
-        description: 'AUD-12: same class as ipAddress.',
-      },
-      legalHold: { bsonType: 'bool' },
-      createdAt: { bsonType: 'date' },
+const adminAccessLogJsonSchemaBase: Document = {
+  bsonType: 'object',
+  required: [
+    'eventType',
+    'actorAccountId',
+    'actorSessionId',
+    'resourceType',
+    'endpoint',
+    'legalHold',
+    'createdAt',
+  ],
+  properties: {
+    eventType: {
+      enum: ['privileged_data_access', 'privileged_bulk_access'],
+      description:
+        'Row-type discriminator. Same two values as app.audit_event_type after migrations/032.',
     },
-    allOf: [
-      {
-        if: {
-          properties: { eventType: { enum: ['privileged_data_access'] } },
-          required: ['eventType'],
-        },
-        then: {
-          required: ['targetAccountId'],
-          properties: {
-            targetAccountId: { bsonType: 'string' },
-            resultCount: { bsonType: 'null' },
-          },
-        },
-      },
-      {
-        if: {
-          properties: { eventType: { enum: ['privileged_bulk_access'] } },
-          required: ['eventType'],
-        },
-        then: {
-          required: ['resultCount'],
-          properties: {
-            targetAccountId: { bsonType: 'null' },
-            resultCount: { bsonType: ['int', 'long'], minimum: 0 },
-          },
-        },
-      },
-    ],
+    actorAccountId: {
+      bsonType: 'string',
+      description:
+        'Soft reference to Supabase app.accounts.id (UUID string) — the admin who performed the read. Never null: every entry in this collection exists because an authenticated admin request was made.',
+    },
+    actorSessionId: {
+      bsonType: 'string',
+      description:
+        'AUD-1. Soft reference to Supabase app.sessions.id — sitting element of the join key. Required; no FK (referent routinely ages out).',
+    },
+    auditRequestId: {
+      bsonType: ['string', 'null'],
+      description:
+        'AUD-5. Server-generated only (req.auditRequestId). Not the cross-store join key. Best-effort within-call grouping.',
+    },
+    targetAccountId: {
+      bsonType: ['string', 'null'],
+      description:
+        'Soft reference to Supabase app.accounts.id. Non-null on privileged_data_access; null on privileged_bulk_access (enforced below).',
+    },
+    resourceType: { enum: ['policy', 'asset'] },
+    resourceId: {
+      bsonType: ['objectId', 'null'],
+      description:
+        'References policies._id or assets._id per resourceType. Null for list-level / call-scoped rows.',
+    },
+    resultCount: {
+      bsonType: ['int', 'long', 'null'],
+      minimum: 0,
+      description:
+        'R-1. Set on privileged_bulk_access only (including 0); null on every privileged_data_access row.',
+    },
+    endpoint: {
+      bsonType: 'string',
+      minLength: 1,
+      description:
+        'Method + path TEMPLATE only (e.g. GET /v1/admin/policies). Never req.originalUrl — C-17.',
+    },
+    ipAddress: {
+      bsonType: ['string', 'null'],
+      description:
+        'AUD-12: behavioural PII about an internal user; retention-bounded; not field-encrypted.',
+    },
+    userAgent: {
+      bsonType: ['string', 'null'],
+      description: 'AUD-12: same class as ipAddress.',
+    },
+    legalHold: { bsonType: 'bool' },
+    createdAt: { bsonType: 'date' },
   },
+};
+
+/**
+ * Full collection validator. MongoDB $jsonSchema does not support JSON Schema
+ * `if`/`then` — R-1 row-type invariants use $expr instead (database-addendum-001 §1.3).
+ */
+export const adminAccessLogJsonSchemaValidator: Document = {
+  $and: [
+    { $jsonSchema: adminAccessLogJsonSchemaBase },
+    {
+      $or: [
+        {
+          $and: [
+            { $eq: ['$eventType', 'privileged_data_access'] },
+            { $ne: ['$targetAccountId', null] },
+            { $eq: ['$resultCount', null] },
+          ],
+        },
+        {
+          $and: [
+            { $eq: ['$eventType', 'privileged_bulk_access'] },
+            { $eq: ['$targetAccountId', null] },
+            { $ne: ['$resultCount', null] },
+            { $gte: ['$resultCount', 0] },
+          ],
+        },
+      ],
+    },
+  ],
 };
 
 const assetsCollectionOptions: CreateCollectionOptions = {

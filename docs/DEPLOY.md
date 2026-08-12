@@ -30,11 +30,12 @@ Required for production startup:
 
 | Variable | Notes |
 |---|---|
+| `NODE_ENV` | Must be `production` on Render (blueprint sets this) |
 | `MONGODB_URI` | Atlas connection string |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role (never in client) |
 | `SUPABASE_DB_URL` | Postgres `app` schema URL |
-| `SUPABASE_DB_CA_CERT_PATH` | Optional locally; set for verify-full in prod |
+| `SUPABASE_DB_CA_CERT_PATH` | Path to pinned CA in container, or mount cert — **required when `NODE_ENV=production`** |
 | `REDIS_URL` | **`rediss://` required in production** — rate limits + revocation set |
 | `SESSION_JWT_SIGNING_KEYS` | `kid:secret,kid2:secret2` (secrets ≥32 chars) |
 | `SESSION_JWT_ACTIVE_KID` | Must match one kid above |
