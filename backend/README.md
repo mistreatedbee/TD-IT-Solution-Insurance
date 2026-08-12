@@ -202,6 +202,10 @@ something this scaffold assumes.
   `npx tsx backend/scripts/bootstrap-mongo-collections.ts` (requires
   `MONGODB_URI` in repo-root `.env.local`). **Applied and verified idempotent
   on live Atlas `td-it-solution-insurance` (2026-08-11).**
+- `scripts/seed-test-accounts.ts` — creates customer, admin, and security
+  partner test logins (with MFA for privileged roles). See
+  [`docs/TEST-ACCOUNTS.md`](./docs/TEST-ACCOUNTS.md). Run:
+  `npm run seed:test-accounts` (requires Supabase vars in repo-root `.env.local`).
 - `src/db/mongo-bootstrap.ts` — calls the same bootstrap function at server
   startup after `connectMongo()`. Interim mechanism; ADR-0008 reserved for
   formal versioned provisioning.

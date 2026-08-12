@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed:test-accounts": "tsx scripts/seed-test-accounts.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
