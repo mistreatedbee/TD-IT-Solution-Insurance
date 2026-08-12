@@ -1,6 +1,5 @@
 /**
- * Phase 2 Recovery API — client contract stub.
- * Backend routes do not exist yet; calls fail until Feature 005 ships.
+ * Phase 2 Recovery API — wired to backend `/v1/recovery/cases*` routes.
  */
 import { apiFetch } from './client';
 import { newIdempotencyKey } from './idempotency';

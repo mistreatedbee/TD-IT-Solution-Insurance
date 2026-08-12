@@ -6,7 +6,7 @@
 **Status:** Draft — submitted for `solution-architect` review. **Not a normal Stage 7 entry**, for the same reason `database-design.md` §0 was not a normal Stage 6 entry: no ratified Stage 1 (`business-requirements.md`) or Stage 5 (architecture review) exists for this domain. This document discharges the `backend-architect` link of `003-mobile-app-foundation/architecture.md`'s **M-05** chain ("Stage 1 business requirements through Stage 7 API contract... `business-analyst` → `product-manager` → `database-architect` → `backend-architect`") — the last link, not a substitute for the ones before it.
 **Formalizes:** [`database-design.md`](./database-design.md) (Stage 6, `database-architect`, 2026-08-08) — this document's endpoint set, request/response shapes, and auth posture are written directly against that schema's collections, indexes, and named query patterns. Nothing below is inconsistent with it; where this document proposes something `database-design.md` did not (§3), it is flagged as a new addendum request, not asserted as already-schema'd.
 **Reuses, does not reinvent:** [`001-authentication/api-design.md`](../001-authentication/api-design.md) v1.1.0 — the error envelope, cursor-pagination shape, rate-limit header contract, `/api/v1` path prefix, and idempotency-key mechanism are all ratified platform-wide conventions from that document (its §6, §4, §5). This document cites and reuses them verbatim rather than defining parallel ones, per this role's own instruction from the task that produced it and per this role's standing practice of API contract consistency across services.
-**Contract version:** 1.0.0 (first ratification of this domain's contract — 2026-08-11).
+**Contract version:** 1.1.0 (2026-08-12 — SR-004-admin-5/6 admin list rate limits and summary projections; see §11).
 **Reads on (read in full to produce this document):** `database-design.md` (Stage 6, this feature), `003-mobile-app-foundation/architecture.md` §5.2 (the concrete client need — "view own policy," "view own assets," and the explicit push-back against a client-supplied `accountId`), root `CLAUDE.md` (asset-type list, honesty rules), `08-roadmap.md` Phase 1 ("asset registration... policy/subscription selection," "Admin Dashboard: view customers, policies, assets"), `001-authentication/api-design.md` (conventions, §1's backend-minted-token model, §7's `/internal/accounts/{id}/status`), `001-authentication/architecture/backend-approach.md` §2.1 (service-decomposition precedent), `001-authentication/security-review.md` (SR-9, SR-10 — the authorization-attribute and cross-account-audit patterns this document must extend, not re-derive from scratch).
 
 ---
@@ -109,7 +109,7 @@ No new convention is introduced in this section; each item below cites the ratif
 | **Path prefix / versioning** | `001-authentication/api-design.md` §6 | `/api/v1/policies`, `/api/v1/assets`, `/api/v1/admin/policies`, `/api/v1/admin/assets`. This document's `servers:` block is written as `/v1` per that same document's convention — read every path in §6 as mounted under `/api`. |
 | **Error envelope** | Same, §6 — `error-handler.ts`'s shape | `{ "error": { "code", "message", "requestId" } }`, reused verbatim as this document's `Error` schema (§6's `components`). No bespoke error shape anywhere in this contract. |
 | **Pagination** | Same, §6 — "the convention Stage 7 ratifies platform-wide for every future list endpoint, not invented uniquely for audit logs" | Cursor-based: `limit` (default 50, max 200) / `cursor` (opaque, base64) query params; every list response wraps `data` + `pagination: { nextCursor, hasMore } }`. Applied to all four list endpoints in §6. |
-| **Rate limiting** | Same, §5 — platform-wide baseline row | `100 requests / 1 min per account_id` (the platform default, "not enumerated per-endpoint above" in that table) applies to every endpoint in this contract. **No domain-specific stricter number is proposed here** — Phase 1 volumes give no reason to, and per this role's charter, security-policy numbers are `cybersecurity-architect`/`security-engineer`'s to tighten, not this document's to invent speculatively. Surfaced via the same `X-RateLimit-*` / `Retry-After` headers. |
+| **Rate limiting** | Same, §5 — platform-wide baseline row | `100 requests / 1 min per account_id` (the platform default) applies to customer-facing endpoints. **Admin registry list endpoints** (`GET /v1/admin/policies`, `GET /v1/admin/assets`) carry stricter limits ratified in v1.1.0 (SR-004-admin-5): **20 requests / 60 s per admin account**, **30 requests / 60 s per client IP**, and **max `limit` = 50** per page. Detail reads (`GET /v1/admin/policies/{id}`, `GET /v1/admin/assets/{id}`) remain on the platform default. Surfaced via the same `X-RateLimit-*` / `Retry-After` headers. |
 | **Idempotency** | Same, §4 | Required on `POST /v1/policies` and `POST /v1/assets` (§6.4) — both are write endpoints a mobile client on a flaky connection might retry, matching `05-development-standards.md`'s rule this role's charter already cites ("required on any write endpoint that a mobile client might retry"), independent of whether the write is money-adjacent. Same `Idempotency-Key` header, same `IDEMPOTENCY_KEY_REUSE` / `IDEMPOTENCY_KEY_REQUIRED` semantics, same `app.idempotency_keys`-backed mechanism (this document adds no new idempotency store — Policy & Asset Service, being in-process with Identity Service today per §2, uses the identical table and middleware). |
 | **Multi-tenancy / cross-surface isolation** | Same, §2.3/§6 (BR-2 gate table); `security-review.md` §5.3 | Customer surface: `accountId` derived server-side only (§4.2). Admin surface: role-gated plus audited (§4.4). Security-company-operator surface: **not built** — no endpoint in this contract is reachable by that role, avoiding `security-review.md` §5.3's named risk of a partner-org-scoped surface being specified before the scoping mechanism (`partner_organization_id` on `account_status_cache`, already shipped per SR-9) has a real consumer to test against. |
 
@@ -123,7 +123,7 @@ No new convention is introduced in this section; each item below cites the ratif
 openapi: 3.1.0
 info:
   title: TD IT Solutions — Policy & Asset Service API
-  version: "1.0.0"
+  version: "1.1.0"
   description: >
     Feature 004 (Policy, Subscription & Asset Management), Phase 1 scope only:
     customer self-service create/view of own policies and assets; Admin
@@ -277,13 +277,29 @@ components:
         updatedAt: { type: string, format: date-time }
 
     AdminPolicy:
-      description: Admin-facing shape — adds the two fields the customer view omits.
+      description: Admin-facing detail shape — adds the two fields the customer view omits.
       allOf:
         - $ref: '#/components/schemas/Policy'
         - type: object
           properties:
             accountId: { type: string, format: uuid }
             legalHold: { type: boolean }
+
+    AdminPolicySummary:
+      description: >
+        Admin list projection (SR-004-admin-6). Omits coverageLimits and the
+        full billing sub-object; exposes billingStatus only for triage.
+      type: object
+      required: [id, accountId, planTier, status, legalHold, billingStatus, effectiveDate, createdAt]
+      properties:
+        id: { type: string }
+        accountId: { type: string, format: uuid }
+        planTier: { type: string }
+        status: { $ref: '#/components/schemas/PolicyStatus' }
+        legalHold: { type: boolean }
+        billingStatus: { type: string, description: billing.billingStatus from the full policy document }
+        effectiveDate: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
 
     PolicyListPage:
       type: object
@@ -298,7 +314,7 @@ components:
     AdminPolicyListPage:
       type: object
       properties:
-        data: { type: array, items: { $ref: '#/components/schemas/AdminPolicy' } }
+        data: { type: array, items: { $ref: '#/components/schemas/AdminPolicySummary' } }
         pagination:
           type: object
           properties:
@@ -444,12 +460,29 @@ components:
         updatedAt: { type: string, format: date-time }
 
     AdminAsset:
+      description: Admin-facing detail shape — adds accountId and legalHold.
       allOf:
         - $ref: '#/components/schemas/Asset'
         - type: object
           properties:
             accountId: { type: string, format: uuid }
             legalHold: { type: boolean }
+
+    AdminAssetSummary:
+      description: >
+        Admin list projection (SR-004-admin-6). Omits details (VIN, IMEI,
+        serial numbers, licence plate), estimatedValue, and photos.
+      type: object
+      required: [id, accountId, assetType, displayName, status, legalHold, gpsDeviceId, registeredAt]
+      properties:
+        id: { type: string }
+        accountId: { type: string, format: uuid }
+        assetType: { $ref: '#/components/schemas/AssetType' }
+        displayName: { type: string }
+        status: { $ref: '#/components/schemas/AssetStatus' }
+        legalHold: { type: boolean }
+        gpsDeviceId: { type: string, nullable: true, description: null when not GPS-paired }
+        registeredAt: { type: string, format: date-time }
 
     AssetListPage:
       type: object
@@ -464,7 +497,7 @@ components:
     AdminAssetListPage:
       type: object
       properties:
-        data: { type: array, items: { $ref: '#/components/schemas/AdminAsset' } }
+        data: { type: array, items: { $ref: '#/components/schemas/AdminAssetSummary' } }
         pagination:
           type: object
           properties:
@@ -850,3 +883,12 @@ That document listed exactly four things it needed from this contract before "vi
 - **One new collection proposed, not self-schema'd:** `admin_access_log` (§3.1), flagged to `database-architect` exactly as Feature 001's api-design.md flagged `app.sessions`/`app.idempotency_keys` at the equivalent stage.
 - **No business rule invented:** `planTier` stays free-form, `coverageLimits` stays empty, no eligibility check exists — all three named as open (P-01) rather than filled with a guess, per this document's own §0 and the task that produced it.
 - **Two things this feature's own roadmap line asked for are explicitly not here, and say so:** "view customers" (P-10 — belongs to Identity Service's contract) and payment/billing or GPS endpoints (§1 — explicitly out of scope, someone else's call).
+
+---
+
+## 11. Contract Amendment Log
+
+| Version | Date | Author | Change |
+|---|---|---|---|
+| **1.0.0** | 2026-08-11 | `backend-architect` | First publication — ten endpoints (customer + admin list/detail). |
+| **1.1.0** | 2026-08-12 | `backend-architect` | **SR-004-admin-5/6.** Admin list endpoints return summary schemas (`AdminPolicySummary`, `AdminAssetSummary`) instead of full detail shapes; detail endpoints unchanged. Admin registry list rate limits ratified: 20/min per admin account, 30/min per IP, max page size 50. Implemented in `backend/src/lib/policy-asset-serializers.ts`, `admin-policies.ts`, `admin-assets.ts`. Security review: `security-review-admin-surface.md` SR-004-admin-6. |

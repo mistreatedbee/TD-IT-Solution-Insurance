@@ -1,10 +1,11 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { ComponentsPage } from './components/ComponentsPage';
-import { ComponentPage } from './components/ComponentPage';
-import { ComponentPreviewPage } from './components/ComponentPreviewPage';
 import { LandingPage } from './pages/LandingPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsOfServicePage } from './pages/TermsOfServicePage';
+
+const AdminRoutes = lazy(() => import('./admin/AdminRoutes'));
+const SecurityRoutes = lazy(() => import('./security/SecurityRoutes'));
 
 // Deliberately NO `fontFamily` on the wrapper below: an inherited font here
 // would mask components that never declare one, making them look correct in
@@ -46,12 +47,22 @@ export function App() {
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/terms" element={<TermsOfServicePage />} />
 
-            <Route path="/components" element={<ComponentsPage />} />
-            <Route path="/components/:name" element={<ComponentPage />} />
             <Route
-              path="/components/:name/preview/:previewIdx"
-              element={<ComponentPreviewPage />} />
-
+              path="/admin/*"
+              element={
+                <Suspense fallback={<div className="p-6 text-sm text-text-secondary">Loading…</div>}>
+                  <AdminRoutes />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/security/*"
+              element={
+                <Suspense fallback={<div className="p-6 text-sm text-text-secondary">Loading…</div>}>
+                  <SecurityRoutes />
+                </Suspense>
+              }
+            />
           </Routes>
         </main>
       </div>

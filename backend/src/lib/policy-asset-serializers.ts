@@ -46,3 +46,47 @@ export function serializeAsset(doc: AssetDocument) {
     updatedAt: doc.updatedAt.toISOString(),
   };
 }
+
+export function serializeAdminPolicy(doc: PolicyDocument) {
+  return {
+    ...serializePolicy(doc),
+    accountId: doc.accountId,
+    legalHold: doc.legalHold,
+  };
+}
+
+/** Admin list projection — omits coverageLimits and billing sub-object (SR-004-admin-6). */
+export function serializeAdminPolicySummary(doc: PolicyDocument) {
+  return {
+    id: doc.id,
+    accountId: doc.accountId,
+    planTier: doc.planTier,
+    status: doc.status,
+    legalHold: doc.legalHold,
+    billingStatus: doc.billing.billingStatus,
+    effectiveDate: doc.effectiveDate.toISOString(),
+    createdAt: doc.createdAt.toISOString(),
+  };
+}
+
+export function serializeAdminAsset(doc: AssetDocument) {
+  return {
+    ...serializeAsset(doc),
+    accountId: doc.accountId,
+    legalHold: doc.legalHold,
+  };
+}
+
+/** Admin list projection — omits details, estimatedValue, and photos (SR-004-admin-6). */
+export function serializeAdminAssetSummary(doc: AssetDocument) {
+  return {
+    id: doc.id,
+    accountId: doc.accountId,
+    assetType: doc.assetType,
+    displayName: doc.displayName,
+    status: doc.status,
+    legalHold: doc.legalHold,
+    gpsDeviceId: doc.gpsDeviceId,
+    registeredAt: doc.registeredAt.toISOString(),
+  };
+}

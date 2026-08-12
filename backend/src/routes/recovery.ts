@@ -1,0 +1,160 @@
+/**
+ * Customer recovery case routes — mobile Phase 2 contract.
+ */
+import { Router } from 'express';
+import { z } from 'zod';
+import type { AppContext } from '../context.js';
+import { apiError } from '../lib/errors.js';
+import { requireActiveAccount } from '../lib/account-gate.js';
+import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js';
+import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
+import { serializeRecoveryCase } from '../repositories/recovery-cases.js';
+import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
+import { requireUserType } from '../middleware/require-role.js';
+import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
+import { requireIdempotencyKey } from '../middleware/idempotency.js';
+
+const createCaseSchema = z.object({
+  assetId: z.string().regex(/^[0-9a-f]{24}$/i),
+  notes: z.string().max(2000).optional(),
+});
+
+const caseIdParamsSchema = z.object({
+  caseId: z.string().regex(/^[0-9a-f]{24}$/i),
+});
+
+export function createRecoveryRouter(ctx: AppContext): Router {
+  const router = Router();
+  const authenticate = createAuthenticateMiddleware(ctx.env, ctx.kv);
+
+  router.post(
+    '/recovery/cases',
+    authenticate,
+    requireUserType('customer'),
+    createRateLimiter(
+      ctx.kv,
+      DEFAULT_AUTHENTICATED_LIMIT,
+      (req) => `recovery-create:${req.auth!.accountId}`,
+    ),
+    requireIdempotencyKey('POST /v1/recovery/cases', ctx.idempotency),
+    async (req, res, next) => {
+      try {
+        const parsed = createCaseSchema.safeParse(req.body);
+        if (!parsed.success) {
+          next(apiError('VALIDATION_ERROR', { details: parsed.error.issues.map((i) => i.message) }));
+          return;
+        }
+
+        const accountId = req.auth!.accountId;
+        await requireActiveAccount(ctx.accounts, accountId);
+
+        const asset = await ctx.assets.findByIdForAccount(accountId, parsed.data.assetId);
+        if (!asset) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        const existingOpen = await ctx.recoveryCases.listByAccount(accountId, 5, null);
+        const duplicate = existingOpen.find(
+          (c) => c.assetId === parsed.data.assetId && c.status !== 'closed' && c.status !== 'recovered',
+        );
+        if (duplicate) {
+          next(apiError('CONFLICT', { message: 'An open recovery case already exists for this asset.' }));
+          return;
+        }
+
+        const recoveryCase = await ctx.recoveryCases.createForAccount(
+          accountId,
+          parsed.data.assetId,
+          parsed.data.notes ?? null,
+          null,
+        );
+
+        res.status(201).json(serializeRecoveryCase(recoveryCase));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.get(
+    '/recovery/cases',
+    authenticate,
+    requireUserType('customer'),
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `recovery-list:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const { limit, cursor } = parseMongoPaginationQuery(req.query as Record<string, unknown>);
+        const rows = await ctx.recoveryCases.listByAccount(req.auth!.accountId, limit + 1, cursor);
+        const page = buildPage(rows.map((row) => ({ ...row, id: row.id })), limit);
+        res.status(200).json({
+          data: page.data.map(serializeRecoveryCase),
+          pagination: { nextCursor: page.nextCursor, hasMore: page.hasMore },
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.get(
+    '/recovery/cases/:caseId',
+    authenticate,
+    requireUserType('customer'),
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `recovery-detail:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const parsed = caseIdParamsSchema.safeParse(req.params);
+        if (!parsed.success) {
+          next(apiError('VALIDATION_ERROR'));
+          return;
+        }
+        const recoveryCase = await ctx.recoveryCases.findByIdForAccount(
+          req.auth!.accountId,
+          parsed.data.caseId,
+        );
+        if (!recoveryCase) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+        res.status(200).json(serializeRecoveryCase(recoveryCase));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.get(
+    '/recovery/cases/:caseId/location',
+    authenticate,
+    requireUserType('customer'),
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `recovery-location:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const parsed = caseIdParamsSchema.safeParse(req.params);
+        if (!parsed.success) {
+          next(apiError('VALIDATION_ERROR'));
+          return;
+        }
+        const location = await ctx.recoveryCases.getLocationForCase(
+          req.auth!.accountId,
+          parsed.data.caseId,
+        );
+        if (!location) {
+          next(apiError('NOT_FOUND', { message: 'No location data available for this case yet.' }));
+          return;
+        }
+        res.status(200).json({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          recordedAt: location.recordedAt.toISOString(),
+          accuracyMeters: location.accuracyMeters,
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  return router;
+}

@@ -126,6 +126,29 @@ export function createAssetsRepo(db: Db) {
       const row = await collection().findOne({ _id: new ObjectId(assetId), accountId });
       return row ? toAsset(row) : null;
     },
+
+    async listForAdmin(
+      filters: { accountId?: string; status?: AssetStatus; assetType?: AssetType },
+      limit: number,
+      cursor: MongoDecodedCursor | null,
+    ): Promise<AssetDocument[]> {
+      const filter: Record<string, unknown> = { ...mongoCursorFilter(cursor) };
+      if (filters.accountId) filter.accountId = filters.accountId;
+      if (filters.status) filter.status = filters.status;
+      if (filters.assetType) filter.assetType = filters.assetType;
+      const rows = await collection()
+        .find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(limit)
+        .toArray();
+      return rows.map(toAsset);
+    },
+
+    async findByIdForAdmin(assetId: string): Promise<AssetDocument | null> {
+      if (!ObjectId.isValid(assetId)) return null;
+      const row = await collection().findOne({ _id: new ObjectId(assetId) });
+      return row ? toAsset(row) : null;
+    },
   };
 }
 

@@ -23,6 +23,10 @@ export const ERROR_CATALOG = {
     statusCode: 409,
     message: 'This Idempotency-Key was already used with a different request body.',
   },
+  CONFLICT: {
+    statusCode: 409,
+    message: 'The request conflicts with the current state of the resource.',
+  },
   INVALID_CREDENTIALS: { statusCode: 401, message: 'Incorrect email or password.' },
   ACCOUNT_LOCKED: { statusCode: 423, message: 'Too many attempts. Please try again later.' },
   RATE_LIMITED: { statusCode: 429, message: 'Too many requests. Please try again later.' },

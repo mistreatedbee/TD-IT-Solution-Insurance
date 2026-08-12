@@ -85,6 +85,25 @@ export const AUDIT_LOG_READ_LIMIT = {
   windowSeconds: 60,
 } as const;
 
+/**
+ * SR-004-admin-5: Feature 004 admin policy/asset registry list endpoints.
+ * Sized for customer-registry bulk reads, not audit-log reads — 20/min/account
+ * × 50 records/page = 1,000 records/min (vs 12,000 at the prior AUDIT_LOG_READ_LIMIT × 200).
+ */
+export const ADMIN_REGISTRY_LIST_LIMIT = {
+  attempts: 20,
+  windowSeconds: 60,
+} as const;
+
+/** SR-004-admin-5(b): IP-scoped ceiling so one credential rotated across hosts stays bounded. */
+export const ADMIN_REGISTRY_LIST_IP_LIMIT = {
+  attempts: 30,
+  windowSeconds: 60,
+} as const;
+
+/** SR-004-admin-5(c): admin registry list max page size (platform-wide max remains 200). */
+export const ADMIN_REGISTRY_LIST_MAX_PAGE_LIMIT = 50;
+
 export const DEFAULT_AUTHENTICATED_LIMIT = {
   attempts: 100,
   windowSeconds: 60,

@@ -134,6 +134,28 @@ export function createPoliciesRepo(db: Db) {
       const row = await collection().findOne({ _id: new ObjectId(policyId), accountId });
       return row ? toPolicy(row) : null;
     },
+
+    async listForAdmin(
+      filters: { accountId?: string; status?: PolicyStatus },
+      limit: number,
+      cursor: MongoDecodedCursor | null,
+    ): Promise<PolicyDocument[]> {
+      const filter: Record<string, unknown> = { ...mongoCursorFilter(cursor) };
+      if (filters.accountId) filter.accountId = filters.accountId;
+      if (filters.status) filter.status = filters.status;
+      const rows = await collection()
+        .find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(limit)
+        .toArray();
+      return rows.map(toPolicy);
+    },
+
+    async findByIdForAdmin(policyId: string): Promise<PolicyDocument | null> {
+      if (!ObjectId.isValid(policyId)) return null;
+      const row = await collection().findOne({ _id: new ObjectId(policyId) });
+      return row ? toPolicy(row) : null;
+    },
   };
 }
 

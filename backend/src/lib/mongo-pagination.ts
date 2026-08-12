@@ -35,16 +35,20 @@ export function decodeMongoCursor(raw: string): MongoDecodedCursor | null {
   return { createdAt, id: idPart };
 }
 
-export function parseMongoPaginationQuery(query: Record<string, unknown>): {
+export function parseMongoPaginationQuery(
+  query: Record<string, unknown>,
+  options?: { maxLimit?: number },
+): {
   limit: number;
   cursor: MongoDecodedCursor | null;
 } {
+  const maxLimit = options?.maxLimit ?? MAX_PAGE_LIMIT;
   let limit = DEFAULT_PAGE_LIMIT;
   if (query.limit !== undefined) {
     const raw = Array.isArray(query.limit) ? query.limit[0] : query.limit;
     const parsed = Number(raw);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_PAGE_LIMIT) {
-      throw apiError('VALIDATION_ERROR', { details: [`limit must be an integer between 1 and ${MAX_PAGE_LIMIT}`] });
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > maxLimit) {
+      throw apiError('VALIDATION_ERROR', { details: [`limit must be an integer between 1 and ${maxLimit}`] });
     }
     limit = parsed;
   }

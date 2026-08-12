@@ -182,6 +182,7 @@ function buildCtx(supabase: SupabaseAdmin, accountId: string): AppContext {
     policies: undefined as unknown as AppContext['policies'],
     assets: undefined as unknown as AppContext['assets'],
     policyStatusHistory: undefined as unknown as AppContext['policyStatusHistory'],
+    adminAccessLog: undefined as unknown as AppContext['adminAccessLog'],
   };
 }
 

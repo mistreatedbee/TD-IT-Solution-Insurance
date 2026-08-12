@@ -121,3 +121,13 @@ Per `field-sensitivity-review.md`: VIN, IMEI, serial numbers, license plate, `es
 
 **Signed:** `cybersecurity-architect` (designated Stage 8 chair), 2026-08-12.  
 **Concurrence:** `security-engineer`, 2026-08-12 — verified `policies.ts`, `assets.ts`, `account-gate.ts`, `mongo-errors.ts`, mobile write gating; no new findings beyond SR-004-1…5.
+
+---
+
+## 6. Appended pointer — admin surface Stage 8 (2026-08-12)
+
+**Nothing above is amended by this section.** §0's verdict, §1–§5, and the §5 sign-off record are the signed Phase 1 customer-surface record and stay exactly as signed, per the same reasoning ADR-0006 §17 gives for appending rather than merging a correction.
+
+**SR-004-3** (admin surface re-review) has been actioned: the admin surface's own Stage 8 record is [`security-review-admin-surface.md`](./security-review-admin-surface.md) — verdict **sign-off granted with required changes** (SR-004-admin-1…12), covering `GET /v1/admin/policies*`, `GET /v1/admin/assets*`, `admin_access_log` (Trail B) as a live writer, and pre-conditions for the Admin Dashboard client. `security-engineer` and `compliance-specialist` concurrence on that surface is **outstanding**; the four admin routes must not serve real customer data until it lands.
+
+Read that document, not this one, for anything touching `/v1/admin/policies*` or `/v1/admin/assets*`. This document's §4 "out of scope" list remains accurate for the Phase 1 customer sign-off it governs.

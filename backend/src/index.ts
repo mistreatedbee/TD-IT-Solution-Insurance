@@ -35,8 +35,12 @@ import { createSessionRouter } from './routes/session.js';
 import { createMfaRouter } from './routes/mfa.js';
 import { createInvitationsRouter } from './routes/invitations.js';
 import { createAdminAccountsRouter } from './routes/admin-accounts.js';
+import { createAdminPoliciesRouter } from './routes/admin-policies.js';
+import { createAdminAssetsRouter } from './routes/admin-assets.js';
 import { createPoliciesRouter } from './routes/policies.js';
 import { createAssetsRouter } from './routes/assets.js';
+import { createRecoveryRouter } from './routes/recovery.js';
+import { createSecurityCasesRouter } from './routes/security-cases.js';
 import { createInternalRouter } from './routes/internal.js';
 import { requestIdMiddleware, notFoundHandler, errorHandler } from './middleware/error-handler.js';
 
@@ -94,8 +98,12 @@ async function main(): Promise<void> {
   v1.use(createMfaRouter(ctx));
   v1.use(createInvitationsRouter(ctx));
   v1.use(createAdminAccountsRouter(ctx));
+  v1.use(createAdminPoliciesRouter(ctx));
+  v1.use(createAdminAssetsRouter(ctx));
   v1.use(createPoliciesRouter(ctx));
   v1.use(createAssetsRouter(ctx));
+  v1.use(createRecoveryRouter(ctx));
+  v1.use(createSecurityCasesRouter(ctx));
   v1.use(createInternalRouter(ctx));
   // api-design.md §5's platform-wide default rate-limit row
   // (`DEFAULT_AUTHENTICATED_LIMIT`, lib/policy.ts) is NOT wired as a

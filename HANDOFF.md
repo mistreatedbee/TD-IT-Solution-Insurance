@@ -11,8 +11,10 @@ point-in-time status.
 Supabase (Postgres, EU region) + MongoDB Atlas project:
 - Backend (`backend/`): signup, login, MFA enroll/verify, session refresh/rotation with
   device-binding, password reset, invitation-accept, and **`GET /v1/admin/accounts` +
-  `/admin/accounts/:id`** — the platform's first `/admin/*` route. **85 tests across 14 files,
-  re-run and verified green 2026-08-12** (Feature 004 customer routes + email module).
+  `/admin/accounts/:id`** — the platform's first `/admin/*` route. Feature 004 adds
+  **`GET /v1/admin/policies*`**, **`GET /v1/admin/assets*`** (Trail B audit via `admin_access_log`).
+  Recovery Phase 2 scaffold: **`POST/GET /v1/recovery/cases*`**, **`GET/PATCH/POST /v1/security/cases*`**.
+  **110+ tests across 21 files, re-run and verified green 2026-08-12.**
 - Mobile (`mobile/`): Expo app with matching auth screens, SecureStore token handling,
   device-ID binding on login *and* refresh. **30 tests passing** (10 suites), typecheck/lint clean.
   **EAS deploy scaffold:** `eas.json` uses EAS environment scoping (preview/production API URLs
@@ -30,15 +32,15 @@ Supabase (Postgres, EU region) + MongoDB Atlas project:
 
 **Feature 004 — Policy/Asset Management.** Paper design complete; **customer API + mobile screens implemented**:
 - `docs/features/004-policy-asset-management/` has `database-design.md` + `database-addendum-001.md`
-  (Amendment A1 discharges ADR-0006 FU-A2), `api-design.md` (10 endpoints), **`business-requirements.md`**
+  (Amendment A1 discharges ADR-0006 FU-A2), `api-design.md` (**v1.1.0** — admin summary projections SR-004-admin-6), **`business-requirements.md`**
   (Stage 1 minimum — 2026-08-11, [Minimal Stage 1 unblock](bec6a3ef-4a29-444e-a19d-7daaea560dd8)), and
   **`field-sensitivity-review.md`** (P-14 Phase 1 stub — no field-level encryption for VIN/serial/`estimatedValue`).
-- **Backend:** `POST/GET /v1/policies`, `GET /v1/policies/{id}`, `POST/GET /v1/assets`, `GET /v1/assets/{id}`
-  in `backend/src/routes/policies.ts` and `assets.ts`. Mongo bootstrap:
-  `backend/src/db/feature004-collections.ts` + `scripts/bootstrap-mongo-collections.ts`
+- **Backend:** Customer routes in `policies.ts` / `assets.ts`; **admin routes** in `admin-policies.ts` / `admin-assets.ts` (summary list projections, rate limits SR-004-admin-5); **recovery routes** in `recovery.ts` / `security-cases.ts`. Mongo bootstrap:
+  `backend/src/db/feature004-collections.ts`, `recovery-collections.ts` + `scripts/bootstrap-mongo-collections.ts`
   ([Mongo collections bootstrap](c734196c-9969-4f80-b6a8-32428d01ba2d) — applied to live
   Atlas `td-it-solution-insurance`, idempotent re-run verified). Startup path uses the same
-  shared function via `mongo-bootstrap.ts`. **85 tests across 14 files, green** (2026-08-12).
+  shared function via `mongo-bootstrap.ts`. **110+ tests across 21 files, green** (2026-08-12).
+- **Web dashboards:** Shared privileged layer at `src/dashboard/`; Admin Panel at `/admin/*` (`src/admin/`); Security Company Dashboard at `/security/*` (`src/security/`). Architecture at `docs/features/005-admin-dashboard/architecture.md`. Stage 8 admin surface review at `security-review-admin-surface.md` — SR-004-admin-6 closed; SR-004-admin-2/4/5(d) still block real customer data.
 - **Mobile:** Policy and Assets tabs are **real screens** wired to Feature 004 customer API
   (`PolicyListScreen`, `CreatePolicyScreen`, `AssetListScreen`, `RegisterAssetScreen`, detail
   routes); OpenAPI at `mobile/openapi/policy-asset-service.yaml` with codegen. Home (M-03) shows
@@ -97,11 +99,11 @@ the bar this project has been held to:
 | Item | What it needs | Blocking? |
 |---|---|---|
 | **Supabase DPA execution** | Platform owner signs Supabase's DPA and returns it | Blocks real production identity data (not local dev/testing) |
-| **AUD-3**: bulk admin list endpoints don't record a per-subject audit entry | **Trail A: implemented** — `GET /v1/admin/accounts` calls `recordBulkDisclosure()`; `GET /v1/admin/accounts/{id}` calls `record()`. **Trail B:** shape is paper-complete (FU-A2); Mongo writer + `/admin/policies*`/`/admin/assets*` routes still unbuilt when Feature 004 ships | Feature 004 Stage 8 still needs P-14, trail read ACL, and Feature 004 admin routes — not AUD-3 on Trail A. **C-14 now binds to `GET /v1/admin/accounts`** (bulk access purpose-documented + role-restricted, `backend-architect` + `authentication-engineer`): it was filed against Feature 004's Stage 8, but a Feature 001 endpoint reached that surface first — `cto` disposition at ADR-0006 §17.7 |
+| **AUD-3**: bulk admin list endpoints don't record a per-subject audit entry | **Trail A: implemented** — `GET /v1/admin/accounts` calls `recordBulkDisclosure()`; `GET /v1/admin/accounts/{id}` calls `record()`. **Trail B: implemented** — `GET /v1/admin/policies*` / `GET /v1/admin/assets*` write to `admin_access_log` via `admin-access-log.ts` repo; bootstrap in `feature004-collections.ts`. Live Atlas verification (SR-004-admin-2) still pending. | Feature 004 admin routes **built**; C-14 purpose docs (SR-004-admin-4) and Atlas bootstrap verification still block real customer data |
 | **~~ADR-0006 ratification~~** | **Done** — ratified 2026-08-11, §16. Remaining §16.5 conditions: ~~C-16(a)(b) folded into AUD-9~~ (done); ~~FU-A4 runbook document~~ (done — [`aud-8-privileged-access-reconstruction.md`](docs/organization/runbooks/aud-8-privileged-access-reconstruction.md); **executable use still blocked on FU-A11**); AUD-11 "checked" not "enforced" until FU-A10; C-13 closed before go-live | Ratification no longer blocking; FU-A11 blocks relying on the runbook |
 | **~~Migrations 032 + 033 not applied~~** | **Applied** to the live Supabase project (2026-08-11), and **verified against its catalog** rather than taken on trust (`cto`, ADR-0006 §17.5): all four AUD-1 columns plus `result_count`, all four R-3 `CHECK`s, `account_audit_log_actor_created_at` with the right partial shape, 031's superseded actor index dropped, all three new enum values present. Both files' headers still read "NOT YET APPLIED" long after they were applied — **corrected in place**, since `.cursor/rules/database.mdc` makes the header, not a doc, the source of truth. **Residual:** the four constraints were added `NOT VALID` and have **not** been promoted; 033's verification block is `security-engineer`'s to run and there is no record of it having been run | No longer blocking deploy; constraint promotion still an open decision |
 | **FU-A13 (new)** — Trail A indexes + purge scheduling | **Indexes applied** — migration `034` created `account_audit_log_account_id_created_at` and `account_audit_log_created_at` on the live Supabase project (2026-08-11, catalog-verified). **Still open:** purge scheduling (nothing calls `app.purge_expired_audit_log()`); deploy-time live-vs-design schema check (FU-A13 second half, shares FU-A10); 033's `NOT VALID` constraint promotion (`security-engineer`) | Subject-keyed AUD-8 query no longer seq-scans; retention still not enforced until scheduled |
-| **FU-A14 (new)** — AUD-9's mandatory purpose/case reference has nothing to resolve against | ADR-0006 AUD-9, as amended by C-16(b), requires location-access and partner-operator reads to carry a case reference that *"resolves to a case that exists independently of the access."* **No case, claim, theft-report or recovery entity exists on this platform and none is planned** — Feature 004 defines policies/assets only; Claims is unstarted. A free-text purpose string is explicitly ruled out (ADR-0006 §17.3) as being the exact thing the requirement excludes | Blocks **Stage 1** — not Stage 8 — of the GPS location-access trail and of any Security Company Dashboard read surface |
+| **FU-A14 (new)** — AUD-9's mandatory purpose/case reference has nothing to resolve against | **`recovery_cases` Mongo collection + API now exist** (`recovery.ts`, `security-cases.ts`) — partially addresses the "no case entity" gap for Security Dashboard reads. GPS location-access trail still needs full Stage 1 design and AUD-9 case-reference wiring on location endpoints | Blocks **GPS Phase 2** location-access trail completion; Security Dashboard case queue **unblocked at entity level** |
 | **FU-A11 — investigative read credential** | Read-only credential scoped to both audit trails, for whoever executes the AUD-8 runbook (`cloud-infrastructure-architect` + `database-architect`, verified `security-engineer`) | Blocks *using* the runbook before first production privileged account (§16.5 item 2) |
 | **Brevo (SMTP vendor) account creation** | Platform owner creates the account and, critically, **sets transactional-log/preview retention to its 1-month minimum and disables marketing mode *before* the first real send** — this setting is not retroactive | Blocks real email delivery (currently `console.warn` stand-ins) |
 | **Supabase dashboard Auth email-link TTLs** | Confirm/tighten in the Supabase dashboard directly — not reachable from application code | Compliance completeness (C-5.3) |
@@ -191,11 +193,13 @@ These are the honest answer to "can we ship the real thing." Ordered by how hard
 
 ### Explicitly not in this push, so nobody builds it by accident
 
-Admin policy/asset dashboards (MP-1) · plan selection, pricing, coverage-limit display (MP-3) ·
+Plan selection, pricing, coverage-limit display (MP-3) ·
 asset photo upload (MP-5) · policy/asset edit, cancel or delete (P-15 — never designed) ·
-payments and checkout (no gateway selected) · GPS pairing, live map, theft reporting (Phase 2,
-and FU-A14 blocks its Stage 1) · claims (no collection, no design) · push notifications (no
+payments and checkout (no gateway selected) · GPS pairing, live map (Phase 2 GPS ingestion not connected) ·
+claims (no collection, no design) · push notifications (no
 payload contract) · biometric app-unlock (M-06, still an open decision).
+
+**Built after the mobile push (2026-08-12 follow-on):** Admin Panel + Security Dashboard web surfaces; Feature 004 admin API; recovery case API scaffold. Admin serving real customer data still blocked on SR-004-admin-2/4/5(d).
 
 ---
 

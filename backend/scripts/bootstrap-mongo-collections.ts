@@ -2,18 +2,18 @@
 /**
  * Feature 004 — MongoDB collection bootstrap (Atlas / local).
  *
- * Idempotently creates policies, policy_status_history, and assets collections;
- * applies the assets $jsonSchema validator (polymorphic details); and ensures
- * secondary indexes from database-design.md §5.
- *
- * admin_access_log is intentionally omitted — customer path does not require
- * it yet (see database-addendum-001.md; bootstrap when admin routes ship).
+ * Idempotently creates policies, policy_status_history, assets, and
+ * admin_access_log collections; applies $jsonSchema validators (assets
+ * polymorphic details; admin_access_log ADR-0006 R-1 shape); and ensures
+ * secondary indexes from database-design.md §5 and database-addendum-001.md §2.
  *
  * Run from repo root (requires MONGODB_URI in repo-root .env.local):
  *
  *   npx tsx backend/scripts/bootstrap-mongo-collections.ts
  *
- * Source: docs/features/004-policy-asset-management/database-design.md
+ * Source:
+ * - docs/features/004-policy-asset-management/database-design.md
+ * - docs/features/004-policy-asset-management/database-addendum-001.md
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
