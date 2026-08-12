@@ -10,7 +10,8 @@
     "lint": "eslint src --ext .js,.jsx,.ts,.tsx",
     "preview": "npx vite preview",
     "check:no-placeholders": "node scripts/check-no-placeholders.mjs dist",
-    "build:production": "npm run build && npm run check:no-placeholders"
+    "build:production": "npm run build && npm run check:no-placeholders",
+    "seed:test-accounts": "npm run seed:test-accounts --prefix backend"
   },
   "dependencies": {
     "@emotion/react": "^11.13.3",
