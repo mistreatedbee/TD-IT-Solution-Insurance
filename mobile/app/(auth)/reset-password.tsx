@@ -12,7 +12,7 @@ import { colors, spacing, typography } from '../../src/theme/tokens';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
-  const { resetToken, token, email, access_token, type } = useLocalSearchParams<{
+  const { resetToken, token, email, access_token } = useLocalSearchParams<{
     resetToken?: string;
     token?: string;
     email?: string;

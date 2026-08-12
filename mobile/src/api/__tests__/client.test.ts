@@ -29,7 +29,7 @@ describe('api/client', () => {
       sessionId: null,
       account: null,
     });
-    registerForcedLogoutHandler(() => {});
+    registerForcedLogoutHandler(jest.fn());
     jest.restoreAllMocks();
   });
 

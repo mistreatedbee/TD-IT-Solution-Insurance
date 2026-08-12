@@ -5,4 +5,11 @@ module.exports = [
   {
     ignores: ['src/api/generated/**', '.expo/**', 'dist/**'],
   },
+  {
+    files: ['**/*.test.{ts,tsx}', 'jest.setup.ts'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/no-var-requires': 'off',
+    },
+  },
 ];

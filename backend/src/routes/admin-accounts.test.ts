@@ -118,7 +118,9 @@ function createHarness(opts: {
       async findByEmail(): Promise<AccountRow | null> {
         return null;
       },
-      async markEmailVerified(): Promise<void> {},
+      async markEmailVerified(): Promise<void> {
+        throw new Error('not used');
+      },
       async getAccountStatus(id: string): Promise<AccountStatus | null> {
         if (id !== adminId) return null;
         return {

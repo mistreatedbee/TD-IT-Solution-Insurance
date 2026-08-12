@@ -44,7 +44,9 @@ export default function RootLayout() {
       // Session store is already set to 'signed-out' by client.ts.
     } finally {
       setBootstrapped(true);
-      SplashScreen.hideAsync().catch(() => {});
+      SplashScreen.hideAsync().catch(() => {
+        // Splash already hidden — safe to ignore.
+      });
     }
   }, []);
 

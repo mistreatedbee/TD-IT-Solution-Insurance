@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { render, screen, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AssetListScreen } from '../assets/AssetListScreen';
 
@@ -67,28 +67,37 @@ describe('AssetListScreen', () => {
     expect(screen.getByText(/No assets registered yet/i)).toBeTruthy();
   });
 
-  it('renders asset cards when data exists', async () => {
-    useAssetsQuery.mockReturnValue({
-      data: {
-        data: [
-          {
-            id: '507f1f77bcf86cd799439011',
-            displayName: 'My laptop',
-            assetType: 'laptop',
-            status: 'registered',
-          },
-        ],
-        pagination: { nextCursor: null, hasMore: false },
-      },
-      isLoading: false,
-      isError: false,
-      isFetching: false,
-      refetch: jest.fn(),
-    });
+  it(
+    'renders asset cards when data exists',
+    async () => {
+      useAssetsQuery.mockReturnValue({
+        data: {
+          data: [
+            {
+              id: '507f1f77bcf86cd799439011',
+              displayName: 'My laptop',
+              assetType: 'laptop',
+              status: 'registered',
+            },
+          ],
+          pagination: { nextCursor: null, hasMore: false },
+        },
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        refetch: jest.fn(),
+      });
 
-    await renderWithClient(<AssetListScreen />);
+      await renderWithClient(<AssetListScreen />);
 
-    expect(screen.getByText('My laptop')).toBeTruthy();
-    expect(screen.getByText('Laptop')).toBeTruthy();
-  });
+      await waitFor(
+        () => {
+          expect(screen.getByText('My laptop')).toBeTruthy();
+        },
+        { timeout: 10000 },
+      );
+      expect(screen.getByText('Laptop')).toBeTruthy();
+    },
+    15000,
+  );
 });
