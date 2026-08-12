@@ -17,6 +17,7 @@ import { WaitlistForm } from './WaitlistForm';
 import { ChevronDivider } from './ChevronMotif';
 import { LandingHeader } from './LandingHeader';
 import { HeroVisual } from './HeroVisual';
+import { HeroFeatures } from './HeroFeatures';
 import { PlansSection } from './PlansSection';
 import { WhatToExpectSection } from './WhatToExpectSection';
 import { COMPANY_CONTACT } from '../lib/companyContact';
@@ -72,6 +73,10 @@ export function LandingPage() {
           <Reveal direction="right" delay={0.1} distance={32}>
             <HeroVisual />
           </Reveal>
+        </div>
+
+        <div className="pb-16 lg:pb-20">
+          <HeroFeatures />
         </div>
 
         <ChevronDivider tone="gold" className="mx-auto" />
