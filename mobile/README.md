@@ -103,19 +103,9 @@ AC-1–AC-8. **No plan-picker, no pricing, no photos** (MP-3/MP-5).
 - **`src/auth/gateWriteAction.ts`** — live `GET /account/me` before write CTAs (BR-2)
 - Home screen shows policy/asset counts from the same queries (display cache only)
 
-**Backend dependency (honest):** `backend/src/routes/` has **no** `policies.ts` / `assets.ts`
-yet — the mobile client is ready; integration completes when these endpoints exist:
-
-| Method | Path | Mobile consumer |
-|--------|------|-----------------|
-| `GET` | `/api/v1/policies` | Policy tab list, home count |
-| `GET` | `/api/v1/policies/{policyId}` | Policy detail |
-| `POST` | `/api/v1/policies` | Create policy (`Idempotency-Key` required) |
-| `GET` | `/api/v1/assets` | Assets tab list, home count |
-| `GET` | `/api/v1/assets/{assetId}` | Asset detail |
-| `POST` | `/api/v1/assets` | Register asset (`Idempotency-Key` required) |
-
-All calls use `EXPO_PUBLIC_API_BASE_URL` + `/api/v1` only — never MongoDB/Supabase from the app.
+**Backend dependency:** Customer policy/asset routes are implemented in `backend/src/routes/`
+(`policies.ts`, `assets.ts`). Point `EXPO_PUBLIC_API_BASE_URL` at your local backend or the
+deployed Render service (`https://td-it-solution-insurance.onrender.com`).
 
 ### State management & offline posture (architecture.md §4/§5)
 - **TanStack Query** (`src/query/queryClient.ts`) for server state, with
@@ -207,9 +197,7 @@ All calls use `EXPO_PUBLIC_API_BASE_URL` + `/api/v1` only — never MongoDB/Supa
 ## What's stubbed / placeholder (built, but not final)
 
 - **App icons and splash** — generated from `public/logo.png` into `assets/` via
-  `npm run generate-icons` (full wordmark on white square; re-run after logo updates).
-  Android adaptive layers and favicon included. Store review may still want a
-  glyph-only variant if the wordmark is hard to read at small sizes.
+  `npm run generate-icons` (navy splash + brand adaptive icon background; re-run after logo updates).
 - **Bundle identifiers** (`co.za.tditsolutions.insurance` in `app.json`)
   are a placeholder guess for this pass, not a ratified value — confirm
   with whoever owns App Store Connect / Play Console provisioning before

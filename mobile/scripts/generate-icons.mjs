@@ -14,11 +14,16 @@ const outDir = path.join(mobileRoot, 'assets');
 
 const SIZE = 1024;
 const PADDING = 0.12;
-const SPLASH_PADDING = 0.08;
+const SPLASH_PADDING = 0.1;
 const BG = '#FFFFFF';
-const ADAPTIVE_BG = '#FFFFFF';
+const BRAND_NAVY = '#2C3E50';
+const ADAPTIVE_BG = BRAND_NAVY;
 
-async function fitLogoOnSquare(size, paddingRatio, { transparentBg = false, monochrome = false } = {}) {
+async function fitLogoOnSquare(
+  size,
+  paddingRatio,
+  { transparentBg = false, monochrome = false, background = BG } = {},
+) {
   const pad = Math.floor(size * paddingRatio);
   const inner = size - pad * 2;
 
@@ -43,14 +48,14 @@ async function fitLogoOnSquare(size, paddingRatio, { transparentBg = false, mono
   const left = Math.floor((size - (logoMeta.width ?? inner)) / 2);
   const top = Math.floor((size - (logoMeta.height ?? inner)) / 2);
 
-  const background = transparentBg ? { r: 255, g: 255, b: 255, alpha: 0 } : BG;
+  const backgroundColor = transparentBg ? { r: 255, g: 255, b: 255, alpha: 0 } : background;
 
   return sharp({
     create: {
       width: size,
       height: size,
       channels: 4,
-      background,
+      background: backgroundColor,
     },
   }).composite([{ input: logoBuf, left, top }]).png();
 }
@@ -73,7 +78,9 @@ async function main() {
   }
 
   await (await fitLogoOnSquare(SIZE, PADDING)).toFile(path.join(outDir, 'icon.png'));
-  await (await fitLogoOnSquare(SIZE, SPLASH_PADDING)).toFile(path.join(outDir, 'splash-icon.png'));
+  await (await fitLogoOnSquare(SIZE, SPLASH_PADDING, { background: BRAND_NAVY })).toFile(
+    path.join(outDir, 'splash-icon.png'),
+  );
   await (await fitLogoOnSquare(SIZE, PADDING, { transparentBg: true })).toFile(
     path.join(outDir, 'android-icon-foreground.png'),
   );

@@ -49,14 +49,14 @@ require a human with account access — they cannot be done from this repo alone
   # Staging / internal testing (preview profile)
   eas env:create \
     --name EXPO_PUBLIC_API_BASE_URL \
-    --value "https://<YOUR-RENDER-STAGING-HOST>.onrender.com" \
+    --value "https://td-it-solution-insurance.onrender.com" \
     --environment preview \
     --visibility plaintext
 
   # Production store builds
   eas env:create \
     --name EXPO_PUBLIC_API_BASE_URL \
-    --value "https://<YOUR-RENDER-PRODUCTION-HOST>.onrender.com" \
+    --value "https://td-it-solution-insurance.onrender.com" \
     --environment production \
     --visibility plaintext
   ```

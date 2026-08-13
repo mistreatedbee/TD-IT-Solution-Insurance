@@ -3,9 +3,11 @@
  */
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { Button, Screen } from '../../src/theme/primitives';
 import { colors, spacing, typography } from '../../src/theme/tokens';
+
+const logo = require('../../assets/icon.png');
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -13,13 +15,19 @@ export default function WelcomeScreen() {
   return (
     <Screen scroll={false}>
       <View style={styles.top}>
-        <Text style={styles.wordmark}>TD IT Solution Insurance</Text>
+        <Image
+          accessibilityLabel="TD IT Solution Insurance"
+          source={logo}
+          style={styles.logo}
+          resizeMode="contain"
+        />
       </View>
 
       <View style={styles.middle}>
-        <Text style={styles.headline}>Protect what matters. Recover what&rsquo;s lost.</Text>
+        <Text style={styles.headline}>Insurance that helps you get your stuff back</Text>
         <Text style={styles.subhead}>
-          Register your assets, manage your policy, and report theft — all from your phone.
+          Register vehicles, laptops, phones and business equipment. Manage your policy and report
+          theft — with GPS-assisted recovery when hardware is paired.
         </Text>
       </View>
 
@@ -47,11 +55,11 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   top: {
     paddingTop: spacing.xl,
+    alignItems: 'center',
   },
-  wordmark: {
-    fontSize: typography.sizes.lg,
-    fontWeight: '700',
-    color: colors.primary,
+  logo: {
+    width: 280,
+    height: 180,
   },
   middle: {
     flex: 1,

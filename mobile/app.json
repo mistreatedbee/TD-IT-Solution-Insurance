@@ -3,6 +3,7 @@
     "name": "TD IT Solution Insurance",
     "slug": "mobile",
     "version": "1.0.0",
+    "description": "Protect and recover your valuable assets with monthly insurance plans and GPS-assisted recovery support.",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "tditinsurance",
@@ -14,7 +15,7 @@
     "android": {
       "package": "co.za.tditsolutions.insurance",
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF",
+        "backgroundColor": "#2C3E50",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -31,7 +32,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FFFFFF",
+          "backgroundColor": "#2C3E50",
           "image": "./assets/splash-icon.png",
           "imageWidth": 280,
           "resizeMode": "contain"
