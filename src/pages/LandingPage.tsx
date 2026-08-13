@@ -60,8 +60,8 @@ export function LandingPage() {
                 size="lg"
                 align="left"
                 eyebrow="Asset insurance, built for recovery"
-                title="Insurance that helps you get your stuff back."
-                subtitle="TD IT Solution Insurance covers your vehicles, laptops, phones, tablets, TVs, desktops and business equipment — and works with GPS-assisted recovery and security-company partners when something is lost or stolen. Cover is subject to policy terms, underwriting and claims assessment."
+                title="Insurance that helps you recover your insured items."
+                subtitle="TD IT Solution Insurance covers your vehicles, laptops, phones, tablets, TVs, desktops and business equipment — with GPS-assisted recovery and security-company partners when an insured item is lost or stolen. Cover is subject to policy terms, underwriting and claims assessment."
               />
               <div className="mt-8 flex flex-col gap-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">

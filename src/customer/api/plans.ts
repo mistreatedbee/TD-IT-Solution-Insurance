@@ -19,6 +19,14 @@ export function listPlans() {
   return apiFetch<{ data: PlanCatalogItem[] }>('/plans', { method: 'GET' });
 }
 
+/** Pre-auth marketing catalog — no session required. */
+export function listPublicPlans() {
+  return apiFetch<{ data: PlanCatalogItem[] }>('/plans/catalog', {
+    method: 'GET',
+    authenticated: false,
+  });
+}
+
 export function formatPlanPrice(plan: PlanCatalogItem): string {
   if (plan.isCustomPricing || plan.monthlyAmountCents == null) {
     return 'Custom pricing';
