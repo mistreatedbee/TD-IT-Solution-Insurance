@@ -36,9 +36,9 @@ export default function WelcomeScreen() {
           variant="primary"
           fullWidth
           size="lg"
-          onPress={() => router.push('/(auth)/signup')}
+          onPress={() => router.push('/(auth)/get-started')}
         >
-          Create account
+          Get Started
         </Button>
         <Button
           variant="tertiary"

@@ -1,0 +1,776 @@
+/**
+ * Customer onboarding wizard — mirrors web /get-started flow.
+ */
+import { useRouter } from 'expo-router';
+import { CheckIcon } from 'lucide-react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { createAsset, listAssets, type Asset, type AssetType } from '../../api/assets';
+import { login, resendVerification, signup, isMfaChallenge } from '../../api/auth';
+import { ApiError } from '../../api/errors';
+import { formatPlanPrice, listPlans, type PlanCatalogItem } from '../../api/plans';
+import { createPolicy, listPolicies, type Policy } from '../../api/policies';
+import { setRefreshToken } from '../../auth/secure-storage';
+import { getDeviceName, getOrCreateDeviceId } from '../../auth/device';
+import { useSessionStore } from '../../auth/session-store';
+import { useAccountQuery, fetchLiveAccountForGating } from '../../auth/useAccountQuery';
+import { COMPANY_CONTACT } from '../../lib/companyContact';
+import { formatAssetType } from '../../lib/asset-labels';
+import {
+  ASSET_CATEGORY_OPTIONS,
+  buildAssetDetails,
+  fieldLabel,
+  requiredFieldsForType,
+} from '../../onboarding/assetFormConfig';
+import { OnboardingProgress } from '../../onboarding/OnboardingProgress';
+import {
+  clearAssetDraft,
+  loadAccountType,
+  loadAssetDraft,
+  markOnboardingComplete,
+  saveAccountType,
+  saveAssetDraft,
+  type AccountType,
+  type OnboardingStep,
+} from '../../onboarding/onboardingStorage';
+import { Alert, Badge, Button, Card, Input, Screen } from '../../theme/primitives';
+import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PASSWORD_MIN_LENGTH = 10;
+
+function resolveInitialStep(
+  signedIn: boolean,
+  accountState: string | undefined,
+  hasPolicy: boolean,
+): OnboardingStep {
+  if (!signedIn) return 'welcome';
+  if (accountState === 'pending_verification') return 'verify';
+  if (!hasPolicy) return 'plan';
+  return 'asset-category';
+}
+
+export interface CustomerOnboardingScreenProps {
+  /** When true, user is authenticated — skip account creation steps on resume. */
+  signedIn?: boolean;
+}
+
+export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnboardingScreenProps) {
+  const router = useRouter();
+  const sessionStatus = useSessionStore((s) => s.status);
+  const setSignedIn = useSessionStore((s) => s.setSignedIn);
+  const signedIn = signedInProp ?? sessionStatus === 'signed-in';
+  const { data: account } = useAccountQuery();
+
+  const [step, setStep] = useState<OnboardingStep>('welcome');
+  const [accountType, setAccountType] = useState<AccountType | null>(null);
+  const [plans, setPlans] = useState<PlanCatalogItem[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [policy, setPolicy] = useState<Policy | null>(null);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [selectedAssetType, setSelectedAssetType] = useState<AssetType | null>(null);
+  const [assetFields, setAssetFields] = useState<Record<string, string>>({});
+  const [displayName, setDisplayName] = useState('');
+  const [estimatedValue, setEstimatedValue] = useState('');
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refreshData = useCallback(async () => {
+    if (!signedIn) return;
+    try {
+      const [policiesRes, assetsRes] = await Promise.all([listPolicies(), listAssets()]);
+      setPolicy(policiesRes.data?.[0] ?? null);
+      setAssets(assetsRes.data ?? []);
+    } catch {
+      /* non-fatal */
+    }
+  }, [signedIn]);
+
+  useEffect(() => {
+    loadAccountType().then(setAccountType);
+    loadAssetDraft().then((draft) => {
+      if (draft) setAssetFields(draft);
+    });
+  }, []);
+
+  useEffect(() => {
+    void refreshData();
+  }, [refreshData, signedIn, account?.accountState]);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    if (step === 'complete') return;
+    const hasPolicy = Boolean(policy);
+    setStep((prev) => {
+      if (prev === 'complete') return prev;
+      if (prev === 'welcome' || prev === 'account-type' || prev === 'signup') {
+        return resolveInitialStep(true, account?.accountState, hasPolicy);
+      }
+      return prev;
+    });
+  }, [signedIn, account?.accountState, policy, step]);
+
+  useEffect(() => {
+    if (step !== 'plan' || !signedIn) return;
+    setPlansLoading(true);
+    listPlans()
+      .then((res) => setPlans(res.data))
+      .catch(() => setPlans([]))
+      .finally(() => setPlansLoading(false));
+  }, [step, signedIn]);
+
+  async function handleSignup() {
+    setError(null);
+    const trimmed = email.trim();
+    if (!EMAIL_PATTERN.test(trimmed)) {
+      setError('Enter a valid email address.');
+      return;
+    }
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      setError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords don't match.");
+      return;
+    }
+    if (!consentAccepted) {
+      setError('Please accept the terms and privacy notice.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await signup({ email: trimmed, password, consentAccepted: true });
+      setStep('verify');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Sign up failed.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleLogin() {
+    setError(null);
+    setLoading(true);
+    try {
+      const deviceId = await getOrCreateDeviceId();
+      const deviceName = getDeviceName();
+      const result = await login({
+        email: loginEmail.trim(),
+        password: loginPassword,
+        deviceId,
+        deviceName,
+      });
+
+      if (isMfaChallenge(result)) {
+        setError('MFA is required — complete sign-in from the Log in screen.');
+        router.push({
+          pathname: '/(auth)/mfa-challenge',
+          params: { mfaChallengeToken: result.mfaChallengeToken },
+        });
+        return;
+      }
+
+      await setRefreshToken(result.refreshToken);
+      setSignedIn({ accessToken: result.accessToken, sessionId: result.sessionId });
+      await refreshData();
+      const live = await fetchLiveAccountForGating();
+      setStep(resolveInitialStep(true, live.accountState, Boolean(policy)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Log in failed.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSelectPlan(plan: PlanCatalogItem) {
+    if (plan.isCustomPricing) {
+      void Linking.openURL(
+        `mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent('Enterprise plan quote')}`,
+      );
+      return;
+    }
+    setSelectedPlanId(plan.id);
+    setLoading(true);
+    setError(null);
+    try {
+      const created = await createPolicy({ planTier: plan.slug, planCatalogId: plan.id });
+      setPolicy(created);
+      setStep('asset-category');
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'PLAN_REQUIRES_QUOTE') {
+        setError('Enterprise plans require a custom quote. Contact us to continue.');
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not select plan.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRegisterAsset() {
+    if (!selectedAssetType) return;
+    setError(null);
+    const required = requiredFieldsForType(selectedAssetType);
+    for (const key of required) {
+      if (!assetFields[key]?.trim()) {
+        setError(`Please enter ${fieldLabel(key).toLowerCase()}.`);
+        return;
+      }
+    }
+    if (!displayName.trim()) {
+      setError('Enter a name for this asset.');
+      return;
+    }
+    if (selectedAssetType === 'vehicle') {
+      const year = Number.parseInt(assetFields.year ?? '', 10);
+      if (Number.isNaN(year)) {
+        setError('Enter a valid year.');
+        return;
+      }
+    }
+    setLoading(true);
+    try {
+      const body = {
+        assetType: selectedAssetType,
+        displayName: displayName.trim(),
+        details: buildAssetDetails(selectedAssetType, assetFields),
+        ...(estimatedValue.trim()
+          ? { estimatedValue: { amount: Number.parseFloat(estimatedValue), currency: 'ZAR' as const } }
+          : {}),
+      };
+      const created = await createAsset(body as Parameters<typeof createAsset>[0]);
+      setAssets((prev) => [created, ...prev]);
+      await clearAssetDraft();
+      setAssetFields({});
+      setDisplayName('');
+      setEstimatedValue('');
+      setStep('review');
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'ASSET_LIMIT_REACHED') {
+        setError('You have reached the device limit for your plan.');
+      } else if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
+        setStep('verify');
+        setError('Verify your email before registering assets.');
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not register asset.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleFinish() {
+    await markOnboardingComplete();
+    setStep('complete');
+  }
+
+  async function handleGoToApp() {
+    await markOnboardingComplete();
+    router.replace('/(app)');
+  }
+
+  const selectedPlan = useMemo(
+    () => plans.find((p) => p.id === selectedPlanId || p.slug === policy?.planTier),
+    [plans, selectedPlanId, policy],
+  );
+
+  return (
+    <Screen>
+      <OnboardingProgress step={step} />
+
+      {error ? (
+        <View style={styles.alertSpacing}>
+          <Alert tone="danger">{error}</Alert>
+        </View>
+      ) : null}
+
+      {step === 'welcome' ? (
+        <>
+          <Text style={styles.title}>Welcome to TD IT Solution Insurance</Text>
+          <Text style={styles.subtitle}>
+            Protect your valuable assets with flexible insurance and intelligent asset protection.
+          </Text>
+          <View style={styles.actions}>
+            <Button size="lg" fullWidth onPress={() => setStep('account-type')}>
+              Get Started
+            </Button>
+            <Button variant="secondary" size="lg" fullWidth onPress={() => setStep('signup')}>
+              I already have an account
+            </Button>
+          </View>
+        </>
+      ) : null}
+
+      {step === 'account-type' ? (
+        <>
+          <Text style={styles.titleMd}>Who is this account for?</Text>
+          <View style={styles.cardGrid}>
+            {(['individual', 'business'] as const).map((type) => (
+              <Pressable
+                key={type}
+                accessibilityRole="button"
+                onPress={() => {
+                  setAccountType(type);
+                  void saveAccountType(type);
+                }}
+                style={[
+                  styles.typeCard,
+                  accountType === type && styles.typeCardSelected,
+                ]}
+              >
+                <Text style={styles.typeCardTitle}>{type.charAt(0).toUpperCase() + type.slice(1)}</Text>
+                <Text style={styles.typeCardBody}>
+                  {type === 'individual'
+                    ? 'Protect your own vehicles, devices and equipment.'
+                    : 'Protect company assets — enterprise plans available for larger fleets.'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.rowActions}>
+            <Button variant="secondary" onPress={() => setStep('welcome')}>
+              Back
+            </Button>
+            <Button disabled={!accountType} onPress={() => setStep('signup')}>
+              Continue
+            </Button>
+          </View>
+        </>
+      ) : null}
+
+      {step === 'signup' ? (
+        <>
+          <Text style={styles.titleMd}>Create your account</Text>
+          <Text style={styles.hint}>
+            {accountType === 'business' ? 'Tell us about your business — ' : 'Tell us about yourself — '}
+            start with email and password.
+          </Text>
+          <Input label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" required />
+          <Input label="Password" value={password} onChangeText={setPassword} type="password" hint={`At least ${PASSWORD_MIN_LENGTH} characters.`} required />
+          <Input label="Confirm password" value={confirmPassword} onChangeText={setConfirmPassword} type="password" required />
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: consentAccepted }}
+            onPress={() => setConsentAccepted((v) => !v)}
+            style={styles.consentRow}
+          >
+            <View style={[styles.checkbox, consentAccepted && styles.checkboxChecked]}>
+              {consentAccepted ? <CheckIcon size={14} color="#FFFFFF" /> : null}
+            </View>
+            <Text style={styles.consentText}>
+              I agree to the Terms and Privacy Policy.
+            </Text>
+          </Pressable>
+          <Button fullWidth loading={loading} onPress={() => void handleSignup()}>
+            Create account
+          </Button>
+
+          <Text style={styles.sectionDivider}>Already registered?</Text>
+          <Input label="Email" value={loginEmail} onChangeText={setLoginEmail} keyboardType="email-address" autoCapitalize="none" />
+          <Input label="Password" value={loginPassword} onChangeText={setLoginPassword} type="password" />
+          <Button variant="secondary" fullWidth loading={loading} onPress={() => void handleLogin()}>
+            Log in
+          </Button>
+        </>
+      ) : null}
+
+      {step === 'verify' ? (
+        <>
+          <Badge tone="warning">Verify your email</Badge>
+          <Text style={[styles.titleMd, styles.mtMd]}>Check your inbox</Text>
+          <Text style={styles.subtitle}>
+            Open the verification link we sent you, then continue below.
+          </Text>
+          <View style={styles.actions}>
+            <Button
+              variant="secondary"
+              loading={loading}
+              onPress={async () => {
+                setLoading(true);
+                try {
+                  await resendVerification(email.trim() || account?.email || '');
+                } catch (err) {
+                  setError(err instanceof ApiError ? err.message : 'Resend failed.');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            >
+              Resend email
+            </Button>
+            <Button
+              onPress={async () => {
+                await refreshData();
+                try {
+                  const live = await fetchLiveAccountForGating();
+                  if (live.accountState === 'active') setStep('plan');
+                  else setError('Still waiting for verification — open the link in your email first.');
+                } catch {
+                  setError('Could not verify account status. Try again.');
+                }
+              }}
+            >
+              I&apos;ve verified — continue
+            </Button>
+          </View>
+        </>
+      ) : null}
+
+      {step === 'plan' ? (
+        <>
+          <Text style={styles.titleMd}>Choose an insurance plan</Text>
+          <Text style={styles.subtitle}>
+            Select the plan that matches how many devices you want to protect. Payment is configured in a later step.
+          </Text>
+          {plansLoading ? <Text style={styles.hint}>Loading plans…</Text> : null}
+          {plans.map((plan) => (
+            <Card key={plan.id} padding="none" style={styles.planCard}>
+              <View style={styles.planHeader}>
+                <Text style={styles.planName}>{plan.name}</Text>
+                <Text style={styles.planTagline}>{plan.tagline}</Text>
+              </View>
+              <View style={styles.planBody}>
+                <Text style={styles.planPrice}>{formatPlanPrice(plan)}</Text>
+                {plan.features.map((f) => (
+                  <Text key={f} style={styles.planFeature}>
+                    • {f}
+                  </Text>
+                ))}
+                <Button
+                  variant={plan.isCustomPricing ? 'secondary' : 'primary'}
+                  fullWidth
+                  loading={loading && selectedPlanId === plan.id}
+                  onPress={() => void handleSelectPlan(plan)}
+                  style={styles.planButton}
+                >
+                  {plan.isCustomPricing ? 'Request a quote' : 'Select plan'}
+                </Button>
+              </View>
+            </Card>
+          ))}
+        </>
+      ) : null}
+
+      {step === 'asset-category' ? (
+        <>
+          <Text style={styles.titleMd}>What would you like to protect?</Text>
+          <Text style={styles.subtitle}>Pick a category to register your first asset.</Text>
+          <View style={styles.categoryGrid}>
+            {ASSET_CATEGORY_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.api}
+                accessibilityRole="button"
+                onPress={() => {
+                  setSelectedAssetType(opt.api);
+                  setStep('asset-form');
+                }}
+                style={[
+                  styles.categoryChip,
+                  selectedAssetType === opt.api && styles.categoryChipSelected,
+                ]}
+              >
+                <Text style={styles.categoryLabel}>{opt.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {assets.length > 0 ? (
+            <Button variant="secondary" onPress={() => setStep('review')}>
+              {`Skip to review (${assets.length} asset${assets.length === 1 ? '' : 's'})`}
+            </Button>
+          ) : null}
+        </>
+      ) : null}
+
+      {step === 'asset-form' && selectedAssetType ? (
+        <>
+          <Text style={styles.titleMd}>Register your asset</Text>
+          <Input
+            label="Asset name"
+            value={displayName}
+            onChangeText={setDisplayName}
+            placeholder="e.g. MacBook Pro, Toyota Corolla"
+            required
+          />
+          {requiredFieldsForType(selectedAssetType).map((key) => (
+            <Input
+              key={key}
+              label={fieldLabel(key)}
+              value={assetFields[key] ?? ''}
+              onChangeText={(v) => {
+                const next = { ...assetFields, [key]: v };
+                setAssetFields(next);
+                void saveAssetDraft(next);
+              }}
+              required
+              keyboardType={key === 'year' ? 'number-pad' : 'default'}
+              autoCapitalize="none"
+            />
+          ))}
+          <Input
+            label="Estimated value (ZAR, optional)"
+            value={estimatedValue}
+            onChangeText={setEstimatedValue}
+            keyboardType="decimal-pad"
+          />
+          <View style={styles.rowActions}>
+            <Button variant="secondary" onPress={() => setStep('asset-category')}>
+              Back
+            </Button>
+            <Button loading={loading} onPress={() => void handleRegisterAsset()}>
+              Save asset
+            </Button>
+          </View>
+        </>
+      ) : null}
+
+      {step === 'review' ? (
+        <>
+          <Text style={styles.titleMd}>Your protection summary</Text>
+          <Card padding="md" style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Account</Text>
+            <Text style={styles.summaryValue}>{account?.email ?? email}</Text>
+            <Text style={[styles.summaryLabel, styles.mtMd]}>Plan</Text>
+            <Text style={styles.summaryValue}>
+              {selectedPlan?.name ?? policy?.planTier ?? '—'}
+              {selectedPlan ? ` (${formatPlanPrice(selectedPlan)})` : ''}
+            </Text>
+            <View style={styles.mtSm}>
+              <Badge tone="warning">Pending activation — payment not configured yet</Badge>
+            </View>
+            <Text style={[styles.summaryLabel, styles.mtMd]}>Protected assets</Text>
+            {assets.length === 0 ? (
+              <Text style={styles.hint}>No assets registered yet.</Text>
+            ) : (
+              assets.map((a) => (
+                <Text key={a.id} style={styles.assetLine}>
+                  {a.displayName}{' '}
+                  <Text style={styles.hint}>({a.assetType ? formatAssetType(a.assetType) : 'asset'})</Text>
+                </Text>
+              ))
+            )}
+          </Card>
+          <Alert tone="info" style={styles.mtMd}>
+            Insurance activation and monthly billing will be completed once payment integration is live.
+          </Alert>
+          <View style={styles.actions}>
+            <Button variant="secondary" onPress={() => setStep('asset-category')}>
+              Add another asset
+            </Button>
+            <Button onPress={() => void handleFinish()}>Continue</Button>
+          </View>
+        </>
+      ) : null}
+
+      {step === 'complete' ? (
+        <>
+          <Badge tone="emerald">Onboarding complete</Badge>
+          <Text style={[styles.titleMd, styles.mtMd]}>You&apos;re set up</Text>
+          <Text style={styles.subtitle}>
+            Your account, plan and assets are saved. Use the app for theft reporting and recovery tools.
+          </Text>
+          <Button fullWidth onPress={() => void handleGoToApp()}>
+            Go to app
+          </Button>
+        </>
+      ) : null}
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  title: {
+    fontSize: typography.sizes['2xl'],
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  titleMd: {
+    fontSize: typography.sizes.xl,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  subtitle: {
+    fontSize: typography.sizes.base,
+    color: colors.textSecondary,
+    lineHeight: typography.sizes.base * 1.4,
+    marginBottom: spacing.lg,
+  },
+  hint: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  actions: {
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  rowActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  alertSpacing: {
+    marginBottom: spacing.lg,
+  },
+  cardGrid: {
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  typeCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.lg,
+    minHeight: minTouchTarget * 2,
+  },
+  typeCardSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
+  typeCardTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    textTransform: 'capitalize',
+  },
+  typeCardBody: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+    minHeight: minTouchTarget,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  consentText: {
+    flex: 1,
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+  },
+  sectionDivider: {
+    fontSize: typography.sizes.sm,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginTop: spacing.xl,
+    marginBottom: spacing.md,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  mtMd: { marginTop: spacing.md },
+  mtSm: { marginTop: spacing.sm },
+  planCard: {
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+  },
+  planHeader: {
+    backgroundColor: colors.primary,
+    padding: spacing.md,
+  },
+  planName: {
+    fontSize: typography.sizes.base,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  planTagline: {
+    fontSize: typography.sizes.sm,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: spacing.xs,
+  },
+  planBody: {
+    padding: spacing.md,
+  },
+  planPrice: {
+    fontSize: typography.sizes['2xl'],
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  planFeature: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  planButton: {
+    marginTop: spacing.md,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  categoryChip: {
+    width: '47%',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.md,
+    minHeight: minTouchTarget,
+    justifyContent: 'center',
+  },
+  categoryChipSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
+  categoryLabel: {
+    fontSize: typography.sizes.sm,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  summaryCard: {
+    marginTop: spacing.md,
+  },
+  summaryLabel: {
+    fontSize: typography.sizes.xs,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    color: colors.textSecondary,
+  },
+  summaryValue: {
+    fontSize: typography.sizes.base,
+    color: colors.textPrimary,
+    marginTop: spacing.xs,
+  },
+  assetLine: {
+    fontSize: typography.sizes.sm,
+    color: colors.textPrimary,
+    marginTop: spacing.xs,
+  },
+});

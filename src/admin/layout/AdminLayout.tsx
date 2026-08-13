@@ -47,6 +47,7 @@ export function AdminLayout() {
         { to: '/admin/accounts', label: 'Customers' },
         { to: '/admin/policies', label: 'Policies' },
         { to: '/admin/assets', label: 'Assets' },
+        { to: '/admin/plans', label: 'Plans' },
       ]}
       onSignOut={() => void signOut()}
     >

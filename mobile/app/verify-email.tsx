@@ -38,7 +38,7 @@ export default function VerifyEmailScreen() {
 
   function handleContinue() {
     if (sessionStatus === 'signed-in') {
-      router.replace('/(app)');
+      router.replace('/(onboarding)');
     } else {
       router.replace('/(auth)/login');
     }

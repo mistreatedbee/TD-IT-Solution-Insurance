@@ -15,7 +15,9 @@ type Schemas = components['schemas'];
 
 export type Policy = Schemas['Policy'];
 export type PolicyListPage = Schemas['PolicyListPage'];
-export type CreatePolicyRequest = Schemas['CreatePolicyRequest'];
+export type CreatePolicyRequest = Schemas['CreatePolicyRequest'] & {
+  planCatalogId?: string;
+};
 
 export interface ListPoliciesParams {
   cursor?: string;

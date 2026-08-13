@@ -10,6 +10,7 @@ import {
   PoliciesListPage,
   PolicyDetailPage,
 } from './pages/AdminDataPages';
+import { PlanEditRoute, PlansListPage } from './pages/AdminPlansPages';
 
 function AccountDetailRoute() {
   const { accountId } = useParams();
@@ -52,6 +53,8 @@ export default function AdminRoutes() {
             <Route path="policies/:policyId" element={<PolicyDetailRoute />} />
             <Route path="assets" element={<AssetsListPage />} />
             <Route path="assets/:assetId" element={<AssetDetailRoute />} />
+            <Route path="plans" element={<PlansListPage />} />
+            <Route path="plans/:planId" element={<PlanEditRoute />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="login" replace />} />

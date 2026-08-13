@@ -11,6 +11,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { registerForcedLogoutHandler, refreshAccessToken } from '../src/api/client';
 import { useSessionStore } from '../src/auth/session-store';
+import { useOnboardingGate } from '../src/onboarding/useOnboardingGate';
 import { NetworkProvider, OfflineBanner } from '../src/network/NetworkProvider';
 import { asyncStoragePersister, queryClient } from '../src/query/queryClient';
 
@@ -20,6 +21,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 export default function RootLayout() {
   const status = useSessionStore((s) => s.status);
+  const onboardingGate = useOnboardingGate();
   const router = useRouter();
   const [bootstrapped, setBootstrapped] = useState(false);
 
@@ -54,7 +56,7 @@ export default function RootLayout() {
     bootstrap();
   }, [bootstrap]);
 
-  if (!bootstrapped || status === 'hydrating') {
+  if (!bootstrapped || status === 'hydrating' || (status === 'signed-in' && onboardingGate === 'loading')) {
     // Native splash screen is still showing (preventAutoHideAsync above);
     // nothing needs to render here, but returning null (vs. a competing
     // loading screen) avoids a flash of unstyled content underneath it.
@@ -75,7 +77,10 @@ export default function RootLayout() {
                 <Stack.Protected guard={status === 'signed-out'}>
                   <Stack.Screen name="(auth)" />
                 </Stack.Protected>
-                <Stack.Protected guard={status === 'signed-in'}>
+                <Stack.Protected guard={status === 'signed-in' && onboardingGate === 'onboarding'}>
+                  <Stack.Screen name="(onboarding)" />
+                </Stack.Protected>
+                <Stack.Protected guard={status === 'signed-in' && onboardingGate === 'app'}>
                   <Stack.Screen name="(app)" />
                   <Stack.Screen
                     name="verification-gate"
