@@ -242,7 +242,7 @@ describe('GET /account/me — mfaEnrolled', () => {
     expect(body.mfaEnrolled).toBe(false);
   });
 
-  it('surfaces UPSTREAM_UNAVAILABLE (503) rather than a raw error when Supabase is unreachable', async () => {
+  it('defaults mfaEnrolled to false when Supabase MFA lookup is unavailable', async () => {
     const ctx = buildCtx(createFakeSupabaseAdmin({ hasVerifiedFactor: false, unavailable: true }), accountId);
     const started = await startTestServer(ctx);
     server = started.server;
@@ -251,8 +251,8 @@ describe('GET /account/me — mfaEnrolled', () => {
     const response = await fetch(`${baseUrl}/account/me`, {
       headers: { authorization: `Bearer ${bearerFor(ctx, accountId)}` },
     });
-    expect(response.status).toBe(503);
-    const body = (await response.json()) as { error: { code: string } };
-    expect(body.error.code).toBe('UPSTREAM_UNAVAILABLE');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { mfaEnrolled: boolean };
+    expect(body.mfaEnrolled).toBe(false);
   });
 });

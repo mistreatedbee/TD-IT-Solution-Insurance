@@ -45,20 +45,11 @@ export async function resolveCustomerAccountAfterSupabaseAuth(
     return account;
   }
 
-  if (options.emailConfirmed) {
+  if (options.emailConfirmed || options.supabaseAuthSucceeded) {
     await accounts.markEmailVerified(account.id);
     return (await accounts.findById(account.id)) ?? account;
   }
 
   const syncResult = await syncAppAccountIfSupabaseEmailConfirmed(accounts, supabase, account);
-  if (syncResult.account.accountState === 'active') {
-    return syncResult.account;
-  }
-
-  if (options.supabaseAuthSucceeded) {
-    await accounts.markEmailVerified(account.id);
-    return (await accounts.findById(account.id)) ?? account;
-  }
-
   return syncResult.account;
 }

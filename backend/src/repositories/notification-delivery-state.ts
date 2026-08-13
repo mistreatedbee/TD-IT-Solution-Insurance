@@ -71,20 +71,27 @@ export function createNotificationDeliveryStateRepo(db: Db) {
     /** Returns true when welcome was newly marked sent (deduped). */
     async tryMarkWelcomeSent(accountId: string): Promise<boolean> {
       const now = new Date();
-      const result = await collection().updateOne(
-        { accountId, welcomeSentAt: null },
-        {
-          $set: { welcomeSentAt: now, updatedAt: now },
-          $setOnInsert: {
-            onboardingReminderCount: 0,
-            lastOnboardingReminderAt: null,
-            policyRenewalReminders: {},
-            createdAt: now,
+      try {
+        const result = await collection().updateOne(
+          { accountId, welcomeSentAt: null },
+          {
+            $set: { welcomeSentAt: now, updatedAt: now },
+            $setOnInsert: {
+              onboardingReminderCount: 0,
+              lastOnboardingReminderAt: null,
+              policyRenewalReminders: {},
+              createdAt: now,
+            },
           },
-        },
-        { upsert: true },
-      );
-      return result.modifiedCount > 0 || (result.upsertedCount ?? 0) > 0;
+          { upsert: true },
+        );
+        return result.modifiedCount > 0 || (result.upsertedCount ?? 0) > 0;
+      } catch (err) {
+        if (err && typeof err === 'object' && 'code' in err && err.code === 11000) {
+          return false;
+        }
+        throw err;
+      }
     },
 
     /** Returns true when a new onboarding reminder slot was consumed (max 2). */

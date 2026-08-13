@@ -167,11 +167,14 @@ export function createSessionRouter(ctx: AppContext): Router {
         const syncResult = await syncAppAccountIfSupabaseEmailConfirmed(ctx.accounts, ctx.supabase, account);
         account = syncResult.account;
       } catch (err) {
-        if (err instanceof SupabaseUnavailableError) {
+        if (err instanceof SupabaseUnavailableError && account.accountState === 'active') {
+          // Account already usable — do not block session hydration on admin API blips.
+        } else if (err instanceof SupabaseUnavailableError) {
           next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
           return;
+        } else {
+          throw err;
         }
-        throw err;
       }
 
       scheduleCustomerLifecycleNotifications(ctx, account);
@@ -182,28 +185,17 @@ export function createSessionRouter(ctx: AppContext): Router {
         return;
       }
 
-      // api-design.md's Account schema declares `mfaEnrolled` — this is the
-      // one live signal for it: does GoTrue have >=1 *verified* TOTP factor
-      // for this account right now. Same check SR-14's login gate
-      // (routes/auth.ts, `findVerifiedTotpFactor`) and the authenticated
-      // opt-in path (routes/mfa.ts `POST /mfa/enroll`) already use — reused
-      // here rather than re-derived, so "enrolled" means the same thing
-      // everywhere in this backend. `/account/me` has no live Supabase user
-      // access token on hand (the backend never holds one past the request
-      // that minted it, FU-18), so a transient one is minted the same way
-      // routes/mfa.ts's authenticated path does, from the account's email,
-      // with no password re-entry.
-      let mfaEnrolled: boolean;
+      // Optional MFA enrollment flag — best-effort via Supabase admin. Login
+      // must not fail when magic-link mint is slow or misconfigured.
+      let mfaEnrolled = false;
       try {
         const userAccessToken = await ctx.supabase.mintTransientUserAccessToken(account.email);
         const verifiedFactor = await ctx.supabase.findVerifiedTotpFactor(userAccessToken);
         mfaEnrolled = verifiedFactor !== null;
       } catch (err) {
-        if (err instanceof SupabaseUnavailableError) {
-          next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
-          return;
+        if (!(err instanceof SupabaseUnavailableError)) {
+          throw err;
         }
-        throw err;
       }
 
       res.status(200).json({
