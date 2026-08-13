@@ -1,7 +1,6 @@
 /**
  * Public company contact details sourced from the owner's published site
- * (https://5e0f0c71609dc.site123.me). Regulatory identifiers not listed there
- * remain null — do not invent FSP, registration, or licence numbers.
+ * (https://5e0f0c71609dc.site123.me) and owner-confirmed registration number.
  */
 export const COMPANY_CONTACT = {
   legalName: 'TD IT Solution (Pty) Ltd',
@@ -14,6 +13,7 @@ export const COMPANY_CONTACT = {
     'South Africa',
   ] as const,
   email: 'td.itsolution60@gmail.com',
+  registrationNumber: '2019/565817/07',
   phones: [
     { display: '068 132 9499', href: 'tel:+27681329499' },
     { display: '076 357 2860', href: 'tel:+27763572860' },

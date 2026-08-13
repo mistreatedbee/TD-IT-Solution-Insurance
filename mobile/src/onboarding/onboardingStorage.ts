@@ -10,12 +10,52 @@ export type OnboardingStep =
   | 'plan'
   | 'asset-category'
   | 'asset-form'
+  | 'asset-photo'
+  | 'tracking-info'
   | 'review'
   | 'complete';
 
 const ACCOUNT_TYPE_KEY = 'td-onboarding-account-type';
 const DRAFT_ASSET_KEY = 'td-onboarding-asset-draft';
 const COMPLETE_KEY = 'td-onboarding-complete';
+const MARKETING_INTRO_KEY = 'td-marketing-intro-complete';
+const SIGNUP_DRAFT_KEY = 'td-signup-profile-draft';
+
+export interface SignupProfileDraft {
+  firstName: string;
+  lastName: string;
+  mobile: string;
+}
+
+export async function markMarketingIntroComplete(): Promise<void> {
+  await AsyncStorage.setItem(MARKETING_INTRO_KEY, '1');
+}
+
+export async function isMarketingIntroComplete(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(MARKETING_INTRO_KEY)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export async function saveSignupProfileDraft(draft: SignupProfileDraft): Promise<void> {
+  await AsyncStorage.setItem(SIGNUP_DRAFT_KEY, JSON.stringify(draft));
+}
+
+export async function loadSignupProfileDraft(): Promise<SignupProfileDraft | null> {
+  try {
+    const raw = await AsyncStorage.getItem(SIGNUP_DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as SignupProfileDraft;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearSignupProfileDraft(): Promise<void> {
+  await AsyncStorage.removeItem(SIGNUP_DRAFT_KEY);
+}
 
 export async function loadAccountType(): Promise<AccountType | null> {
   try {
@@ -74,7 +114,7 @@ export const ONBOARDING_STEPS: { id: OnboardingStep; label: string }[] = [
 export function stepProgressIndex(step: OnboardingStep): number {
   if (step === 'welcome' || step === 'account-type' || step === 'signup' || step === 'verify') return 0;
   if (step === 'plan') return 1;
-  if (step === 'asset-category' || step === 'asset-form') return 2;
+  if (step === 'asset-category' || step === 'asset-form' || step === 'asset-photo' || step === 'tracking-info') return 2;
   if (step === 'review') return 3;
   return 4;
 }

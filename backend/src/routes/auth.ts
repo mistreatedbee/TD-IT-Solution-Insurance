@@ -34,6 +34,9 @@ import { SupabaseUnavailableError } from '../db/supabase.js';
 import { issueEnrollmentTicket } from '../lib/enrollment-ticket.js';
 import { storePendingEnrollment } from '../lib/enrollment-pending-store.js';
 import { revokeJtisInKv } from '../lib/revocation.js';
+import { notifyInBackground } from '../lib/customer-notification-service.js';
+import { notifyNewDeviceLoginIfNeeded } from '../lib/auth-login-notifications.js';
+import { scheduleCustomerLifecycleNotifications } from '../lib/customer-lifecycle-notifications.js';
 
 const GENERIC_ACCEPTED = { message: 'If this request can be actioned, you will receive an email shortly.' };
 
@@ -158,6 +161,12 @@ export function createAuthRouter(ctx: AppContext): Router {
       const account = await ctx.accounts.findByEmail(normalizedEmail);
       if (account) {
         await ctx.accounts.markEmailVerified(account.id);
+        if (account.userType === 'customer') {
+          notifyInBackground(
+            'onboarding.welcome',
+            ctx.onboardingNotifications.notifyWelcomeIfNeeded(account.id),
+          );
+        }
       }
       res.status(200).json({ message: 'Email verified.' });
     } catch (err) {
@@ -205,6 +214,101 @@ export function createAuthRouter(ctx: AppContext): Router {
   );
 
   // ---------------------------------------------------------------
+  // POST /auth/notify-email-verified
+  // Web: user hit an expired verification link or re-signed up with a
+  // confirmed email — sync app.accounts and send a confirmation email.
+  // ---------------------------------------------------------------
+  const notifyVerifiedSchema = z.object({ email: z.string().email() });
+  router.post(
+    '/auth/notify-email-verified',
+    validateBody(notifyVerifiedSchema),
+    async (req, res, next) => {
+      try {
+        const { email } = req.body as z.infer<typeof notifyVerifiedSchema>;
+        const normalizedEmail = email.trim().toLowerCase();
+
+        const cooldown = await checkRateLimit(ctx.kv, `notify-verified-cooldown:${normalizedEmail}`, {
+          attempts: 3,
+          windowSeconds: 15 * 60,
+        });
+        if (!cooldown.allowed) {
+          next(apiError('RATE_LIMITED', undefined, cooldown.resetSeconds));
+          return;
+        }
+
+        let supabaseUser: { userId: string } | null;
+        try {
+          supabaseUser = await ctx.supabase.getUserByEmail(normalizedEmail);
+        } catch (err) {
+          if (err instanceof SupabaseUnavailableError) {
+            next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
+            return;
+          }
+          throw err;
+        }
+
+        if (!supabaseUser) {
+          res.status(200).json({ status: 'unknown' as const, confirmationEmailSent: false });
+          return;
+        }
+
+        let emailConfirmed: boolean;
+        try {
+          emailConfirmed = await ctx.supabase.isUserEmailConfirmed(supabaseUser.userId);
+        } catch (err) {
+          if (err instanceof SupabaseUnavailableError) {
+            next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
+            return;
+          }
+          throw err;
+        }
+
+        if (!emailConfirmed) {
+          res.status(200).json({ status: 'pending_verification' as const, confirmationEmailSent: false });
+          return;
+        }
+
+        let account = await ctx.accounts.findById(supabaseUser.userId);
+        if (!account) {
+          await ctx.accounts.createCustomerAccount(supabaseUser.userId, normalizedEmail);
+          account = await ctx.accounts.findById(supabaseUser.userId);
+        }
+
+        if (account && account.accountState === 'pending_verification') {
+          await ctx.accounts.markEmailVerified(account.id);
+          notifyInBackground(
+            'onboarding.welcome',
+            ctx.onboardingNotifications.notifyWelcomeIfNeeded(account.id),
+          );
+        }
+
+        let confirmationEmailSent = false;
+        if (account) {
+          try {
+            confirmationEmailSent = await ctx.authNotifications.notifyEmailAlreadyVerified({
+              accountId: account.id,
+              email: normalizedEmail,
+            });
+          } catch (emailErr) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[auth/notify-email-verified] Account verified but confirmation email failed for ${normalizedEmail}:`,
+              emailErr instanceof Error ? emailErr.message : String(emailErr),
+            );
+          }
+        }
+
+        res.status(200).json({
+          status: 'already_verified' as const,
+          confirmationEmailSent,
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------
   // POST /auth/supabase/exchange
   // Customer web: Supabase Auth (signup/login/verify/reset) → backend session.
   // ---------------------------------------------------------------
@@ -223,9 +327,14 @@ export function createAuthRouter(ctx: AppContext): Router {
         const { accessToken, deviceId, deviceName } = req.body as z.infer<typeof supabaseExchangeSchema>;
         const ip = clientIp(req);
 
-        let supabaseUser: { userId: string; email: string };
+        let supabaseUser: { userId: string; email: string; emailConfirmed: boolean };
         try {
-          supabaseUser = await ctx.supabase.getUserFromAccessToken(accessToken);
+          const resolved = await ctx.supabase.getUserFromAccessToken(accessToken);
+          if (!resolved) {
+            next(apiError('INVALID_CREDENTIALS'));
+            return;
+          }
+          supabaseUser = resolved;
         } catch (err) {
           if (err instanceof SupabaseUnavailableError) {
             next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
@@ -253,7 +362,13 @@ export function createAuthRouter(ctx: AppContext): Router {
 
         let activeAccount = account;
         try {
-          activeAccount = await syncAppAccountIfSupabaseEmailConfirmed(ctx.accounts, ctx.supabase, account);
+          if (account.accountState === 'pending_verification' && supabaseUser.emailConfirmed) {
+            await ctx.accounts.markEmailVerified(account.id);
+            activeAccount = (await ctx.accounts.findById(account.id)) ?? account;
+          } else {
+            const syncResult = await syncAppAccountIfSupabaseEmailConfirmed(ctx.accounts, ctx.supabase, account);
+            activeAccount = syncResult.account;
+          }
         } catch (err) {
           if (err instanceof SupabaseUnavailableError) {
             next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
@@ -271,6 +386,14 @@ export function createAuthRouter(ctx: AppContext): Router {
           return;
         }
 
+        await notifyNewDeviceLoginIfNeeded(ctx, {
+          accountId: activeAccount.id,
+          userType: activeAccount.userType,
+          deviceId: deviceId ?? null,
+          deviceName: deviceName ?? null,
+          ipAddress: ip,
+        });
+
         const { session, refreshToken } = await mintNewSession(ctx.sessions, {
           accountId: activeAccount.id,
           deviceId: deviceId ?? null,
@@ -281,6 +404,8 @@ export function createAuthRouter(ctx: AppContext): Router {
           mfaVerifiedAt: null,
         });
         await ctx.auditLog.record({ accountId: activeAccount.id, eventType: 'login_success', ipAddress: ip });
+
+        scheduleCustomerLifecycleNotifications(ctx, activeAccount);
 
         const { token, expiresIn } = signAccessToken(
           {
@@ -368,6 +493,12 @@ export function createAuthRouter(ctx: AppContext): Router {
               attemptedIdentifier: normalizedEmail,
               ipAddress: ip,
             });
+            if (account) {
+              notifyInBackground(
+                'auth.account.locked',
+                ctx.authNotifications.notifyAccountLocked({ accountId: account.id }),
+              );
+            }
             next(apiError('ACCOUNT_LOCKED', { attemptsRemaining: failureStatus.attemptsRemaining }, failureStatus.retryAfterSeconds));
             return;
           }
@@ -380,7 +511,8 @@ export function createAuthRouter(ctx: AppContext): Router {
 
         let activeAccount = account;
         try {
-          activeAccount = await syncAppAccountIfSupabaseEmailConfirmed(ctx.accounts, ctx.supabase, account);
+          const syncResult = await syncAppAccountIfSupabaseEmailConfirmed(ctx.accounts, ctx.supabase, account);
+          activeAccount = syncResult.account;
         } catch (err) {
           if (err instanceof SupabaseUnavailableError) {
             next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
@@ -410,6 +542,15 @@ export function createAuthRouter(ctx: AppContext): Router {
             res.status(200).json({ mfaEnrollmentRequired: true, enrollmentTicket: ticket.token, expiresIn: Math.round((ticket.expiresAt.getTime() - Date.now()) / 1000) });
             return;
           }
+
+          await notifyNewDeviceLoginIfNeeded(ctx, {
+            accountId: activeAccount.id,
+            userType: activeAccount.userType,
+            deviceId: deviceId ?? null,
+            deviceName: deviceName ?? null,
+            ipAddress: ip,
+          });
+
           const { session, refreshToken } = await mintNewSession(ctx.sessions, {
             accountId: activeAccount.id,
             deviceId: deviceId ?? null,
@@ -420,6 +561,7 @@ export function createAuthRouter(ctx: AppContext): Router {
             mfaVerifiedAt: null,
           });
           await ctx.auditLog.record({ accountId: activeAccount.id, eventType: 'login_success', ipAddress: ip });
+          scheduleCustomerLifecycleNotifications(ctx, activeAccount);
           res.status(200).json(await sessionTokensResponse(ctx, session, refreshToken, activeAccount));
           return;
         }
@@ -489,6 +631,15 @@ export function createAuthRouter(ctx: AppContext): Router {
       }
 
       await invalidateMfaChallenge(ctx.kv, mfaChallengeToken);
+
+      await notifyNewDeviceLoginIfNeeded(ctx, {
+        accountId: account.id,
+        userType: account.userType,
+        deviceId: pending.deviceId,
+        deviceName: null,
+        ipAddress: pending.ipAddress,
+      });
+
       const { session, refreshToken } = await mintNewSession(ctx.sessions, {
         accountId: account.id,
         deviceId: pending.deviceId,
@@ -500,6 +651,7 @@ export function createAuthRouter(ctx: AppContext): Router {
       });
       await ctx.auditLog.record({ accountId: account.id, eventType: 'login_success', ipAddress: pending.ipAddress });
       await ctx.auditLog.record({ accountId: account.id, eventType: 'mfa_verified', ipAddress: pending.ipAddress });
+      scheduleCustomerLifecycleNotifications(ctx, account);
       res.status(200).json(await sessionTokensResponse(ctx, session, refreshToken, account));
     } catch (err) {
       next(err);
@@ -600,6 +752,10 @@ export function createAuthRouter(ctx: AppContext): Router {
             }
             throw err;
           }
+          if (!userInfo) {
+            next(apiError('RESET_TOKEN_INVALID'));
+            return;
+          }
           normalizedEmail = userInfo.email;
           userAccessToken = recoveryAccessToken;
           resetTokenForPrivileged = recoveryAccessToken;
@@ -649,6 +805,10 @@ export function createAuthRouter(ctx: AppContext): Router {
         const revokedIds = await ctx.sessions.revokeAllForAccount(account.id, 'password_reset');
         await revokeJtisInKv(ctx.kv, revokedIds);
         await ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_completed', ipAddress: clientIp(req) });
+        notifyInBackground(
+          'auth.password.changed',
+          ctx.authNotifications.notifyPasswordChanged({ accountId: account.id }),
+        );
         res.status(200).json({ message: 'Password reset complete.', allSessionsRevoked: true });
       } catch (err) {
         next(err);
@@ -715,6 +875,10 @@ export function createAuthRouter(ctx: AppContext): Router {
         const revokedIds = await ctx.sessions.revokeAllForAccount(account.id, 'password_reset');
         await revokeJtisInKv(ctx.kv, revokedIds);
         await ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_completed', ipAddress: clientIp(req) });
+        notifyInBackground(
+          'auth.password.changed',
+          ctx.authNotifications.notifyPasswordChanged({ accountId: account.id }),
+        );
 
         res.status(200).json({ message: 'Password reset complete.', allSessionsRevoked: true });
       } catch (err) {

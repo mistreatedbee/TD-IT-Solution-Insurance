@@ -1,13 +1,20 @@
 import { renderEmailLayout } from './layout.ts';
+import { EMAIL_BRAND } from './brand.ts';
 
 export function renderRecoveryEmail(confirmationUrl: string): string {
   return renderEmailLayout({
-    preheader: 'Reset your password using the secure link below.',
+    theme: 'recovery',
+    preheader: 'Reset your TD IT Solution Insurance password.',
     title: 'Reset your password',
-    bodyHtml: `<p style="margin:0 0 12px;">We received a request to reset the password for your account. Use the button below to choose a new password.</p>
-<p style="margin:0;">If you did not request this, you can safely ignore this email — your password will not change.</p>`,
+    showHeroIcon: false,
+    bodyHtml: `<p style="margin:0 0 14px;font-size:16px;line-height:1.6;color:${EMAIL_BRAND.text};">
+        We received a request to reset the password for your account.
+      </p>
+      <p style="margin:0;font-size:14px;line-height:1.55;color:${EMAIL_BRAND.muted};">
+        If you did not request this, no action is needed. Your password will stay the same.
+      </p>`,
     actionLabel: 'Reset password',
     actionUrl: confirmationUrl,
-    footerNote: 'For your security, this link expires after a limited time.',
+    footerNote: 'This link expires after a limited time.',
   });
 }

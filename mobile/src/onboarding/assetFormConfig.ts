@@ -1,14 +1,35 @@
+import type { LucideIcon } from 'lucide-react-native';
+import {
+  BriefcaseIcon,
+  CarIcon,
+  LaptopIcon,
+  MonitorIcon,
+  PackageIcon,
+  SmartphoneIcon,
+  TabletIcon,
+  TvIcon,
+} from 'lucide-react-native';
 import type { AssetType } from '../api/assets';
 
-export const ASSET_CATEGORY_OPTIONS = [
-  { api: 'vehicle' as AssetType, label: 'Vehicle' },
-  { api: 'laptop' as AssetType, label: 'Laptop' },
-  { api: 'smartphone' as AssetType, label: 'Smartphone' },
-  { api: 'tablet' as AssetType, label: 'Tablet' },
-  { api: 'tv' as AssetType, label: 'Television' },
-  { api: 'desktop' as AssetType, label: 'Desktop' },
-  { api: 'business_equipment' as AssetType, label: 'Business equipment' },
-  { api: 'other_electronics' as AssetType, label: 'Other' },
+export const ASSET_CATEGORY_OPTIONS: {
+  api: AssetType;
+  label: string;
+  Icon: LucideIcon;
+  prompt: string;
+}[] = [
+  { api: 'vehicle', label: 'Vehicle', Icon: CarIcon, prompt: 'Tell us about your vehicle.' },
+  { api: 'laptop', label: 'Laptop', Icon: LaptopIcon, prompt: 'Tell us about your laptop.' },
+  { api: 'smartphone', label: 'Smartphone', Icon: SmartphoneIcon, prompt: 'Tell us about your smartphone.' },
+  { api: 'tablet', label: 'Tablet', Icon: TabletIcon, prompt: 'Tell us about your tablet.' },
+  { api: 'tv', label: 'Television', Icon: TvIcon, prompt: 'Tell us about your television.' },
+  { api: 'desktop', label: 'Computer', Icon: MonitorIcon, prompt: 'Tell us about your computer.' },
+  {
+    api: 'business_equipment',
+    label: 'Business equipment',
+    Icon: BriefcaseIcon,
+    prompt: 'Tell us about this equipment.',
+  },
+  { api: 'other_electronics', label: 'Other', Icon: PackageIcon, prompt: 'Tell us about this asset.' },
 ];
 
 export function requiredFieldsForType(type: AssetType): string[] {

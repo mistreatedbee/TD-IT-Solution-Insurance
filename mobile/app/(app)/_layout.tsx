@@ -11,8 +11,12 @@ import { Tabs } from 'expo-router';
 import { HomeIcon, ShieldIcon, PackageIcon, UserIcon } from 'lucide-react-native';
 import React from 'react';
 import { colors } from '../../src/theme/tokens';
+import { usePushNotifications } from '../../src/notifications/usePushNotifications';
+import { useNotificationDeepLinks } from '../../src/notifications/useNotificationDeepLinks';
 
 export default function AppTabsLayout() {
+  usePushNotifications();
+  useNotificationDeepLinks();
   return (
     <Tabs
       screenOptions={{

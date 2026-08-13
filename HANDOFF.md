@@ -105,7 +105,7 @@ the bar this project has been held to:
 | **FU-A13 (new)** — Trail A indexes + purge scheduling | **Indexes applied** — migration `034` created `account_audit_log_account_id_created_at` and `account_audit_log_created_at` on the live Supabase project (2026-08-11, catalog-verified). **Still open:** purge scheduling (nothing calls `app.purge_expired_audit_log()`); deploy-time live-vs-design schema check (FU-A13 second half, shares FU-A10); 033's `NOT VALID` constraint promotion (`security-engineer`) | Subject-keyed AUD-8 query no longer seq-scans; retention still not enforced until scheduled |
 | **FU-A14 (new)** — AUD-9's mandatory purpose/case reference has nothing to resolve against | **`recovery_cases` Mongo collection + API now exist** (`recovery.ts`, `security-cases.ts`) — partially addresses the "no case entity" gap for Security Dashboard reads. GPS location-access trail still needs full Stage 1 design and AUD-9 case-reference wiring on location endpoints | Blocks **GPS Phase 2** location-access trail completion; Security Dashboard case queue **unblocked at entity level** |
 | **FU-A11 — investigative read credential** | Read-only credential scoped to both audit trails, for whoever executes the AUD-8 runbook (`cloud-infrastructure-architect` + `database-architect`, verified `security-engineer`) | Blocks *using* the runbook before first production privileged account (§16.5 item 2) |
-| **Brevo (SMTP vendor) account creation** | Platform owner creates the account and, critically, **sets transactional-log/preview retention to its 1-month minimum and disables marketing mode *before* the first real send** — this setting is not retroactive | Blocks real email delivery (currently `console.warn` stand-ins) |
+| **Resend (auth email) + Supabase hook secrets** | Platform owner: Resend account, verify `tditsolutionsinsurance.co.za`, create API key, set Edge Function secrets (`RESEND_API_KEY`, `EMAIL_FROM`, `SEND_EMAIL_HOOK_SECRET`), enable Send Email Hook — see [`resend-setup.md`](docs/features/001-authentication/resend-setup.md) | Blocks real email delivery until configured |
 | **Supabase dashboard Auth email-link TTLs** | Confirm/tighten in the Supabase dashboard directly — not reachable from application code | Compliance completeness (C-5.3) |
 | **Real integration test suite** | Automated tests against the live Supabase/Postgres/Mongo stack, beyond the manual smoke tests done so far | Not blocking, but the current test coverage is unit-level + one manual E2E pass |
 
@@ -115,14 +115,13 @@ the bar this project has been held to:
 thing." This section is the coordination record for that push: what it means concretely, what
 each role owns, and what is honestly still in the way. It is a plan with a **partial execution record** — check the code before believing any line
 below has landed. As of 2026-08-12: Wave 0–1 **done**; Wave 2 **substantially done** (Stage 8
-concurrence, QA strategy, CI, Render blueprint, Maestro scaffold). **Remaining:** Brevo account
-(owner), manual QA execution on device, live Render deploy, MP-8 staging DB separation, E2E run.
+concurrence, QA strategy, CI, Render blueprint, Maestro scaffold). **Remaining:** Resend secrets + hook (owner), manual QA on device, live Render deploy, MP-8 staging DB separation, E2E run.
 
 ### What "the real thing" actually means here, and what it can't mean yet
 
 Today the mobile app is a real auth app with **live Policy and Assets tabs** wired to Feature 004's
 customer API. The gap to "definition of done" is Wave 2 gates (Stage 8 formal concurrence, Stage 10
-E2E) and **Brevo** (real email verification). Two things adjacent to it are **not**, and this push does not
+E2E) and **Resend** (real email verification). Two things adjacent to it are **not**, and this push does not
 pretend otherwise:
 
 - **Plan/tier selection.** Stage 1 `business-requirements.md` now exists and ratifies Phase 1
@@ -185,7 +184,7 @@ distributed internally. Not: buying a plan, uploading photos, GPS, claims, or ad
 
 These are the honest answer to "can we ship the real thing." Ordered by how hard they block.
 
-1. **Brevo account + retention settings.** Backend is **code-ready** (`transactional-email.ts` wired to signup, resend, reset, invitations). Without `BREVO_API_KEY` + `EMAIL_FROM`, delivery remains dev stand-ins. **No real user can verify email → BR-2 gate → asset registration on a fresh account.**
+1. **Resend + Supabase Send Email Hook.** Auth mail is delivered by `auth-send-email` → Resend (not the Render API). Without `RESEND_API_KEY`, verified domain, and hook secrets, **no real user can verify email → BR-2 gate → asset registration on a fresh account.** Setup: [`resend-setup.md`](docs/features/001-authentication/resend-setup.md).
 2. **Supabase DPA execution.** Blocks real production identity data. Local dev and internal testing are unaffected; a public launch is not.
 3. **Object-storage vendor decision (MP-5).** Blocks asset photos — deferred, not blocking this push's scope.
 4. **App-store provisioning.** Bundle ID `co.za.tditsolutions.insurance` is a placeholder guess; icons are still Expo's defaults. [`mobile/docs/DEPLOY.md`](mobile/docs/DEPLOY.md) documents owner steps (`eas init`, Apple/Google accounts, env vars). Internal TestFlight/Play builds are unblocked on **code**; owner actions still required before any store-bound build.
@@ -210,7 +209,7 @@ and cross-check which are done (several are, as of the bug-fix pass above) vs. s
 
 If starting Feature 004 for real: **read the "Mobile production push" section above first**.
 Wave 0–2 agent deliverables are **substantially complete**. Critical path for internal distribution:
-**Brevo** (owner) → manual QA on device → provision Render (`render.yaml`) → E2E against staging Mongo DB name (MP-8).
+**Resend** (owner) → manual QA on device → provision Render (`render.yaml`) → E2E against staging Mongo DB name (MP-8).
 
 If picking up ADR-0006's AUD-3: **the shape decision and both trail designs are done** (ADR-0006 §16.1,
 `recordBulkDisclosure()` on Trail A; addendum-001 Amendment A1 on Trail B). What's left is calling

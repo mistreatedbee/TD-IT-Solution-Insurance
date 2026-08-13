@@ -162,6 +162,20 @@ function createHarness(opts: { accountId?: string; accountState?: AccountStatus[
       async countActiveByAccount(acctId: string) {
         return [...storedAssets.values()].filter((a) => a.accountId === acctId && a.status !== 'removed').length;
       },
+      async updateForAccount(acctId: string, assetId: string, patch: Partial<AssetDocument>) {
+        const row = storedAssets.get(assetId);
+        if (!row || row.accountId !== acctId || row.status === 'removed') return null;
+        const updated = { ...row, ...patch, updatedAt: new Date() };
+        storedAssets.set(assetId, updated);
+        return updated;
+      },
+      async markRemovedForAccount(acctId: string, assetId: string) {
+        const row = storedAssets.get(assetId);
+        if (!row || row.accountId !== acctId || row.status === 'removed') return null;
+        const updated = { ...row, status: 'removed' as const, updatedAt: new Date() };
+        storedAssets.set(assetId, updated);
+        return updated;
+      },
     },
     policies: {
       async listByAccount() {
@@ -174,6 +188,11 @@ function createHarness(opts: { accountId?: string; accountState?: AccountStatus[
       },
     },
     idempotency: createInMemoryIdempotencyRepo(),
+    customerNotifications: {
+      async notifyAssetCreated() {},
+      async notifyAssetUpdated() {},
+      async notifyAssetRemoved() {},
+    },
   } as unknown as AppContext;
 
   const app: Express = express();
@@ -334,5 +353,65 @@ describe('GET /assets/:assetId', () => {
     });
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe('PATCH /assets/:assetId', () => {
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    if (server) {
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+      server = undefined;
+    }
+  });
+
+  it('updates displayName and returns 200', async () => {
+    const accountId = randomUUID();
+    const asset = sampleAsset(accountId);
+    const { app, sessionId, env } = createHarness({ accountId, assets: [asset] });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/assets/${asset.id}`, {
+      method: 'PATCH',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ displayName: 'Updated laptop' }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { displayName: string };
+    expect(body.displayName).toBe('Updated laptop');
+  });
+});
+
+describe('DELETE /assets/:assetId', () => {
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    if (server) {
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+      server = undefined;
+    }
+  });
+
+  it('soft-deletes an asset', async () => {
+    const accountId = randomUUID();
+    const asset = sampleAsset(accountId);
+    const { app, sessionId, env } = createHarness({ accountId, assets: [asset] });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/assets/${asset.id}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${customerToken(env, accountId, sessionId)}` },
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { status: string };
+    expect(body.status).toBe('removed');
   });
 });

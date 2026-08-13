@@ -1,12 +1,12 @@
 const SUBJECTS: Record<string, string> = {
-  signup: 'Verify your TD IT Solution Insurance account',
-  recovery: 'Reset your TD IT Solution Insurance password',
-  invite: 'You have been invited to TD IT Solution Insurance',
-  magiclink: 'Your TD IT Solution Insurance sign-in link',
+  signup: 'Verify your email — TD IT Solution Insurance',
+  recovery: 'Reset your password — TD IT Solution Insurance',
+  invite: 'You\'re invited to TD IT Solution Insurance',
+  magiclink: 'Your secure sign-in link — TD IT Solution Insurance',
   email_change: 'Confirm your new email address',
-  reauthentication: 'Your verification code',
+  reauthentication: 'Your verification code — TD IT Solution Insurance',
 };
 
 export function subjectFor(actionType: string): string {
-  return SUBJECTS[actionType] ?? 'TD IT Solution Insurance notification';
+  return SUBJECTS[actionType] ?? 'TD IT Solution Insurance — account notification';
 }

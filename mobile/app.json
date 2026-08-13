@@ -10,7 +10,11 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "co.za.tditsolutions.insurance"
+      "bundleIdentifier": "co.za.tditsolutions.insurance",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"],
+        "NSUserNotificationsUsageDescription": "TD IT Solution Insurance sends theft recovery alerts, device status updates, and account notifications to help protect your registered assets."
+      }
     },
     "android": {
       "package": "co.za.tditsolutions.insurance",
@@ -29,6 +33,15 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#2C3E50",
+          "defaultChannel": "general",
+          "sounds": []
+        }
+      ],
       [
         "expo-splash-screen",
         {

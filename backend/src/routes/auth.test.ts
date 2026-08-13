@@ -152,6 +152,12 @@ function createFakeSessionRepo(): SessionRepo {
       }
       return revoked;
     },
+    async hasPriorSessionForDevice(accountId, deviceId) {
+      for (const row of rows.values()) {
+        if (row.accountId === accountId && row.deviceId === deviceId) return true;
+      }
+      return false;
+    },
   };
 }
 
@@ -342,6 +348,12 @@ describe('POST /auth/login SR-14 forced-re-enrollment (api-design.md §11 Amendm
       policyStatusHistory: undefined as unknown as AppContext['policyStatusHistory'],
       adminAccessLog: undefined as unknown as AppContext['adminAccessLog'],
       recoveryCases: undefined as unknown as AppContext['recoveryCases'],
+      authNotifications: {
+        async notifyPasswordChanged() {},
+        async notifyNewDeviceLogin() {},
+        async notifyMfaEnabled() {},
+        async notifyAccountLocked() {},
+      },
     };
 
     const started = await startTestServer(ctx);

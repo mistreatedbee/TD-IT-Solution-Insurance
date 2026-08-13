@@ -8,6 +8,7 @@ import { apiError } from '../lib/errors.js';
 import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js';
 import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { serializeSecurityRecoveryCase } from '../repositories/recovery-cases.js';
+import { scheduleCustomerRecoveryCaseChange } from '../lib/recovery-case-notifications.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
@@ -109,11 +110,17 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
           return;
         }
         const orgId = req.auth!.partnerOrganizationId!;
+        const existing = await ctx.recoveryCases.findByIdForPartnerOrg(orgId, parsed.data.caseId);
         const claimed = await ctx.recoveryCases.claimForPartnerOrg(orgId, parsed.data.caseId);
         if (!claimed) {
           next(apiError('NOT_FOUND', { message: 'Case is not available to claim.' }));
           return;
         }
+        scheduleCustomerRecoveryCaseChange(ctx, {
+          recoveryCase: claimed,
+          previousStatus: existing?.status ?? 'open',
+          event: 'claimed',
+        });
         res.status(200).json(serializeSecurityRecoveryCase(claimed));
       } catch (err) {
         next(err);
@@ -140,6 +147,7 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
           return;
         }
         const orgId = req.auth!.partnerOrganizationId!;
+        const existing = await ctx.recoveryCases.findByIdForPartnerOrg(orgId, paramsParsed.data.caseId);
         const updated = await ctx.recoveryCases.updateStatusForPartnerOrg(
           orgId,
           paramsParsed.data.caseId,
@@ -148,6 +156,13 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
         if (!updated) {
           next(apiError('NOT_FOUND'));
           return;
+        }
+        if (existing) {
+          scheduleCustomerRecoveryCaseChange(ctx, {
+            recoveryCase: updated,
+            previousStatus: existing.status,
+            event: 'status_updated',
+          });
         }
         res.status(200).json(serializeSecurityRecoveryCase(updated));
       } catch (err) {

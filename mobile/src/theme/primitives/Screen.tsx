@@ -40,7 +40,11 @@ export function Screen({
 }: ScreenProps) {
   const content = (
     <View
-      style={[padded ? styles.padded : undefined, contentContainerStyle]}
+      style={[
+        scroll ? undefined : styles.flex,
+        padded ? styles.padded : undefined,
+        contentContainerStyle,
+      ]}
     >
       {children}
     </View>

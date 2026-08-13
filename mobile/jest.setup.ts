@@ -39,6 +39,29 @@ jest.mock('expo-device', () => ({
   modelName: 'jest-test-device',
   osName: 'jest',
   osVersion: '0.0.0',
+  isDevice: true,
+}));
+
+jest.mock('expo-notifications', () => ({
+  setNotificationHandler: jest.fn(),
+  getPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  requestPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  getExpoPushTokenAsync: jest.fn(async () => ({ data: 'ExponentPushToken[test]' })),
+  setNotificationChannelAsync: jest.fn(async () => {}),
+  setNotificationCategoryAsync: jest.fn(async () => {}),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+  AndroidImportance: {
+    MAX: 5,
+    HIGH: 4,
+    DEFAULT: 3,
+    LOW: 2,
+  },
+}));
+
+jest.mock('expo-constants', () => ({
+  expoConfig: { version: '1.0.0', extra: { eas: { projectId: 'test-project-id' } } },
+  easConfig: { projectId: 'test-project-id' },
 }));
 
 // --- lucide-react-native -----------------------------------------------

@@ -128,5 +128,15 @@ export function createSessionRepo(db: Queryable): SessionRepo {
       );
       return result.rows.map((r) => r.id);
     },
+
+    async hasPriorSessionForDevice(accountId, deviceId) {
+      const result = await db.query<{ exists: number }>(
+        `select 1 as exists from app.sessions
+         where account_id = $1 and device_id = $2
+         limit 1`,
+        [accountId, deviceId],
+      );
+      return result.rows.length > 0;
+    },
   };
 }

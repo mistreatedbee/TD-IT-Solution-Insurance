@@ -153,6 +153,41 @@ export function createAssetsRepo(db: Db) {
       const row = await collection().findOne({ _id: new ObjectId(assetId) });
       return row ? toAsset(row) : null;
     },
+
+    async updateForAccount(
+      accountId: string,
+      assetId: string,
+      patch: {
+        displayName?: string;
+        estimatedValue?: AssetEstimatedValue | null;
+        details?: Record<string, unknown>;
+      },
+    ): Promise<AssetDocument | null> {
+      if (!ObjectId.isValid(assetId)) return null;
+      const now = new Date();
+      const $set: Partial<AssetDbRow> = { updatedAt: now };
+      if (patch.displayName !== undefined) $set.displayName = patch.displayName;
+      if (patch.estimatedValue !== undefined) $set.estimatedValue = patch.estimatedValue;
+      if (patch.details !== undefined) $set.details = patch.details;
+
+      const row = await collection().findOneAndUpdate(
+        { _id: new ObjectId(assetId), accountId, status: { $ne: 'removed' } },
+        { $set },
+        { returnDocument: 'after' },
+      );
+      return row ? toAsset(row) : null;
+    },
+
+    async markRemovedForAccount(accountId: string, assetId: string): Promise<AssetDocument | null> {
+      if (!ObjectId.isValid(assetId)) return null;
+      const now = new Date();
+      const row = await collection().findOneAndUpdate(
+        { _id: new ObjectId(assetId), accountId, status: { $ne: 'removed' } },
+        { $set: { status: 'removed', updatedAt: now } },
+        { returnDocument: 'after' },
+      );
+      return row ? toAsset(row) : null;
+    },
   };
 }
 

@@ -4,9 +4,16 @@ import { Badge, Button, SectionHeading } from '../components';
 import { InlineAlert } from '../dashboard/components/ui';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
-import { exchangeSupabaseSession, mapSupabaseAuthError } from '../customer/supabase/auth';
+import {
+  exchangeSupabaseSession,
+  handleAlreadyVerifiedEmail,
+  isVerificationLinkError,
+  mapAuthCallbackError,
+  verifySupabaseEmailLink,
+} from '../customer/supabase/auth';
 import { getSupabase } from '../customer/supabase/client';
 import { ApiError } from '../customer/api/errors';
+import { loadSignupEmail } from '../onboarding/onboardingStorage';
 
 type CallbackState = 'working' | 'verified' | 'error';
 
@@ -20,34 +27,105 @@ export function CustomerAuthCallbackPage() {
   useEffect(() => {
     let cancelled = false;
 
+    async function redirectAlreadyVerified(email: string) {
+      const result = await handleAlreadyVerifiedEmail(email);
+      if (cancelled) return;
+      if (result.status === 'already_verified') {
+        navigate('/auth/email-verified', {
+          replace: true,
+          state: { email, confirmationEmailSent: result.confirmationEmailSent },
+        });
+        return true;
+      }
+      return false;
+    }
+
     async function completeWithSession(accessToken: string) {
-      const tokens = await exchangeSupabaseSession(accessToken);
-      await auth.signInWithTokens(tokens.accessToken, tokens.refreshToken);
-      if (!cancelled) {
-        setState('verified');
-        navigate('/get-started', { replace: true });
+      try {
+        const tokens = await exchangeSupabaseSession(accessToken);
+        await auth.signInWithTokens(tokens.accessToken, tokens.refreshToken);
+        if (!cancelled) {
+          setState('verified');
+          navigate('/get-started', { replace: true });
+        }
+      } catch (err) {
+        if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
+          const email = loadSignupEmail() ?? params.get('email') ?? undefined;
+          if (email && (await redirectAlreadyVerified(email))) {
+            return;
+          }
+        }
+        throw err;
       }
     }
 
     async function run() {
       try {
-        const callbackType = params.get('type');
         const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-        const hashType = hashParams.get('type');
+        const callbackType = params.get('type') ?? hashParams.get('type');
+        const tokenHash = params.get('token_hash') ?? hashParams.get('token_hash');
+        const signupEmail =
+          params.get('email') ??
+          hashParams.get('email') ??
+          loadSignupEmail() ??
+          undefined;
 
-        if (callbackType === 'recovery' || hashType === 'recovery') {
+        if (tokenHash && callbackType) {
+          try {
+            const session = await verifySupabaseEmailLink(tokenHash, callbackType);
+            if (callbackType === 'recovery') {
+              navigate('/reset-password', { replace: true });
+              return;
+            }
+            if (!session?.access_token) {
+              throw new Error('Email verified but no session was returned.');
+            }
+            await completeWithSession(session.access_token);
+            return;
+          } catch (verifyErr) {
+            if (
+              signupEmail &&
+              verifyErr instanceof Error &&
+              isVerificationLinkError(verifyErr) &&
+              (await redirectAlreadyVerified(signupEmail))
+            ) {
+              return;
+            }
+            throw verifyErr;
+          }
+        }
+
+        if (callbackType === 'recovery') {
           navigate('/reset-password', { replace: true });
+          return;
+        }
+
+        const hashAccessToken = hashParams.get('access_token');
+        if (hashAccessToken) {
+          await completeWithSession(hashAccessToken);
           return;
         }
 
         const code = params.get('code');
         if (code) {
-          const { data, error: exchangeError } = await getSupabase().auth.exchangeCodeForSession(code);
-          if (exchangeError || !data.session?.access_token) {
-            throw exchangeError ?? new Error('Could not complete sign-in from email link.');
+          try {
+            const { data, error: exchangeError } = await getSupabase().auth.exchangeCodeForSession(code);
+            if (exchangeError || !data.session?.access_token) {
+              throw exchangeError ?? new Error('Could not complete sign-in from email link.');
+            }
+            await completeWithSession(data.session.access_token);
+            return;
+          } catch (codeErr) {
+            if (
+              signupEmail &&
+              codeErr instanceof Error &&
+              isVerificationLinkError(codeErr) &&
+              (await redirectAlreadyVerified(signupEmail))
+            ) {
+              return;
+            }
+            throw codeErr;
           }
-          await completeWithSession(data.session.access_token);
-          return;
         }
 
         const { data, error: sessionError } = await getSupabase().auth.getSession();
@@ -57,14 +135,14 @@ export function CustomerAuthCallbackPage() {
           return;
         }
 
+        if (signupEmail && (await redirectAlreadyVerified(signupEmail))) {
+          return;
+        }
+
         throw new Error('This link is invalid or has expired.');
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
-          setError('Email verified in Supabase — log in once your account is active.');
-        } else {
-          setError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Verification failed.' }));
-        }
+        setError(mapAuthCallbackError(err));
         setState('error');
       }
     }
@@ -85,9 +163,9 @@ export function CustomerAuthCallbackPage() {
           verified.
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Link to="/signup" className="flex-1">
+          <Link to="/get-started" className="flex-1">
             <Button variant="secondary" fullWidth>
-              Sign up again
+              Back to sign up
             </Button>
           </Link>
           <Link to="/login" className="flex-1">

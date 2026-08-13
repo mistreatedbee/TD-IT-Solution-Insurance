@@ -30,6 +30,7 @@ import {
 } from '../lib/enrollment-pending-store.js';
 import { mintNewSession, type SessionSurface } from '../lib/refresh-session.js';
 import { signAccessToken } from '../lib/jwt.js';
+import { notifyInBackground } from '../lib/customer-notification-service.js';
 import { clientIp } from '../middleware/rate-limit.js';
 import { SupabaseUnavailableError } from '../db/supabase.js';
 
@@ -174,6 +175,10 @@ export function createMfaRouter(ctx: AppContext): Router {
 
         await clearPendingVerification(ctx.kv, enrollmentId);
         await ctx.auditLog.record({ accountId: pending.accountId, eventType: 'mfa_enrolled', ipAddress: clientIp(req) });
+        notifyInBackground(
+          'auth.mfa.enabled',
+          ctx.authNotifications.notifyMfaEnabled({ accountId: pending.accountId }),
+        );
 
         const account = await ctx.accounts.findById(pending.accountId);
         if (!account) {

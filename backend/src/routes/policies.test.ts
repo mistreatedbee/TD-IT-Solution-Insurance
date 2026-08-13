@@ -209,6 +209,10 @@ function createHarness(opts: {
         return null;
       },
     },
+    customerNotifications: {
+      async notifyPolicyCreated() {},
+      async notifyPolicyPendingActivation() {},
+    },
   } as unknown as AppContext;
 
   const app: Express = express();

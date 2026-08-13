@@ -16,6 +16,7 @@ import { REVOCATION_KEY_PREFIX } from '../db/redis.js';
 import { isPrivilegedUserType } from '../lib/policy.js';
 import { sha256Hex } from '../lib/crypto.js';
 import { syncAppAccountIfSupabaseEmailConfirmed } from '../lib/sync-email-verification.js';
+import { scheduleCustomerLifecycleNotifications } from '../lib/customer-lifecycle-notifications.js';
 import { SupabaseUnavailableError } from '../db/supabase.js';
 
 function surfaceFor(userType: string): SessionSurface {
@@ -163,7 +164,8 @@ export function createSessionRouter(ctx: AppContext): Router {
       }
 
       try {
-        account = await syncAppAccountIfSupabaseEmailConfirmed(ctx.accounts, ctx.supabase, account);
+        const syncResult = await syncAppAccountIfSupabaseEmailConfirmed(ctx.accounts, ctx.supabase, account);
+        account = syncResult.account;
       } catch (err) {
         if (err instanceof SupabaseUnavailableError) {
           next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
@@ -171,6 +173,8 @@ export function createSessionRouter(ctx: AppContext): Router {
         }
         throw err;
       }
+
+      scheduleCustomerLifecycleNotifications(ctx, account);
 
       const status = await ctx.accounts.getAccountStatus(auth.accountId);
       if (!status) {

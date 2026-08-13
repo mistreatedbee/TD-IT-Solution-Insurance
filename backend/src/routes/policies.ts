@@ -9,6 +9,7 @@ import { apiError } from '../lib/errors.js';
 import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js';
 import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { serializePolicy } from '../lib/policy-asset-serializers.js';
+import { notifyInBackground } from '../lib/customer-notification-service.js';
 import { validateBody } from '../lib/validation.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
@@ -63,6 +64,23 @@ export function createPoliciesRouter(ctx: AppContext): Router {
           toStatus: 'pending_activation',
           reason: 'policy_created',
         });
+
+        notifyInBackground(
+          'policy.created',
+          ctx.customerNotifications.notifyPolicyCreated({
+            accountId,
+            policyId: policy.id,
+            planName: plan.name,
+          }),
+        );
+        notifyInBackground(
+          'policy.pending_activation',
+          ctx.customerNotifications.notifyPolicyPendingActivation({
+            accountId,
+            policyId: policy.id,
+            planName: plan.name,
+          }),
+        );
 
         res.status(201).json(serializePolicy(policy));
       } catch (err) {

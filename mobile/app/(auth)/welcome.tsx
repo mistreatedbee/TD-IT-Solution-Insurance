@@ -1,83 +1,110 @@
 /**
- * ui-design.md §4.1 Screen A — Welcome / Landing.
+ * Hero welcome — premium first impression before marketing intro or login.
  */
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BRAND } from '../../src/brand/constants';
+import { BrandLogo } from '../../src/onboarding/marketing/components/BrandLogo';
+import { HeroDeviceAnimation } from '../../src/onboarding/marketing/components/HeroDeviceAnimation';
+import { useOnboardingLayout } from '../../src/onboarding/marketing/hooks/useOnboardingLayout';
 import { Button, Screen } from '../../src/theme/primitives';
-import { colors, spacing, typography } from '../../src/theme/tokens';
-
-const logo = require('../../assets/icon.png');
+import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const fade = useSharedValue(0);
+  const { headlineSize, subtitleSize, buttonSize, isCompact, isVeryCompact, heroHeight } =
+    useOnboardingLayout();
+
+  useEffect(() => {
+    fade.value = withTiming(1, { duration: 700 });
+  }, [fade]);
+
+  const headerStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
 
   return (
-    <Screen scroll={false}>
-      <View style={styles.top}>
-        <Image
-          accessibilityLabel="TD IT Solution Insurance"
-          source={logo}
-          style={styles.logo}
-          resizeMode="contain"
-        />
-      </View>
+    <Screen scroll padded contentContainerStyle={styles.screenContent}>
+      <Animated.View style={[styles.header, headerStyle]}>
+        <BrandLogo size="hero" />
+      </Animated.View>
 
-      <View style={styles.middle}>
-        <Text style={styles.headline}>Insurance that helps you get your stuff back</Text>
-        <Text style={styles.subhead}>
-          Register vehicles, laptops, phones and business equipment. Manage your policy and report
-          theft — with GPS-assisted recovery when hardware is paired.
+      <View style={styles.hero}>
+        <Text style={[styles.headline, { fontSize: headlineSize }]}>Protect what matters most.</Text>
+        <Text style={[styles.tagline, { fontSize: isCompact ? typography.sizes.base : typography.sizes.lg }]}>
+          Insurance and intelligent asset protection in one simple app.
         </Text>
+        {!isVeryCompact ? (
+          <Text style={[styles.supporting, { fontSize: subtitleSize }]}>
+            Protect your valuable assets, manage your insurance and stay connected to the things that
+            matter most — all from your phone.
+          </Text>
+        ) : null}
+        <HeroDeviceAnimation height={heroHeight} inlineBadges={isCompact} />
       </View>
 
-      <View style={styles.actions}>
-        <Button
-          variant="primary"
-          fullWidth
-          size="lg"
-          onPress={() => router.push('/(auth)/get-started')}
-        >
-          Get Started
+      <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+        <Button variant="primary" fullWidth size={buttonSize} onPress={() => router.push('/(auth)/intro')}>
+          Get started
         </Button>
-        <Button
-          variant="tertiary"
-          fullWidth
-          onPress={() => router.push('/(auth)/login')}
-        >
-          Log in
+        <Button variant="secondary" fullWidth size={buttonSize} onPress={() => router.push('/(auth)/login')}>
+          I already have an account
         </Button>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Explore the app introduction first"
+          onPress={() => router.push('/(auth)/intro')}
+          style={styles.exploreBtn}
+        >
+          <Text style={styles.exploreText}>Explore first</Text>
+        </Pressable>
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  top: {
-    paddingTop: spacing.xl,
+  screenContent: {
+    flexGrow: 1,
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+  },
+  header: {
     alignItems: 'center',
+    marginBottom: spacing.sm,
   },
-  logo: {
-    width: 280,
-    height: 180,
-  },
-  middle: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: spacing.md,
+  hero: {
+    flexShrink: 1,
+    gap: spacing.xs,
   },
   headline: {
-    fontSize: typography.sizes['3xl'],
     fontWeight: '700',
-    color: colors.textPrimary,
+    color: BRAND.primaryMid,
   },
-  subhead: {
-    fontSize: typography.sizes.base,
+  tagline: {
+    fontWeight: '600',
+    color: BRAND.secondary,
+  },
+  supporting: {
     color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
+    lineHeight: typography.sizes.base * 1.45,
   },
   actions: {
-    gap: spacing.md,
-    paddingBottom: spacing.xl,
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  exploreBtn: {
+    minHeight: minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exploreText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textDecorationLine: 'underline',
   },
 });

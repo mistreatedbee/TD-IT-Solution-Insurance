@@ -53,8 +53,11 @@ async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<
   }
 }
 
-export interface CreatedSupabaseUser {
+export interface SupabaseUserFromToken {
   userId: string;
+  email: string;
+  /** From GoTrue GET /user — avoids a separate admin lookup when the token is fresh. */
+  emailConfirmed: boolean;
 }
 
 export interface PasswordVerificationResult {
@@ -114,8 +117,9 @@ export interface SupabaseAdmin {
   sendInvitationEmail(email: string, redirectTo: string): Promise<{ userId: string }>;
   /** Lookup auth user by email (admin API). */
   getUserByEmail(email: string): Promise<{ userId: string } | null>;
-  /** Reads the GoTrue user behind a transient access token. */
-  getUserFromAccessToken(accessToken: string): Promise<{ userId: string; email: string }>;
+  /** Reads the GoTrue user behind a transient access token. Returns null when the
+   * token is invalid or expired (401/403) — not an upstream fault. */
+  getUserFromAccessToken(accessToken: string): Promise<SupabaseUserFromToken | null>;
   /** True when GoTrue has marked the user's email confirmed. */
   isUserEmailConfirmed(userId: string): Promise<boolean>;
   /** Verifies a signup-confirmation token against GoTrue directly (service-
@@ -371,14 +375,25 @@ export function getSupabaseAdmin(env: Env): SupabaseAdmin {
         method: 'GET',
         authToken: accessToken,
       });
+      if (response.status === 401 || response.status === 403) {
+        return null;
+      }
       if (!response.ok) {
         throw new SupabaseUnavailableError(`get user returned ${response.status}`);
       }
-      const body = (await response.json()) as { id: string; email?: string };
+      const body = (await response.json()) as {
+        id: string;
+        email?: string;
+        email_confirmed_at?: string | null;
+      };
       if (!body.email) {
         throw new SupabaseUnavailableError('get user returned no email');
       }
-      return { userId: body.id, email: body.email.trim().toLowerCase() };
+      return {
+        userId: body.id,
+        email: body.email.trim().toLowerCase(),
+        emailConfirmed: Boolean(body.email_confirmed_at),
+      };
     },
 
     async isUserEmailConfirmed(userId) {

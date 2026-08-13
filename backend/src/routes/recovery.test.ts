@@ -175,6 +175,9 @@ function createHarness(opts: {
       },
     },
     idempotency: createInMemoryIdempotencyRepo(),
+    recoveryNotifications: {
+      async notifyTheftReportSubmitted() {},
+    },
   } as unknown as AppContext;
 
   const app: Express = express();

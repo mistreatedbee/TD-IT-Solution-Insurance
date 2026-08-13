@@ -1,8 +1,10 @@
 # Supabase — Auth email (Edge Functions)
 
-Custom branded templates for Feature 001 auth email, delivered via the **Send Email Hook**.
-The Node backend still triggers GoTrue (`/resend`, `/recover`, `inviteUserByEmail`); Supabase Auth
-calls this Edge Function instead of sending built-in SMTP mail.
+Custom branded templates for Feature 001 auth email, delivered via the **Send Email Hook** and **[Resend](https://resend.com)**.
+
+The Node backend still triggers GoTrue (`/resend`, `/recover`, `inviteUserByEmail`); Supabase Auth calls this Edge Function instead of built-in SMTP mail.
+
+**Full setup:** [`docs/features/001-authentication/resend-setup.md`](../docs/features/001-authentication/resend-setup.md)
 
 ## Templates
 
@@ -16,7 +18,7 @@ Shared layout: `templates/layout.ts` (TD IT Solution Insurance brand colors).
 
 ## Prerequisites
 
-1. **Verified sending domain** with Resend or Brevo (see `docs/features/001-authentication/compliance-review-smtp-vendor.md`).
+1. **Resend account** with verified sending domain (see setup doc).
 2. **Redirect URLs allowlisted** in Supabase Dashboard → Auth → URL configuration:
    - `tditinsurance://verify-email`
    - `tditinsurance://reset-password`
@@ -27,6 +29,7 @@ Shared layout: `templates/layout.ts` (TD IT Solution Insurance brand colors).
 Set in Supabase Dashboard → Project Settings → Edge Functions, or via CLI:
 
 ```bash
+supabase link --project-ref mowaqxfbwqdmjssghpvt
 supabase secrets set --env-file supabase/.env
 ```
 
@@ -34,17 +37,15 @@ supabase secrets set --env-file supabase/.env
 |---|---|---|
 | `SEND_EMAIL_HOOK_SECRET` | Yes | From Dashboard → Auth → Hooks → Send Email (includes `v1,whsec_` prefix) |
 | `SUPABASE_URL` | Yes | Auto-injected in hosted functions; set for local serve |
-| `EMAIL_FROM` | Yes | Verified sender address |
+| `EMAIL_FROM` | Yes | Verified sender on Resend domain |
 | `EMAIL_FROM_NAME` | No | Default: `TD IT Solution Insurance` |
-| `RESEND_API_KEY` | One of | Preferred provider (Supabase docs pattern) |
-| `BREVO_API_KEY` | One of | Fallback if Resend not used |
+| `RESEND_API_KEY` | Yes | Resend API key with sending access |
 
 Copy `supabase/.env.example` → `supabase/.env` (gitignored) for local values.
 
 ## Deploy
 
 ```bash
-# From repo root (requires Supabase CLI linked to project mowaqxfbwqdmjssghpvt)
 supabase functions deploy auth-send-email --no-verify-jwt
 ```
 
@@ -55,8 +56,8 @@ supabase functions deploy auth-send-email --no-verify-jwt
 3. Select function: `auth-send-email`
 4. Copy the generated **Hook secret** → set as `SEND_EMAIL_HOOK_SECRET`
 
-When the hook is **enabled**, Supabase SMTP is **not** used for auth email (per Supabase docs).
-Ensure `RESEND_API_KEY` or `BREVO_API_KEY` is configured before enabling in production.
+When the hook is **enabled**, Supabase SMTP is **not** used for auth email.  
+Configure `RESEND_API_KEY` and verify your domain **before** enabling in production.
 
 ## Local development
 
@@ -69,7 +70,7 @@ Test with the hook payload verifier in Supabase Dashboard, or trigger a signup/r
 ## Architecture
 
 ```
-Mobile / Backend API
+Mobile / Backend API / Web (Supabase client)
         │
         ▼
    GoTrue (/resend, /recover, inviteUserByEmail)
@@ -78,7 +79,7 @@ Mobile / Backend API
    Send Email Hook  ──►  auth-send-email (Edge Function)
         │                      │
         │                      ├── render template
-        │                      └── Resend or Brevo API
+        │                      └── Resend API
         ▼
    User inbox (deep link → tditinsurance://…)
 ```

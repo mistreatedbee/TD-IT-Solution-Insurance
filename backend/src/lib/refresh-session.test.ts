@@ -79,6 +79,12 @@ function createFakeSessionRepo(): SessionRepo {
       }
       return revoked;
     },
+    async hasPriorSessionForDevice(accountId, deviceId) {
+      for (const row of rows.values()) {
+        if (row.accountId === accountId && row.deviceId === deviceId) return true;
+      }
+      return false;
+    },
   };
 }
 

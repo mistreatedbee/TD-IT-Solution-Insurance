@@ -7,10 +7,12 @@
  * blocking or queued action).
  */
 import { useRouter } from 'expo-router';
-import { LogOutIcon, ShieldCheckIcon } from 'lucide-react-native';
+import { LogOutIcon, ShieldCheckIcon, BellIcon } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { logout, logoutAll } from '../../src/api/auth';
+import { sendTestPushNotification } from '../../src/api/notifications';
+import { revokePushTokenFromBackend } from '../../src/notifications/push';
 import { clearRefreshToken } from '../../src/auth/secure-storage';
 import { useSessionStore } from '../../src/auth/session-store';
 import { useAccountQuery } from '../../src/auth/useAccountQuery';
@@ -23,6 +25,21 @@ export default function ProfileScreen() {
   const { data: account, isLoading } = useAccountQuery();
   const setSignedOut = useSessionStore((s) => s.setSignedOut);
   const [isLoggingOutAll, setIsLoggingOutAll] = useState(false);
+  const [isSendingTestPush, setIsSendingTestPush] = useState(false);
+  const [testPushMessage, setTestPushMessage] = useState<string | null>(null);
+
+  async function handleTestPush() {
+    setIsSendingTestPush(true);
+    setTestPushMessage(null);
+    try {
+      const result = await sendTestPushNotification();
+      setTestPushMessage(result.message);
+    } catch {
+      setTestPushMessage('Could not send test notification. Check push permissions and try again.');
+    } finally {
+      setIsSendingTestPush(false);
+    }
+  }
 
   async function handleLogout() {
     // Immediate, client-side, regardless of network reachability — see
@@ -30,6 +47,9 @@ export default function ProfileScreen() {
     // if it never lands, the session naturally expires within the
     // ≤10-minute access-token ceiling (api-design.md §2.2), an accepted
     // bound, not a regression this app introduces.
+    revokePushTokenFromBackend().catch(() => {
+      // best-effort — token may already be invalid after logout.
+    });
     await clearRefreshToken();
     setSignedOut();
     queryClient.clear();
@@ -47,6 +67,9 @@ export default function ProfileScreen() {
       // locally below — a user tapping "log out everywhere" must not be
       // left looking logged-in on the device they're holding.
     } finally {
+      revokePushTokenFromBackend().catch(() => {
+        // best-effort
+      });
       await clearRefreshToken();
       setSignedOut();
       queryClient.clear();
@@ -81,6 +104,24 @@ export default function ProfileScreen() {
           <Text style={styles.rowSubtitle}>
             {account?.mfaEnrolled ? 'Enabled' : 'Optional — add an extra layer of security'}
           </Text>
+        </View>
+      </Pressable>
+
+      <Pressable
+        style={styles.row}
+        onPress={handleTestPush}
+        accessibilityRole="button"
+        disabled={isSendingTestPush}
+      >
+        <BellIcon size={20} color={colors.primary} />
+        <View style={styles.rowTextColumn}>
+          <Text style={styles.rowTitle}>
+            {isSendingTestPush ? 'Sending test alert…' : 'Send test notification'}
+          </Text>
+          <Text style={styles.rowSubtitle}>
+            Verify branded push alerts on this device (iOS & Android)
+          </Text>
+          {testPushMessage ? <Text style={styles.rowSubtitle}>{testPushMessage}</Text> : null}
         </View>
       </Pressable>
 

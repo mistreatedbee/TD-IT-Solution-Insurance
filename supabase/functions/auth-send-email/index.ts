@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     const wh = new Webhook(hookSecret);
     const { user, email_data } = wh.verify(payload, headers) as HookPayload;
 
-    const confirmationUrl = buildConfirmationUrl(supabaseUrl, email_data);
+    const confirmationUrl = buildConfirmationUrl(supabaseUrl, email_data, user.email);
     const { subject, html } = renderAuthEmail(
       email_data.email_action_type,
       confirmationUrl,
@@ -75,15 +75,23 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('[auth-send-email]', error);
     const message = error instanceof Error ? error.message : 'Failed to send email';
+    const isVerificationFailure =
+      message.includes('No matching signature') ||
+      message.includes('Missing required headers') ||
+      message.includes('Invalid signature') ||
+      message.includes('Timestamp');
+
     return new Response(
       JSON.stringify({
         error: {
-          http_code: 500,
-          message,
+          http_code: isVerificationFailure ? 401 : 500,
+          message: isVerificationFailure
+            ? 'Hook signature verification failed — check SEND_EMAIL_HOOK_SECRET matches Auth → Hooks → Send Email'
+            : message,
         },
       }),
       {
-        status: 401,
+        status: isVerificationFailure ? 401 : 500,
         headers: { 'Content-Type': 'application/json' },
       },
     );

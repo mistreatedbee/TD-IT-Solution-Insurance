@@ -88,6 +88,8 @@ export interface SessionRepo {
   /** Revokes every currently-unrevoked session for the account. Returns the
    * ids revoked. */
   revokeAllForAccount(accountId: string, reason: SessionRevokedReason): Promise<string[]>;
+  /** True if any prior session row exists for this account + device (Feature 007). */
+  hasPriorSessionForDevice(accountId: string, deviceId: string): Promise<boolean>;
 }
 
 function idleTtlSecondsFor(surface: SessionSurface): number {

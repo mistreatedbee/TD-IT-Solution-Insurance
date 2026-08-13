@@ -24,6 +24,25 @@ export function createPolicyStatusHistoryRepo(db: Db) {
         createdAt: new Date(),
       });
     },
+
+    async recordTransition(params: {
+      policyId: string;
+      accountId: string;
+      fromStatus: PolicyStatus | null;
+      toStatus: PolicyStatus;
+      reason: string;
+      actorAccountId?: string | null;
+    }): Promise<void> {
+      await collection().insertOne({
+        policyId: new ObjectId(params.policyId),
+        accountId: params.accountId,
+        fromStatus: params.fromStatus,
+        toStatus: params.toStatus,
+        reason: params.reason,
+        actorAccountId: params.actorAccountId ?? null,
+        createdAt: new Date(),
+      });
+    },
   };
 }
 

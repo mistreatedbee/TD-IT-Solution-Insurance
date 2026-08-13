@@ -112,6 +112,19 @@ export const createAssetBodySchema = z
 
 export type CreateAssetBody = z.infer<typeof createAssetBodySchema>;
 
+export const updateAssetBodySchema = z
+  .object({
+    displayName: z.string().min(1).max(120).optional(),
+    estimatedValue: estimatedValueSchema.nullable().optional(),
+    details: z.unknown().optional(),
+  })
+  .strict()
+  .refine((body) => body.displayName !== undefined || body.estimatedValue !== undefined || body.details !== undefined, {
+    message: 'At least one updatable field is required',
+  });
+
+export type UpdateAssetBody = z.infer<typeof updateAssetBodySchema>;
+
 function detailsSchemaForType(assetType: AssetType): z.ZodType<Record<string, unknown>> {
   switch (assetType) {
     case 'vehicle':

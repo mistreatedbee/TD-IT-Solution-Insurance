@@ -99,6 +99,8 @@ Three real, currently-operating providers, chosen to give a genuine EU-hosted op
 
 ## 4. Recommendation
 
+> **2026-08-13 update (platform owner):** **Resend** is selected for auth transactional email via the Supabase `auth-send-email` Edge Function. The Brevo recommendation below is **superseded for production auth mail**. Resend setup: [`resend-setup.md`](resend-setup.md). A Resend-specific compliance review should follow the same C-5 checklist as §7.
+
 **Recommend Brevo as the primary candidate, with Amazon SES (`eu-west-1` or `eu-central-1`) as the documented fallback if Brevo's evaluation (§6) or `compliance-specialist`'s review surfaces a disqualifying issue.**
 
 Reasoning, in order of weight:

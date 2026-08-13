@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Badge, Button, Input, SectionHeading } from '../components';
 import { ArrowLink } from '../components/ArrowLink';
 import { InlineAlert } from '../dashboard/components/ui';
@@ -11,6 +11,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 10;
 
 export function CustomerSignupPage() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -47,7 +48,11 @@ export function CustomerSignupPage() {
 
     setLoading(true);
     try {
-      await signUpWithSupabase(trimmedEmail, password);
+      const result = await signUpWithSupabase(trimmedEmail, password);
+      if (result === 'already_verified') {
+        navigate('/auth/email-verified', { replace: true, state: { email: trimmedEmail } });
+        return;
+      }
       setSubmitted(true);
     } catch (err) {
       setFormError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Something went wrong.' }));

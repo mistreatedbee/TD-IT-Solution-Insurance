@@ -12,18 +12,11 @@ export async function sendOutboundEmail(email: OutboundEmail): Promise<void> {
   }
 
   const resendKey = Deno.env.get('RESEND_API_KEY');
-  if (resendKey) {
-    await sendViaResend(resendKey, fromEmail, fromName, email);
-    return;
+  if (!resendKey) {
+    throw new Error('RESEND_API_KEY is not configured for auth-send-email');
   }
 
-  const brevoKey = Deno.env.get('BREVO_API_KEY');
-  if (brevoKey) {
-    await sendViaBrevo(brevoKey, fromEmail, fromName, email);
-    return;
-  }
-
-  throw new Error('Configure RESEND_API_KEY or BREVO_API_KEY for auth-send-email');
+  await sendViaResend(resendKey, fromEmail, fromName, email);
 }
 
 async function sendViaResend(
@@ -49,32 +42,5 @@ async function sendViaResend(
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(`Resend API error (${response.status}): ${detail.slice(0, 200)}`);
-  }
-}
-
-async function sendViaBrevo(
-  apiKey: string,
-  fromEmail: string,
-  fromName: string,
-  email: OutboundEmail,
-): Promise<void> {
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      'api-key': apiKey,
-      'content-type': 'application/json',
-      accept: 'application/json',
-    },
-    body: JSON.stringify({
-      sender: { email: fromEmail, name: fromName },
-      to: [{ email: email.to }],
-      subject: email.subject,
-      htmlContent: email.html,
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Brevo API error (${response.status}): ${detail.slice(0, 200)}`);
   }
 }

@@ -2,9 +2,16 @@
  * Customer onboarding wizard — mirrors web /get-started flow.
  */
 import { useRouter } from 'expo-router';
-import { CheckIcon } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import {
+  BriefcaseIcon,
+  CheckIcon,
+  ShieldCheckIcon,
+  UserIcon,
+} from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Image,
   Linking,
   Pressable,
   StyleSheet,
@@ -13,7 +20,7 @@ import {
 } from 'react-native';
 import { createAsset, listAssets, type Asset, type AssetType } from '../../api/assets';
 import { login, resendVerification, signup, isMfaChallenge } from '../../api/auth';
-import { ApiError } from '../../api/errors';
+import { ApiError, NetworkUnavailableError } from '../../api/errors';
 import { formatPlanPrice, listPlans, type PlanCatalogItem } from '../../api/plans';
 import { createPolicy, listPolicies, type Policy } from '../../api/policies';
 import { setRefreshToken } from '../../auth/secure-storage';
@@ -28,14 +35,17 @@ import {
   fieldLabel,
   requiredFieldsForType,
 } from '../../onboarding/assetFormConfig';
+import { TrackingConnectionDiagram } from '../../onboarding/marketing/components/TrackingConnectionDiagram';
 import { OnboardingProgress } from '../../onboarding/OnboardingProgress';
 import {
   clearAssetDraft,
   loadAccountType,
   loadAssetDraft,
+  loadSignupProfileDraft,
   markOnboardingComplete,
   saveAccountType,
   saveAssetDraft,
+  saveSignupProfileDraft,
   type AccountType,
   type OnboardingStep,
 } from '../../onboarding/onboardingStorage';
@@ -44,6 +54,9 @@ import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 10;
+const MOBILE_PATTERN = /^\+?[0-9\s-]{9,15}$/;
+
+type SignupSubStep = 'name' | 'contact' | 'password';
 
 function resolveInitialStep(
   signedIn: boolean,
@@ -59,16 +72,22 @@ function resolveInitialStep(
 export interface CustomerOnboardingScreenProps {
   /** When true, user is authenticated — skip account creation steps on resume. */
   signedIn?: boolean;
+  /** Skip marketing welcome — start at account type selection. */
+  skipWelcome?: boolean;
 }
 
-export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnboardingScreenProps) {
+export function CustomerOnboardingScreen({
+  signedIn: signedInProp,
+  skipWelcome = false,
+}: CustomerOnboardingScreenProps) {
   const router = useRouter();
   const sessionStatus = useSessionStore((s) => s.status);
   const setSignedIn = useSessionStore((s) => s.setSignedIn);
   const signedIn = signedInProp ?? sessionStatus === 'signed-in';
   const { data: account } = useAccountQuery();
 
-  const [step, setStep] = useState<OnboardingStep>('welcome');
+  const [step, setStep] = useState<OnboardingStep>(skipWelcome ? 'account-type' : 'welcome');
+  const [signupSubStep, setSignupSubStep] = useState<SignupSubStep>('name');
   const [accountType, setAccountType] = useState<AccountType | null>(null);
   const [plans, setPlans] = useState<PlanCatalogItem[]>([]);
   const [plansLoaded, setPlansLoaded] = useState(false);
@@ -79,7 +98,11 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
   const [assetFields, setAssetFields] = useState<Record<string, string>>({});
   const [displayName, setDisplayName] = useState('');
   const [estimatedValue, setEstimatedValue] = useState('');
+  const [assetPhotoUris, setAssetPhotoUris] = useState<string[]>([]);
 
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -108,6 +131,12 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
     });
     void loadAssetDraft().then((draft) => {
       if (draft && !cancelled) setAssetFields(draft);
+    });
+    void loadSignupProfileDraft().then((draft) => {
+      if (!draft || cancelled) return;
+      setFirstName(draft.firstName);
+      setLastName(draft.lastName);
+      setMobile(draft.mobile);
     });
     return () => {
       cancelled = true;
@@ -164,8 +193,16 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
   async function handleSignup() {
     setError(null);
     const trimmed = email.trim();
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('Enter your first and last name.');
+      return;
+    }
     if (!EMAIL_PATTERN.test(trimmed)) {
       setError('Enter a valid email address.');
+      return;
+    }
+    if (mobile.trim() && !MOBILE_PATTERN.test(mobile.trim())) {
+      setError('Enter a valid mobile number.');
       return;
     }
     if (password.length < PASSWORD_MIN_LENGTH) {
@@ -182,13 +219,39 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
     }
     setLoading(true);
     try {
+      await saveSignupProfileDraft({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        mobile: mobile.trim(),
+      });
       await signup({ email: trimmed, password, consentAccepted: true });
       setStep('verify');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Sign up failed.');
+      if (err instanceof NetworkUnavailableError) {
+        setError('Could not reach the server. Check your connection and try again.');
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Sign up failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
+  }
+
+  async function pickAssetPhoto(fromCamera: boolean) {
+    setError(null);
+    const permission = fromCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Photo permission is required to add asset images.');
+      return;
+    }
+    const result = fromCamera
+      ? await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true })
+      : await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true, allowsMultipleSelection: true });
+    if (result.canceled) return;
+    const uris = result.assets.map((a) => a.uri);
+    setAssetPhotoUris((prev) => [...prev, ...uris].slice(0, 4));
   }
 
   async function handleLogin() {
@@ -239,7 +302,7 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
     setLoading(true);
     setError(null);
     try {
-      const created = await createPolicy({ planCatalogId: plan.id });
+      const created = await createPolicy({ planCatalogId: plan.id, planTier: plan.slug });
       setPolicy(created);
       setStep('asset-category');
     } catch (err) {
@@ -290,6 +353,7 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
       setAssetFields({});
       setDisplayName('');
       setEstimatedValue('');
+      setAssetPhotoUris([]);
       setStep('review');
     } catch (err) {
       if (err instanceof ApiError && err.code === 'ASSET_LIMIT_REACHED') {
@@ -340,7 +404,7 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
             <Button size="lg" fullWidth onPress={() => setStep('account-type')}>
               Get Started
             </Button>
-            <Button variant="secondary" size="lg" fullWidth onPress={() => setStep('signup')}>
+            <Button variant="secondary" size="lg" fullWidth onPress={() => router.push('/(auth)/login')}>
               I already have an account
             </Button>
           </View>
@@ -349,9 +413,25 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
 
       {step === 'account-type' ? (
         <>
-          <Text style={styles.titleMd}>Who is this account for?</Text>
+          <Text style={styles.titleMd}>Who are you protecting?</Text>
+          <Text style={styles.subtitle}>Choose the account type that best describes you.</Text>
           <View style={styles.cardGrid}>
-            {(['individual', 'business'] as const).map((type) => (
+            {(
+              [
+                {
+                  type: 'individual' as const,
+                  title: 'My personal assets',
+                  body: 'Protect your own vehicles, devices and equipment.',
+                  Icon: UserIcon,
+                },
+                {
+                  type: 'business' as const,
+                  title: 'My business assets',
+                  body: 'Protect company assets — enterprise plans available for larger fleets.',
+                  Icon: BriefcaseIcon,
+                },
+              ] as const
+            ).map(({ type, title, body, Icon }) => (
               <Pressable
                 key={type}
                 accessibilityRole="button"
@@ -364,17 +444,16 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
                   accountType === type && styles.typeCardSelected,
                 ]}
               >
-                <Text style={styles.typeCardTitle}>{type.charAt(0).toUpperCase() + type.slice(1)}</Text>
-                <Text style={styles.typeCardBody}>
-                  {type === 'individual'
-                    ? 'Protect your own vehicles, devices and equipment.'
-                    : 'Protect company assets — enterprise plans available for larger fleets.'}
-                </Text>
+                <View style={styles.typeIconWrap}>
+                  <Icon size={24} color={colors.primary} />
+                </View>
+                <Text style={styles.typeCardTitle}>{title}</Text>
+                <Text style={styles.typeCardBody}>{body}</Text>
               </Pressable>
             ))}
           </View>
           <View style={styles.rowActions}>
-            <Button variant="secondary" onPress={() => setStep('welcome')}>
+            <Button variant="secondary" onPress={() => (skipWelcome ? router.back() : setStep('welcome'))}>
               Back
             </Button>
             <Button disabled={!accountType} onPress={() => setStep('signup')}>
@@ -386,46 +465,105 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
 
       {step === 'signup' ? (
         <>
-          <Text style={styles.titleMd}>Create your account</Text>
-          <Text style={styles.hint}>
-            {accountType === 'business' ? 'Tell us about your business — ' : 'Tell us about yourself — '}
-            start with email and password.
-          </Text>
-          <Input label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" required />
-          <Input label="Password" value={password} onChangeText={setPassword} type="password" hint={`At least ${PASSWORD_MIN_LENGTH} characters.`} required />
-          <Input label="Confirm password" value={confirmPassword} onChangeText={setConfirmPassword} type="password" required />
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: consentAccepted }}
-            onPress={() => setConsentAccepted((v) => !v)}
-            style={styles.consentRow}
-          >
-            <View style={[styles.checkbox, consentAccepted && styles.checkboxChecked]}>
-              {consentAccepted ? <CheckIcon size={14} color="#FFFFFF" /> : null}
-            </View>
-            <Text style={styles.consentText}>
-              I agree to the Terms and Privacy Policy.
-            </Text>
-          </Pressable>
-          <Button fullWidth loading={loading} onPress={() => void handleSignup()}>
-            Create account
-          </Button>
+          {signupSubStep === 'name' ? (
+            <>
+              <Text style={styles.titleMd}>Let&apos;s get to know you</Text>
+              <Text style={styles.hint}>We&apos;ll use your name to personalise your protection experience.</Text>
+              <Input label="First name" value={firstName} onChangeText={setFirstName} required autoCapitalize="words" />
+              <Input label="Last name" value={lastName} onChangeText={setLastName} required autoCapitalize="words" />
+              <Button
+                fullWidth
+                onPress={() => {
+                  if (!firstName.trim() || !lastName.trim()) {
+                    setError('Enter your first and last name.');
+                    return;
+                  }
+                  setError(null);
+                  void saveSignupProfileDraft({
+                    firstName: firstName.trim(),
+                    lastName: lastName.trim(),
+                    mobile: mobile.trim(),
+                  });
+                  setSignupSubStep('contact');
+                }}
+              >
+                Continue
+              </Button>
+            </>
+          ) : null}
+          {signupSubStep === 'contact' ? (
+            <>
+              <Text style={styles.titleMd}>How can we reach you?</Text>
+              <Text style={styles.hint}>We&apos;ll send verification and important alerts to your email.</Text>
+              <Input label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" required />
+              <Input label="Mobile number" value={mobile} onChangeText={setMobile} keyboardType="phone-pad" hint="Optional — for future SMS alerts." />
+              <View style={styles.rowActions}>
+                <Button variant="secondary" onPress={() => setSignupSubStep('name')}>
+                  Back
+                </Button>
+                <Button
+                  onPress={() => {
+                    if (!EMAIL_PATTERN.test(email.trim())) {
+                      setError('Enter a valid email address.');
+                      return;
+                    }
+                    if (mobile.trim() && !MOBILE_PATTERN.test(mobile.trim())) {
+                      setError('Enter a valid mobile number.');
+                      return;
+                    }
+                    setError(null);
+                    setSignupSubStep('password');
+                  }}
+                >
+                  Continue
+                </Button>
+              </View>
+            </>
+          ) : null}
+          {signupSubStep === 'password' ? (
+            <>
+              <Text style={styles.titleMd}>Secure your account</Text>
+              <Input label="Password" value={password} onChangeText={setPassword} type="password" hint={`At least ${PASSWORD_MIN_LENGTH} characters.`} required />
+              <Input label="Confirm password" value={confirmPassword} onChangeText={setConfirmPassword} type="password" required />
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: consentAccepted }}
+                onPress={() => setConsentAccepted((v) => !v)}
+                style={styles.consentRow}
+              >
+                <View style={[styles.checkbox, consentAccepted && styles.checkboxChecked]}>
+                  {consentAccepted ? <CheckIcon size={14} color="#FFFFFF" /> : null}
+                </View>
+                <Text style={styles.consentText}>I agree to the Terms and Privacy Policy.</Text>
+              </Pressable>
+              <View style={styles.rowActions}>
+                <Button variant="secondary" onPress={() => setSignupSubStep('contact')}>
+                  Back
+                </Button>
+                <Button loading={loading} onPress={() => void handleSignup()}>
+                  Create account
+                </Button>
+              </View>
+            </>
+          ) : null}
 
           <Text style={styles.sectionDivider}>Already registered?</Text>
-          <Input label="Email" value={loginEmail} onChangeText={setLoginEmail} keyboardType="email-address" autoCapitalize="none" />
-          <Input label="Password" value={loginPassword} onChangeText={setLoginPassword} type="password" />
-          <Button variant="secondary" fullWidth loading={loading} onPress={() => void handleLogin()}>
-            Log in
+          <Button variant="tertiary" fullWidth onPress={() => router.push('/(auth)/login')}>
+            Log in instead
           </Button>
         </>
       ) : null}
 
       {step === 'verify' ? (
         <>
-          <Badge tone="warning">Verify your email</Badge>
-          <Text style={[styles.titleMd, styles.mtMd]}>Check your inbox</Text>
+          <Badge tone="warning">Verify your account</Badge>
+          <Text style={[styles.titleMd, styles.mtMd]}>
+            {firstName.trim()
+              ? `Almost there, ${firstName.trim()}`
+              : 'Check your inbox'}
+          </Text>
           <Text style={styles.subtitle}>
-            Open the verification link we sent you, then continue below.
+            Open the verification link we sent to your email, then continue below.
           </Text>
           <View style={styles.actions}>
             <Button
@@ -511,8 +649,8 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
 
       {step === 'asset-category' ? (
         <>
-          <Text style={styles.titleMd}>What would you like to protect?</Text>
-          <Text style={styles.subtitle}>Pick a category to register your first asset.</Text>
+          <Text style={styles.titleMd}>Let&apos;s protect your first asset</Text>
+          <Text style={styles.subtitle}>What would you like to protect?</Text>
           <View style={styles.categoryGrid}>
             {ASSET_CATEGORY_OPTIONS.map((opt) => (
               <Pressable
@@ -527,6 +665,9 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
                   selectedAssetType === opt.api && styles.categoryChipSelected,
                 ]}
               >
+                <View style={styles.categoryIconWrap}>
+                  <opt.Icon size={22} color={colors.primary} />
+                </View>
                 <Text style={styles.categoryLabel}>{opt.label}</Text>
               </Pressable>
             ))}
@@ -541,7 +682,10 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
 
       {step === 'asset-form' && selectedAssetType ? (
         <>
-          <Text style={styles.titleMd}>Register your asset</Text>
+          <Text style={styles.titleMd}>
+            {ASSET_CATEGORY_OPTIONS.find((o) => o.api === selectedAssetType)?.prompt ??
+              'Register your asset'}
+          </Text>
           <Input
             label="Asset name"
             value={displayName}
@@ -574,8 +718,81 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
             <Button variant="secondary" onPress={() => setStep('asset-category')}>
               Back
             </Button>
+            <Button
+              onPress={() => {
+                if (!displayName.trim()) {
+                  setError('Enter a name for this asset.');
+                  return;
+                }
+                const required = requiredFieldsForType(selectedAssetType);
+                for (const key of required) {
+                  if (!assetFields[key]?.trim()) {
+                    setError(`Please enter ${fieldLabel(key).toLowerCase()}.`);
+                    return;
+                  }
+                }
+                setError(null);
+                setStep('asset-photo');
+              }}
+            >
+              Continue
+            </Button>
+          </View>
+        </>
+      ) : null}
+
+      {step === 'asset-photo' ? (
+        <>
+          <Text style={styles.titleMd}>Let&apos;s take a quick photo</Text>
+          <Text style={styles.subtitle}>
+            Photos help us identify and verify your asset. You can add them now or skip for later.
+          </Text>
+          <View style={styles.photoActions}>
+            <Button variant="secondary" onPress={() => void pickAssetPhoto(true)}>
+              Take photo
+            </Button>
+            <Button variant="secondary" onPress={() => void pickAssetPhoto(false)}>
+              Choose from gallery
+            </Button>
+          </View>
+          {assetPhotoUris.length > 0 ? (
+            <View style={styles.photoGrid}>
+              {assetPhotoUris.map((uri) => (
+                <Image key={uri} source={{ uri }} style={styles.photoThumb} accessibilityLabel="Asset photo preview" />
+              ))}
+            </View>
+          ) : null}
+          <Alert tone="info" style={styles.mtMd}>
+            Photo upload to your policy will be available in a future update. Images are stored on this device for now.
+          </Alert>
+          <View style={styles.rowActions}>
+            <Button variant="secondary" onPress={() => setStep('asset-form')}>
+              Back
+            </Button>
+            <Button onPress={() => setStep('tracking-info')}>
+              {assetPhotoUris.length > 0 ? 'Continue' : 'Skip for now'}
+            </Button>
+          </View>
+        </>
+      ) : null}
+
+      {step === 'tracking-info' ? (
+        <>
+          <Text style={styles.titleMd}>Connect your protection</Text>
+          <Text style={styles.subtitle}>
+            Some assets can be paired with a compatible tracking device for additional protection.
+          </Text>
+          <TrackingConnectionDiagram />
+          <Text style={styles.hint}>
+            Tracking depends on compatible hardware, device assignment and connectivity. Not every insured asset
+            includes tracking.
+          </Text>
+          <View style={styles.rowActions}>
+            <Button variant="secondary" onPress={() => setStep('asset-photo')}>
+              Back
+            </Button>
             <Button loading={loading} onPress={() => void handleRegisterAsset()}>
-              Save asset
+              Register asset
             </Button>
           </View>
         </>
@@ -621,19 +838,86 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
 
       {step === 'complete' ? (
         <>
-          <Badge tone="emerald">Onboarding complete</Badge>
-          <Text style={[styles.titleMd, styles.mtMd]}>You&apos;re set up</Text>
-          <Text style={styles.subtitle}>
-            Your account, plan and assets are saved. Use the app for theft reporting and recovery tools.
+          <View style={styles.successIconWrap}>
+            <ShieldCheckIcon size={40} color={colors.success} />
+          </View>
+          <Badge tone="emerald">You&apos;re protected</Badge>
+          <Text style={[styles.titleMd, styles.mtMd]}>
+            {firstName.trim() ? `Welcome, ${firstName.trim()}` : 'Welcome to TD IT Solution Insurance'}
           </Text>
+          <Text style={styles.subtitle}>
+            Your asset has been successfully added to your account. Manage your protection from the app.
+          </Text>
+          <Card padding="md" style={styles.summaryCard}>
+            <SuccessRow label="Insurance" value="Active" pending />
+            <SuccessRow label="Asset" value="Registered" done />
+            <SuccessRow label="Tracking" value="Pending setup" pending />
+          </Card>
           <Button fullWidth onPress={() => void handleGoToApp()}>
-            Go to app
+            Go to my protection
           </Button>
         </>
       ) : null}
     </Screen>
   );
 }
+
+function SuccessRow({
+  label,
+  value,
+  done,
+  pending,
+}: {
+  label: string;
+  value: string;
+  done?: boolean;
+  pending?: boolean;
+}) {
+  return (
+    <View style={successRowStyles.row}>
+      <Text style={successRowStyles.label}>{label}</Text>
+      <View style={successRowStyles.valueWrap}>
+        {done ? <CheckIcon size={14} color={colors.success} /> : null}
+        <Text
+          style={[
+            successRowStyles.value,
+            done && successRowStyles.valueDone,
+            pending && successRowStyles.valuePending,
+          ]}
+        >
+          {value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const successRowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+  },
+  label: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+  },
+  valueWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  value: {
+    fontSize: typography.sizes.sm,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  valueDone: { color: colors.success },
+  valuePending: { color: colors.tones.warning.text },
+});
 
 const styles = StyleSheet.create({
   title: {
@@ -687,11 +971,19 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     borderWidth: 2,
   },
+  typeIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
   typeCardTitle: {
     fontSize: typography.sizes.lg,
     fontWeight: '700',
     color: colors.textPrimary,
-    textTransform: 'capitalize',
   },
   typeCardBody: {
     fontSize: typography.sizes.sm,
@@ -783,8 +1075,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 12,
     padding: spacing.md,
-    minHeight: minTouchTarget,
+    minHeight: minTouchTarget * 1.5,
+    alignItems: 'center',
     justifyContent: 'center',
+  },
+  categoryIconWrap: {
+    marginBottom: spacing.sm,
   },
   categoryChipSelected: {
     borderColor: colors.primary,
@@ -814,5 +1110,32 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     color: colors.textPrimary,
     marginTop: spacing.xs,
+  },
+  photoActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  photoThumb: {
+    width: 88,
+    height: 88,
+    borderRadius: 8,
+    backgroundColor: colors.slate[100],
+  },
+  successIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.tones.success.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
   },
 });

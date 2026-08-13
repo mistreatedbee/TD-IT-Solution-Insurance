@@ -3,6 +3,7 @@ import { BrowserRouter, Outlet, Routes, Route } from 'react-router-dom';
 import { CustomerAuthProvider } from './customer/auth/CustomerAuthProvider';
 import { CustomerAccountPage } from './pages/CustomerAccountPage';
 import { CustomerAuthCallbackPage } from './pages/CustomerAuthCallbackPage';
+import { CustomerEmailVerifiedPage } from './pages/CustomerEmailVerifiedPage';
 import { CustomerForgotPasswordPage } from './pages/CustomerForgotPasswordPage';
 import { CustomerLoginPage } from './pages/CustomerLoginPage';
 import { CustomerResetPasswordPage } from './pages/CustomerResetPasswordPage';
@@ -65,6 +66,7 @@ export function App() {
               <Route path="/signup" element={<CustomerOnboardingPage />} />
               <Route path="/forgot-password" element={<CustomerForgotPasswordPage />} />
               <Route path="/auth/callback" element={<CustomerAuthCallbackPage />} />
+              <Route path="/auth/email-verified" element={<CustomerEmailVerifiedPage />} />
               <Route path="/reset-password" element={<CustomerResetPasswordPage />} />
               <Route path="/account" element={<CustomerAccountPage />} />
             </Route>

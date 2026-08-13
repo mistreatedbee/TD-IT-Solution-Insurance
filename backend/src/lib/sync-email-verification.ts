@@ -5,20 +5,27 @@
 import type { SupabaseAdmin } from '../db/supabase.js';
 import type { AccountRow, AccountsRepo } from '../repositories/accounts.js';
 
+export interface SyncEmailVerificationResult {
+  account: AccountRow;
+  /** True when this call transitioned pending_verification → active. */
+  emailJustVerified: boolean;
+}
+
 export async function syncAppAccountIfSupabaseEmailConfirmed(
   accounts: AccountsRepo,
   supabase: SupabaseAdmin,
   account: AccountRow,
-): Promise<AccountRow> {
+): Promise<SyncEmailVerificationResult> {
   if (account.accountState !== 'pending_verification') {
-    return account;
+    return { account, emailJustVerified: false };
   }
 
   const confirmed = await supabase.isUserEmailConfirmed(account.id);
   if (!confirmed) {
-    return account;
+    return { account, emailJustVerified: false };
   }
 
   await accounts.markEmailVerified(account.id);
-  return (await accounts.findById(account.id)) ?? account;
+  const updated = (await accounts.findById(account.id)) ?? account;
+  return { account: updated, emailJustVerified: true };
 }

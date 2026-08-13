@@ -40,12 +40,13 @@ Required for production startup:
 | `SESSION_JWT_SIGNING_KEYS` | `kid:secret,kid2:secret2` (secrets ≥32 chars) |
 | `SESSION_JWT_ACTIVE_KID` | Must match one kid above |
 
-Optional / when ready:
+Optional:
 
 | Variable | Notes |
 |---|---|
-| `BREVO_API_KEY` + `EMAIL_FROM` | Real transactional email |
 | `INTERNAL_SERVICE_KEYS` | Service-to-service callers |
+
+Auth email (verification, reset, invitations) is sent by the **Supabase `auth-send-email` Edge Function via Resend** — not the Render API. See [`docs/features/001-authentication/resend-setup.md`](features/001-authentication/resend-setup.md).
 
 `CORS_ALLOWED_ORIGINS` is **auto-linked** from the web service hostname. Add `,http://localhost:5173` manually if you need local web → prod API during dev.
 

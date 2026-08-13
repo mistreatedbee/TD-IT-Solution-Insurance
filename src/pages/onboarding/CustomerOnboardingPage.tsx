@@ -131,7 +131,11 @@ export function CustomerOnboardingPage() {
     }
     setLoading(true);
     try {
-      await signUpWithSupabase(trimmed, password);
+      const result = await signUpWithSupabase(trimmed, password);
+      if (result === 'already_verified') {
+        navigate('/auth/email-verified', { replace: true, state: { email: trimmed } });
+        return;
+      }
       setStep('verify');
     } catch (err) {
       setError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Sign up failed.' }));
@@ -370,6 +374,7 @@ export function CustomerOnboardingPage() {
               variant="secondary"
               loading={loading}
               onClick={async () => {
+                setError(null);
                 setLoading(true);
                 try {
                   await resendSignupVerification(email.trim() || auth.account?.email || '');
@@ -392,6 +397,26 @@ export function CustomerOnboardingPage() {
               I&apos;ve verified — continue
             </Button>
           </div>
+          {error ? (
+            <div className="mt-4">
+              <InlineAlert tone="warning">{error}</InlineAlert>
+            </div>
+          ) : null}
+          <p className="mt-6 text-sm text-text-secondary">
+            Already verified?{' '}
+            <Link to="/login" className="font-semibold text-primary hover:underline">
+              Sign in
+            </Link>{' '}
+            or{' '}
+            <Link
+              to="/auth/email-verified"
+              className="font-semibold text-primary hover:underline"
+              state={{ email: email.trim() || auth.account?.email }}
+            >
+              open the confirmation page
+            </Link>
+            .
+          </p>
         </>
       ) : null}
 

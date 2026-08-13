@@ -35,12 +35,6 @@ services:
         sync: false
       - key: INTERNAL_SERVICE_KEYS
         sync: false
-      - key: BREVO_API_KEY
-        sync: false
-      - key: EMAIL_FROM
-        sync: false
-      - key: EMAIL_FROM_NAME
-        value: TD IT Solution Insurance
       - key: EMAIL_VERIFICATION_REDIRECT_URL
         value: tditinsurance://verify-email
       - key: PASSWORD_RESET_REDIRECT_URL
@@ -73,3 +67,8 @@ services:
           type: web
           name: td-it-insurance-api
           property: host
+      # Supabase Auth (customer signup/login) — publishable anon key only; set in Render dashboard
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false

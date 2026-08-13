@@ -170,6 +170,37 @@ export function createPoliciesRepo(db: Db) {
       const row = await collection().findOne({ _id: new ObjectId(policyId) });
       return row ? toPolicy(row) : null;
     },
+
+    async countByAccount(accountId: string): Promise<number> {
+      return collection().countDocuments({ accountId });
+    },
+
+    async listActiveForAccount(accountId: string): Promise<PolicyDocument[]> {
+      const rows = await collection().find({ accountId, status: 'active' }).toArray();
+      return rows.map(toPolicy);
+    },
+
+    /** Called when payment confirms — sets renewalDate one month ahead. */
+    async activateForAccount(accountId: string, policyId: string): Promise<PolicyDocument | null> {
+      if (!ObjectId.isValid(policyId)) return null;
+      const now = new Date();
+      const renewalDate = new Date(now);
+      renewalDate.setMonth(renewalDate.getMonth() + 1);
+
+      const row = await collection().findOneAndUpdate(
+        { _id: new ObjectId(policyId), accountId, status: 'pending_activation' },
+        {
+          $set: {
+            status: 'active',
+            effectiveDate: now,
+            renewalDate,
+            updatedAt: now,
+          },
+        },
+        { returnDocument: 'after' },
+      );
+      return row ? toPolicy(row) : null;
+    },
   };
 }
 

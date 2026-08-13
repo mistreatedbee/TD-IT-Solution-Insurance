@@ -106,6 +106,12 @@ export interface Env {
   emailFrom?: string;
   /** @deprecated */
   emailFromName?: string;
+
+  /** Resend API key for domain transactional email (policies, assets — Feature 007). */
+  resendApiKey?: string;
+
+  /** Optional Expo access token for higher push API rate limits (Feature 007). */
+  expoAccessToken?: string;
 }
 
 function requireEnv(name: string): string {
@@ -275,6 +281,7 @@ export function loadEnv(): Env {
   const brevoApiKey = process.env.BREVO_API_KEY?.trim() || undefined;
   const emailFrom = process.env.EMAIL_FROM?.trim() || undefined;
   const emailFromName = process.env.EMAIL_FROM_NAME?.trim() || undefined;
+  const resendApiKey = process.env.RESEND_API_KEY?.trim() || undefined;
   const appPublicUrl = process.env.APP_PUBLIC_URL?.trim().replace(/\/+$/, '') || undefined;
   const emailVerificationRedirectUrl =
     process.env.EMAIL_VERIFICATION_REDIRECT_URL?.trim() || 'tditinsurance://verify-email';
@@ -282,6 +289,7 @@ export function loadEnv(): Env {
     process.env.PASSWORD_RESET_REDIRECT_URL?.trim() || 'tditinsurance://reset-password';
   const invitationAcceptRedirectUrl =
     process.env.INVITATION_ACCEPT_REDIRECT_URL?.trim() || 'tditinsurance://invitations/accept';
+  const expoAccessToken = process.env.EXPO_ACCESS_TOKEN?.trim() || undefined;
 
   return {
     nodeEnv,
@@ -301,9 +309,11 @@ export function loadEnv(): Env {
     brevoApiKey,
     emailFrom,
     emailFromName,
+    resendApiKey,
     appPublicUrl,
     emailVerificationRedirectUrl,
     passwordResetRedirectUrl,
     invitationAcceptRedirectUrl,
+    expoAccessToken,
   };
 }

@@ -13,6 +13,7 @@ import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
+import { notifyInBackground } from '../lib/customer-notification-service.js';
 
 const createCaseSchema = z.object({
   assetId: z.string().regex(/^[0-9a-f]{24}$/i),
@@ -68,6 +69,17 @@ export function createRecoveryRouter(ctx: AppContext): Router {
           parsed.data.assetId,
           parsed.data.notes ?? null,
           null,
+        );
+
+        notifyInBackground(
+          'recovery.case.created',
+          ctx.recoveryNotifications.notifyTheftReportSubmitted({
+            accountId,
+            assetName: asset.displayName,
+            caseId: recoveryCase.id,
+            referenceNumber: recoveryCase.referenceNumber,
+            assetId: asset.id,
+          }),
         );
 
         res.status(201).json(serializeRecoveryCase(recoveryCase));

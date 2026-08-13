@@ -31,6 +31,43 @@ import {
 import { createAdminAccessLogRepo, type AdminAccessLogRepo } from './repositories/admin-access-log.js';
 import { createRecoveryCasesRepo, type RecoveryCasesRepo } from './repositories/recovery-cases.js';
 import { createPlanCatalogRepo, type PlanCatalogRepo } from './repositories/plan-catalog.js';
+import { createPushTokensRepo, type PushTokensRepo } from './repositories/push-tokens.js';
+import {
+  createNotificationPreferencesRepo,
+  type NotificationPreferencesRepo,
+} from './repositories/notification-preferences.js';
+import {
+  createPushNotificationService,
+  type PushNotificationService,
+} from './lib/push-notification-service.js';
+import {
+  createCustomerNotificationService,
+  type CustomerNotificationService,
+} from './lib/customer-notification-service.js';
+import {
+  createAuthNotificationService,
+  type AuthNotificationService,
+} from './lib/auth-notification-service.js';
+import {
+  createNotificationDeliveryStateRepo,
+  type NotificationDeliveryStateRepo,
+} from './repositories/notification-delivery-state.js';
+import {
+  createOnboardingNotificationService,
+  type OnboardingNotificationService,
+} from './lib/onboarding-notification-service.js';
+import {
+  createPolicyNotificationService,
+  type PolicyNotificationService,
+} from './lib/policy-notification-service.js';
+import {
+  createPolicyActivationService,
+  type PolicyActivationService,
+} from './lib/policy-activation-service.js';
+import {
+  createRecoveryNotificationService,
+  type RecoveryNotificationService,
+} from './lib/recovery-notification-service.js';
 
 export interface AppContext {
   env: Env;
@@ -50,29 +87,95 @@ export interface AppContext {
   adminAccessLog: AdminAccessLogRepo;
   recoveryCases: RecoveryCasesRepo;
   planCatalog: PlanCatalogRepo;
+  pushTokens: PushTokensRepo;
+  notificationPreferences: NotificationPreferencesRepo;
+  pushNotifications: PushNotificationService;
+  customerNotifications: CustomerNotificationService;
+  authNotifications: AuthNotificationService;
+  notificationDeliveryState: NotificationDeliveryStateRepo;
+  onboardingNotifications: OnboardingNotificationService;
+  policyNotifications: PolicyNotificationService;
+  policyActivation: PolicyActivationService;
+  recoveryNotifications: RecoveryNotificationService;
 }
 
 export function buildAppContext(env: Env): AppContext {
   const pool = getPgPool(env);
   const kv = getKeyValueStore(env);
   const supabase = getSupabaseAdmin(env);
+  const pushTokens = createPushTokensRepo(getDb());
+  const notificationPreferences = createNotificationPreferencesRepo(getDb());
+  const notificationDeliveryState = createNotificationDeliveryStateRepo(getDb());
+  const pushNotifications = createPushNotificationService({
+    env,
+    pushTokens,
+    notificationPreferences,
+  });
+  const accounts = createAccountsRepo(pool);
+  const policies = createPoliciesRepo(getDb());
+  const policyStatusHistory = createPolicyStatusHistoryRepo(getDb());
+  const policyNotifications = createPolicyNotificationService({
+    env,
+    accounts,
+    notificationPreferences,
+    deliveryState: notificationDeliveryState,
+    pushNotifications,
+  });
+  const onboardingNotifications = createOnboardingNotificationService({
+    env,
+    accounts,
+    notificationPreferences,
+    deliveryState: notificationDeliveryState,
+    pushNotifications,
+  });
+  const policyActivation = createPolicyActivationService({
+    policies,
+    policyStatusHistory,
+    policyNotifications,
+  });
+  const recoveryNotifications = createRecoveryNotificationService({
+    env,
+    accounts,
+    notificationPreferences,
+    pushNotifications,
+  });
   return {
     env,
     pool,
     kv,
     supabase,
-    accounts: createAccountsRepo(pool),
+    accounts,
     invitations: createInvitationsRepo(pool),
     sessions: createSessionRepo(pool),
     enrollmentTickets: createEnrollmentTicketRepo(pool),
     resetMfaTokens: createResetMfaVerificationTokenRepo(pool),
     auditLog: createAuditLogRepo(pool),
     idempotency: createIdempotencyRepo(pool),
-    policies: createPoliciesRepo(getDb()),
+    policies,
     assets: createAssetsRepo(getDb()),
-    policyStatusHistory: createPolicyStatusHistoryRepo(getDb()),
+    policyStatusHistory,
     adminAccessLog: createAdminAccessLogRepo(getDb()),
     recoveryCases: createRecoveryCasesRepo(getDb()),
     planCatalog: createPlanCatalogRepo(getDb()),
+    pushTokens,
+    notificationPreferences,
+    notificationDeliveryState,
+    pushNotifications,
+    customerNotifications: createCustomerNotificationService({
+      env,
+      accounts,
+      notificationPreferences,
+      pushNotifications,
+    }),
+    authNotifications: createAuthNotificationService({
+      env,
+      accounts,
+      notificationPreferences,
+      pushNotifications,
+    }),
+    onboardingNotifications,
+    policyNotifications,
+    policyActivation,
+    recoveryNotifications,
   };
 }

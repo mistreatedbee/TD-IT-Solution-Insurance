@@ -26,7 +26,8 @@ describe('syncAppAccountIfSupabaseEmailConfirmed', () => {
     );
 
     expect(markEmailVerified).toHaveBeenCalledWith('user-1');
-    expect(result.accountState).toBe('active');
+    expect(result.account.accountState).toBe('active');
+    expect(result.emailJustVerified).toBe(true);
   });
 
   it('no-ops when Supabase email is not confirmed', async () => {
@@ -39,6 +40,7 @@ describe('syncAppAccountIfSupabaseEmailConfirmed', () => {
     );
 
     expect(markEmailVerified).not.toHaveBeenCalled();
-    expect(result.accountState).toBe('pending_verification');
+    expect(result.account.accountState).toBe('pending_verification');
+    expect(result.emailJustVerified).toBe(false);
   });
 });

@@ -164,6 +164,24 @@ function createHarness(opts: { cases?: RecoveryCaseDocument[]; partnerOrgId?: st
         return cases[idx]!;
       },
     },
+    assets: {
+      async findByIdForAdmin() {
+        return { displayName: 'Test asset' };
+      },
+      async findByIdForAccount() {
+        return null;
+      },
+    },
+    recoveryNotifications: {
+      async notifyCaseAssigned() {},
+      async notifyCaseStatusUpdated() {},
+      async notifyRecoverySuccessful() {},
+      async notifyCaseClosed() {},
+      async notifyTheftReportSubmitted() {},
+    },
+    customerNotifications: {
+      async notifyAssetRecovered() {},
+    },
   } as unknown as AppContext;
 
   const app: Express = express();
