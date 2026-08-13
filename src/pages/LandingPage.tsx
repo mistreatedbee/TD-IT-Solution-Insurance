@@ -3,6 +3,7 @@ import {
   LaptopIcon,
   ShieldCheckIcon,
   MapPinIcon,
+  SmartphoneIcon,
 } from 'lucide-react';
 import { Section } from '../components/Section';
 import { SectionHeading } from '../components/SectionHeading';
@@ -20,7 +21,9 @@ import { HeroVisual } from './HeroVisual';
 import { HeroFeatures } from './HeroFeatures';
 import { PlansSection } from './PlansSection';
 import { WhatToExpectSection } from './WhatToExpectSection';
+import { MobileAppDownloadSection } from './MobileAppDownloadSection';
 import { COMPANY_CONTACT } from '../lib/companyContact';
+import { scrollToMobileAppSection } from '../lib/mobileAppLinks';
 import {
   Accordion,
   AccordionItem
@@ -59,10 +62,22 @@ export function LandingPage() {
                 title="Insurance that helps you get your stuff back."
                 subtitle="TD IT Solution Insurance covers your vehicles, laptops, phones, tablets, TVs, desktops and business equipment — and works with GPS-assisted recovery and security-company partners when something is lost or stolen. Cover is subject to policy terms, underwriting and claims assessment."
               />
-              <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
-                <Button variant="primary" size="lg" fullWidth onClick={scrollToWaitlist} className="sm:w-auto">
-                  Get Notified
-                </Button>
+              <div className="mt-8 flex flex-col gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                  <Button variant="primary" size="lg" fullWidth onClick={scrollToWaitlist} className="sm:w-auto">
+                    Get Notified
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    fullWidth
+                    leadingIcon={<SmartphoneIcon className="h-5 w-5" />}
+                    onClick={scrollToMobileAppSection}
+                    className="sm:w-auto"
+                  >
+                    Download Mobile Asset Tracking App
+                  </Button>
+                </div>
                 <ArrowLink href="#how-it-works" tone="default">
                   See how it works
                 </ArrowLink>
@@ -78,6 +93,8 @@ export function LandingPage() {
         <div className="pb-16 lg:pb-20">
           <HeroFeatures />
         </div>
+
+        <MobileAppDownloadSection />
 
         <ChevronDivider tone="gold" className="mx-auto" />
       </Section>
