@@ -60,8 +60,14 @@ export function CustomerLoginPage() {
       }
       await finishLogin(result.accessToken, result.refreshToken);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
+      if (err instanceof ApiError && err.status === 401 && err.code !== 'INVALID_CREDENTIALS') {
+        setError(err.message);
+      } else if (err instanceof ApiError && err.status === 401) {
         setError('Incorrect email or password.');
+      } else if (err instanceof ApiError && err.status === 403 && err.code === 'ACCOUNT_NOT_ACTIVE') {
+        setError(
+          'Your account is not active yet. Verify your email from the sign-up message, wait a minute, then try again.',
+        );
       } else if (err instanceof ApiError && err.status === 403) {
         setError(err.message);
       } else if (err instanceof ApiError && err.status === 423) {

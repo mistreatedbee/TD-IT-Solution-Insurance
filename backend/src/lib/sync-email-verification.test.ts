@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { syncAppAccountIfSupabaseEmailConfirmed } from './sync-email-verification.js';
+import {
+  resolveCustomerAccountAfterSupabaseAuth,
+  syncAppAccountIfSupabaseEmailConfirmed,
+} from './sync-email-verification.js';
 import type { AccountRow } from '../repositories/accounts.js';
 
 const pendingAccount: AccountRow = {
@@ -42,5 +45,36 @@ describe('syncAppAccountIfSupabaseEmailConfirmed', () => {
     expect(markEmailVerified).not.toHaveBeenCalled();
     expect(result.account.accountState).toBe('pending_verification');
     expect(result.emailJustVerified).toBe(false);
+  });
+});
+
+describe('resolveCustomerAccountAfterSupabaseAuth', () => {
+  it('activates pending account when Supabase auth succeeded even if confirm flag lags', async () => {
+    const markEmailVerified = vi.fn();
+    const findById = vi.fn().mockResolvedValue({ ...pendingAccount, accountState: 'active' });
+
+    const result = await resolveCustomerAccountAfterSupabaseAuth(
+      { markEmailVerified, findById } as never,
+      { isUserEmailConfirmed: async () => false } as never,
+      pendingAccount,
+      { supabaseAuthSucceeded: true },
+    );
+
+    expect(markEmailVerified).toHaveBeenCalledWith('user-1');
+    expect(result.accountState).toBe('active');
+  });
+
+  it('leaves pending account unchanged when Supabase auth did not succeed', async () => {
+    const markEmailVerified = vi.fn();
+
+    const result = await resolveCustomerAccountAfterSupabaseAuth(
+      { markEmailVerified, findById: vi.fn() } as never,
+      { isUserEmailConfirmed: async () => false } as never,
+      pendingAccount,
+      {},
+    );
+
+    expect(markEmailVerified).not.toHaveBeenCalled();
+    expect(result.accountState).toBe('pending_verification');
   });
 });

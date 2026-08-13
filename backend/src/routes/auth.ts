@@ -5,7 +5,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { syncAppAccountIfSupabaseEmailConfirmed } from '../lib/sync-email-verification.js';
+import { resolveCustomerAccountAfterSupabaseAuth } from '../lib/sync-email-verification.js';
 import { apiError } from '../lib/errors.js';
 import { validateBody, isPasswordValidForUserType } from '../lib/validation.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
@@ -362,13 +362,12 @@ export function createAuthRouter(ctx: AppContext): Router {
 
         let activeAccount = account;
         try {
-          if (account.accountState === 'pending_verification' && supabaseUser.emailConfirmed) {
-            await ctx.accounts.markEmailVerified(account.id);
-            activeAccount = (await ctx.accounts.findById(account.id)) ?? account;
-          } else {
-            const syncResult = await syncAppAccountIfSupabaseEmailConfirmed(ctx.accounts, ctx.supabase, account);
-            activeAccount = syncResult.account;
-          }
+          activeAccount = await resolveCustomerAccountAfterSupabaseAuth(
+            ctx.accounts,
+            ctx.supabase,
+            account,
+            { emailConfirmed: supabaseUser.emailConfirmed, supabaseAuthSucceeded: true },
+          );
         } catch (err) {
           if (err instanceof SupabaseUnavailableError) {
             next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
@@ -511,8 +510,12 @@ export function createAuthRouter(ctx: AppContext): Router {
 
         let activeAccount = account;
         try {
-          const syncResult = await syncAppAccountIfSupabaseEmailConfirmed(ctx.accounts, ctx.supabase, account);
-          activeAccount = syncResult.account;
+          activeAccount = await resolveCustomerAccountAfterSupabaseAuth(
+            ctx.accounts,
+            ctx.supabase,
+            account,
+            { supabaseAuthSucceeded: true },
+          );
         } catch (err) {
           if (err instanceof SupabaseUnavailableError) {
             next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));

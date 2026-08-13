@@ -29,3 +29,36 @@ export async function syncAppAccountIfSupabaseEmailConfirmed(
   const updated = (await accounts.findById(account.id)) ?? account;
   return { account: updated, emailJustVerified: true };
 }
+
+/**
+ * Aligns app.accounts with a successful Supabase Auth proof (password grant
+ * or access-token exchange). Supabase is the email-verification gate for
+ * customer web/mobile; if Auth accepted the user, activate a pending app row.
+ */
+export async function resolveCustomerAccountAfterSupabaseAuth(
+  accounts: AccountsRepo,
+  supabase: SupabaseAdmin,
+  account: AccountRow,
+  options: { emailConfirmed?: boolean; supabaseAuthSucceeded?: boolean },
+): Promise<AccountRow> {
+  if (account.accountState !== 'pending_verification') {
+    return account;
+  }
+
+  if (options.emailConfirmed) {
+    await accounts.markEmailVerified(account.id);
+    return (await accounts.findById(account.id)) ?? account;
+  }
+
+  const syncResult = await syncAppAccountIfSupabaseEmailConfirmed(accounts, supabase, account);
+  if (syncResult.account.accountState === 'active') {
+    return syncResult.account;
+  }
+
+  if (options.supabaseAuthSucceeded) {
+    await accounts.markEmailVerified(account.id);
+    return (await accounts.findById(account.id)) ?? account;
+  }
+
+  return syncResult.account;
+}
