@@ -14,7 +14,15 @@ import { createPlanCatalogRepo } from '../repositories/plan-catalog.js';
 export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
   await bootstrapFeature004Collections(db);
   await bootstrapRecoveryCollections(db);
-  await bootstrapNotificationCollections(db);
+  try {
+    await bootstrapNotificationCollections(db);
+  } catch (err) {
+    // Non-fatal: auth/policy routes must stay up if notification bootstrap fails on Atlas.
+    console.error(
+      '[startup] Notification collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
   const planCatalog = createPlanCatalogRepo(db);
   await planCatalog.ensureSeeded();
 }

@@ -28,7 +28,7 @@ export const devicePushTokensJsonSchemaValidator: Document = {
       deviceId: { bsonType: 'string', minLength: 1, maxLength: 64 },
       expoPushToken: { bsonType: 'string', minLength: 10, maxLength: 512 },
       tokenHash: { bsonType: 'string', minLength: 64, maxLength: 64 },
-      platform: { enum: ['ios', 'android', 'unknown'] },
+      platform: { bsonType: 'string', enum: ['ios', 'android', 'unknown'] },
       appVersion: { bsonType: ['string', 'null'] },
       enabled: { bsonType: 'bool' },
       createdAt: { bsonType: 'date' },
@@ -52,17 +52,18 @@ export const notificationPreferencesJsonSchemaValidator: Document = {
 };
 
 const devicePushTokenIndexes: IndexDescription[] = [
-  { key: { accountId: 1, deviceId: 1 }, unique: true },
+  { key: { accountId: 1, deviceId: 1 }, unique: true, name: 'accountId_1_deviceId_1' },
   {
     key: { tokenHash: 1 },
     unique: true,
+    name: 'tokenHash_1_enabled_partial',
     partialFilterExpression: { enabled: true },
   },
-  { key: { accountId: 1, enabled: 1 } },
+  { key: { accountId: 1, enabled: 1 }, name: 'accountId_1_enabled_1' },
 ];
 
 const notificationPreferencesIndexes: IndexDescription[] = [
-  { key: { accountId: 1 }, unique: true },
+  { key: { accountId: 1 }, unique: true, name: 'accountId_1' },
 ];
 
 export const notificationDeliveryStateJsonSchemaValidator: Document = {
@@ -80,7 +81,7 @@ export const notificationDeliveryStateJsonSchemaValidator: Document = {
     properties: {
       accountId: { bsonType: 'string' },
       welcomeSentAt: { bsonType: ['date', 'null'] },
-      onboardingReminderCount: { bsonType: 'int', minimum: 0, maximum: 2 },
+      onboardingReminderCount: { bsonType: ['int', 'long', 'double'], minimum: 0, maximum: 2 },
       lastOnboardingReminderAt: { bsonType: ['date', 'null'] },
       policyRenewalReminders: { bsonType: 'object' },
       createdAt: { bsonType: 'date' },
@@ -90,7 +91,7 @@ export const notificationDeliveryStateJsonSchemaValidator: Document = {
 };
 
 const notificationDeliveryStateIndexes: IndexDescription[] = [
-  { key: { accountId: 1 }, unique: true },
+  { key: { accountId: 1 }, unique: true, name: 'accountId_1' },
 ];
 
 async function ensureCollection(
@@ -119,12 +120,15 @@ async function ensureCollection(
 
   const indexNames: string[] = [];
   for (const spec of indexes) {
+    const indexName =
+      spec.name ??
+      Object.entries(spec.key)
+        .map(([field, order]) => `${field}_${order}`)
+        .join('_');
     const result = await db.collection(name).createIndex(spec.key, {
+      name: indexName,
       unique: spec.unique,
       partialFilterExpression: spec.partialFilterExpression,
-      name: Object.entries(spec.key)
-        .map(([field, order]) => `${field}_${order}`)
-        .join('_'),
     });
     indexNames.push(result);
   }
