@@ -88,6 +88,7 @@ function samplePolicy(accountId: string, id = '507f1f77bcf86cd799439011'): Polic
     id,
     accountId,
     planTier: 'starter',
+    planCatalogId: null,
     status: 'pending_activation',
     coverageLimits: [],
     billing: {
@@ -143,9 +144,13 @@ function createHarness(opts: {
       },
     },
     policies: {
-      async createForAccount(acctId: string, planTier: string): Promise<PolicyDocument> {
+      async createForAccount(
+        acctId: string,
+        input: { planTier: string; planCatalogId?: string | null; monthlyAmountCents?: number | null },
+      ): Promise<PolicyDocument> {
         const policy = samplePolicy(acctId, '507f1f77bcf86cd799439099');
-        policy.planTier = planTier;
+        policy.planTier = input.planTier;
+        policy.planCatalogId = input.planCatalogId ?? null;
         storedPolicies.set(policy.id, policy);
         return policy;
       },
@@ -163,6 +168,47 @@ function createHarness(opts: {
       },
     },
     idempotency: createInMemoryIdempotencyRepo(),
+    planCatalog: {
+      async findActiveById(id: string) {
+        if (id === '507f1f77bcf86cd799439088') {
+          return {
+            id,
+            slug: 'starter',
+            name: 'Starter',
+            tagline: 'Up to 5 devices',
+            maxAssets: 5,
+            monthlyAmountCents: 20_000,
+            currency: 'ZAR',
+            isCustomPricing: false,
+            isActive: true,
+            sortOrder: 1,
+            features: [],
+            accountTypes: ['both'],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        }
+        if (id === '507f1f77bcf86cd799439087') {
+          return {
+            id,
+            slug: 'enterprise',
+            name: 'Enterprise',
+            tagline: 'Custom',
+            maxAssets: null,
+            monthlyAmountCents: null,
+            currency: 'ZAR',
+            isCustomPricing: true,
+            isActive: true,
+            sortOrder: 3,
+            features: [],
+            accountTypes: ['business'],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        }
+        return null;
+      },
+    },
   } as unknown as AppContext;
 
   const app: Express = express();

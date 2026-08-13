@@ -38,6 +38,8 @@ import { createInvitationsRouter } from './routes/invitations.js';
 import { createAdminAccountsRouter } from './routes/admin-accounts.js';
 import { createAdminPoliciesRouter } from './routes/admin-policies.js';
 import { createAdminAssetsRouter } from './routes/admin-assets.js';
+import { createAdminPlansRouter } from './routes/admin-plans.js';
+import { createPlansRouter } from './routes/plans.js';
 import { createPoliciesRouter } from './routes/policies.js';
 import { createAssetsRouter } from './routes/assets.js';
 import { createRecoveryRouter } from './routes/recovery.js';
@@ -101,6 +103,8 @@ async function main(): Promise<void> {
   v1.use(createAdminAccountsRouter(ctx));
   v1.use(createAdminPoliciesRouter(ctx));
   v1.use(createAdminAssetsRouter(ctx));
+  v1.use(createAdminPlansRouter(ctx));
+  v1.use(createPlansRouter(ctx));
   v1.use(createPoliciesRouter(ctx));
   v1.use(createAssetsRouter(ctx));
   v1.use(createRecoveryRouter(ctx));

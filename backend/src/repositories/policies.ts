@@ -37,6 +37,7 @@ export interface PolicyDocument {
   id: string;
   accountId: string;
   planTier: string;
+  planCatalogId: string | null;
   status: PolicyStatus;
   coverageLimits: CoverageLimit[];
   billing: PolicyBilling;
@@ -52,6 +53,7 @@ interface PolicyDbRow {
   _id: ObjectId;
   accountId: string;
   planTier: string;
+  planCatalogId?: string | null;
   status: PolicyStatus;
   coverageLimits: CoverageLimit[];
   billing: PolicyBilling;
@@ -68,6 +70,7 @@ function toPolicy(row: PolicyDbRow): PolicyDocument {
     id: row._id.toHexString(),
     accountId: row.accountId,
     planTier: row.planTier,
+    planCatalogId: row.planCatalogId ?? null,
     status: row.status,
     coverageLimits: row.coverageLimits,
     billing: row.billing,
@@ -84,11 +87,15 @@ export function createPoliciesRepo(db: Db) {
   const collection = (): Collection<PolicyDbRow> => db.collection<PolicyDbRow>('policies');
 
   return {
-    async createForAccount(accountId: string, planTier: string): Promise<PolicyDocument> {
+    async createForAccount(
+      accountId: string,
+      input: { planTier: string; planCatalogId?: string | null; monthlyAmountCents?: number | null },
+    ): Promise<PolicyDocument> {
       const now = new Date();
       const doc: Omit<PolicyDbRow, '_id'> = {
         accountId,
-        planTier,
+        planTier: input.planTier,
+        planCatalogId: input.planCatalogId ?? null,
         status: 'pending_activation',
         coverageLimits: [],
         billing: {
@@ -96,9 +103,11 @@ export function createPoliciesRepo(db: Db) {
           externalCustomerId: null,
           externalSubscriptionId: null,
           billingStatus: 'not_configured',
-          // P-01: no ratified billing currency — ZAR shown in database-design as illustrative only.
           currency: 'ZAR',
-          amount: null,
+          amount:
+            input.monthlyAmountCents != null && input.monthlyAmountCents > 0
+              ? input.monthlyAmountCents / 100
+              : null,
           currentPeriodStart: null,
           currentPeriodEnd: null,
           nextBillingAt: null,
@@ -113,6 +122,11 @@ export function createPoliciesRepo(db: Db) {
       };
       const result = await collection().insertOne(doc as PolicyDbRow);
       return toPolicy({ _id: result.insertedId, ...doc });
+    },
+
+    /** @deprecated Use createForAccount with structured input */
+    async createForAccountLegacy(accountId: string, planTier: string): Promise<PolicyDocument> {
+      return this.createForAccount(accountId, { planTier });
     },
 
     async listByAccount(

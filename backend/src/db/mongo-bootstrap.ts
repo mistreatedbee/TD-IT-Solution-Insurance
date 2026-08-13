@@ -8,8 +8,11 @@
 import type { Db } from 'mongodb';
 import { bootstrapFeature004Collections } from './feature004-collections.js';
 import { bootstrapRecoveryCollections } from './recovery-collections.js';
+import { createPlanCatalogRepo } from '../repositories/plan-catalog.js';
 
 export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
   await bootstrapFeature004Collections(db);
   await bootstrapRecoveryCollections(db);
+  const planCatalog = createPlanCatalogRepo(db);
+  await planCatalog.ensureSeeded();
 }

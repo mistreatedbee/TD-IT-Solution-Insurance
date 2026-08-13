@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { requireActiveAccount } from '../lib/account-gate.js';
 import { apiError } from '../lib/errors.js';
+import { assertAssetRegistrationAllowed } from '../lib/plan-enforcement.js';
 import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js';
 import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { serializeAsset } from '../lib/policy-asset-serializers.js';
@@ -41,8 +42,8 @@ export function createAssetsRouter(ctx: AppContext): Router {
       try {
         const accountId = req.auth!.accountId;
         await requireActiveAccount(ctx.accounts, accountId);
+        await assertAssetRegistrationAllowed(ctx, accountId);
 
-        // P-01: no eligibility rule (e.g. must have active policy first) exists yet.
         const asset = await ctx.assets.createForAccount(accountId, req.body);
         res.status(201).json(serializeAsset(asset));
       } catch (err) {

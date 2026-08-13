@@ -159,6 +159,19 @@ function createHarness(opts: { accountId?: string; accountState?: AccountStatus[
         const row = storedAssets.get(assetId);
         return row && row.accountId === acctId ? row : null;
       },
+      async countActiveByAccount(acctId: string) {
+        return [...storedAssets.values()].filter((a) => a.accountId === acctId && a.status !== 'removed').length;
+      },
+    },
+    policies: {
+      async listByAccount() {
+        return [];
+      },
+    },
+    planCatalog: {
+      async findById() {
+        return null;
+      },
     },
     idempotency: createInMemoryIdempotencyRepo(),
   } as unknown as AppContext;

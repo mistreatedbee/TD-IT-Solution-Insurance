@@ -30,6 +30,7 @@ import {
 } from './repositories/policy-status-history.js';
 import { createAdminAccessLogRepo, type AdminAccessLogRepo } from './repositories/admin-access-log.js';
 import { createRecoveryCasesRepo, type RecoveryCasesRepo } from './repositories/recovery-cases.js';
+import { createPlanCatalogRepo, type PlanCatalogRepo } from './repositories/plan-catalog.js';
 
 export interface AppContext {
   env: Env;
@@ -48,6 +49,7 @@ export interface AppContext {
   policyStatusHistory: PolicyStatusHistoryRepo;
   adminAccessLog: AdminAccessLogRepo;
   recoveryCases: RecoveryCasesRepo;
+  planCatalog: PlanCatalogRepo;
 }
 
 export function buildAppContext(env: Env): AppContext {
@@ -71,5 +73,6 @@ export function buildAppContext(env: Env): AppContext {
     policyStatusHistory: createPolicyStatusHistoryRepo(getDb()),
     adminAccessLog: createAdminAccessLogRepo(getDb()),
     recoveryCases: createRecoveryCasesRepo(getDb()),
+    planCatalog: createPlanCatalogRepo(getDb()),
   };
 }

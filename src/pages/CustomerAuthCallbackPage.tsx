@@ -25,7 +25,7 @@ export function CustomerAuthCallbackPage() {
       await auth.signInWithTokens(tokens.accessToken, tokens.refreshToken);
       if (!cancelled) {
         setState('verified');
-        navigate('/account', { replace: true });
+        navigate('/get-started', { replace: true });
       }
     }
 

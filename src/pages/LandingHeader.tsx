@@ -76,9 +76,9 @@ export function LandingHeader() {
               Log in
             </Button>
           </Link>
-          <Link to="/signup">
+          <Link to="/get-started">
             <Button variant="primary" size="sm">
-              Sign up
+              Get Started
             </Button>
           </Link>
         </div>
@@ -125,9 +125,9 @@ export function LandingHeader() {
                   Log in
                 </Button>
               </Link>
-              <Link to="/signup" onClick={closeMobile}>
+              <Link to="/get-started" onClick={closeMobile}>
                 <Button variant="primary" size="md" fullWidth>
-                  Sign up
+                  Get Started
                 </Button>
               </Link>
             </div>

@@ -36,6 +36,14 @@ export const ERROR_CATALOG = {
     statusCode: 403,
     message: 'This action requires an active account.',
   },
+  ASSET_LIMIT_REACHED: {
+    statusCode: 403,
+    message: 'You have reached the asset limit for your selected plan.',
+  },
+  PLAN_REQUIRES_QUOTE: {
+    statusCode: 422,
+    message: 'This plan requires a custom quote. Please contact us to continue.',
+  },
   NOT_FOUND: { statusCode: 404, message: 'The requested resource was not found.' },
   INVITATION_INVALID: { statusCode: 404, message: 'This invitation link is invalid or has expired.' },
   INVITATION_EXPIRED: { statusCode: 410, message: 'This invitation link has expired or was already used.' },

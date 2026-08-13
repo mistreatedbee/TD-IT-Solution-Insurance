@@ -8,10 +8,13 @@ export function serializePolicy(doc: PolicyDocument) {
   return {
     id: doc.id,
     planTier: doc.planTier,
+    planCatalogId: doc.planCatalogId,
     status: doc.status,
     coverageLimits: doc.coverageLimits,
     billing: {
       billingStatus: doc.billing.billingStatus,
+      currency: doc.billing.currency,
+      amount: doc.billing.amount,
       currentPeriodEnd: doc.billing.currentPeriodEnd?.toISOString() ?? null,
       nextBillingAt: doc.billing.nextBillingAt?.toISOString() ?? null,
       cancelAt: doc.billing.cancelAt?.toISOString() ?? null,

@@ -12,7 +12,7 @@ export function CustomerLoginPage() {
   const auth = useCustomerAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const redirect = params.get('redirect') ?? '/account';
+  const redirect = params.get('redirect') ?? '/get-started';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -159,7 +159,7 @@ export function CustomerLoginPage() {
 
       <p className="mt-6 text-center text-sm text-text-secondary">
         Don&apos;t have an account?{' '}
-        <ArrowLink href="/signup" size="sm">
+        <ArrowLink href="/get-started" size="sm">
           Sign up
         </ArrowLink>
       </p>

@@ -1,10 +1,9 @@
 import { Navigate } from 'react-router-dom';
-import { Badge, Button, SectionHeading } from '../components';
+import { Button } from '../components';
 import { ArrowLink } from '../components/ArrowLink';
 import { InlineAlert } from '../dashboard/components/ui';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
-import { COMPANY_CONTACT } from '../lib/companyContact';
 
 export function CustomerAccountPage() {
   const auth = useCustomerAuth();
@@ -18,7 +17,7 @@ export function CustomerAccountPage() {
   }
 
   if (auth.status === 'signed-out') {
-    return <Navigate to="/login?redirect=/account" replace />;
+    return <Navigate to="/get-started" replace />;
   }
 
   if (auth.status === 'wrong-role') {
@@ -39,53 +38,5 @@ export function CustomerAccountPage() {
     );
   }
 
-  return (
-    <MarketingAuthShell>
-      <Badge tone="emerald">Signed in</Badge>
-      <SectionHeading
-        as="h1"
-        title="Continue in the mobile app"
-        size="md"
-        className="mt-4 mb-2"
-      />
-      <p className="text-base text-text-secondary">
-        Your account{auth.account?.email ? ` (${auth.account.email})` : ''} is ready. Policy
-        management, asset registration, and GPS-assisted recovery are available in the TD IT
-        Solution Insurance mobile app.
-      </p>
-
-      <div className="mt-8 space-y-4 rounded-xl border border-border bg-background-alt p-5">
-        <p className="text-sm font-semibold text-text-primary">Get the app</p>
-        <p className="text-sm text-text-secondary">
-          Download the customer app from the App Store or Google Play when it becomes available.
-          Store links will appear here at launch.
-        </p>
-        <div className="flex flex-col gap-2 text-sm text-text-secondary">
-          <span>Bundle ID (iOS): co.za.tditsolutions.insurance</span>
-          <span>Package (Android): co.za.tditsolutions.insurance</span>
-        </div>
-        <div className="border-t border-border pt-4">
-          <p className="text-sm font-semibold text-text-primary">Need help?</p>
-          <p className="mt-1 text-sm text-text-secondary">
-            <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-primary hover:underline">
-              {COMPANY_CONTACT.email}
-            </a>
-            {' · '}
-            {COMPANY_CONTACT.phones.map((p) => p.display).join(' · ')}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-        <Button variant="secondary" fullWidth onClick={() => void auth.signOut()}>
-          Sign out
-        </Button>
-        <div className="flex justify-center sm:justify-start">
-          <ArrowLink href="/" reverse>
-            Back to home
-          </ArrowLink>
-        </div>
-      </div>
-    </MarketingAuthShell>
-  );
+  return <Navigate to="/get-started" replace />;
 }

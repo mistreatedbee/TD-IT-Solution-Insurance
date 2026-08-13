@@ -127,6 +127,10 @@ export function createAssetsRepo(db: Db) {
       return row ? toAsset(row) : null;
     },
 
+    async countActiveByAccount(accountId: string): Promise<number> {
+      return collection().countDocuments({ accountId, status: { $ne: 'removed' } });
+    },
+
     async listForAdmin(
       filters: { accountId?: string; status?: AssetStatus; assetType?: AssetType },
       limit: number,

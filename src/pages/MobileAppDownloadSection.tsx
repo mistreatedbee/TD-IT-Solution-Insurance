@@ -62,9 +62,9 @@ export function MobileAppDownloadSection() {
               ) : null}
               {!storeLinksAvailable ? (
                 <div className="flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
-                  <Link to="/signup" className="sm:w-auto">
+                  <Link to="/get-started" className="sm:w-auto">
                     <Button variant="primary" size="lg" fullWidth leadingIcon={<SmartphoneIcon className="h-5 w-5" />}>
-                      Create account
+                      Get Started
                     </Button>
                   </Link>
                   <Link to="/login" className="sm:w-auto">

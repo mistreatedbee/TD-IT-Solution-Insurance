@@ -5,6 +5,7 @@ import {
   MapPinIcon,
   SmartphoneIcon,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Section } from '../components/Section';
 import { SectionHeading } from '../components/SectionHeading';
 import { FeatureCard } from '../components/FeatureCard';
@@ -64,9 +65,11 @@ export function LandingPage() {
               />
               <div className="mt-8 flex flex-col gap-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                  <Button variant="primary" size="lg" fullWidth onClick={scrollToWaitlist} className="sm:w-auto">
-                    Get Notified
-                  </Button>
+                  <Link to="/get-started" className="sm:w-auto">
+                    <Button variant="primary" size="lg" fullWidth className="sm:w-auto">
+                      Get Started
+                    </Button>
+                  </Link>
                   <Button
                     variant="secondary"
                     size="lg"
@@ -78,9 +81,18 @@ export function LandingPage() {
                     Download Mobile Asset Tracking App
                   </Button>
                 </div>
-                <ArrowLink href="#how-it-works" tone="default">
-                  See how it works
-                </ArrowLink>
+                <div className="flex flex-wrap items-center gap-4">
+                  <ArrowLink href="#how-it-works" tone="default">
+                    See how it works
+                  </ArrowLink>
+                  <button
+                    type="button"
+                    className="text-sm font-semibold text-accent-gold-deep underline-offset-4 hover:underline"
+                    onClick={scrollToWaitlist}
+                  >
+                    Join the waitlist
+                  </button>
+                </div>
               </div>
             </div>
           </Reveal>
@@ -382,7 +394,7 @@ export function LandingPage() {
               <ArrowLink tone="inverse" href="/login" size="sm">
                 Log in
               </ArrowLink>
-              <ArrowLink tone="inverse" href="/signup" size="sm">
+              <ArrowLink tone="inverse" href="/get-started" size="sm">
                 Create account
               </ArrowLink>
               <ArrowLink tone="inverse" href="#contact" size="sm">

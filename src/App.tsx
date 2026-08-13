@@ -6,7 +6,7 @@ import { CustomerAuthCallbackPage } from './pages/CustomerAuthCallbackPage';
 import { CustomerForgotPasswordPage } from './pages/CustomerForgotPasswordPage';
 import { CustomerLoginPage } from './pages/CustomerLoginPage';
 import { CustomerResetPasswordPage } from './pages/CustomerResetPasswordPage';
-import { CustomerSignupPage } from './pages/CustomerSignupPage';
+import { CustomerOnboardingPage } from './pages/onboarding/CustomerOnboardingPage';
 import { LandingPage } from './pages/LandingPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsOfServicePage } from './pages/TermsOfServicePage';
@@ -60,8 +60,9 @@ export function App() {
                 </CustomerAuthProvider>
               }
             >
+              <Route path="/get-started" element={<CustomerOnboardingPage />} />
               <Route path="/login" element={<CustomerLoginPage />} />
-              <Route path="/signup" element={<CustomerSignupPage />} />
+              <Route path="/signup" element={<CustomerOnboardingPage />} />
               <Route path="/forgot-password" element={<CustomerForgotPasswordPage />} />
               <Route path="/auth/callback" element={<CustomerAuthCallbackPage />} />
               <Route path="/reset-password" element={<CustomerResetPasswordPage />} />
