@@ -23,6 +23,7 @@
  * reuse-detection state machine is unit-testable without a live Postgres
  * connection.
  */
+import { randomUUID } from 'node:crypto';
 import { generateOpaqueToken, sha256Hex } from './crypto.js';
 import { ABSOLUTE_SESSION_LIFETIME_SECONDS, REFRESH_TOKEN_IDLE_TTL_SECONDS } from './policy.js';
 
@@ -122,7 +123,7 @@ export async function mintNewSession(
 
   // family_id anchors to the session's own id at creation (migrations/030's
   // comment: "family_id = id" for the first row in a chain).
-  const sessionId = generateOpaqueToken(); // >=32-byte CSPRNG session id; jti-shaped, not sequential
+  const sessionId = randomUUID();
   const session = await repo.insertNew({
     id: sessionId,
     accountId: input.accountId,
@@ -220,7 +221,7 @@ export async function rotateRefreshToken(repo: SessionRepo, opts: RefreshOptions
 
   const newRefreshToken = generateOpaqueToken();
   const newRefreshTokenHash = sha256Hex(newRefreshToken);
-  const newSessionId = generateOpaqueToken();
+  const newSessionId = randomUUID();
 
   const newSession = await repo.insertNew({
     id: newSessionId,
