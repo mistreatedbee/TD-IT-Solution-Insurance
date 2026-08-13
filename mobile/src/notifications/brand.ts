@@ -21,11 +21,11 @@ export type PushCategoryId =
   | 'general'
   | 'marketing';
 
-export const PUSH_CATEGORIES: Array<{
+export const PUSH_CATEGORIES: {
   id: PushCategoryId;
   name: string;
   description: string;
-}> = [
+}[] = [
   {
     id: 'theft_critical',
     name: 'Theft & recovery',

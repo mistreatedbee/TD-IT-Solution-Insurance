@@ -16,8 +16,12 @@ function fakeSessions(seenDevices: Set<string>): SessionRepo {
     async findById() {
       return null;
     },
-    async revokeAndReplace() {},
-    async revoke() {},
+    async revokeAndReplace() {
+      return undefined;
+    },
+    async revoke() {
+      return undefined;
+    },
     async revokeFamily() {
       return [];
     },
@@ -32,7 +36,7 @@ function fakeSessions(seenDevices: Set<string>): SessionRepo {
 
 describe('auth-login-notifications', () => {
   it('notifies when device is first seen', async () => {
-    const notify = vi.fn(async () => {});
+    const notify = vi.fn(async () => undefined);
     const sessions = fakeSessions(new Set());
 
     await notifyNewDeviceLoginIfNeeded(
@@ -53,7 +57,7 @@ describe('auth-login-notifications', () => {
   });
 
   it('skips notification for known device', async () => {
-    const notify = vi.fn(async () => {});
+    const notify = vi.fn(async () => undefined);
     const sessions = fakeSessions(new Set(['acct-1:device-a']));
 
     await notifyNewDeviceLoginIfNeeded(

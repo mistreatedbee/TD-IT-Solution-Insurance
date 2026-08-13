@@ -349,10 +349,18 @@ describe('POST /auth/login SR-14 forced-re-enrollment (api-design.md §11 Amendm
       adminAccessLog: undefined as unknown as AppContext['adminAccessLog'],
       recoveryCases: undefined as unknown as AppContext['recoveryCases'],
       authNotifications: {
-        async notifyPasswordChanged() {},
-        async notifyNewDeviceLogin() {},
-        async notifyMfaEnabled() {},
-        async notifyAccountLocked() {},
+        async notifyPasswordChanged() {
+          return undefined;
+        },
+        async notifyNewDeviceLogin() {
+          return undefined;
+        },
+        async notifyMfaEnabled() {
+          return undefined;
+        },
+        async notifyAccountLocked() {
+          return undefined;
+        },
       },
     };
 

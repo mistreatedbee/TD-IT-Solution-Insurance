@@ -176,7 +176,9 @@ function createHarness(opts: {
     },
     idempotency: createInMemoryIdempotencyRepo(),
     recoveryNotifications: {
-      async notifyTheftReportSubmitted() {},
+      async notifyTheftReportSubmitted() {
+        return undefined;
+      },
     },
   } as unknown as AppContext;
 

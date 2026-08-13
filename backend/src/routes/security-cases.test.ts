@@ -173,14 +173,26 @@ function createHarness(opts: { cases?: RecoveryCaseDocument[]; partnerOrgId?: st
       },
     },
     recoveryNotifications: {
-      async notifyCaseAssigned() {},
-      async notifyCaseStatusUpdated() {},
-      async notifyRecoverySuccessful() {},
-      async notifyCaseClosed() {},
-      async notifyTheftReportSubmitted() {},
+      async notifyCaseAssigned() {
+        return undefined;
+      },
+      async notifyCaseStatusUpdated() {
+        return undefined;
+      },
+      async notifyRecoverySuccessful() {
+        return undefined;
+      },
+      async notifyCaseClosed() {
+        return undefined;
+      },
+      async notifyTheftReportSubmitted() {
+        return undefined;
+      },
     },
     customerNotifications: {
-      async notifyAssetRecovered() {},
+      async notifyAssetRecovered() {
+        return undefined;
+      },
     },
   } as unknown as AppContext;
 

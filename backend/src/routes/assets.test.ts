@@ -189,9 +189,15 @@ function createHarness(opts: { accountId?: string; accountState?: AccountStatus[
     },
     idempotency: createInMemoryIdempotencyRepo(),
     customerNotifications: {
-      async notifyAssetCreated() {},
-      async notifyAssetUpdated() {},
-      async notifyAssetRemoved() {},
+      async notifyAssetCreated() {
+        return undefined;
+      },
+      async notifyAssetUpdated() {
+        return undefined;
+      },
+      async notifyAssetRemoved() {
+        return undefined;
+      },
     },
   } as unknown as AppContext;
 

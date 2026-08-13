@@ -210,8 +210,12 @@ function createHarness(opts: {
       },
     },
     customerNotifications: {
-      async notifyPolicyCreated() {},
-      async notifyPolicyPendingActivation() {},
+      async notifyPolicyCreated() {
+        return undefined;
+      },
+      async notifyPolicyPendingActivation() {
+        return undefined;
+      },
     },
   } as unknown as AppContext;
 
