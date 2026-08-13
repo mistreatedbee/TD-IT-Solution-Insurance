@@ -125,11 +125,13 @@ async function ensureCollection(
       Object.entries(spec.key)
         .map(([field, order]) => `${field}_${order}`)
         .join('_');
-    const result = await db.collection(name).createIndex(spec.key, {
-      name: indexName,
-      unique: spec.unique,
-      partialFilterExpression: spec.partialFilterExpression,
-    });
+    const options: Omit<IndexDescription, 'key'> = { name: indexName };
+    if (spec.unique === true) options.unique = true;
+    if (spec.sparse === true) options.sparse = true;
+    if (spec.partialFilterExpression !== undefined) {
+      options.partialFilterExpression = spec.partialFilterExpression;
+    }
+    const result = await db.collection(name).createIndex(spec.key, options);
     indexNames.push(result);
   }
 
