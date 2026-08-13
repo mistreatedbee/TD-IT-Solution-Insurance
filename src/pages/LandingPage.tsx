@@ -29,6 +29,7 @@ import {
   Accordion,
   AccordionItem
 } from '../components/Accordion';
+import { useLandingPageMeta } from '../hooks/useLandingPageMeta';
 
 // The two highest-value/most-differentiating categories (vehicle = biggest-
 // ticket asset; business = the category that must not read as an
@@ -46,6 +47,8 @@ function scrollToWaitlist() {
 }
 
 export function LandingPage() {
+  useLandingPageMeta();
+
   return (
     <>
       <LandingHeader />
