@@ -35,7 +35,7 @@ Required for production startup:
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role (never in client) |
 | `SUPABASE_DB_URL` | Postgres `app` schema URL |
-| `SUPABASE_DB_CA_CERT_PATH` | Path to pinned CA in container, or mount cert — **required when `NODE_ENV=production`** |
+| `SUPABASE_DB_CA_CERT_PATH` | **`certs/supabase-prod-ca-2021.crt`** (bundled under `backend/`; blueprint sets this) — required when `NODE_ENV=production` |
 | `REDIS_URL` | **`rediss://` required in production** — rate limits + revocation set |
 | `SESSION_JWT_SIGNING_KEYS` | `kid:secret,kid2:secret2` (secrets ≥32 chars) |
 | `SESSION_JWT_ACTIVE_KID` | Must match one kid above |

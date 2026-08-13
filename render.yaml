@@ -25,8 +25,9 @@ services:
         sync: false
       - key: SUPABASE_DB_URL
         sync: false
+      # Bundled in repo — SR-2(b) pinned CA for Supabase Postgres verify-full
       - key: SUPABASE_DB_CA_CERT_PATH
-        sync: false
+        value: certs/supabase-prod-ca-2021.crt
       - key: REDIS_URL
         sync: false
       - key: SESSION_JWT_SIGNING_KEYS
