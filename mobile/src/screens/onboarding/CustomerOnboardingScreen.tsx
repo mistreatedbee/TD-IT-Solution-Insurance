@@ -71,7 +71,7 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
   const [step, setStep] = useState<OnboardingStep>('welcome');
   const [accountType, setAccountType] = useState<AccountType | null>(null);
   const [plans, setPlans] = useState<PlanCatalogItem[]>([]);
-  const [plansLoading, setPlansLoading] = useState(false);
+  const [plansLoaded, setPlansLoaded] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -102,37 +102,64 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
   }, [signedIn]);
 
   useEffect(() => {
-    loadAccountType().then(setAccountType);
-    loadAssetDraft().then((draft) => {
-      if (draft) setAssetFields(draft);
+    let cancelled = false;
+    void loadAccountType().then((type) => {
+      if (!cancelled) setAccountType(type);
     });
+    void loadAssetDraft().then((draft) => {
+      if (draft && !cancelled) setAssetFields(draft);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    void refreshData();
-  }, [refreshData, signedIn, account?.accountState]);
-
-  useEffect(() => {
     if (!signedIn) return;
-    if (step === 'complete') return;
-    const hasPolicy = Boolean(policy);
-    setStep((prev) => {
-      if (prev === 'complete') return prev;
-      if (prev === 'welcome' || prev === 'account-type' || prev === 'signup') {
-        return resolveInitialStep(true, account?.accountState, hasPolicy);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [policiesRes, assetsRes] = await Promise.all([listPolicies(), listAssets()]);
+        if (cancelled) return;
+        const firstPolicy = policiesRes.data?.[0] ?? null;
+        setPolicy(firstPolicy);
+        setAssets(assetsRes.data ?? []);
+        setStep((prev) => {
+          if (prev === 'complete') return prev;
+          if (prev === 'welcome' || prev === 'account-type' || prev === 'signup') {
+            return resolveInitialStep(true, account?.accountState, Boolean(firstPolicy));
+          }
+          return prev;
+        });
+      } catch {
+        /* non-fatal */
       }
-      return prev;
-    });
-  }, [signedIn, account?.accountState, policy, step]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn, account?.accountState]);
 
   useEffect(() => {
-    if (step !== 'plan' || !signedIn) return;
-    setPlansLoading(true);
-    listPlans()
-      .then((res) => setPlans(res.data))
-      .catch(() => setPlans([]))
-      .finally(() => setPlansLoading(false));
-  }, [step, signedIn]);
+    if (step !== 'plan' || !signedIn || plansLoaded) return;
+    let cancelled = false;
+    void listPlans()
+      .then((res) => {
+        if (!cancelled) {
+          setPlans(res.data);
+          setPlansLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPlans([]);
+          setPlansLoaded(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step, signedIn, plansLoaded]);
 
   async function handleSignup() {
     setError(null);
@@ -188,9 +215,12 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
 
       await setRefreshToken(result.refreshToken);
       setSignedIn({ accessToken: result.accessToken, sessionId: result.sessionId });
-      await refreshData();
+      const [policiesRes, assetsRes] = await Promise.all([listPolicies(), listAssets()]);
+      const firstPolicy = policiesRes.data?.[0] ?? null;
+      setPolicy(firstPolicy);
+      setAssets(assetsRes.data ?? []);
       const live = await fetchLiveAccountForGating();
-      setStep(resolveInitialStep(true, live.accountState, Boolean(policy)));
+      setStep(resolveInitialStep(true, live.accountState, Boolean(firstPolicy)));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Log in failed.');
     } finally {
@@ -209,7 +239,7 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
     setLoading(true);
     setError(null);
     try {
-      const created = await createPolicy({ planTier: plan.slug, planCatalogId: plan.id });
+      const created = await createPolicy({ planCatalogId: plan.id });
       setPolicy(created);
       setStep('asset-category');
     } catch (err) {
@@ -414,21 +444,33 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
             >
               Resend email
             </Button>
-            <Button
-              onPress={async () => {
-                await refreshData();
-                try {
-                  const live = await fetchLiveAccountForGating();
-                  if (live.accountState === 'active') setStep('plan');
-                  else setError('Still waiting for verification — open the link in your email first.');
-                } catch {
-                  setError('Could not verify account status. Try again.');
-                }
-              }}
-            >
-              I&apos;ve verified — continue
-            </Button>
+            {signedIn ? (
+              <Button
+                onPress={async () => {
+                  await refreshData();
+                  try {
+                    const live = await fetchLiveAccountForGating();
+                    if (live.accountState === 'active') setStep('plan');
+                    else setError('Still waiting for verification — open the link in your email first.');
+                  } catch {
+                    setError('Could not verify account status. Try again.');
+                  }
+                }}
+              >
+                I&apos;ve verified — continue
+              </Button>
+            ) : null}
           </View>
+          {!signedIn ? (
+            <>
+              <Text style={styles.sectionDivider}>Already verified? Log in to continue</Text>
+              <Input label="Email" value={loginEmail} onChangeText={setLoginEmail} keyboardType="email-address" autoCapitalize="none" />
+              <Input label="Password" value={loginPassword} onChangeText={setLoginPassword} type="password" />
+              <Button fullWidth loading={loading} onPress={() => void handleLogin()}>
+                Log in and continue
+              </Button>
+            </>
+          ) : null}
         </>
       ) : null}
 
@@ -438,7 +480,7 @@ export function CustomerOnboardingScreen({ signedIn: signedInProp }: CustomerOnb
           <Text style={styles.subtitle}>
             Select the plan that matches how many devices you want to protect. Payment is configured in a later step.
           </Text>
-          {plansLoading ? <Text style={styles.hint}>Loading plans…</Text> : null}
+          {step === 'plan' && !plansLoaded ? <Text style={styles.hint}>Loading plans…</Text> : null}
           {plans.map((plan) => (
             <Card key={plan.id} padding="none" style={styles.planCard}>
               <View style={styles.planHeader}>

@@ -6,22 +6,27 @@ import { isOnboardingComplete, markOnboardingComplete } from './onboardingStorag
 
 export type OnboardingGateState = 'loading' | 'app' | 'onboarding';
 
+type ResolvedGate = { sessionId: string; gate: 'app' | 'onboarding' };
+
 export function useOnboardingGate(): OnboardingGateState {
   const sessionStatus = useSessionStore((s) => s.status);
-  const [gate, setGate] = useState<OnboardingGateState>('loading');
+  const sessionId = useSessionStore((s) => s.sessionId);
+  const [resolved, setResolved] = useState<ResolvedGate | null>(null);
 
   useEffect(() => {
-    if (sessionStatus !== 'signed-in') {
-      setGate('app');
+    if (sessionStatus !== 'signed-in' || !sessionId) {
+      return;
+    }
+    if (resolved?.sessionId === sessionId) {
       return;
     }
 
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       try {
         if (await isOnboardingComplete()) {
-          if (!cancelled) setGate('app');
+          if (!cancelled) setResolved({ sessionId, gate: 'app' });
           return;
         }
 
@@ -35,19 +40,25 @@ export function useOnboardingGate(): OnboardingGateState {
 
         if (hasPolicy && hasAssets) {
           await markOnboardingComplete();
-          if (!cancelled) setGate('app');
+          if (!cancelled) setResolved({ sessionId, gate: 'app' });
         } else if (!cancelled) {
-          setGate('onboarding');
+          setResolved({ sessionId, gate: 'onboarding' });
         }
       } catch {
-        if (!cancelled) setGate('onboarding');
+        if (!cancelled) setResolved({ sessionId, gate: 'onboarding' });
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [sessionStatus]);
+  }, [sessionStatus, sessionId, resolved?.sessionId]);
 
-  return gate;
+  if (sessionStatus !== 'signed-in') {
+    return 'app';
+  }
+  if (!sessionId || resolved?.sessionId !== sessionId) {
+    return 'loading';
+  }
+  return resolved.gate;
 }

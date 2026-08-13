@@ -251,12 +251,12 @@ describe('POST /policies', () => {
         'content-type': 'application/json',
         'idempotency-key': randomUUID(),
       },
-      body: JSON.stringify({ planTier: 'basic' }),
+      body: JSON.stringify({ planCatalogId: '507f1f77bcf86cd799439088' }),
     });
 
     expect(response.status).toBe(201);
     const body = (await response.json()) as Record<string, unknown>;
-    expect(body.planTier).toBe('basic');
+    expect(body.planTier).toBe('starter');
     expect(body.status).toBe('pending_activation');
     expect((body.billing as { billingStatus: string }).billingStatus).toBe('not_configured');
     expect(body.coverageLimits).toEqual([]);
@@ -275,7 +275,7 @@ describe('POST /policies', () => {
         'content-type': 'application/json',
         'idempotency-key': randomUUID(),
       },
-      body: JSON.stringify({ planTier: 'basic' }),
+      body: JSON.stringify({ planCatalogId: '507f1f77bcf86cd799439088' }),
     });
 
     expect(response.status).toBe(403);
@@ -295,7 +295,7 @@ describe('POST /policies', () => {
         'content-type': 'application/json',
         'idempotency-key': randomUUID(),
       },
-      body: JSON.stringify({ planTier: 'basic' }),
+      body: JSON.stringify({ planCatalogId: '507f1f77bcf86cd799439088' }),
     });
 
     expect(response.status).toBe(403);
@@ -314,7 +314,7 @@ describe('POST /policies', () => {
         authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ planTier: 'basic' }),
+      body: JSON.stringify({ planCatalogId: '507f1f77bcf86cd799439088' }),
     });
 
     expect(response.status).toBe(400);
@@ -360,6 +360,26 @@ describe('POST /policies', () => {
         },
       },
       idempotency: createInMemoryIdempotencyRepo(),
+      planCatalog: {
+        async findActiveById(id: string) {
+          return {
+            id,
+            slug: 'starter',
+            name: 'Starter',
+            tagline: 'Up to 5 devices',
+            maxAssets: 5,
+            monthlyAmountCents: 20_000,
+            currency: 'ZAR',
+            isCustomPricing: false,
+            isActive: true,
+            sortOrder: 1,
+            features: [],
+            accountTypes: ['both'],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        },
+      },
     } as unknown as AppContext;
 
     const app: Express = express();
@@ -378,7 +398,7 @@ describe('POST /policies', () => {
         'content-type': 'application/json',
         'idempotency-key': randomUUID(),
       },
-      body: JSON.stringify({ planTier: 'basic' }),
+      body: JSON.stringify({ planCatalogId: '507f1f77bcf86cd799439088' }),
     });
 
     expect(response.status).toBe(503);

@@ -59,7 +59,10 @@ export function createAdminPlansRouter(ctx: AppContext): Router {
     validateBody(updatePlanSchema),
     async (req, res, next) => {
       try {
-        const { planId } = req.params;
+        const planId = req.params.planId;
+        if (!planId) {
+          return next(apiError('NOT_FOUND'));
+        }
         const updated = await ctx.planCatalog.updateById(planId, req.body);
         if (!updated) {
           return next(apiError('NOT_FOUND'));

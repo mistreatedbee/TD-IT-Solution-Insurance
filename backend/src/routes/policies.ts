@@ -14,14 +14,9 @@ import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 
-const createPolicySchema = z
-  .object({
-    planTier: z.string().min(1).optional(),
-    planCatalogId: z.string().regex(/^[0-9a-f]{24}$/i).optional(),
-  })
-  .refine((body) => Boolean(body.planTier?.trim() || body.planCatalogId), {
-    message: 'Either planTier or planCatalogId is required.',
-  });
+const createPolicySchema = z.object({
+  planCatalogId: z.string().regex(/^[0-9a-f]{24}$/i),
+});
 
 const policyIdParamsSchema = z.object({
   policyId: z.string().regex(/^[0-9a-f]{24}$/i),
@@ -47,26 +42,20 @@ export function createPoliciesRouter(ctx: AppContext): Router {
         await requireActiveAccount(ctx.accounts, accountId);
 
         const body = req.body as z.infer<typeof createPolicySchema>;
-        let planTier = body.planTier?.trim() ?? '';
-        let planCatalogId: string | null = body.planCatalogId ?? null;
-        let monthlyAmountCents: number | null = null;
+        const planCatalogId = body.planCatalogId;
 
-        if (planCatalogId) {
-          const plan = await ctx.planCatalog.findActiveById(planCatalogId);
-          if (!plan) {
-            return next(apiError('NOT_FOUND'));
-          }
-          if (plan.isCustomPricing) {
-            return next(apiError('PLAN_REQUIRES_QUOTE'));
-          }
-          planTier = plan.slug;
-          monthlyAmountCents = plan.monthlyAmountCents;
+        const plan = await ctx.planCatalog.findActiveById(planCatalogId);
+        if (!plan) {
+          return next(apiError('NOT_FOUND'));
+        }
+        if (plan.isCustomPricing) {
+          return next(apiError('PLAN_REQUIRES_QUOTE'));
         }
 
         const policy = await ctx.policies.createForAccount(accountId, {
-          planTier,
+          planTier: plan.slug,
           planCatalogId,
-          monthlyAmountCents,
+          monthlyAmountCents: plan.monthlyAmountCents,
         });
         await ctx.policyStatusHistory.recordInitial({
           policyId: policy.id,
