@@ -74,6 +74,10 @@ export interface TotpEnrollment {
   manualEntryKey: string;
 }
 
+export interface CreatedSupabaseUser {
+  userId: string;
+}
+
 export interface SupabaseAdmin {
   /** GoTrue Admin API — creates the `auth.users` row for a new account
    * (self-service signup or invitation acceptance). Never sets `app.*`
