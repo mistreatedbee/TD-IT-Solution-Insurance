@@ -1,6 +1,15 @@
-import { HeroProductPreview } from './HeroProductPreview';
+import { Logo } from '../components/Logo';
 
-/** Hero right column — product dashboard preview with brand motif field. */
+/** Hero brand visual — logo only. */
 export function HeroVisual() {
-  return <HeroProductPreview />;
+  return (
+    <div className="relative mx-auto flex w-full max-w-lg items-center justify-center lg:max-w-xl">
+      <Logo
+        tone="navy"
+        size="xl"
+        imageClassName="h-auto w-full max-h-[min(560px,58vh)] max-w-xl object-contain"
+        label="TD IT Solution Insurance"
+      />
+    </div>
+  );
 }
