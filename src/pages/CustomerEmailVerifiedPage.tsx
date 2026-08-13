@@ -77,7 +77,7 @@ export function CustomerEmailVerifiedPage() {
         </p>
       )}
       <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-        <Link to="/login" className="flex-1">
+        <Link to="/login?redirect=%2Fdashboard" className="flex-1">
           <Button variant="primary" fullWidth>
             Sign in
           </Button>

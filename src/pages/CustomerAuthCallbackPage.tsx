@@ -46,7 +46,7 @@ export function CustomerAuthCallbackPage() {
         await auth.signInWithTokens(tokens.accessToken, tokens.refreshToken);
         if (!cancelled) {
           setState('verified');
-          navigate('/get-started', { replace: true });
+          navigate('/dashboard', { replace: true });
         }
       } catch (err) {
         if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {

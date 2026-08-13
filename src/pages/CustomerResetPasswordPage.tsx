@@ -44,7 +44,7 @@ export function CustomerResetPasswordPage() {
     try {
       const tokens = await updatePasswordWithSupabase(password);
       await auth.signInWithTokens(tokens.accessToken, tokens.refreshToken);
-      navigate('/get-started', { replace: true });
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       setError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Could not reset password.' }));
     } finally {

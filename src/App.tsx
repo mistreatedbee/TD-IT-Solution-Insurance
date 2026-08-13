@@ -2,6 +2,12 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Outlet, Routes, Route } from 'react-router-dom';
 import { CustomerAuthProvider } from './customer/auth/CustomerAuthProvider';
 import { CustomerAccountPage } from './pages/CustomerAccountPage';
+import { CustomerAccountSettingsPage } from './pages/customer/CustomerAccountSettingsPage';
+import { CustomerDashboardPage } from './pages/customer/CustomerDashboardPage';
+import {
+  CustomerDashboardGate,
+  CustomerDashboardLayout,
+} from './customer/layout/CustomerDashboardLayout';
 import { CustomerAuthCallbackPage } from './pages/CustomerAuthCallbackPage';
 import { CustomerEmailVerifiedPage } from './pages/CustomerEmailVerifiedPage';
 import { CustomerForgotPasswordPage } from './pages/CustomerForgotPasswordPage';
@@ -69,6 +75,13 @@ export function App() {
               <Route path="/auth/email-verified" element={<CustomerEmailVerifiedPage />} />
               <Route path="/reset-password" element={<CustomerResetPasswordPage />} />
               <Route path="/account" element={<CustomerAccountPage />} />
+
+              <Route element={<CustomerDashboardGate />}>
+                <Route element={<CustomerDashboardLayout />}>
+                  <Route path="/dashboard" element={<CustomerDashboardPage />} />
+                  <Route path="/dashboard/account" element={<CustomerAccountSettingsPage />} />
+                </Route>
+              </Route>
             </Route>
 
             <Route

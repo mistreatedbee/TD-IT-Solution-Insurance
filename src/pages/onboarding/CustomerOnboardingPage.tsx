@@ -594,13 +594,10 @@ export function CustomerOnboardingPage() {
             subtitle="Your account, plan and assets are saved. Download the mobile app for theft reporting and recovery tools on the go."
           />
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Button onClick={() => navigate('/')}>Back to home</Button>
+            <Button onClick={() => navigate('/dashboard')}>Go to dashboard</Button>
             <Button variant="secondary" onClick={() => navigate('/#mobile-app')}>
               Get the mobile app
             </Button>
-            <Link to="/account">
-              <Button variant="tertiary">Account settings</Button>
-            </Link>
           </div>
         </>
       ) : null}

@@ -12,7 +12,7 @@ export function CustomerLoginPage() {
   const auth = useCustomerAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const redirect = params.get('redirect') ?? '/get-started';
+  const redirect = params.get('redirect') ?? '/dashboard';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
