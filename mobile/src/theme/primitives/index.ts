@@ -14,3 +14,4 @@ export * from './OtpInput';
 export * from './Badge';
 export * from './FormField';
 export * from './SelectChip';
+export * from './Toggle';

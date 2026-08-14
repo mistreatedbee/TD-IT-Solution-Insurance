@@ -109,6 +109,18 @@ export default function ProfileScreen() {
 
       <Pressable
         style={styles.row}
+        onPress={() => router.push('/(app)/notification-preferences')}
+        accessibilityRole="button"
+      >
+        <BellIcon size={20} color={colors.primary} />
+        <View style={styles.rowTextColumn}>
+          <Text style={styles.rowTitle}>Notification preferences</Text>
+          <Text style={styles.rowSubtitle}>Choose which alerts you get, and how</Text>
+        </View>
+      </Pressable>
+
+      <Pressable
+        style={styles.row}
         onPress={handleTestPush}
         accessibilityRole="button"
         disabled={isSendingTestPush}

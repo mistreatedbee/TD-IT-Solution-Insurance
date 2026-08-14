@@ -2,7 +2,6 @@
  * Customer onboarding wizard — mirrors web /get-started flow.
  */
 import { useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import {
   BriefcaseIcon,
   CheckIcon,
@@ -11,7 +10,6 @@ import {
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Image,
   Linking,
   Pressable,
   StyleSheet,
@@ -98,7 +96,6 @@ export function CustomerOnboardingScreen({
   const [assetFields, setAssetFields] = useState<Record<string, string>>({});
   const [displayName, setDisplayName] = useState('');
   const [estimatedValue, setEstimatedValue] = useState('');
-  const [assetPhotoUris, setAssetPhotoUris] = useState<string[]>([]);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -237,23 +234,6 @@ export function CustomerOnboardingScreen({
     }
   }
 
-  async function pickAssetPhoto(fromCamera: boolean) {
-    setError(null);
-    const permission = fromCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError('Photo permission is required to add asset images.');
-      return;
-    }
-    const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true })
-      : await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true, allowsMultipleSelection: true });
-    if (result.canceled) return;
-    const uris = result.assets.map((a) => a.uri);
-    setAssetPhotoUris((prev) => [...prev, ...uris].slice(0, 4));
-  }
-
   async function handleLogin() {
     setError(null);
     setLoading(true);
@@ -353,7 +333,6 @@ export function CustomerOnboardingScreen({
       setAssetFields({});
       setDisplayName('');
       setEstimatedValue('');
-      setAssetPhotoUris([]);
       setStep('review');
     } catch (err) {
       if (err instanceof ApiError && err.code === 'ASSET_LIMIT_REACHED') {
@@ -732,45 +711,10 @@ export function CustomerOnboardingScreen({
                   }
                 }
                 setError(null);
-                setStep('asset-photo');
+                setStep('tracking-info');
               }}
             >
               Continue
-            </Button>
-          </View>
-        </>
-      ) : null}
-
-      {step === 'asset-photo' ? (
-        <>
-          <Text style={styles.titleMd}>Let&apos;s take a quick photo</Text>
-          <Text style={styles.subtitle}>
-            Photos help us identify and verify your asset. You can add them now or skip for later.
-          </Text>
-          <View style={styles.photoActions}>
-            <Button variant="secondary" onPress={() => void pickAssetPhoto(true)}>
-              Take photo
-            </Button>
-            <Button variant="secondary" onPress={() => void pickAssetPhoto(false)}>
-              Choose from gallery
-            </Button>
-          </View>
-          {assetPhotoUris.length > 0 ? (
-            <View style={styles.photoGrid}>
-              {assetPhotoUris.map((uri) => (
-                <Image key={uri} source={{ uri }} style={styles.photoThumb} accessibilityLabel="Asset photo preview" />
-              ))}
-            </View>
-          ) : null}
-          <Alert tone="info" style={styles.mtMd}>
-            Photo upload to your policy will be available in a future update. Images are stored on this device for now.
-          </Alert>
-          <View style={styles.rowActions}>
-            <Button variant="secondary" onPress={() => setStep('asset-form')}>
-              Back
-            </Button>
-            <Button onPress={() => setStep('tracking-info')}>
-              {assetPhotoUris.length > 0 ? 'Continue' : 'Skip for now'}
             </Button>
           </View>
         </>
@@ -788,7 +732,7 @@ export function CustomerOnboardingScreen({
             includes tracking.
           </Text>
           <View style={styles.rowActions}>
-            <Button variant="secondary" onPress={() => setStep('asset-photo')}>
+            <Button variant="secondary" onPress={() => setStep('asset-form')}>
               Back
             </Button>
             <Button loading={loading} onPress={() => void handleRegisterAsset()}>
@@ -1110,24 +1054,6 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     color: colors.textPrimary,
     marginTop: spacing.xs,
-  },
-  photoActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  photoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  photoThumb: {
-    width: 88,
-    height: 88,
-    borderRadius: 8,
-    backgroundColor: colors.slate[100],
   },
   successIconWrap: {
     width: 72,

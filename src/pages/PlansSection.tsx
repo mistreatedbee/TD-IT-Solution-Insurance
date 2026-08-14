@@ -1,12 +1,19 @@
 import {
   BriefcaseIcon,
+  CarIcon,
   CheckIcon,
+  CpuIcon,
+  LaptopIcon,
   LayersIcon,
+  MonitorIcon,
   ShieldCheckIcon,
+  SmartphoneIcon,
+  TabletIcon,
+  TvIcon,
   type LucideIcon,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { AssetBadge, type AssetType } from '../components/AssetBadge';
+import { type AssetType } from '../components/AssetBadge';
 import { Button } from '../components/Button';
 import { InlineAlert } from '../dashboard/components/ui';
 import { Reveal } from '../components/Reveal';
@@ -24,6 +31,20 @@ const PLAN_ICONS: Record<string, LucideIcon> = {
   starter: ShieldCheckIcon,
   standard: LayersIcon,
   enterprise: BriefcaseIcon,
+};
+
+/** Mirrors AssetBadge's icon-per-type mapping — used here at avatar size for a
+ * compact table row, since AssetBadge itself renders as a full tile/card with
+ * its own baked-in label and isn't meant for inline row use. */
+const ASSET_TYPE_ICONS: Record<AssetType, LucideIcon> = {
+  vehicle: CarIcon,
+  laptop: LaptopIcon,
+  phone: SmartphoneIcon,
+  tablet: TabletIcon,
+  tv: TvIcon,
+  desktop: MonitorIcon,
+  business: BriefcaseIcon,
+  other: CpuIcon,
 };
 
 function PlanTierPanel({ plan }: { plan: PlanCatalogItem }) {
@@ -113,14 +134,21 @@ function AssetPricingTable({ plans }: { plans: PlanCatalogItem[] }) {
             </tr>
           </thead>
           <tbody>
-            {MARKETING_ASSET_TYPES.map(({ type, label }, rowIndex) => (
+            {MARKETING_ASSET_TYPES.map(({ type, label }, rowIndex) => {
+              const AssetIcon = ASSET_TYPE_ICONS[type as AssetType];
+              return (
               <tr
                 key={type}
                 className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-background-alt/40'}
               >
                 <td className="px-4 py-3 sm:px-6">
                   <div className="flex items-center gap-3">
-                    <AssetBadge type={type as AssetType} size="sm" className="pointer-events-none shrink-0" />
+                    <span
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-background-alt text-primary"
+                      aria-hidden="true"
+                    >
+                      <AssetIcon className="h-4 w-4" />
+                    </span>
                     <span className="font-medium text-text-primary">{label}</span>
                   </div>
                 </td>
@@ -139,7 +167,8 @@ function AssetPricingTable({ plans }: { plans: PlanCatalogItem[] }) {
                   );
                 })}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
           <tfoot>
             <tr className="border-t border-primary/10 bg-background-alt/60">

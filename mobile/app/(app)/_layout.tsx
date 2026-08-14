@@ -59,6 +59,7 @@ export default function AppTabsLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen name="notification-preferences" options={{ href: null }} />
       <Tabs.Screen name="report-theft" options={{ href: null }} />
       <Tabs.Screen name="claims" options={{ href: null }} />
       <Tabs.Screen name="live-tracking" options={{ href: null }} />

@@ -10,7 +10,6 @@ export type OnboardingStep =
   | 'plan'
   | 'asset-category'
   | 'asset-form'
-  | 'asset-photo'
   | 'tracking-info'
   | 'review'
   | 'complete';
@@ -114,7 +113,7 @@ export const ONBOARDING_STEPS: { id: OnboardingStep; label: string }[] = [
 export function stepProgressIndex(step: OnboardingStep): number {
   if (step === 'welcome' || step === 'account-type' || step === 'signup' || step === 'verify') return 0;
   if (step === 'plan') return 1;
-  if (step === 'asset-category' || step === 'asset-form' || step === 'asset-photo' || step === 'tracking-info') return 2;
+  if (step === 'asset-category' || step === 'asset-form' || step === 'tracking-info') return 2;
   if (step === 'review') return 3;
   return 4;
 }
