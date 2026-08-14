@@ -203,3 +203,16 @@ And does not use language implying the asset is insured or billed until a future
 | FR-11, AC-2 | Write gate | `GET /v1/internal/accounts/{id}/status` |
 | FR-3, AC-3 | `GET /v1/policies*` | Token-scoped read |
 | FR-9–FR-10 | `GET /v1/admin/policies*`, `/admin/assets*` | `admin_access_log` (`database-addendum-001.md`) |
+
+---
+
+## 11. `product-manager` update — 2026-08-13: D-01 discharged for Phase 1, D-04 partially discharged, by Feature 006
+
+**Author:** `product-manager` · **Appended, not merged into §5.** The §5 deferred-items table stands as originally written, including BR-1's description of `planTier` as an opaque, client-supplied free-form string; this entry records what has since superseded parts of it, following the same append-not-rewrite convention used at `ADR-0006` §16/§17. Full ratification detail lives at [`006-customer-onboarding/business-requirements.md`](../006-customer-onboarding/business-requirements.md) §10–§12; this is the pointer back.
+
+- **D-01 (plan tier catalog) — discharged for Phase 1.** `insurance_plan_catalog` (MongoDB, admin-editable via `PATCH /v1/admin/plans/:id`) is now the canonical tier source. `POST /v1/policies` accepts **only** a validated `planCatalogId` (`backend/src/routes/policies.ts`) — the free-form client-supplied `planTier` string BR-1 describes is **no longer accepted as API input**; `planTier` is now server-derived from the resolved plan's `slug` (`starter` / `standard` / `enterprise`). Treat BR-1 as historical — it describes a contract shape the live route has moved past, not the current one.
+- **D-04 (eligibility rules) — partially discharged.** The "per-tier asset counts" item is live: `ASSET_LIMIT_REACHED` (`backend/src/lib/plan-enforcement.ts`) blocks `POST /v1/assets` once `assets.activeCount >= plan.maxAssets`, tested. D-04's other two items — policy-required-before-asset, and business-equipment review — remain open exactly as §5 states; this is a partial discharge, not a closure of the row.
+- **D-02 (pricing) — not discharged.** The catalog's seeded ZAR amounts (R200 Starter / R400 Standard) are planning-display numbers shown pre-billing (`billing.billingStatus` stays `not_configured`); they are not a ratified commercial price and do not discharge D-02, which still needs joint `product-manager` + `cto` + business sign-off before any of these numbers are treated as final.
+- **D-03, D-05, D-06, D-07, D-08 — unaffected**, still fully open.
+
+**Net effect on §12's Pre-Approval Checklist:** "Product-manager sign-off on scope and OQ-1–OQ-3" for *this* document was never blocking D-01/D-04 specifically — those sat in §5's deferred table, not §8's open questions. This entry is that sign-off for D-01 (full) and D-04 (partial), delivered via Feature 006 rather than by editing this document's own §5.

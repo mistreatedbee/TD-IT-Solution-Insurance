@@ -363,6 +363,6 @@ mobile/
     forms/                     signupDraft.ts (resilient-form-UX, not offline queue)
     network/                   NetworkProvider.tsx (NetInfo + onlineManager + OfflineBanner)
     query/                     queryClient.ts (TanStack Query + persister)
-    screens/                   policy/*, assets/* (Feature 004); BlockedFeaturePlaceholder (legacy)
+    screens/                   policy/*, assets/*, claims/*, recovery/* (Feature 004/005), notifications/*
     theme/                     tokens.ts + primitives/ — TEMPORARY design-system bridge
 ```

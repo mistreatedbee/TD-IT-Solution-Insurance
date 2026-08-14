@@ -14,9 +14,16 @@ Supabase (Postgres, EU region) + MongoDB Atlas project:
   `/admin/accounts/:id`** — the platform's first `/admin/*` route. Feature 004 adds
   **`GET /v1/admin/policies*`**, **`GET /v1/admin/assets*`** (Trail B audit via `admin_access_log`).
   Recovery Phase 2 scaffold: **`POST/GET /v1/recovery/cases*`**, **`GET/PATCH/POST /v1/security/cases*`**.
-  **110+ tests across 21 files, re-run and verified green 2026-08-12.**
+  Feature 007 has landed its own routes on this same backend — see the new Feature 006/007
+  entries below. **145 tests across 32 files, green as of 2026-08-13** (one combined backend
+  suite spanning Features 001, 004, and Feature 007's shipped push/preferences code; up from the
+  110+/21 figure this doc previously cited — re-verify with `cd backend && npm test` before
+  trusting either number going forward).
 - Mobile (`mobile/`): Expo app with matching auth screens, SecureStore token handling,
-  device-ID binding on login *and* refresh. **30 tests passing** (10 suites), typecheck/lint clean.
+  device-ID binding on login *and* refresh. **Still only 30 tests passing (10 suites)** — unchanged
+  since the mobile production push, despite the onboarding wizard, push-notification client, and
+  plan-catalog API client landing since. No new mobile tests were added for any of that. Flagging
+  this as a QA gap, not a documentation gap: `qa-architect`/`automation-qa-engineer` own closing it.
   **EAS deploy scaffold:** `eas.json` uses EAS environment scoping (preview/production API URLs
   via `eas env:create`, not hardcoded); [`mobile/docs/DEPLOY.md`](mobile/docs/DEPLOY.md) documents
   the full flow ([EAS production config](be5edc20-7c7a-4ace-87be-3ce7a6631520)). Owner actions
@@ -39,17 +46,83 @@ Supabase (Postgres, EU region) + MongoDB Atlas project:
   `backend/src/db/feature004-collections.ts`, `recovery-collections.ts` + `scripts/bootstrap-mongo-collections.ts`
   ([Mongo collections bootstrap](c734196c-9969-4f80-b6a8-32428d01ba2d) — applied to live
   Atlas `td-it-solution-insurance`, idempotent re-run verified). Startup path uses the same
-  shared function via `mongo-bootstrap.ts`. **110+ tests across 21 files, green** (2026-08-12).
+  shared function via `mongo-bootstrap.ts`. Part of the combined **145 tests across 32 files**
+  cited above (2026-08-13) — Feature 004 no longer has an isolated count worth quoting separately.
 - **Web dashboards:** Shared privileged layer at `src/dashboard/`; Admin Panel at `/admin/*` (`src/admin/`); Security Company Dashboard at `/security/*` (`src/security/`). Architecture at `docs/features/005-admin-dashboard/architecture.md`. Stage 8 admin surface review at `security-review-admin-surface.md` — SR-004-admin-6 closed; SR-004-admin-2/4/5(d) still block real customer data.
 - **Mobile:** Policy and Assets tabs are **real screens** wired to Feature 004 customer API
   (`PolicyListScreen`, `CreatePolicyScreen`, `AssetListScreen`, `RegisterAssetScreen`, detail
   routes); OpenAPI at `mobile/openapi/policy-asset-service.yaml` with codegen. Home (M-03) shows
   live policy/asset counts. **Stage 8 sign-off granted** (cybersecurity-architect + security-engineer
   concurrence, SR-004-1…5 open). **Stage 10:** strategy + checklist filed; unit/API tests green;
-  E2E scaffold at `mobile/e2e/` — **execution blocked on Brevo** (real email verification → BR-2).
+  E2E scaffold at `mobile/e2e/` — **execution blocked on Resend** (real email verification → BR-2;
+  the vendor was Brevo when this line was first written, then changed to Resend — see the Feature 007/Resend items above).
 - **Stage 1:** minimum viable `business-requirements.md` exists; **D-01–D-08 deferred** (tiers, pricing,
   coverage limits, eligibility, billing, cancel/refund, retention, claims). P-01 partially discharged for
   Phase 1; commercial rules still open. Pending `product-manager` sign-off (OQ-1–OQ-3).
+
+**Feature 006 — Customer Registration & Onboarding (Web + Mobile).** New since the last
+handoff; code shipped ahead of a formal Stage 7/8 disposition — read this before assuming it's
+fully gated:
+- **Web:** `/get-started` wizard (`src/pages/onboarding/CustomerOnboardingPage.tsx`), plus a
+  customer login/signup entry on the landing page (`/login`, `/signup` → `CustomerLoginPage` /
+  the same onboarding wizard) and a real post-login customer dashboard at `/dashboard`
+  (`src/pages/customer/CustomerDashboardPage.tsx`, gated by `CustomerDashboardGate`). Steps:
+  welcome → account type → create account/log in → verify email → choose plan → register
+  assets → review → complete (honestly labelled "payment & activation pending").
+- **Mobile:** `CustomerOnboardingScreen.tsx` mirrors the web flow. It briefly had an asset-photo
+  step (`expo-image-picker`) mid-session on 2026-08-13, but a `product-manager` review caught
+  that it requested live camera/photo-library OS permissions and then discarded the captured
+  images — worse than MP-5's "no disabled camera affordance" rule, since a *working* capture
+  flow with no destination asks for a sensitive permission under false pretenses. `mobile-engineer`
+  removed the step the same session (`expo-image-picker` uninstalled, so it can't silently
+  regress); neither the mobile nor the web wizard has a photo step today — MP-5 remains fully
+  deferred on both surfaces, not just architecturally but in the actual UI.
+- **Backend:** new public plan-catalog endpoint `GET /v1/plans/catalog` (unauthenticated, IP
+  rate-limited, for the pre-signup marketing funnel) and `GET /v1/plans` (authenticated) —
+  both backed by MongoDB `insurance_plan_catalog` via `ctx.planCatalog`. Admin editor:
+  `GET /v1/admin/plans` + `PATCH /v1/admin/plans/:planId` (`admin-plans.ts`), Zod-validated,
+  admin-only. Plans are `starter` (5 assets, R200/mo), `standard` (10 assets, R400/mo),
+  `enterprise` (custom/quote-only — `PLAN_REQUIRES_QUOTE`, no self-serve checkout).
+- **Paper trail:** `docs/features/006-customer-onboarding/` has `business-requirements.md`
+  (**Status: Draft** — client-directed plan structure ratified for Phase 1; payment, photos,
+  GPS assignment, full profile/KYC explicitly deferred with owners), `ui-design.md`,
+  `ux-research-notes.md`. **No `security-review.md` exists yet for this feature** — Stage 8 has
+  not formally run against code that is already live. See the placeholder note below.
+- **Still explicitly not real:** payment/subscription activation, `pending_activation` →
+  `active` transition (no payment webhook), GPS tracker assignment, phone OTP, full
+  individual/business profile fields, KYC/ID verification, populated coverage limits, claims
+  eligibility — all tracked as open items in `business-requirements.md` §7 with named owners.
+
+**Feature 007 — Notifications & Communications.** New since the last handoff: a full planning
+doc set **plus a partial real implementation**, not just paper. `docs/features/007-notifications/README.md`
+carries its own honesty table — reproduced here so this doc doesn't drift from it:
+
+| Capability | Status |
+|---|---|
+| Auth transactional email (signup, reset, invite, magic link, OTP) | **SHIPPED** — Supabase `auth-send-email` → Resend; branded templates in `supabase/functions/auth-send-email/` |
+| Push token registration API (`PUT/DELETE /devices/push-token`) | **SHIPPED** — MongoDB `device_push_tokens`; customer-only |
+| Notification preferences API (`GET/PATCH /notifications/preferences`) | **SHIPPED** — defaults per category; `theft_critical` push cannot self-disable |
+| Mobile push registration (Expo token upload on app entry) | **SHIPPED** — `mobile/src/notifications/`; requires EAS `projectId` for a real token |
+| Push delivery / event emitters | **PARTIAL** — Expo send adapter; theft case create + a test endpoint wired |
+| SMS | **NOT BUILT** — vendor not selected |
+| Notification service / event bus | **NOT BUILT** |
+| Preference center UI | **NOT BUILT** — API only, no screen |
+| Payment / GPS / claims / recovery notifications | **NOT BUILT** — upstream features incomplete |
+
+  Master matrix, architecture, push spec, and email template catalogue are all filed under
+  `docs/features/007-notifications/` — treat everything in that directory marked PLANNED or
+  BLOCKED as design intent, not live behaviour. **No `security-review.md` or `compliance-review`
+  sign-off exists for this feature beyond the design-time flags in
+  `compliance-review-notifications.md` (explicitly "NOT legal sign-off").**
+
+**Stage 8/10 status for Features 006 and 007 — pending concurrent review.** A `cybersecurity-architect`
+pass and a `qa-architect` Stage 10 assessment were in flight for both features as of this
+writing and had not landed. Check `docs/features/006-customer-onboarding/security-review.md`
+and `docs/features/007-notifications/` for whether those exist yet before treating either
+feature as Stage-8/10-clean — as of this snapshot, neither `security-review.md` file exists in
+either feature's directory, meaning **both features have shipped code ahead of a formal Stage 8
+gate**, which the org's own lifecycle treats as a hard-gate violation worth surfacing, not
+quietly working around.
 
 **Governance/ADRs.** `docs/organization/adr/`: 0001 (stack baseline), 0002 (Supabase for
 identity, MongoDB for domain data — the load-bearing split decision), 0003 (Render hosting),
@@ -105,9 +178,13 @@ the bar this project has been held to:
 | **FU-A13 (new)** — Trail A indexes + purge scheduling | **Indexes applied** — migration `034` created `account_audit_log_account_id_created_at` and `account_audit_log_created_at` on the live Supabase project (2026-08-11, catalog-verified). **Still open:** purge scheduling (nothing calls `app.purge_expired_audit_log()`); deploy-time live-vs-design schema check (FU-A13 second half, shares FU-A10); 033's `NOT VALID` constraint promotion (`security-engineer`) | Subject-keyed AUD-8 query no longer seq-scans; retention still not enforced until scheduled |
 | **FU-A14 (new)** — AUD-9's mandatory purpose/case reference has nothing to resolve against | **`recovery_cases` Mongo collection + API now exist** (`recovery.ts`, `security-cases.ts`) — partially addresses the "no case entity" gap for Security Dashboard reads. GPS location-access trail still needs full Stage 1 design and AUD-9 case-reference wiring on location endpoints | Blocks **GPS Phase 2** location-access trail completion; Security Dashboard case queue **unblocked at entity level** |
 | **FU-A11 — investigative read credential** | Read-only credential scoped to both audit trails, for whoever executes the AUD-8 runbook (`cloud-infrastructure-architect` + `database-architect`, verified `security-engineer`) | Blocks *using* the runbook before first production privileged account (§16.5 item 2) |
-| **Resend (auth email) + Supabase hook secrets** | Platform owner: Resend account, verify `tditsolutionsinsurance.co.za`, create API key, set Edge Function secrets (`RESEND_API_KEY`, `EMAIL_FROM`, `SEND_EMAIL_HOOK_SECRET`), enable Send Email Hook — see [`resend-setup.md`](docs/features/001-authentication/resend-setup.md) | Blocks real email delivery until configured |
-| **Supabase dashboard Auth email-link TTLs** | Confirm/tighten in the Supabase dashboard directly — not reachable from application code | Compliance completeness (C-5.3) |
+| **Resend (auth email) + Supabase hook secrets** | Platform owner: Resend account, verify `tditsolutionsinsurance.co.za`, create API key, set Edge Function secrets (`RESEND_API_KEY`, `EMAIL_FROM`, `SEND_EMAIL_HOOK_SECRET`), enable Send Email Hook — see [`resend-setup.md`](docs/features/001-authentication/resend-setup.md). Code-side integration (Edge Function, templates, `transactional-email.ts`) is **built and unchanged since the last handoff**; nothing in this repo can confirm whether the owner has actually completed the Resend account/domain/secret steps (no secrets committed, correctly). **Treat as still owner-blocked until confirmed otherwise** — this is the same status the last handoff recorded, just now against Resend instead of the earlier Brevo recommendation (see `resend-setup.md` §7: "Resend replaces the earlier Brevo recommendation for this flow"). | Blocks real email delivery, which blocks real signup verification on both web (`/get-started`) and mobile — i.e. blocks Feature 006 end-to-end, not just Feature 001 |
+| **Supabase dashboard Auth email-link TTLs, and "Confirm email" toggle** | Confirm/tighten in the Supabase dashboard directly — not reachable from application code. `authentication-engineer`'s 2026-08-13 BR-2 tightening (`sync-email-verification.ts`, closing a gap where `supabaseAuthSucceeded` could override an explicit `emailConfirmed: false` from GoTrue) narrows but does not remove this: the app has no independent way to verify the Supabase project's "Confirm email" setting is actually enabled, so email verification being mandatory is still ultimately a Supabase project-config assumption, not something this codebase can assert on its own | Compliance completeness (C-5.3); load-bearing assumption for BR-2 ("email must be verified" before a session is minted) — platform owner should confirm this toggle's state in the Supabase dashboard |
+| **Object-storage vendor (MP-5)** | Still an open decision — `integration-architect` + `cloud-infrastructure-architect`, ADR-worthy, POPIA transborder-flow question attached. Neither onboarding wizard has an asset-photo step today (mobile's briefly did, mid-session on 2026-08-13, and was removed — see the Feature 006 bullet above; web never had one) — MP-5 is fully deferred in the UI, not just architecturally. | Blocks asset photo upload on both onboarding wizards and the existing Feature 004 asset forms |
+| **Payment gateway selection** | Open decision (`integration-architect`). Feature 006's onboarding "Complete" step is explicit that payment/activation is pending; policies are created `status: pending_activation`, `billing.billingStatus: not_configured` | Blocks policy activation, plan enforcement, and any real subscription flow — onboarding can create a policy shell but never activate it |
+| **GPS hardware vendor / Phase 2 ingestion** | Open decision (`integration-architect`). FU-A14's location-access audit trail still has no case-reference wiring to hang off of GPS endpoints that don't exist | Blocks GPS pairing, live map, and location-based recovery — recovery/claims mobile UI remains a stub against 404s |
 | **Real integration test suite** | Automated tests against the live Supabase/Postgres/Mongo stack, beyond the manual smoke tests done so far | Not blocking, but the current test coverage is unit-level + one manual E2E pass |
+| **Mobile test coverage has not kept pace with mobile feature growth** | `mobile/` is still 30 tests / 10 suites, unchanged since the mobile production push, despite the onboarding wizard, push-notification client, and plan-catalog client all landing since. None of that new code has test coverage | Not a hard blocker for internal distribution, but a real Stage 10 gap for whichever release this ships in |
 
 ## Mobile production push (2026-08-12, `cto`) — the current directive
 
@@ -125,8 +202,16 @@ E2E) and **Resend** (real email verification). Two things adjacent to it are **n
 pretend otherwise:
 
 - **Plan/tier selection.** Stage 1 `business-requirements.md` now exists and ratifies Phase 1
-  scope without inventing tiers/pricing (D-01–D-04 deferred). MP-3 still stands: **no plan-picker,
-  no pricing screen, no tier comparison UI** until commercial rules are ratified.
+  scope without inventing tiers/pricing (D-01–D-04 deferred). MP-3 originally read: **no
+  plan-picker, no pricing screen, no tier comparison UI** until commercial rules are ratified.
+  **This has since been superseded, on the record, not silently worked around:** Feature 006's
+  `business-requirements.md` explicitly "supersedes partially: Feature 004 `business-requirements.md`
+  D-01 (tier catalog) for onboarding UX only" and ships a real plan-picker on both web and mobile
+  (`starter`/`standard`/`enterprise`, prices read from `GET /v1/plans`, never hard-coded).
+  What MP-3 was actually guarding against — invented pricing and a fake "purchase" — still holds:
+  selecting a plan creates a `pending_activation` policy with `billingStatus: not_configured`,
+  not a real subscription. Read this as the plan-picker constraint being formally lifted by a
+  later, narrower ratification, not as a violation of the earlier one.
 - **Public app-store release.** `003-mobile-app-foundation/architecture.md` §6 already ruled
   that this app should not go to public store review until Phase 1 scope is genuinely complete;
   internal distribution (EAS `preview` → TestFlight / Play Internal Testing) is the correct
@@ -175,8 +260,8 @@ distributed internally. Not: buying a plan, uploading photos, GPS, claims, or ad
 | Role | Deliverable |
 |---|---|
 | `security-engineer` | ~~Feature 004 Stage 8 concurrence~~ **Done (2026-08-12)** — [`security-review.md`](docs/features/004-policy-asset-management/security-review.md). |
-| `qa-architect` + `automation-qa-engineer` | ~~Stage 10 strategy + automation~~ **Substantially done** — [`qa-test-strategy.md`](docs/features/004-policy-asset-management/qa-test-strategy.md); backend list/detail cross-account tests; mobile screen tests (`PolicyList`, `AssetList`, `CreatePolicy`); `gateWriteAction.test.ts`; Maestro scaffold at `mobile/e2e/`. **E2E execution blocked on Brevo.** |
-| `manual-qa-engineer` | ~~Checklist~~ **Filed** — [`manual-qa-checklist.md`](docs/features/004-policy-asset-management/manual-qa-checklist.md). **Execution on real device still pending** (owner + Brevo). |
+| `qa-architect` + `automation-qa-engineer` | ~~Stage 10 strategy + automation~~ **Substantially done** — [`qa-test-strategy.md`](docs/features/004-policy-asset-management/qa-test-strategy.md); backend list/detail cross-account tests; mobile screen tests (`PolicyList`, `AssetList`, `CreatePolicy`); `gateWriteAction.test.ts`; Maestro scaffold at `mobile/e2e/`. **E2E execution blocked on Resend** (this section originally said "Brevo" — the vendor changed to Resend after this table was written; see `resend-setup.md`). |
+| `manual-qa-engineer` | ~~Checklist~~ **Filed** — [`manual-qa-checklist.md`](docs/features/004-policy-asset-management/manual-qa-checklist.md). **Execution on real device still pending** (owner + Resend). |
 | `devops-engineer` | ~~M-08 CI + Render~~ **Substantially done** — CI green; [`render.yaml`](render.yaml) + [`backend/docs/DEPLOY.md`](backend/docs/DEPLOY.md) (MP-8 staging guidance). **Live Render service not yet provisioned** (owner). |
 | `technical-writer` | ~~README honesty~~ **Done (2026-08-12)** — `backend/README.md`, `mobile/README.md`, `HANDOFF.md` synced. |
 
@@ -184,13 +269,16 @@ distributed internally. Not: buying a plan, uploading photos, GPS, claims, or ad
 
 These are the honest answer to "can we ship the real thing." Ordered by how hard they block.
 
-1. **Resend + Supabase Send Email Hook.** Auth mail is delivered by `auth-send-email` → Resend (not the Render API). Without `RESEND_API_KEY`, verified domain, and hook secrets, **no real user can verify email → BR-2 gate → asset registration on a fresh account.** Setup: [`resend-setup.md`](docs/features/001-authentication/resend-setup.md).
+1. **Resend + Supabase Send Email Hook.** Auth mail is delivered by `auth-send-email` → Resend (not the Render API). Without `RESEND_API_KEY`, verified domain, and hook secrets, **no real user can verify email → BR-2 gate → asset registration on a fresh account.** Setup: [`resend-setup.md`](docs/features/001-authentication/resend-setup.md). **Still unconfirmed as of 2026-08-13** — code side is done, nothing in the repo can verify the owner's account/domain/secret steps.
 2. **Supabase DPA execution.** Blocks real production identity data. Local dev and internal testing are unaffected; a public launch is not.
-3. **Object-storage vendor decision (MP-5).** Blocks asset photos — deferred, not blocking this push's scope.
-4. **App-store provisioning.** Bundle ID `co.za.tditsolutions.insurance` is a placeholder guess; icons are still Expo's defaults. [`mobile/docs/DEPLOY.md`](mobile/docs/DEPLOY.md) documents owner steps (`eas init`, Apple/Google accounts, env vars). Internal TestFlight/Play builds are unblocked on **code**; owner actions still required before any store-bound build.
+3. **Object-storage vendor decision (MP-5).** Blocks asset photos — deferred, not blocking this push's scope. **Still open as of 2026-08-13** — mobile's onboarding wizard (Feature 006) briefly had a photo-capture step mid-session and it was removed for requesting camera/photo-library permissions with nowhere to send the result (see the Feature 006 bullet above); the decision itself has not moved.
+4. **App-store provisioning.** Bundle ID `co.za.tditsolutions.insurance` is a placeholder guess — still unresolved. **Icons and splash screens are no longer Expo defaults**, correcting what this line previously said: `mobile/assets/icon.png`, `splash-icon.png`, and the Android adaptive/monochrome icon set are the real TD IT Solution Insurance brand mark, and the web favicon/social-preview image (`public/logo.png`, `public/og-image.png`, wired into `index.html`) are also real. [`mobile/docs/DEPLOY.md`](mobile/docs/DEPLOY.md) documents remaining owner steps (`eas init`, Apple/Google accounts, env vars). Internal TestFlight/Play builds are unblocked on **code**; owner actions still required before any store-bound build.
 5. **FU-A13 / FU-A14** remain open and unchanged by this push. FU-A13 (missing audit indexes, unscheduled retention purge) is not on this push's critical path because MP-1 excludes admin routes, but it stays open. FU-A14 (AUD-9's case reference with no case entity) blocks **GPS Phase 2**, which this push does not touch.
 
 ### Explicitly not in this push, so nobody builds it by accident
+
+**This list is from the original 2026-08-12 mobile push and is preserved for the historical
+record below; it is now partially stale — see the correction directly under it.**
 
 Plan selection, pricing, coverage-limit display (MP-3) ·
 asset photo upload (MP-5) · policy/asset edit, cancel or delete (P-15 — never designed) ·
@@ -198,7 +286,16 @@ payments and checkout (no gateway selected) · GPS pairing, live map (Phase 2 GP
 claims (no collection, no design) · push notifications (no
 payload contract) · biometric app-unlock (M-06, still an open decision).
 
-**Built after the mobile push (2026-08-12 follow-on):** Admin Panel + Security Dashboard web surfaces; Feature 004 admin API; recovery case API scaffold. Admin serving real customer data still blocked on SR-004-admin-2/4/5(d).
+**Correction (2026-08-13):** two items on that list have since shipped, under later, narrower
+rulings — not as scope creep on this push. **Plan selection** shipped as part of Feature 006
+(see the MP-3 note above): real plan-picker, no real pricing/checkout behind it. **Push
+notifications** shipped a real payload contract as part of Feature 007: token registration,
+preferences API, and an Expo send adapter are live (see the Feature 007 table above); a full
+notification service/event bus and most event sources (payments, GPS, claims) are still not
+built. Everything else on the original list — photo upload, policy/asset edit/cancel/delete,
+payments/checkout, GPS pairing/live map, claims, biometric unlock — remains genuinely not built.
+
+**Built after the mobile push (2026-08-12 follow-on):** Admin Panel + Security Dashboard web surfaces; Feature 004 admin API; recovery case API scaffold; and, most recently, customer web auth + onboarding (Feature 006) and partial notifications (Feature 007) — see those sections above. Admin serving real customer data still blocked on SR-004-admin-2/4/5(d).
 
 ---
 
@@ -215,6 +312,69 @@ If picking up ADR-0006's AUD-3: **the shape decision and both trail designs are 
 `recordBulkDisclosure()` on Trail A; addendum-001 Amendment A1 on Trail B). What's left is calling
 the writer from the first admin list endpoint anyone builds. Read ADR-0006 §16 before touching any
 of it — five rulings changed things §5's original text left open.
+
+If picking up Feature 006 or 007: **read the "Feature 006" and "Feature 007" entries under "What
+actually exists and works right now" first**, then `docs/features/006-customer-onboarding/` and
+`docs/features/007-notifications/README.md` directly — the latter's own honesty table is the
+source of truth this doc copies from, so re-check it hasn't drifted further before trusting the
+copy above. Neither feature has a `security-review.md` yet despite shipped code; that is the
+single highest-priority gap for whoever picks this up next, ahead of any new feature work.
+
+## Latest session (2026-08-13, `technical-writer`): HANDOFF sync after customer onboarding + notifications landed
+
+This session did not write any product code — it verified and documented what a prior, larger
+pull (195 files, commits `962ba25`..`c6a0e77`, landed after this file's 2026-08-12 snapshot) had
+actually shipped, against the code, not against any planning doc's claims. Everything below was
+checked directly; nothing here is taken on trust from a commit message or a doc header.
+
+- **Customer web auth is real**, not a stub: `src/customer/auth/CustomerAuthProvider.tsx` wires
+  Supabase login/signup/verify/reset; `/login`, `/signup`, `/get-started`, `/forgot-password`,
+  `/auth/callback`, `/auth/email-verified`, `/reset-password` are live routes in `src/App.tsx`.
+  A real post-login customer dashboard exists at `/dashboard`
+  (`src/pages/customer/CustomerDashboardPage.tsx`), gated by `CustomerDashboardGate`.
+- **A full onboarding wizard exists on both web (`/get-started`) and mobile**
+  (`mobile/src/screens/onboarding/CustomerOnboardingScreen.tsx`), backed by a new public plan
+  catalog (`GET /v1/plans/catalog`, `GET /v1/plans`) and an admin plan editor
+  (`GET /v1/admin/plans`, `PATCH /v1/admin/plans/:planId`) — all confirmed directly in
+  `backend/src/routes/plans.ts` and `admin-plans.ts`. See the new "Feature 006" entry above for
+  what is and isn't real about it (mobile briefly had a photo-capture step and it was removed
+  mid-session for requesting permissions with nowhere to send the result — MP-5 is the one worth
+  remembering).
+- **Feature 007 (Notifications) is a full planning doc set plus a genuinely partial
+  implementation** — push token registration, notification preferences, an Expo push send
+  adapter, and branded transactional email templates for the auth flows are shipped; SMS, an
+  event bus, and a preference-center UI are not. `docs/features/007-notifications/README.md`'s
+  own honesty table is reproduced above rather than re-described in different words, to avoid
+  this doc and that one silently diverging.
+- **Backend test count is 145 passing across 32 files** (re-verified against the actual test
+  file listing in `backend/src/**/*.test.ts`, which counts to exactly 32) — up from the
+  110+/21 and 85 figures this doc previously cited for different subsets of the same suite.
+  **Mobile test count has not moved**: still 30 tests / 10 suites, meaning none of the onboarding
+  wizard, push-notification client, or plan-catalog client shipped with test coverage. Flagged
+  as an open item above, not silently absorbed into "substantially done."
+- **Two things this doc previously listed as outstanding have actually shipped and were
+  corrected in place rather than left stale:** the mobile app icon/splash/notification icon set
+  and the web favicon/social-preview image are the real TD IT Solution Insurance brand mark, not
+  Expo/Vite defaults (`mobile/assets/icon.png` et al.; `public/logo.png`, `public/og-image.png`).
+  See the corrected item 4 under "Blockers that no agent in this repo can clear" above.
+- **Stage 8/10 status for Features 006 and 007 is a genuine, currently-open gap, not a
+  documentation oversight:** as of this writing, neither
+  `docs/features/006-customer-onboarding/security-review.md` nor an equivalent file under
+  `docs/features/007-notifications/` exists, despite both features having real, live code paths.
+  A `cybersecurity-architect` Stage 8 pass and a `qa-architect` Stage 10 assessment for both
+  features were reported in flight concurrently with this session but had not landed by the time
+  this file was written. **Check both paths directly before assuming either has since closed** —
+  this is exactly the kind of claim this role's standards require verifying in code, not copying
+  from a hand-off note.
+- **Terminology correction carried through this doc:** several places still said "Brevo" for the
+  auth-email vendor; the actual vendor, confirmed in `docs/features/001-authentication/resend-setup.md`,
+  is **Resend** ("Resend replaces the earlier Brevo recommendation for this flow"). Both terms now
+  appear only where the "Brevo" wording is explicitly marked as the original, now-superseded text.
+- **What was not attempted this session:** no attempt was made to confirm whether the platform
+  owner has actually completed the Resend account/domain/secret setup, or the Supabase DPA, or
+  either vendor decision (object storage, payment gateway) — none of those are checkable from the
+  repository, and this session did not contact the owner. They remain listed as open exactly as
+  handed off, not silently marked resolved.
 
 ## Last session (2026-08-11, `cto`): ADR-0006 ratified and its Trail A work landed
 

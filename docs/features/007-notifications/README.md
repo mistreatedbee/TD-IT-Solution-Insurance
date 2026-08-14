@@ -71,6 +71,22 @@ This feature was analysed by the roles below. Each section in the master matrix 
 6. **GPS/theft critical path** — after ping ingestion (`gps-integration-engineer`) — **highest business value push surface**
 7. **Claims, admin digests, marketing** — later phases
 
+**Test debt against the sequencing above (`qa-architect`, 2026-08-13):** steps 1–3 have already
+shipped code (this table's "SHIPPED" rows) ahead of a Stage 10 QA pass. Concretely:
+`backend/src/routes/notifications.test.ts` gives adequate route-level coverage of push-token
+registration and preferences (RBAC boundary, `theft_critical` non-disable rule, revoke-on-logout
+all covered). What's **not** covered: `push-notification-service.ts`'s orchestration (preference
+gating + invalid-token disable loop) has no direct test; the mobile push registration hook
+(`mobile/src/notifications/usePushNotifications.ts`) and deep-link handler have zero test files;
+and `push-tokens.ts`'s `disableAllForAccount()` is dead code — nothing calls it, so there is no
+account-lifecycle event (deletion, forced logout, MFA reset) that bulk-clears a customer's push
+tokens, which is worth a compliance/product decision before step 6 (theft-critical push, the
+highest-stakes channel) goes further. Full detail and a broader onboarding-adjacent audit is in
+[`006-customer-onboarding/qa-test-strategy.md`](../006-customer-onboarding/qa-test-strategy.md)
+§3.3/§3.5, since onboarding is what actually exercises push registration end-to-end today. Do not
+treat "SHIPPED" in the table above as "QA-verified" — it means the code path exists and passes
+CI, not that Stage 10 has signed off on it.
+
 ---
 
 ## Related code (today)

@@ -6,11 +6,12 @@ Stage 9 (Development) of Feature 001 (Customer Account Creation &
 Authentication) has landed: this now includes a working auth/session/MFA/
 invitation implementation, in addition to the original infrastructure
 scaffold (health checks, MongoDB connectivity, error-handling conventions).
-It has **not** been run against a live Supabase project, live Redis, or
-live SMTP vendor — none of those exist yet for this platform (see "What's
-NOT here yet" below) — so this is real, typechecked, unit-tested
-application code that has not been integration-tested end-to-end. That
-distinction matters and is not glossed over anywhere in this document.
+It **has** been run against a live Supabase project (Postgres, identity) and
+a live MongoDB Atlas cluster (domain data) — see [`HANDOFF.md`](../HANDOFF.md)
+for the current point-in-time status, including which surfaces are still
+demo/local-dev only vs. genuinely production-ready. Auth transactional email
+goes through Resend via a Supabase Edge Function, not through this backend
+directly (see `docs/features/001-authentication/resend-setup.md`).
 
 ## Why this is a separate app from the frontend
 

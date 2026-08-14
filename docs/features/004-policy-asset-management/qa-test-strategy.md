@@ -84,7 +84,7 @@ Stage 10 **may** run against a dedicated Mongo **database name** on the existing
 
 - [ ] All §3 scenarios pass on staging or dedicated test DB
 - [ ] Manual checklist signed by `manual-qa-engineer`
-- [ ] No P0/P1 open from `security-review.md` SR-004-* blockers except documented owner actions (Brevo account)
+- [ ] No P0/P1 open from `security-review.md` SR-004-* blockers except documented owner actions (Resend account — see `HANDOFF.md` open-items table; the vendor changed from Brevo to Resend after this line was written)
 - [ ] CI green on `main`
 
 **Signed:** `qa-architect`, 2026-08-12 (strategy); execution sign-off pending checklist completion.
