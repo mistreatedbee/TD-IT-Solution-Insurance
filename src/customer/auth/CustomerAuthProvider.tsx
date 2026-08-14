@@ -138,11 +138,20 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithPassword = useCallback(async (email: string, password: string) => {
     try {
-      const tokens = await signInWithSupabase(email, password);
+      const result = await signInWithSupabase(email, password);
+      // SR-006-1: /auth/supabase/exchange no longer always returns tokens —
+      // an account with a verified TOTP factor gets an MFA challenge here,
+      // exactly as POST /auth/login does for the privileged dashboard.
+      if (result.kind === 'mfa') {
+        return { kind: 'mfa' as const, mfaChallengeToken: result.mfaChallengeToken, expiresIn: result.expiresIn };
+      }
+      if (result.kind === 'enrollment') {
+        return { kind: 'enrollment' as const, enrollmentTicket: result.enrollmentTicket };
+      }
       return {
         kind: 'tokens' as const,
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
       };
     } catch (err) {
       if (err instanceof ApiError) throw err;

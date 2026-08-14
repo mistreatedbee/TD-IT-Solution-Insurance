@@ -33,6 +33,10 @@ import { createRecoveryCasesRepo, type RecoveryCasesRepo } from './repositories/
 import { createPlanCatalogRepo, type PlanCatalogRepo } from './repositories/plan-catalog.js';
 import { createPushTokensRepo, type PushTokensRepo } from './repositories/push-tokens.js';
 import {
+  createPushTokenSecurityLogRepo,
+  type PushTokenSecurityLogRepo,
+} from './repositories/push-token-security-log.js';
+import {
   createNotificationPreferencesRepo,
   type NotificationPreferencesRepo,
 } from './repositories/notification-preferences.js';
@@ -88,6 +92,7 @@ export interface AppContext {
   recoveryCases: RecoveryCasesRepo;
   planCatalog: PlanCatalogRepo;
   pushTokens: PushTokensRepo;
+  pushTokenSecurityLog: PushTokenSecurityLogRepo;
   notificationPreferences: NotificationPreferencesRepo;
   pushNotifications: PushNotificationService;
   customerNotifications: CustomerNotificationService;
@@ -104,6 +109,7 @@ export function buildAppContext(env: Env): AppContext {
   const kv = getKeyValueStore(env);
   const supabase = getSupabaseAdmin(env);
   const pushTokens = createPushTokensRepo(getDb());
+  const pushTokenSecurityLog = createPushTokenSecurityLogRepo(getDb());
   const notificationPreferences = createNotificationPreferencesRepo(getDb());
   const notificationDeliveryState = createNotificationDeliveryStateRepo(getDb());
   const pushNotifications = createPushNotificationService({
@@ -158,6 +164,7 @@ export function buildAppContext(env: Env): AppContext {
     recoveryCases: createRecoveryCasesRepo(getDb()),
     planCatalog: createPlanCatalogRepo(getDb()),
     pushTokens,
+    pushTokenSecurityLog,
     notificationPreferences,
     notificationDeliveryState,
     pushNotifications,

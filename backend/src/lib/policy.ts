@@ -75,6 +75,16 @@ export const RESEND_VERIFICATION_LIMIT = {
   perAccountWindowSeconds: 60 * 60,
 } as const;
 
+/** SR-006-2: `POST /auth/notify-email-verified` previously carried only a
+ * per-email cooldown, which bounds abuse of one victim address but does
+ * nothing against enumeration sweeping many addresses from one source. This
+ * is the same `LOGIN_LOCKOUT.perIp*`-style ceiling applied to this route,
+ * per MP-7's "every route gets an explicit limiter" convention. */
+export const NOTIFY_EMAIL_VERIFIED_IP_LIMIT = {
+  attempts: 20,
+  windowSeconds: 15 * 60,
+} as const;
+
 export const INVITATIONS_CREATE_LIMIT = {
   attempts: 50,
   windowSeconds: 60 * 60,

@@ -17,6 +17,8 @@ import type { AssetDocument } from '../repositories/assets.js';
 import type { Env } from '../config/env.js';
 import type { IdempotencyRepo } from '../repositories/idempotency.js';
 import type { CreateAssetBody } from '../lib/asset-validation.js';
+import type { PolicyDocument } from '../repositories/policies.js';
+import type { PlanCatalogDocument } from '../repositories/plan-catalog.js';
 
 function fakeEnv(): Env {
   return {
@@ -56,28 +58,36 @@ function customerToken(env: Env, accountId: string, sessionId: string): string {
 }
 
 function createInMemoryIdempotencyRepo(): IdempotencyRepo {
-  const rows = new Map<string, { requestHash: string; responseStatus: number; responseBody: unknown }>();
+  const rows = new Map<
+    string,
+    { accountId: string | null; requestHash: string; responseStatus: number; responseBody: unknown }
+  >();
   return {
-    async find(endpoint, key) {
+    // Mirrors repositories/idempotency.ts's real `account_id is not distinct
+    // from $3` scoping — a stored row belonging to a different account must
+    // never be replayed to this caller (cross-account IDOR guard).
+    async find(endpoint, key, accountId) {
       const row = rows.get(`${endpoint}:${key}`);
-      return row
-        ? {
-            endpoint,
-            idempotencyKey: key,
-            accountId: null,
-            requestHash: row.requestHash,
-            responseStatus: row.responseStatus,
-            responseBody: row.responseBody,
-            createdAt: new Date(),
-          }
-        : null;
+      if (!row || row.accountId !== (accountId ?? null)) return null;
+      return {
+        endpoint,
+        idempotencyKey: key,
+        accountId: row.accountId,
+        requestHash: row.requestHash,
+        responseStatus: row.responseStatus,
+        responseBody: row.responseBody,
+        createdAt: new Date(),
+      };
     },
     async store(record) {
-      rows.set(`${record.endpoint}:${record.idempotencyKey}`, {
-        requestHash: record.requestHash,
-        responseStatus: record.responseStatus,
-        responseBody: record.responseBody,
-      });
+      if (!rows.has(`${record.endpoint}:${record.idempotencyKey}`)) {
+        rows.set(`${record.endpoint}:${record.idempotencyKey}`, {
+          accountId: record.accountId,
+          requestHash: record.requestHash,
+          responseStatus: record.responseStatus,
+          responseBody: record.responseBody,
+        });
+      }
     },
   };
 }
@@ -102,7 +112,69 @@ function sampleAsset(accountId: string, id = '507f1f77bcf86cd799439022'): AssetD
   };
 }
 
-function createHarness(opts: { accountId?: string; accountState?: AccountStatus['accountState']; assets?: AssetDocument[] }) {
+function samplePolicy(accountId: string, overrides: Partial<PolicyDocument> = {}): PolicyDocument {
+  const now = new Date('2026-08-01T12:00:00.000Z');
+  return {
+    id: '507f1f77bcf86cd799439011',
+    accountId,
+    planTier: 'starter',
+    planCatalogId: null,
+    status: 'active',
+    coverageLimits: [],
+    billing: {
+      provider: null,
+      externalCustomerId: null,
+      externalSubscriptionId: null,
+      billingStatus: 'not_configured',
+      currency: 'ZAR',
+      amount: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      nextBillingAt: null,
+      cancelAt: null,
+    },
+    effectiveDate: now,
+    renewalDate: null,
+    cancelledAt: null,
+    legalHold: false,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+function samplePlan(id: string, overrides: Partial<PlanCatalogDocument> = {}): PlanCatalogDocument {
+  const now = new Date('2026-01-01T00:00:00.000Z');
+  return {
+    id,
+    slug: 'starter',
+    name: 'Starter',
+    tagline: 'Up to 5 devices',
+    maxAssets: 5,
+    monthlyAmountCents: 20_000,
+    currency: 'ZAR',
+    isCustomPricing: false,
+    isActive: true,
+    sortOrder: 1,
+    features: [],
+    accountTypes: ['both'],
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+function createHarness(opts: {
+  accountId?: string;
+  accountState?: AccountStatus['accountState'];
+  assets?: AssetDocument[];
+  policies?: PolicyDocument[];
+  plans?: PlanCatalogDocument[];
+  /** A second account recognized as active — for cross-account regression tests
+   * (e.g. idempotency-key replay) that need two distinct authenticated callers
+   * against the same harness/idempotency store. */
+  otherActiveAccountId?: string;
+}) {
   const env = fakeEnv();
   const kv = new InMemoryKeyValueStore();
   const accountId = opts.accountId ?? randomUUID();
@@ -111,16 +183,17 @@ function createHarness(opts: { accountId?: string; accountState?: AccountStatus[
   for (const asset of opts.assets ?? []) {
     storedAssets.set(asset.id, asset);
   }
+  let nextAssetIdSuffix = 0x88;
 
   const ctx = {
     env,
     kv,
     accounts: {
       async getAccountStatus(id: string): Promise<AccountStatus | null> {
-        if (id !== accountId) return null;
+        if (id !== accountId && id !== opts.otherActiveAccountId) return null;
         return {
-          id: accountId,
-          accountState: opts.accountState ?? 'active',
+          id,
+          accountState: id === accountId ? (opts.accountState ?? 'active') : 'active',
           mfaRequired: false,
           userType: 'customer',
           partnerOrganizationId: null,
@@ -132,7 +205,7 @@ function createHarness(opts: { accountId?: string; accountState?: AccountStatus[
       async createForAccount(acctId: string, body: CreateAssetBody): Promise<AssetDocument> {
         const now = new Date();
         const asset: AssetDocument = {
-          id: '507f1f77bcf86cd799439088',
+          id: `507f1f77bcf86cd7994390${(nextAssetIdSuffix++).toString(16).padStart(2, '0')}`,
           accountId: acctId,
           assetType: body.assetType,
           displayName: body.displayName,
@@ -178,13 +251,13 @@ function createHarness(opts: { accountId?: string; accountState?: AccountStatus[
       },
     },
     policies: {
-      async listByAccount() {
-        return [];
+      async listByAccount(acctId: string) {
+        return (opts.policies ?? []).filter((p) => p.accountId === acctId);
       },
     },
     planCatalog: {
-      async findById() {
-        return null;
+      async findById(id: string) {
+        return (opts.plans ?? []).find((p) => p.id === id) ?? null;
       },
     },
     idempotency: createInMemoryIdempotencyRepo(),
@@ -301,6 +374,59 @@ describe('POST /assets', () => {
     expect(response.status).toBe(403);
     const body = (await response.json()) as { error: { code: string } };
     expect(body.error.code).toBe('ACCOUNT_NOT_ACTIVE');
+  });
+
+  it('never replays another account\'s cached response for a colliding Idempotency-Key', async () => {
+    // Regression: Idempotency-Key is a client-supplied header, not a security
+    // boundary. If a second account reuses a key (and submits a body that
+    // hashes the same) that another account already used on this endpoint,
+    // the replay lookup must not serve the first account's cached response —
+    // scoped by account_id both server-side (repositories/idempotency.ts) and
+    // in this in-memory fake (createInMemoryIdempotencyRepo above).
+    const victimAccountId = randomUUID();
+    const attackerAccountId = randomUUID();
+    const sharedKey = randomUUID();
+    const requestBody = {
+      assetType: 'smartphone',
+      displayName: 'Phone',
+      details: { brand: 'Apple', model: 'iPhone', imei: '123456789012345' },
+    };
+
+    const { app, sessionId, env } = createHarness({
+      accountId: victimAccountId,
+      otherActiveAccountId: attackerAccountId,
+    });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const victimResponse = await fetch(`${listened.baseUrl}/assets`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${customerToken(env, victimAccountId, sessionId)}`,
+        'content-type': 'application/json',
+        'idempotency-key': sharedKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+    expect(victimResponse.status).toBe(201);
+    const victimAsset = (await victimResponse.json()) as { id: string };
+
+    const attackerSessionId = randomUUID();
+    const attackerResponse = await fetch(`${listened.baseUrl}/assets`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${customerToken(env, attackerAccountId, attackerSessionId)}`,
+        'content-type': 'application/json',
+        'idempotency-key': sharedKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    // Must NOT be a silent 201 replay of the victim's asset — the attacker's
+    // request has to be processed fresh, scoped to their own account.
+    expect(attackerResponse.status).toBe(201);
+    const attackerAsset = (await attackerResponse.json()) as { id: string; accountId?: string };
+    expect(attackerAsset.id).not.toBe(victimAsset.id);
   });
 });
 

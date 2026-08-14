@@ -28,7 +28,7 @@ export function saveAccountType(type: AccountType): void {
 }
 
 const SIGNUP_EMAIL_KEY = 'td-signup-email';
-const NOTIFY_VERIFIED_RESULT_PREFIX = 'td-notify-verified-result:';
+const NOTIFY_VERIFIED_PING_PREFIX = 'td-notify-verified-pinged:';
 
 export function saveSignupEmail(email: string): void {
   try {
@@ -46,29 +46,27 @@ export function loadSignupEmail(): string | null {
   }
 }
 
-export function saveNotifyVerifiedResult(
-  email: string,
-  result: { status: string; confirmationEmailSent: boolean },
-): void {
+/**
+ * SR-006-2 (backend/docs/features/006-customer-onboarding/security-review.md):
+ * `POST /auth/notify-email-verified` now returns an identical response for
+ * every account state, so there is nothing distinguishing left to cache.
+ * This is now only a per-tab "did we already ping the backend for this
+ * email" flag, purely to avoid redundant calls within one session — not a
+ * cache of account state, and callers must not infer anything from it.
+ */
+export function wasNotifyVerifiedPinged(email: string): boolean {
   try {
-    sessionStorage.setItem(
-      `${NOTIFY_VERIFIED_RESULT_PREFIX}${email.trim().toLowerCase()}`,
-      JSON.stringify(result),
-    );
+    return sessionStorage.getItem(`${NOTIFY_VERIFIED_PING_PREFIX}${email.trim().toLowerCase()}`) === '1';
   } catch {
-    /* private browsing */
+    return false;
   }
 }
 
-export function loadNotifyVerifiedResult(
-  email: string,
-): { status: string; confirmationEmailSent: boolean } | null {
+export function markNotifyVerifiedPinged(email: string): void {
   try {
-    const raw = sessionStorage.getItem(`${NOTIFY_VERIFIED_RESULT_PREFIX}${email.trim().toLowerCase()}`);
-    if (!raw) return null;
-    return JSON.parse(raw) as { status: string; confirmationEmailSent: boolean };
+    sessionStorage.setItem(`${NOTIFY_VERIFIED_PING_PREFIX}${email.trim().toLowerCase()}`, '1');
   } catch {
-    return null;
+    /* private browsing */
   }
 }
 

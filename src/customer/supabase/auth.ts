@@ -1,23 +1,40 @@
 import { API_BASE_URL } from '../api/config';
 import { ApiError } from '../api/errors';
 import { getOrCreateWebDeviceId } from '../auth/deviceId';
-import { saveSignupEmail, loadNotifyVerifiedResult, saveNotifyVerifiedResult } from '../../onboarding/onboardingStorage';
+import { saveSignupEmail, wasNotifyVerifiedPinged, markNotifyVerifiedPinged } from '../../onboarding/onboardingStorage';
 import { getSupabase, supabaseAuthRedirectUrl } from './client';
 
 function requireSupabase() {
   return getSupabase();
 }
 
-export interface BackendSessionTokens {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  sessionId: string;
+/**
+ * SR-006-1 (backend/docs/features/006-customer-onboarding/security-review.md):
+ * `POST /auth/supabase/exchange` no longer unconditionally returns session
+ * tokens — an account with a verified TOTP factor gets the same
+ * `mfaRequired`/`mfaChallengeToken` challenge shape `POST /auth/login`
+ * returns, and an `mfa_required` account with no factor yet gets an
+ * enrollment ticket. Every caller must branch on `kind`.
+ */
+export type SupabaseExchangeResult =
+  | { kind: 'tokens'; accessToken: string; refreshToken: string; expiresIn: number; sessionId: string }
+  | { kind: 'mfa'; mfaChallengeToken: string; expiresIn: number }
+  | { kind: 'enrollment'; enrollmentTicket: string; expiresIn: number };
+
+interface RawExchangeResponse {
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  sessionId?: string;
+  mfaRequired?: boolean;
+  mfaChallengeToken?: string;
+  mfaEnrollmentRequired?: boolean;
+  enrollmentTicket?: string;
 }
 
 export async function exchangeSupabaseSession(
   supabaseAccessToken: string,
-): Promise<BackendSessionTokens> {
+): Promise<SupabaseExchangeResult> {
   const maxAttempts = 3;
   let lastError: ApiError | undefined;
 
@@ -39,7 +56,7 @@ export async function exchangeSupabaseSession(
 
 async function exchangeSupabaseSessionOnce(
   supabaseAccessToken: string,
-): Promise<BackendSessionTokens> {
+): Promise<SupabaseExchangeResult> {
   const response = await fetch(`${API_BASE_URL}/auth/supabase/exchange`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -64,49 +81,60 @@ async function exchangeSupabaseSessionOnce(
     throw new ApiError(response.status, json as import('../api/errors').ApiErrorBody);
   }
 
-  return json as BackendSessionTokens;
+  const body = (json ?? {}) as RawExchangeResponse;
+  if (body.mfaRequired && body.mfaChallengeToken) {
+    return { kind: 'mfa', mfaChallengeToken: body.mfaChallengeToken, expiresIn: body.expiresIn ?? 300 };
+  }
+  if (body.mfaEnrollmentRequired && body.enrollmentTicket) {
+    return { kind: 'enrollment', enrollmentTicket: body.enrollmentTicket, expiresIn: body.expiresIn ?? 300 };
+  }
+  if (body.accessToken && body.refreshToken && body.sessionId) {
+    return {
+      kind: 'tokens',
+      accessToken: body.accessToken,
+      refreshToken: body.refreshToken,
+      expiresIn: body.expiresIn ?? 0,
+      sessionId: body.sessionId,
+    };
+  }
+  throw new ApiError(response.status, { error: { message: 'Unexpected response from the sign-in service.' } });
 }
 
 export type SignUpResult = 'verification_sent' | 'already_verified';
 
-export interface NotifyEmailVerifiedResult {
-  status: 'already_verified' | 'pending_verification' | 'unknown';
-  confirmationEmailSent: boolean;
-}
-
-export async function notifyEmailAlreadyVerified(email: string): Promise<NotifyEmailVerifiedResult> {
+/**
+ * SR-006-2: fires the backend's best-effort "sync + notify" side effect for
+ * an email the caller believes is already registered/verified. The response
+ * is deliberately uniform (Feature 001 AC-5 anti-enumeration precedent) —
+ * this function returns nothing to brand-distinguish on, by design. Callers
+ * must not infer account existence or verification state from this call;
+ * they must already have independent evidence (e.g. Supabase's own signUp
+ * response, or a real authenticated exchange) before treating an email as
+ * "already verified".
+ */
+export async function notifyEmailAlreadyVerified(email: string): Promise<void> {
   const trimmed = email.trim().toLowerCase();
-  const cached = loadNotifyVerifiedResult(trimmed);
-  if (cached) {
-    return {
-      status: cached.status as NotifyEmailVerifiedResult['status'],
-      confirmationEmailSent: cached.confirmationEmailSent,
-    };
-  }
+  if (wasNotifyVerifiedPinged(trimmed)) return;
+  markNotifyVerifiedPinged(trimmed);
 
   const response = await fetch(`${API_BASE_URL}/auth/notify-email-verified`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    body: JSON.stringify({ email: trimmed }),
   });
 
-  const text = await response.text();
-  let json: NotifyEmailVerifiedResult | undefined;
-  try {
-    json = text ? (JSON.parse(text) as NotifyEmailVerifiedResult) : undefined;
-  } catch {
-    throw new ApiError(response.status, {
-      error: { message: `Server error (${response.status}). Is the API running?` },
-    });
-  }
-
   if (!response.ok) {
+    const text = await response.text();
+    let json: unknown;
+    try {
+      json = text ? JSON.parse(text) : undefined;
+    } catch {
+      throw new ApiError(response.status, {
+        error: { message: `Server error (${response.status}). Is the API running?` },
+      });
+    }
     throw new ApiError(response.status, json as import('../api/errors').ApiErrorBody);
   }
-
-  const result = json ?? { status: 'unknown' as const, confirmationEmailSent: false };
-  saveNotifyVerifiedResult(trimmed, result);
-  return result;
 }
 
 export function isVerificationLinkError(error: { message: string }): boolean {
@@ -124,19 +152,11 @@ export async function signUpWithSupabase(email: string, password: string): Promi
   const trimmed = email.trim().toLowerCase();
   saveSignupEmail(trimmed);
 
-  // Skip Supabase signUp when the address is already verified — avoids Auth rate limits.
-  try {
-    const precheck = await notifyEmailAlreadyVerified(trimmed);
-    if (precheck.status === 'already_verified') {
-      return 'already_verified';
-    }
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 429) {
-      /* Shared WiFi shares one public IP — precheck limit must not block sign-up. */
-    }
-    /* backend unavailable or rate-limited — fall through to Supabase signUp */
-  }
-
+  // SR-006-2: no precheck against notify-email-verified before calling
+  // Supabase's own signUp — that precheck was exactly the "called from the
+  // browser on every signup attempt" oracle-abuse pattern the security
+  // review flagged. Supabase's own signUp response carries the two safe,
+  // already-authenticated-by-Supabase signals below.
   const { data, error } = await requireSupabase().auth.signUp({
     email: trimmed,
     password,
@@ -151,14 +171,14 @@ export async function signUpWithSupabase(email: string, password: string): Promi
   }
 
   if (data.user && data.user.identities?.length === 0) {
-    try {
-      const status = await notifyEmailAlreadyVerified(trimmed);
-      if (status.status === 'already_verified') {
-        return 'already_verified';
-      }
-    } catch {
-      /* best-effort */
-    }
+    // Supabase's own anti-enumeration signal: an empty `identities` array on
+    // signUp means this email already belongs to a confirmed account (GoTrue
+    // does not send mail or throw in this case). Trust it directly rather
+    // than round-tripping through our own (now intentionally uniform)
+    // notify-email-verified response. Still ping the backend, best-effort,
+    // so it can run its sync/notify side effect — but never branch on it.
+    void notifyEmailAlreadyVerified(trimmed).catch(() => undefined);
+    return 'already_verified';
   }
 
   return 'verification_sent';
@@ -167,7 +187,7 @@ export async function signUpWithSupabase(email: string, password: string): Promi
 export async function signInWithSupabase(
   email: string,
   password: string,
-): Promise<BackendSessionTokens> {
+): Promise<SupabaseExchangeResult> {
   const { data, error } = await requireSupabase().auth.signInWithPassword({
     email: email.trim().toLowerCase(),
     password,
@@ -197,7 +217,7 @@ export async function resendSignupVerification(email: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function updatePasswordWithSupabase(newPassword: string): Promise<BackendSessionTokens> {
+export async function updatePasswordWithSupabase(newPassword: string): Promise<SupabaseExchangeResult> {
   const { error } = await requireSupabase().auth.updateUser({ password: newPassword });
   if (error) throw error;
 
@@ -255,7 +275,7 @@ export async function verifySupabaseEmailLink(tokenHash: string, actionType: str
   throw lastError ?? new Error('Verification failed.');
 }
 
-export async function handleAlreadyVerifiedEmail(email: string): Promise<NotifyEmailVerifiedResult> {
+export async function handleAlreadyVerifiedEmail(email: string): Promise<void> {
   return notifyEmailAlreadyVerified(email);
 }
 

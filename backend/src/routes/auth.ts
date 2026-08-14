@@ -17,6 +17,7 @@ import {
   RESET_PASSWORD_MFA_VERIFY_LIMIT,
   SIGNUP_LIMIT,
   RESEND_VERIFICATION_LIMIT,
+  NOTIFY_EMAIL_VERIFIED_IP_LIMIT,
   isPrivilegedUserType,
 } from '../lib/policy.js';
 import { isLoginLocked, recordLoginFailure, clearLoginLockout } from '../lib/login-lockout.js';
@@ -217,10 +218,27 @@ export function createAuthRouter(ctx: AppContext): Router {
   // POST /auth/notify-email-verified
   // Web: user hit an expired verification link or re-signed up with a
   // confirmed email — sync app.accounts and send a confirmation email.
+  //
+  // SR-006-2: this route is unauthenticated and takes a bare email, so its
+  // *response* must never distinguish "no such account" / "exists but not
+  // verified" / "exists and verified" — that is a textbook account-existence
+  // oracle (Feature 001 AC-5 is the precedent this route regressed). Every
+  // reachable branch below returns the exact same 202 + generic message,
+  // regardless of what was actually true or what side effect (if any) ran.
+  // The per-email cooldown alone only bounds abuse of one victim address;
+  // the IP-scoped limiter below is what bounds sweeping many addresses.
   // ---------------------------------------------------------------
+  const NOTIFY_EMAIL_VERIFIED_ACCEPTED = {
+    message: 'If this account needs anything from us, check your inbox — you can also try logging in.',
+  };
   const notifyVerifiedSchema = z.object({ email: z.string().email() });
   router.post(
     '/auth/notify-email-verified',
+    createRateLimiter(
+      ctx.kv,
+      { attempts: NOTIFY_EMAIL_VERIFIED_IP_LIMIT.attempts, windowSeconds: NOTIFY_EMAIL_VERIFIED_IP_LIMIT.windowSeconds },
+      (req) => `notify-verified:ip:${clientIp(req)}`,
+    ),
     validateBody(notifyVerifiedSchema),
     async (req, res, next) => {
       try {
@@ -248,7 +266,7 @@ export function createAuthRouter(ctx: AppContext): Router {
         }
 
         if (!supabaseUser) {
-          res.status(200).json({ status: 'unknown' as const, confirmationEmailSent: false });
+          res.status(202).json(NOTIFY_EMAIL_VERIFIED_ACCEPTED);
           return;
         }
 
@@ -264,7 +282,7 @@ export function createAuthRouter(ctx: AppContext): Router {
         }
 
         if (!emailConfirmed) {
-          res.status(200).json({ status: 'pending_verification' as const, confirmationEmailSent: false });
+          res.status(202).json(NOTIFY_EMAIL_VERIFIED_ACCEPTED);
           return;
         }
 
@@ -282,10 +300,9 @@ export function createAuthRouter(ctx: AppContext): Router {
           );
         }
 
-        let confirmationEmailSent = false;
         if (account) {
           try {
-            confirmationEmailSent = await ctx.authNotifications.notifyEmailAlreadyVerified({
+            await ctx.authNotifications.notifyEmailAlreadyVerified({
               accountId: account.id,
               email: normalizedEmail,
             });
@@ -298,10 +315,7 @@ export function createAuthRouter(ctx: AppContext): Router {
           }
         }
 
-        res.status(200).json({
-          status: 'already_verified' as const,
-          confirmationEmailSent,
-        });
+        res.status(202).json(NOTIFY_EMAIL_VERIFIED_ACCEPTED);
       } catch (err) {
         next(err);
       }
@@ -385,46 +399,86 @@ export function createAuthRouter(ctx: AppContext): Router {
           return;
         }
 
-        await notifyNewDeviceLoginIfNeeded(ctx, {
-          accountId: activeAccount.id,
-          userType: activeAccount.userType,
-          deviceId: deviceId ?? null,
-          deviceName: deviceName ?? null,
-          ipAddress: ip,
-        });
+        // SR-006-1 / SR-14(a) parity with POST /auth/login: this route mints
+        // a session from a Supabase-issued token the caller controls (they
+        // choose which token to send — it may be a plain AAL1
+        // password/link-derived token with no MFA step at all). A verified
+        // TOTP factor must gate session issuance here exactly as it does at
+        // login, using the caller's own accessToken as the user-scoped token
+        // for the GoTrue factor lookup/challenge calls (mirrors
+        // `verification.userAccessToken` at the /auth/login call site).
+        const verifiedFactor = await ctx.supabase.findVerifiedTotpFactor(accessToken);
 
-        const { session, refreshToken } = await mintNewSession(ctx.sessions, {
+        if (!verifiedFactor) {
+          if (activeAccount.mfaRequired) {
+            const ticket = await issueEnrollmentTicket(ctx.enrollmentTickets, activeAccount.id);
+            await storePendingEnrollment(ctx.kv, ticket.token, {
+              accountId: activeAccount.id,
+              userAccessToken: accessToken,
+            });
+            await ctx.auditLog.record({ accountId: activeAccount.id, eventType: 'mfa_enrollment_ticket_issued', ipAddress: ip });
+            res.status(200).json({ mfaEnrollmentRequired: true, enrollmentTicket: ticket.token, expiresIn: Math.round((ticket.expiresAt.getTime() - Date.now()) / 1000) });
+            return;
+          }
+
+          await notifyNewDeviceLoginIfNeeded(ctx, {
+            accountId: activeAccount.id,
+            userType: activeAccount.userType,
+            deviceId: deviceId ?? null,
+            deviceName: deviceName ?? null,
+            ipAddress: ip,
+          });
+
+          const { session, refreshToken } = await mintNewSession(ctx.sessions, {
+            accountId: activeAccount.id,
+            deviceId: deviceId ?? null,
+            deviceName: deviceName ?? null,
+            ipAddress: ip,
+            userAgent: req.header('user-agent') ?? null,
+            surface: surfaceFor(activeAccount.userType),
+            mfaVerifiedAt: null,
+          });
+          await ctx.auditLog.record({ accountId: activeAccount.id, eventType: 'login_success', ipAddress: ip });
+
+          scheduleCustomerLifecycleNotifications(ctx, activeAccount);
+
+          const { token, expiresIn } = signAccessToken(
+            {
+              sub: session.accountId,
+              user_type: activeAccount.userType,
+              mfa_required: activeAccount.mfaRequired,
+              account_state: activeAccount.accountState,
+              partner_organization_id: activeAccount.partnerOrganizationId,
+              session_id: session.id,
+            },
+            ctx.env.jwtSigningKeys,
+            ctx.env.jwtActiveKid,
+          );
+
+          res.status(200).json({
+            accessToken: token,
+            refreshToken,
+            expiresIn,
+            sessionId: session.id,
+          });
+          return;
+        }
+
+        // A verified TOTP factor exists — do not mint a session from this
+        // AAL1-proof token. Issue the same login-time MFA challenge
+        // POST /auth/login returns, requiring POST /auth/mfa/challenge
+        // before any session is issued.
+        const gotrueChallenge = await ctx.supabase.challengeTotpFactor(accessToken, verifiedFactor.factorId);
+        const { challengeToken, expiresIn: challengeExpiresIn } = await createMfaChallenge(ctx.kv, {
           accountId: activeAccount.id,
+          factorId: verifiedFactor.factorId,
+          gotrueChallengeId: gotrueChallenge.challengeId,
+          userAccessToken: accessToken,
           deviceId: deviceId ?? null,
-          deviceName: deviceName ?? null,
           ipAddress: ip,
           userAgent: req.header('user-agent') ?? null,
-          surface: surfaceFor(activeAccount.userType),
-          mfaVerifiedAt: null,
         });
-        await ctx.auditLog.record({ accountId: activeAccount.id, eventType: 'login_success', ipAddress: ip });
-
-        scheduleCustomerLifecycleNotifications(ctx, activeAccount);
-
-        const { token, expiresIn } = signAccessToken(
-          {
-            sub: session.accountId,
-            user_type: activeAccount.userType,
-            mfa_required: activeAccount.mfaRequired,
-            account_state: activeAccount.accountState,
-            partner_organization_id: activeAccount.partnerOrganizationId,
-            session_id: session.id,
-          },
-          ctx.env.jwtSigningKeys,
-          ctx.env.jwtActiveKid,
-        );
-
-        res.status(200).json({
-          accessToken: token,
-          refreshToken,
-          expiresIn,
-          sessionId: session.id,
-        });
+        res.status(200).json({ mfaRequired: true, mfaChallengeToken: challengeToken, expiresIn: challengeExpiresIn });
       } catch (err) {
         next(err);
       }
@@ -807,6 +861,12 @@ export function createAuthRouter(ctx: AppContext): Router {
         await ctx.supabase.updateUserPassword(userAccessToken, newPassword);
         const revokedIds = await ctx.sessions.revokeAllForAccount(account.id, 'password_reset');
         await revokeJtisInKv(ctx.kv, revokedIds);
+        // SR-007-1 (security-review.md §8.2): a completed password reset must
+        // also disable every device's push token, not just API sessions — a
+        // stolen-device attacker with a still-live session otherwise keeps
+        // receiving this account's notifications (incl. theft_critical)
+        // straight through the legitimate owner's reset.
+        await ctx.pushTokens.disableAllForAccount(account.id);
         await ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_completed', ipAddress: clientIp(req) });
         notifyInBackground(
           'auth.password.changed',
@@ -877,6 +937,11 @@ export function createAuthRouter(ctx: AppContext): Router {
 
         const revokedIds = await ctx.sessions.revokeAllForAccount(account.id, 'password_reset');
         await revokeJtisInKv(ctx.kv, revokedIds);
+        // SR-007-1 (security-review.md §8.2): same rationale as the
+        // non-privileged branch above — this is the privileged-account
+        // (MFA-gated) completion path, and it must not skip the push-token
+        // sweep just because the account also required a TOTP step.
+        await ctx.pushTokens.disableAllForAccount(account.id);
         await ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_completed', ipAddress: clientIp(req) });
         notifyInBackground(
           'auth.password.changed',

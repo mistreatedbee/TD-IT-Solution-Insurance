@@ -54,6 +54,11 @@ export function createSessionRouter(ctx: AppContext): Router {
         const auth = req.auth!;
         const revokedIds = await ctx.sessions.revokeAllForAccount(auth.accountId, 'logout_all');
         await revokeJtisInKv(ctx.kv, revokedIds);
+        // SR-007-1 residual (security-review.md §7.1): revoking sessions
+        // alone leaves every device's push token enabled — a stolen phone
+        // "log out everywhere" must also stop that device from continuing
+        // to receive this account's notifications, not just its API access.
+        await ctx.pushTokens.disableAllForAccount(auth.accountId);
         await ctx.auditLog.record({ accountId: auth.accountId, eventType: 'logout', ipAddress: clientIp(req) });
         res.status(204).send();
       } catch (err) {

@@ -61,6 +61,10 @@ export const ERROR_CATALOG = {
   RESET_TOKEN_EXPIRED: { statusCode: 410, message: 'This link has expired or was already used.' },
   REFRESH_TOKEN_INVALID: { statusCode: 401, message: 'Your session has expired. Please log in again.' },
   ACCOUNT_SUSPENDED: { statusCode: 423, message: 'This account is currently unavailable.' },
+  DEVICE_MISMATCH: {
+    statusCode: 403,
+    message: 'This action must be performed from the device associated with your current session.',
+  },
   STEP_UP_REQUIRED: { statusCode: 401, message: 'Please re-verify your identity to continue.' },
   UPSTREAM_UNAVAILABLE: {
     statusCode: 503,

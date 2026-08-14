@@ -42,8 +42,16 @@ export function CustomerResetPasswordPage() {
 
     setLoading(true);
     try {
-      const tokens = await updatePasswordWithSupabase(password);
-      await auth.signInWithTokens(tokens.accessToken, tokens.refreshToken);
+      const result = await updatePasswordWithSupabase(password);
+      if (result.kind === 'mfa' || result.kind === 'enrollment') {
+        // SR-006-1: the account has (or must enroll) a second factor —
+        // the password was changed, but completing sign-in needs the MFA
+        // step this page has no UI for. Send the customer to /login, which
+        // fully supports both branches.
+        navigate('/login?redirect=%2Fdashboard', { replace: true });
+        return;
+      }
+      await auth.signInWithTokens(result.accessToken, result.refreshToken);
       navigate('/dashboard', { replace: true });
     } catch (err) {
       setError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Could not reset password.' }));

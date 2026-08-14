@@ -7,6 +7,7 @@ export const NOTIFICATION_COLLECTIONS = {
   devicePushTokens: 'device_push_tokens',
   notificationPreferences: 'notification_preferences',
   notificationDeliveryState: 'notification_delivery_state',
+  pushTokenSecurityEvents: 'push_token_security_events',
 } as const;
 
 export const devicePushTokensJsonSchemaValidator: Document = {
@@ -31,6 +32,12 @@ export const devicePushTokensJsonSchemaValidator: Document = {
       platform: { bsonType: 'string', enum: ['ios', 'android', 'unknown'] },
       appVersion: { bsonType: ['string', 'null'] },
       enabled: { bsonType: 'bool' },
+      // SR-007-2 (security-review.md §7.2): set (and left in place, not
+      // reset) while this row is a quarantined cross-account takeover claim
+      // — see repositories/push-tokens.ts's deferred-takeover design. Null
+      // for every ordinary row. Not in `required`: additive field, no
+      // migration needed for existing documents.
+      pendingTakeoverSince: { bsonType: ['date', 'null'] },
       createdAt: { bsonType: 'date' },
       updatedAt: { bsonType: 'date' },
       lastRegisteredAt: { bsonType: 'date' },
@@ -92,6 +99,47 @@ export const notificationDeliveryStateJsonSchemaValidator: Document = {
 
 const notificationDeliveryStateIndexes: IndexDescription[] = [
   { key: { accountId: 1 }, unique: true, name: 'accountId_1' },
+];
+
+/**
+ * SR-007-2 (security-review.md §7.2c) — structured, queryable audit trail
+ * for cross-account push-token takeover attempts. Deliberately its own
+ * Mongo collection rather than a `console.warn` (which the re-verification
+ * called "a compensating breadcrumb, not the control") and rather than
+ * Postgres `app.account_audit_log` (repositories/audit-log.ts): that trail's
+ * `event_type` is a fixed Postgres enum (`app.audit_event_type`,
+ * migrations/030+) — adding a value is a migration, which is out of scope
+ * for a focused security fix. Deferred: full ADR-0006 Trail A/B integration
+ * (`backend-architect` ruling) once this event type earns a migration slot.
+ * No token material (`expoPushToken`/`tokenHash`) is ever written here —
+ * SR-007-6.
+ */
+export const pushTokenSecurityEventJsonSchemaValidator: Document = {
+  $jsonSchema: {
+    bsonType: 'object',
+    required: [
+      'eventType',
+      'claimingAccountId',
+      'claimingDeviceId',
+      'contestedAccountIds',
+      'createdAt',
+    ],
+    properties: {
+      eventType: { bsonType: 'string', enum: ['takeover_pending', 'takeover_completed'] },
+      claimingAccountId: { bsonType: 'string' },
+      claimingDeviceId: { bsonType: 'string' },
+      contestedAccountIds: { bsonType: 'array', items: { bsonType: 'string' } },
+      actorSessionId: { bsonType: ['string', 'null'] },
+      ipAddress: { bsonType: ['string', 'null'] },
+      userAgent: { bsonType: ['string', 'null'] },
+      createdAt: { bsonType: 'date' },
+    },
+  },
+};
+
+const pushTokenSecurityEventIndexes: IndexDescription[] = [
+  { key: { claimingAccountId: 1, createdAt: 1 }, name: 'claimingAccountId_1_createdAt_1' },
+  { key: { contestedAccountIds: 1, createdAt: 1 }, name: 'contestedAccountIds_1_createdAt_1' },
 ];
 
 async function ensureCollection(
@@ -159,6 +207,12 @@ export async function bootstrapNotificationCollections(db: Db): Promise<
       NOTIFICATION_COLLECTIONS.notificationDeliveryState,
       notificationDeliveryStateJsonSchemaValidator,
       notificationDeliveryStateIndexes,
+    ),
+    await ensureCollection(
+      db,
+      NOTIFICATION_COLLECTIONS.pushTokenSecurityEvents,
+      pushTokenSecurityEventJsonSchemaValidator,
+      pushTokenSecurityEventIndexes,
     ),
   ];
 }

@@ -231,6 +231,38 @@ export function buildPasswordChangedEmail(): { subject: string; html: string; pr
   };
 }
 
+/** SR-007-2 (security-review.md §7.2) — sent to the LOSING account when a
+ * push token it owns is re-registered under a different account. Deliberately
+ * says nothing about who registered it (no other account's identifying
+ * information belongs in this email) — only that it happened and what to do. */
+export function buildPushTokenReregisteredAlertEmail(): { subject: string; html: string; preheader: string } {
+  const preheader = 'A device notification token on your account was claimed by another account.';
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+    A push notification token previously registered to your account was just re-registered under a
+    <strong>different account</strong>. As a precaution, that token has been quarantined and will stop
+    delivering notifications to your account after a short grace period unless you tell us otherwise.
+  </p>
+  <p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+    If this was you setting up a new device or reinstalling the app, no action is needed.
+  </p>
+  <p style="margin:0;font-size:14px;color:#6B6156;">
+    If this was <strong>not</strong> you, contact support immediately — this can happen if your device or
+    a copied notification identifier ended up in someone else's hands.
+  </p>`;
+
+  return {
+    preheader,
+    subject: `Security alert: a device notification was re-registered elsewhere — ${NOTIFICATION_BRAND.name}`,
+    html: wrapBrandedEmail({
+      preheader,
+      title: 'Device notification re-registered',
+      bodyHtml,
+      ctaLabel: 'Contact support',
+      ctaUrl: `${NOTIFICATION_BRAND.siteUrl}`,
+    }),
+  };
+}
+
 export function buildNewDeviceLoginEmail(params: {
   deviceName: string;
   ipAddress: string | null;

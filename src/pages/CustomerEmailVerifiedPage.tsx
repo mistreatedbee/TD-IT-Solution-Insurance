@@ -1,81 +1,44 @@
-import { useEffect, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { Badge, Button, SectionHeading } from '../components';
-import { InlineAlert } from '../dashboard/components/ui';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
-import { handleAlreadyVerifiedEmail } from '../customer/supabase/auth';
-import { loadNotifyVerifiedResult, loadSignupEmail } from '../onboarding/onboardingStorage';
+import { loadSignupEmail } from '../onboarding/onboardingStorage';
 
 interface EmailVerifiedLocationState {
   email?: string;
-  confirmationEmailSent?: boolean;
 }
 
+/**
+ * SR-006-2 (backend/docs/features/006-customer-onboarding/security-review.md):
+ * `POST /auth/notify-email-verified` no longer returns anything that
+ * distinguishes "already verified" from "not yet verified" or "no such
+ * account" — so this page can no longer assert any of those as fact. It is
+ * reached only as a fallback after a verification link failed to complete,
+ * so the honest, safe message is "try signing in; verify again if that
+ * doesn't work" rather than a confident "your email is confirmed."
+ */
 export function CustomerEmailVerifiedPage() {
   const location = useLocation();
   const [params] = useSearchParams();
   const state = (location.state ?? {}) as EmailVerifiedLocationState;
-  const [confirmationEmailSent, setConfirmationEmailSent] = useState(state.confirmationEmailSent ?? false);
-  const [loading, setLoading] = useState(!state.confirmationEmailSent);
-
   const email = state.email ?? params.get('email') ?? loadSignupEmail() ?? '';
-  const cached = email ? loadNotifyVerifiedResult(email) : null;
-
-  useEffect(() => {
-    if (!email) {
-      setLoading(false);
-      return;
-    }
-
-    if (state.confirmationEmailSent || cached?.status === 'already_verified') {
-      setConfirmationEmailSent(cached?.confirmationEmailSent ?? state.confirmationEmailSent ?? false);
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    void handleAlreadyVerifiedEmail(email)
-      .then((result) => {
-        if (!cancelled && result.status === 'already_verified') {
-          setConfirmationEmailSent(result.confirmationEmailSent);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [cached?.confirmationEmailSent, cached?.status, email, state.confirmationEmailSent]);
 
   return (
     <MarketingAuthShell>
-      <Badge tone="emerald">Email verified</Badge>
+      <Badge tone="emerald">Almost there</Badge>
       <SectionHeading
         as="h1"
-        title="Your email is already verified"
+        title="You can try signing in now"
         size="md"
         className="mt-4 mb-2"
         subtitle={
           email
-            ? `The address ${email} is confirmed. Sign in to continue.`
-            : 'This email address is confirmed. Sign in to continue.'
+            ? `If ${email} is already verified, sign in below. If not, check your inbox for a verification link, or request a new one.`
+            : 'If your email is already verified, sign in below. If not, check your inbox for a verification link, or request a new one.'
         }
       />
-      {loading ? (
-        <p className="text-sm text-text-secondary">Sending confirmation email…</p>
-      ) : confirmationEmailSent ? (
-        <div className="mt-4">
-          <InlineAlert tone="info">
-            We sent a confirmation email to your inbox for your records.
-          </InlineAlert>
-        </div>
-      ) : (
-        <p className="mt-4 text-sm text-text-secondary">
-          You can sign in below. If you need another copy in your inbox, contact support.
-        </p>
-      )}
+      <p className="mt-4 text-sm text-text-secondary">
+        Still stuck? Contact support and we can check your account.
+      </p>
       <div className="mt-8 flex flex-col gap-3 sm:flex-row">
         <Link to="/login?redirect=%2Fdashboard" className="flex-1">
           <Button variant="primary" fullWidth>

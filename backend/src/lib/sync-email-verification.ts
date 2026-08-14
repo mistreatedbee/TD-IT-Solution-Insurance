@@ -34,6 +34,23 @@ export async function syncAppAccountIfSupabaseEmailConfirmed(
  * Aligns app.accounts with a successful Supabase Auth proof (password grant
  * or access-token exchange). Supabase is the email-verification gate for
  * customer web/mobile; if Auth accepted the user, activate a pending app row.
+ *
+ * BR-2 tightening (security-review.md #3, 2026-08-13): `supabaseAuthSucceeded`
+ * alone is trusted only when `emailConfirmed` is unknown (`undefined`) — e.g.
+ * the password-grant call site, which never fetches it. When a caller DOES
+ * fetch `emailConfirmed` (the token-exchange call site, from GoTrue `/user`'s
+ * `email_confirmed_at`) and it comes back explicitly `false`, that is a
+ * direct negative signal from Supabase and must not be silently overridden
+ * by `supabaseAuthSucceeded` — otherwise BR-2's "email must be verified" gate
+ * is delegated entirely to the Supabase project's own "Confirm email"
+ * dashboard toggle with no independent app-level check at all. In that case
+ * fall through to the propagation-delay-tolerant admin-API re-check below
+ * (`syncAppAccountIfSupabaseEmailConfirmed`) instead of activating outright —
+ * this still recovers the account.state=pending_verification / GoTrue
+ * email_confirmed_at propagation-delay case the `supabaseAuthSucceeded`
+ * fallback exists for (sync-email-verification.test.ts), it just no longer
+ * trusts a token that told us, in the same call, that the email is NOT
+ * confirmed.
  */
 export async function resolveCustomerAccountAfterSupabaseAuth(
   accounts: AccountsRepo,
@@ -45,7 +62,9 @@ export async function resolveCustomerAccountAfterSupabaseAuth(
     return account;
   }
 
-  if (options.emailConfirmed || options.supabaseAuthSucceeded) {
+  const explicitlyUnconfirmed = options.emailConfirmed === false;
+
+  if (!explicitlyUnconfirmed && (options.emailConfirmed || options.supabaseAuthSucceeded)) {
     await accounts.markEmailVerified(account.id);
     return (await accounts.findById(account.id)) ?? account;
   }

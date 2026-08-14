@@ -27,23 +27,41 @@ export function CustomerAuthCallbackPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function redirectAlreadyVerified(email: string) {
-      const result = await handleAlreadyVerifiedEmail(email);
-      if (cancelled) return;
-      if (result.status === 'already_verified') {
-        navigate('/auth/email-verified', {
-          replace: true,
-          state: { email, confirmationEmailSent: result.confirmationEmailSent },
-        });
-        return true;
+    // SR-006-2: notify-email-verified now returns an identical response
+    // regardless of account state, so this can no longer tell us whether the
+    // email was actually already verified — it can only fire the backend's
+    // best-effort sync/notify side effect. Every caller of this helper
+    // reaches it only after independent evidence the link failed for
+    // reasons consistent with "already verified" (a Supabase verify error,
+    // or our own exchange saying ACCOUNT_NOT_ACTIVE for a token Supabase did
+    // recognise) — so it always proceeds to the reassurance page, which is
+    // now honest about not asserting a fact it cannot confirm.
+    async function redirectAlreadyVerified(email: string): Promise<true> {
+      try {
+        await handleAlreadyVerifiedEmail(email);
+      } catch {
+        /* best-effort — never block the redirect on this */
       }
-      return false;
+      if (!cancelled) {
+        navigate('/auth/email-verified', { replace: true, state: { email } });
+      }
+      return true;
     }
 
     async function completeWithSession(accessToken: string) {
       try {
-        const tokens = await exchangeSupabaseSession(accessToken);
-        await auth.signInWithTokens(tokens.accessToken, tokens.refreshToken);
+        const result = await exchangeSupabaseSession(accessToken);
+        if (result.kind === 'mfa' || result.kind === 'enrollment') {
+          // An MFA-enrolled (or forced-re-enrollment) account cannot
+          // complete sign-in from this token-only callback page — there is
+          // no code-entry form here. Send them to the normal login page,
+          // which fully supports both branches (SR-006-1).
+          if (!cancelled) {
+            navigate('/login?redirect=%2Fdashboard', { replace: true });
+          }
+          return;
+        }
+        await auth.signInWithTokens(result.accessToken, result.refreshToken);
         if (!cancelled) {
           setState('verified');
           navigate('/dashboard', { replace: true });

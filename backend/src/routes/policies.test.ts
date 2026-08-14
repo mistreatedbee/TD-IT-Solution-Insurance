@@ -56,28 +56,36 @@ function customerToken(env: Env, accountId: string, sessionId: string, accountSt
 }
 
 function createInMemoryIdempotencyRepo(): IdempotencyRepo {
-  const rows = new Map<string, { requestHash: string; responseStatus: number; responseBody: unknown }>();
+  const rows = new Map<
+    string,
+    { accountId: string | null; requestHash: string; responseStatus: number; responseBody: unknown }
+  >();
   return {
-    async find(endpoint, key) {
+    // Mirrors repositories/idempotency.ts's real `account_id is not distinct
+    // from $3` scoping — a stored row belonging to a different account must
+    // never be replayed to this caller (cross-account IDOR guard).
+    async find(endpoint, key, accountId) {
       const row = rows.get(`${endpoint}:${key}`);
-      return row
-        ? {
-            endpoint,
-            idempotencyKey: key,
-            accountId: null,
-            requestHash: row.requestHash,
-            responseStatus: row.responseStatus,
-            responseBody: row.responseBody,
-            createdAt: new Date(),
-          }
-        : null;
+      if (!row || row.accountId !== (accountId ?? null)) return null;
+      return {
+        endpoint,
+        idempotencyKey: key,
+        accountId: row.accountId,
+        requestHash: row.requestHash,
+        responseStatus: row.responseStatus,
+        responseBody: row.responseBody,
+        createdAt: new Date(),
+      };
     },
     async store(record) {
-      rows.set(`${record.endpoint}:${record.idempotencyKey}`, {
-        requestHash: record.requestHash,
-        responseStatus: record.responseStatus,
-        responseBody: record.responseBody,
-      });
+      if (!rows.has(`${record.endpoint}:${record.idempotencyKey}`)) {
+        rows.set(`${record.endpoint}:${record.idempotencyKey}`, {
+          accountId: record.accountId,
+          requestHash: record.requestHash,
+          responseStatus: record.responseStatus,
+          responseBody: record.responseBody,
+        });
+      }
     },
   };
 }
