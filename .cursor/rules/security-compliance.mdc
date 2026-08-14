@@ -11,6 +11,24 @@ Relevant role specs: `.claude/agents/cybersecurity-architect.md`, `.claude/agent
 
 ## Standing rulings already made — apply these, don't re-derive
 
+- **Every path that mints a backend session for an account with a verified MFA factor must check
+  for that factor before minting — no exceptions per surface.** This was a real, shipped bug:
+  `POST /auth/login` enforced it, `POST /auth/supabase/exchange` (the customer web login path)
+  didn't, and it took a Stage 8 pass to catch. If you add a new session-minting path (a new OAuth
+  provider, a new exchange route, anything that calls `mintNewSession`), it must call the same
+  verified-factor check `/auth/login` uses before minting, not after.
+- **Cross-account credential-collision handling (one physical credential — a push token, a
+  device id, anything similarly unverifiable — claimed by a second account) uses a
+  deferred-takeover pattern, not an inline demotion.** Established via `backend/src/lib/push-token-takeover.ts`:
+  quarantine the *new* claim (disabled, timestamped) rather than immediately disabling the prior
+  owner's row; only complete the takeover after a cooldown with no resolution; write a real,
+  queryable audit record structurally incapable of holding the sensitive credential itself; email
+  the losing account once. An inline "last write wins" demotion on an unverified credential is
+  the anti-pattern this replaced — don't reintroduce it on a new surface.
+- **A device-binding check that can be silently skipped (`if (session?.deviceId && …)`) is a
+  fail-open bug, not a defensible default.** Fixed instance: push-token registration now rejects
+  a session with no bound device rather than exempting it. Any new check keyed on an optional
+  session field should reject on absence, not skip.
 - **No server-side biometric MFA factor** may ever be enrolled against the Supabase identity
   project — POPIA s57 prior-authorization risk. On-device biometrics (Face ID/Touch ID/
   passkeys where the template never leaves the device) are fine; the platform must never
@@ -38,20 +56,37 @@ Relevant role specs: `.claude/agents/cybersecurity-architect.md`, `.claude/agent
 - ADR-0006 (privileged-access audit correlation) — **ratified 2026-08-11 (§16), with §17
   appended as a post-ratification correction.** Its migrations (032, 033) are applied to the
   live Supabase project.
+- ADR-0009 (self-asserted location ingestion trust boundary, Feature 008) — **Proposed, pending
+  `cto` ratification.** Its SDL-1…SDL-12 requirements are binding now under
+  `cybersecurity-architect`'s standing authority regardless of ratification status. Does **not**
+  reopen or amend ADR-0006 — read both before doing anything with location data.
 - AUD-3 (bulk admin list calls not recording a per-subject audit entry) — shape ruled (R-1);
-  **closed on Trail A**: `GET /v1/admin/accounts` calls `recordBulkDisclosure()`. **Open on
-  Trail B** — the `admin_access_log` design is complete but there is no collection, no writer
-  and no `/admin/policies*`/`/admin/assets*` route. Any new admin list endpoint must write one
-  row per disclosed subject **plus** one call-scoped row; C-14 (purpose-documented,
-  role-restricted) binds to every such endpoint, Feature 001's included.
+  **closed on both trails** — Trail A (`GET /v1/admin/accounts` calls `recordBulkDisclosure()`)
+  and Trail B (`GET /v1/admin/policies*`/`GET /v1/admin/assets*` write to `admin_access_log` via
+  `admin-access-log.ts`; bootstrap in `feature004-collections.ts`). Live Atlas verification
+  (SR-004-admin-2) still pending — check `HANDOFF.md` before assuming that's closed too. Any new
+  admin list endpoint must write one row per disclosed subject **plus** one call-scoped row;
+  C-14 binds to every such endpoint.
 - **FU-A13** — `account_audit_log_account_id_created_at` and the partial
-  `account_audit_log_created_at` are designed at `001-authentication/database-design.md` §3,
-  described as existing by several documents, and **absent from the live database**. Don't
-  repeat the claim. Likewise `app.purge_expired_audit_log()` exists but nothing schedules it —
-  retention is not enforced today, whatever the compliance review says.
-- **FU-A14** — AUD-9 requires a purpose/case reference on location and partner-operator
-  access that resolves to a real case; **no case entity exists on this platform.** A free-text
-  purpose string is explicitly ruled out (ADR-0006 §17.3).
+  `account_audit_log_created_at` were applied via migration 034 (2026-08-11), catalog-verified.
+  Purge scheduling is still not wired — `app.purge_expired_audit_log()` exists but nothing calls
+  it. Retention is not enforced today, whatever a compliance review says.
+- **FU-A14** — AUD-9 requires a purpose/case reference on location and partner-operator access
+  that resolves to a real case. **The entity half is now discharged** — `recovery_cases` exists
+  (`recovery.ts`, `security-cases.ts`). What's still open is the **wiring half** (no read path
+  resolves a purpose against a case yet, no location endpoint exists to attach one to — ADR-0009
+  §2 tracks this as SD-FU-07). A free-text purpose string remains explicitly ruled out.
+- **Features 006/007 Stage 8** — both now have a real, multi-round `security-review.md` with
+  chair sign-off and partial joint concurrence (not the "no Stage 8 exists" state from earlier).
+  `security-engineer` has concurred on the technical findings; `compliance-specialist` has
+  concurred *in part* and withholds concurrence on real customer PI pending the Supabase DPA, a
+  Resend-specific operator review (the vendor changed from Brevo and was never re-reviewed), and
+  a platform-level RoPA — none of which exist in this repo. Don't treat either feature as clear
+  for real customer accounts on the strength of "Stage 8 passed" alone; check the conditions.
+- **SR-007-11** — there is no admin account-suspend/deactivate endpoint anywhere in this
+  codebase (`admin-accounts.ts` has two `GET` routes and nothing else). If you're asked to wire
+  push-token/session revocation into "the admin deactivation handler," that handler doesn't
+  exist yet — it needs its own design and its own Stage 8, not a side-effect implementation.
 
 ## Process
 

@@ -12,15 +12,25 @@ and recover lost/stolen assets, coordinating with security-company partners.
 
 ## Current repo state — verify before assuming anything
 
-This repo has moved well past a design-system showcase. As of this handoff:
-- **Web** (`src/`): React 18 + Vite + TS + Tailwind design-system components, marketing site.
-- **Backend** (`backend/`): real Node.js + TS API — Feature 001 (auth) and Feature 004 **customer**
-  policies/assets API are built and tested (**85 tests green**). Recovery, claims, payments, and
-  Feature 004 admin routes are **not built**.
-- **Mobile** (`mobile/`): real Expo + TS app — auth + Policy/Assets tabs wired to live API; Phase 2
-  recovery/claims **UI scaffold** (stub APIs). **30 tests green.** App icon still Expo defaults.
+This repo has moved well past a design-system showcase. As of this handoff (verify against
+`HANDOFF.md`, which moves faster than this file):
+- **Web** (`src/`): React 18 + Vite + TS + Tailwind design-system components, marketing site,
+  **plus** real product surfaces — Admin Panel (`/admin/*`), Security Company Dashboard
+  (`/security/*`), and a full customer surface (auth, onboarding wizard, post-login dashboard).
+- **Backend** (`backend/`): real Node.js + TS API — Feature 001 (auth), Feature 004 customer
+  **and admin** policies/assets routes, a recovery-case API scaffold, and Feature 006/007
+  (onboarding/plan-catalog, notifications) are built and tested (**188 tests green, 36 files** —
+  re-verify with `cd backend && npm test`, this number moves every session). Claims and payments
+  are **not built**.
+- **Mobile** (`mobile/`): real Expo + TS app — auth, Policy/Assets tabs, a full onboarding
+  wizard, and a notification-preferences screen wired to live API; Phase 2 recovery/claims **UI
+  scaffold** (stub APIs, backend 404s). **12 test files** (re-verify pass count with
+  `cd mobile && npm test`). App icon/splash are the real brand mark, not Expo defaults.
 - **Databases**: MongoDB Atlas (domain data) + Supabase Postgres (identity/session data), per
   ADR-0002's polyglot split. Both have real, applied schemas.
+- **Feature 008** (self-device GPS tracking): design-time only, four documents under
+  `docs/features/008-self-device-gps-tracking/` plus ADR-0009. **Nothing implemented.** Don't
+  add `expo-location` or any location code on the strength of the design docs alone.
 
 Read `HANDOFF.md` at repo root before starting any new work — it has the full current-state
 snapshot, open items, and what's mid-flight. Don't re-derive from git log alone.

@@ -30,7 +30,12 @@ this before adding any new screen or changing navigation/auth structure.
 - **Design system**: `src/theme/primitives/*` is an explicitly **temporary** bridge from the
   web design system (`src/components/*` at repo root) — every file in it is headed with a
   "temporary, do not extend independently" note. Don't add new primitives here without
-  checking whether `design-system-manager`'s planned RN port has landed first.
-- **Policy/asset screens are placeholders.** No backend contract exists for that domain yet
-  beyond a design doc (`docs/features/004-policy-asset-management/api-design.md`) — don't
-  build real screens against it until a backend implementation exists to call.
+  checking whether `design-system-manager`'s planned RN port has landed first. Current
+  inventory includes `FormField`, `SelectChipGroup`, and (new) `Toggle`
+  (`mobile/src/theme/primitives/Toggle.tsx`, used by `NotificationPreferencesScreen`) — reuse
+  before adding another.
+- **Policy/asset screens are real, not placeholders** — this note is stale-corrected: Feature
+  004's customer API shipped and `PolicyListScreen`, `CreatePolicyScreen`, `AssetListScreen`,
+  `RegisterAssetScreen`, and their detail routes are wired to the live backend. Check
+  `HANDOFF.md`'s "What actually exists" section before assuming any given mobile screen is a
+  stub — several that once were no longer are (notifications preferences is the latest).

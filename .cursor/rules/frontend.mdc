@@ -18,6 +18,11 @@ Relevant role specs: `.claude/agents/frontend-architect.md`, `.claude/agents/fro
 - **New one-off components need design-system sign-off** — check whether an existing
   component can be extended/composed before adding a new one; this repo has a documented
   house rule against ad-hoc parallel components.
-- No real product pages exist yet beyond the marketing site and component showcase, per
-  `HANDOFF.md` — an Admin Dashboard and Security Company Dashboard are planned (Phase 1/2 of
-  `docs/organization/08-roadmap.md`) but not started. Don't describe either as existing.
+- **Stale note corrected:** this used to say no real product pages existed beyond the marketing
+  site. That is no longer true and hasn't been for a few sessions — check `HANDOFF.md` before
+  repeating it. Real, live surfaces on `src/` today: the Admin Panel (`/admin/*`, `src/admin/`),
+  the Security Company Dashboard (`/security/*`, `src/security/`), a shared privileged layer
+  (`src/dashboard/`), and a full customer surface — auth, the `/get-started` onboarding wizard,
+  and a post-login customer dashboard at `/dashboard` (`src/customer/`, `src/pages/onboarding/`,
+  `src/pages/customer/`). Both dashboards have real customer/admin data blocked behind open
+  Stage 8 items (see `security-compliance.mdc`), not behind "doesn't exist yet."

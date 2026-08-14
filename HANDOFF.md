@@ -14,16 +14,24 @@ Supabase (Postgres, EU region) + MongoDB Atlas project:
   `/admin/accounts/:id`** — the platform's first `/admin/*` route. Feature 004 adds
   **`GET /v1/admin/policies*`**, **`GET /v1/admin/assets*`** (Trail B audit via `admin_access_log`).
   Recovery Phase 2 scaffold: **`POST/GET /v1/recovery/cases*`**, **`GET/PATCH/POST /v1/security/cases*`**.
-  Feature 007 has landed its own routes on this same backend — see the new Feature 006/007
-  entries below. **145 tests across 32 files, green as of 2026-08-13** (one combined backend
-  suite spanning Features 001, 004, and Feature 007's shipped push/preferences code; up from the
-  110+/21 figure this doc previously cited — re-verify with `cd backend && npm test` before
-  trusting either number going forward).
+  Feature 007 has landed its own routes on this same backend — see the Feature 006/007
+  entries below. **188 tests across 36 files** — independently re-run twice during this
+  session's Stage 8 remediation (`security-engineer` and `notification-engineer` each ran
+  `npm test`/`npm run typecheck` themselves rather than take a count on trust; both got
+  `Test Files 36 passed (36)` / `Tests 188 passed (188)`, clean typecheck). Up from 145/32 —
+  re-verify with `cd backend && npm test` before citing either number further; this figure has
+  moved every session so far.
 - Mobile (`mobile/`): Expo app with matching auth screens, SecureStore token handling,
-  device-ID binding on login *and* refresh. **Still only 30 tests passing (10 suites)** — unchanged
-  since the mobile production push, despite the onboarding wizard, push-notification client, and
-  plan-catalog API client landing since. No new mobile tests were added for any of that. Flagging
-  this as a QA gap, not a documentation gap: `qa-architect`/`automation-qa-engineer` own closing it.
+  device-ID binding on login *and* refresh. **12 test files now** (was 10) — a `Toggle` primitive
+  test (`mobile/src/theme/primitives/__tests__/Toggle.test.tsx`) and a `NotificationPreferencesScreen`
+  test landed this session alongside the two new source files they cover. **This session's own
+  count of individual test cases has not been independently run in this environment (no shell
+  available) — verify with `cd mobile && npm test` before citing a precise pass count.** The
+  onboarding wizard and plan-catalog client still have no dedicated test coverage of their own;
+  that gap is unchanged and remains `qa-architect`/`automation-qa-engineer`'s to close. Two
+  confirmed-orphaned dead-code screens were also deleted this session — this environment has no
+  git-history tool to name which files, and there's nothing left to check now that they're gone;
+  the current `mobile/src/screens/*` tree is consistent with that (no dangling references found).
   **EAS deploy scaffold:** `eas.json` uses EAS environment scoping (preview/production API URLs
   via `eas env:create`, not hardcoded); [`mobile/docs/DEPLOY.md`](mobile/docs/DEPLOY.md) documents
   the full flow ([EAS production config](be5edc20-7c7a-4ace-87be-3ce7a6631520)). Owner actions
@@ -46,8 +54,8 @@ Supabase (Postgres, EU region) + MongoDB Atlas project:
   `backend/src/db/feature004-collections.ts`, `recovery-collections.ts` + `scripts/bootstrap-mongo-collections.ts`
   ([Mongo collections bootstrap](c734196c-9969-4f80-b6a8-32428d01ba2d) — applied to live
   Atlas `td-it-solution-insurance`, idempotent re-run verified). Startup path uses the same
-  shared function via `mongo-bootstrap.ts`. Part of the combined **145 tests across 32 files**
-  cited above (2026-08-13) — Feature 004 no longer has an isolated count worth quoting separately.
+  shared function via `mongo-bootstrap.ts`. Part of the combined **188 tests across 36 files**
+  cited above — Feature 004 no longer has an isolated count worth quoting separately.
 - **Web dashboards:** Shared privileged layer at `src/dashboard/`; Admin Panel at `/admin/*` (`src/admin/`); Security Company Dashboard at `/security/*` (`src/security/`). Architecture at `docs/features/005-admin-dashboard/architecture.md`. Stage 8 admin surface review at `security-review-admin-surface.md` — SR-004-admin-6 closed; SR-004-admin-2/4/5(d) still block real customer data.
 - **Mobile:** Policy and Assets tabs are **real screens** wired to Feature 004 customer API
   (`PolicyListScreen`, `CreatePolicyScreen`, `AssetListScreen`, `RegisterAssetScreen`, detail
@@ -59,10 +67,14 @@ Supabase (Postgres, EU region) + MongoDB Atlas project:
 - **Stage 1:** minimum viable `business-requirements.md` exists; **D-01–D-08 deferred** (tiers, pricing,
   coverage limits, eligibility, billing, cancel/refund, retention, claims). P-01 partially discharged for
   Phase 1; commercial rules still open. Pending `product-manager` sign-off (OQ-1–OQ-3).
+- **Small real bug fixed this session:** the landing page's pricing table (`src/pages/PlansSection.tsx`)
+  had its "Illustrative cover limit" column text overlapping the asset-type labels — root cause was
+  using `AssetBadge` (a full grid-tile component) as if it were a compact inline icon. Fixed; confirmed
+  `AssetBadge` is still used correctly elsewhere (`src/components/AssetBadge/`).
 
-**Feature 006 — Customer Registration & Onboarding (Web + Mobile).** New since the last
-handoff; code shipped ahead of a formal Stage 7/8 disposition — read this before assuming it's
-fully gated:
+**Feature 006 — Customer Registration & Onboarding (Web + Mobile).** Code shipped ahead of a
+formal Stage 7/8 disposition; that gate has now **run and largely closed** — read this before
+assuming either the old "ungated" status or a full clean bill of health:
 - **Web:** `/get-started` wizard (`src/pages/onboarding/CustomerOnboardingPage.tsx`), plus a
   customer login/signup entry on the landing page (`/login`, `/signup` → `CustomerLoginPage` /
   the same onboarding wizard) and a real post-login customer dashboard at `/dashboard`
@@ -74,9 +86,10 @@ fully gated:
   that it requested live camera/photo-library OS permissions and then discarded the captured
   images — worse than MP-5's "no disabled camera affordance" rule, since a *working* capture
   flow with no destination asks for a sensitive permission under false pretenses. `mobile-engineer`
-  removed the step the same session (`expo-image-picker` uninstalled, so it can't silently
-  regress); neither the mobile nor the web wizard has a photo step today — MP-5 remains fully
-  deferred on both surfaces, not just architecturally but in the actual UI.
+  removed the step the same session — **confirmed still true**: `expo-image-picker` is absent
+  from `mobile/package.json`, so it can't silently regress. Neither the mobile nor the web wizard
+  has a photo step today — MP-5 remains fully deferred on both surfaces, not just
+  architecturally but in the actual UI.
 - **Backend:** new public plan-catalog endpoint `GET /v1/plans/catalog` (unauthenticated, IP
   rate-limited, for the pre-signup marketing funnel) and `GET /v1/plans` (authenticated) —
   both backed by MongoDB `insurance_plan_catalog` via `ctx.planCatalog`. Admin editor:
@@ -86,43 +99,112 @@ fully gated:
 - **Paper trail:** `docs/features/006-customer-onboarding/` has `business-requirements.md`
   (**Status: Draft** — client-directed plan structure ratified for Phase 1; payment, photos,
   GPS assignment, full profile/KYC explicitly deferred with owners), `ui-design.md`,
-  `ux-research-notes.md`. **No `security-review.md` exists yet for this feature** — Stage 8 has
-  not formally run against code that is already live. See the placeholder note below.
+  `ux-research-notes.md`, and now a substantial `security-review.md` (see below).
+- **Stage 8 — `docs/features/006-customer-onboarding/security-review.md` now exists and has
+  been re-verified twice.** Chaired verdict progression: **BLOCKED (2026-08-13)** →
+  **SIGN-OFF GRANTED WITH REQUIRED CHANGES (2026-08-13, §7)** after `authentication-engineer`
+  closed both blocking findings: **SR-006-1** (MFA was bypassable on the web login path —
+  `POST /auth/supabase/exchange` minted a full session from a password-only Supabase token with
+  no TOTP-factor check; now calls `findVerifiedTotpFactor` before any mint, same ordering as
+  `/auth/login`) and **SR-006-2** (`POST /auth/notify-email-verified` returned three
+  distinguishable response shapes for unknown/pending/verified addresses with only a per-email
+  cooldown; now a single uniform `202` response plus an IP-scoped rate limiter). `security-engineer`
+  independently re-read the code, ran the suite itself (187/187 passing, 36 files, clean
+  typecheck) and **concurred** on both closures **and** on a related fix in the same pass — a
+  cross-account idempotency-key IDOR (`Idempotency-Key` lookups are now scoped by server-derived
+  `accountId`, so a client-chosen key colliding with another account's key is a guaranteed cache
+  miss, not a replay; end-to-end regression test at `assets.test.ts:379-424`). `compliance-specialist`
+  concurred **in part** — the MFA/enumeration fixes and POPIA s19 adequacy of the uniform response,
+  but **withheld concurrence for any real customer PII** pending C-006-1 (Supabase DPA — owner),
+  C-006-3 (Resend has never actually been reviewed as an operator — the only SMTP compliance
+  review on file is for Brevo, the superseded vendor), and C-006-4 (no RoPA exists anywhere in
+  this repo). **SR-006-3…SR-006-13 remain open** (session-token storage posture with no ADR,
+  no audit trail on `PATCH /admin/plans`, client-side draft hygiene for asset identifiers/PII,
+  plan-limit enforcement not authoritative before payments, missing Stage 5/6/7 artefacts, Stage
+  10 abuse-case list) — read `security-review.md` §3/§4 directly before treating this feature as
+  fully closed. **Net: safe to keep building against; not yet safe to expose to real customer
+  accounts** until the compliance conditions above close.
 - **Still explicitly not real:** payment/subscription activation, `pending_activation` →
   `active` transition (no payment webhook), GPS tracker assignment, phone OTP, full
   individual/business profile fields, KYC/ID verification, populated coverage limits, claims
   eligibility — all tracked as open items in `business-requirements.md` §7 with named owners.
 
-**Feature 007 — Notifications & Communications.** New since the last handoff: a full planning
-doc set **plus a partial real implementation**, not just paper. `docs/features/007-notifications/README.md`
-carries its own honesty table — reproduced here so this doc doesn't drift from it:
+**Feature 007 — Notifications & Communications.** A full planning doc set **plus a partial real
+implementation**, not just paper. `docs/features/007-notifications/README.md` carries its own
+honesty table — reproduced here so this doc doesn't drift from it:
 
 | Capability | Status |
 |---|---|
 | Auth transactional email (signup, reset, invite, magic link, OTP) | **SHIPPED** — Supabase `auth-send-email` → Resend; branded templates in `supabase/functions/auth-send-email/` |
 | Push token registration API (`PUT/DELETE /devices/push-token`) | **SHIPPED** — MongoDB `device_push_tokens`; customer-only |
-| Notification preferences API (`GET/PATCH /notifications/preferences`) | **SHIPPED** — defaults per category; `theft_critical` push cannot self-disable |
+| Notification preferences API (`GET/PATCH /notifications/preferences`) | **SHIPPED**, now with a real screen (see Mobile section below) — defaults per category; `theft_critical` push cannot self-disable |
 | Mobile push registration (Expo token upload on app entry) | **SHIPPED** — `mobile/src/notifications/`; requires EAS `projectId` for a real token |
 | Push delivery / event emitters | **PARTIAL** — Expo send adapter; theft case create + a test endpoint wired |
 | SMS | **NOT BUILT** — vendor not selected |
 | Notification service / event bus | **NOT BUILT** |
-| Preference center UI | **NOT BUILT** — API only, no screen |
+| Preference center UI | **SHIPPED (mobile only)** — see below; still no web equivalent |
 | Payment / GPS / claims / recovery notifications | **NOT BUILT** — upstream features incomplete |
 
   Master matrix, architecture, push spec, and email template catalogue are all filed under
   `docs/features/007-notifications/` — treat everything in that directory marked PLANNED or
-  BLOCKED as design intent, not live behaviour. **No `security-review.md` or `compliance-review`
-  sign-off exists for this feature beyond the design-time flags in
-  `compliance-review-notifications.md` (explicitly "NOT legal sign-off").**
+  BLOCKED as design intent, not live behaviour.
 
-**Stage 8/10 status for Features 006 and 007 — pending concurrent review.** A `cybersecurity-architect`
-pass and a `qa-architect` Stage 10 assessment were in flight for both features as of this
-writing and had not landed. Check `docs/features/006-customer-onboarding/security-review.md`
-and `docs/features/007-notifications/` for whether those exist yet before treating either
-feature as Stage-8/10-clean — as of this snapshot, neither `security-review.md` file exists in
-either feature's directory, meaning **both features have shipped code ahead of a formal Stage 8
-gate**, which the org's own lifecycle treats as a hard-gate violation worth surfacing, not
-quietly working around.
+- **Mobile preference-centre screen shipped this session** — `mobile/src/screens/notifications/NotificationPreferencesScreen.tsx`,
+  reachable at `mobile/app/(app)/notification-preferences.tsx` and linked from the profile screen,
+  is wired to the `GET/PATCH /v1/notifications/preferences` API that had shipped with no UI
+  consumer until now. Built on a new shared `Toggle` primitive at
+  `mobile/src/theme/primitives/Toggle.tsx` (own test coverage — see the Mobile bullet above).
+  No web equivalent exists.
+
+- **Stage 8 — `docs/features/007-notifications/security-review.md` exists and has been through
+  two remediation rounds.** Chaired verdict: **SIGN-OFF GRANTED WITH REQUIRED CHANGES**, held
+  through both re-verifications (§7, §8). The two behavioural findings worth knowing about:
+  - **SR-007-1 (push tokens surviving logout)** — now closed for `POST /session/logout-all`
+    and for both branches of password-reset completion (`disableAllForAccount()` wired into
+    `session.ts:61`, `auth.ts:869`, `auth.ts:944`, the last two verified and test-covered by
+    `notification-engineer`'s follow-up). **Not closed for admin-initiated deactivation** —
+    see SR-007-11 below.
+  - **SR-007-2 (anyone holding a victim's Expo push token could silence their theft alerts)** —
+    closed via a **deferred-takeover state machine**: a cross-account `tokenHash` collision no
+    longer disables the prior owner's row inline. It quarantines the *claiming* registration
+    (`enabled: false, pendingTakeoverSince: now`) for a **24-hour cooldown**
+    (`backend/src/lib/push-token-takeover.ts`); only after the cooldown elapses with no
+    resolution does the prior owner's row get demoted. The victim's device keeps receiving
+    every category, including `theft_critical`, throughout the cooldown. Paired with a
+    **fail-closed device-binding check** (a session with no bound `deviceId` is now rejected,
+    not silently exempted) and a real, queryable Mongo audit trail
+    (`push_token_security_events` via `backend/src/repositories/push-token-security-log.ts`,
+    structurally incapable of holding token material) plus a one-time alert email to the losing
+    account. `security-engineer` independently verified this against the exact attack scenario
+    (not the doc's summary) and confirmed the regression tests assert opposite outcomes against
+    the old vs. new code — the strongest evidence a test suite can give that a fix is real.
+    **This deferred-takeover / fail-closed-device-check pattern is now the template for any
+    future cross-account credential-collision handling on this platform** — treat it as
+    precedent, not a one-off.
+  - **SR-007-11 (new, filed by `notification-engineer`) — there is no admin account
+    suspend/deactivate endpoint anywhere in this codebase.** `notification-engineer` went
+    looking for the handler to wire `disableAllForAccount()` into and found it doesn't exist —
+    `backend/src/routes/admin-accounts.ts` has exactly two routes, both `GET`. This is now
+    tracked as a missing **feature** (owner: `backend-architect` + `backend-engineer`, its own
+    API-design amendment and its own Stage 8), not a missing wire-up. **Confirmed still true**
+    as of this handoff — no `PATCH`/`PUT`/`POST` route against `/admin/accounts*` exists in
+    `backend/src/routes/`.
+  - `compliance-specialist` concurred in part — same shape as Feature 006: withheld for real
+    customer PI pending C-007-1 (Expo operator review), C-007-2 (Resend operator review, same
+    condition as Feature 006's C-006-3), C-007-4 (RoPA); withheld for any theft/recovery/GPS-
+    derived push pending SR-007-3 (lock-screen content minimisation, elevated from a security
+    recommendation to compliance-required); flagged C-007-11 — **there is no account-deletion
+    or account-closure path anywhere on this platform**, which is a platform-level gap Feature
+    007 exposed rather than created (nothing can honour a POPIA s24 deletion request for any
+    notification data today).
+  - **SR-007-3…10 remain open** (lock-screen minimisation, preference-change audit trail,
+    fail-open notification-bootstrap mode, `EXPO_ACCESS_TOKEN` handling, Stage 10 abuse cases) —
+    read `security-review.md` directly before assuming closed.
+
+**Backend test suite: 188 tests passing across 36 files**, independently re-run by
+`security-engineer` and `notification-engineer` during the Stage 8 remediation rounds above
+(not taken on trust from either doc's own count — re-verify with `cd backend && npm test`
+before citing either number further). Up from the 145/32 figure this doc previously cited.
 
 **Governance/ADRs.** `docs/organization/adr/`: 0001 (stack baseline), 0002 (Supabase for
 identity, MongoDB for domain data — the load-bearing split decision), 0003 (Render hosting),
@@ -131,11 +213,75 @@ rulings and four conditions; see §16.5 for the conditions and §16.6 for FU-A10
 **§17 was appended later the same day** — a `cto` post-ratification correction of one factual
 error inside §16 (an index it described as existing does not exist, §17.1) plus two new
 follow-ups, FU-A13 and FU-A14 (§17.6). §16's text stands as signed; §17 corrects it in the
-open rather than editing the ratification record.
-0004/0005 are reserved by name in other documents but not yet written; 0007 is reserved for
-FU-08's third-persistence-surface ADR (ruling R-4); **0008 (MongoDB schema provisioning) is
-proposed** at [`0008-mongodb-schema-provisioning.md`](docs/organization/adr/0008-mongodb-schema-provisioning.md)
-— pending `cto` ratification. 0009 is the next free number.
+open rather than editing the ratification record. **0008** (MongoDB schema provisioning) is
+**proposed**, pending `cto` ratification, at
+[`0008-mongodb-schema-provisioning.md`](docs/organization/adr/0008-mongodb-schema-provisioning.md).
+**0009** (new — self-asserted location ingestion trust boundary) is **proposed**, pending `cto`
+ratification, at
+[`0009-self-asserted-location-ingestion-trust-boundary.md`](docs/organization/adr/0009-self-asserted-location-ingestion-trust-boundary.md) —
+see the Feature 008 entry below for what it rules on. 0004/0005 remain reserved by name in other
+documents; 0007 is reserved for FU-08's third-persistence-surface ADR (ruling R-4). **0010 is
+the next free number** — re-verify against `docs/organization/adr/` before claiming otherwise;
+this exact line has drifted before.
+
+**Feature 008 — Self-Device GPS Tracking for Phone Assets (design-time only — NOT authorized to
+build).** New this session. A complete Stage 1–3-ish design package for a narrower, hardware-
+vendor-independent slice of GPS: for `assetType: smartphone` only, the platform's own mobile app
+reports the phone's own OS-level location as that asset's location — no tracker hardware, no
+GPS vendor dependency. **Nothing in this feature has been implemented**: no `expo-location`
+dependency, no ingestion endpoint, no consent record, no location-access audit trail. Read all
+four documents in full before touching this feature, because each carries real rulings that bind
+future work:
+- [`docs/features/008-self-device-gps-tracking/architecture.md`](docs/features/008-self-device-gps-tracking/architecture.md)
+  (`mobile-architect`) — the design proposal; explicitly pre-Stage-1, explicitly not a green
+  light to build.
+- [`docs/features/008-self-device-gps-tracking/business-requirements.md`](docs/features/008-self-device-gps-tracking/business-requirements.md)
+  (`business-analyst`, with a `product-manager` addendum) — rules **BR-SD-01: no plan-tier
+  gating in Phase 1** (available identically on every tier, no invented commercial rule), scopes
+  strictly to foreground/on-demand capture on `smartphone` assets only (no background tracking,
+  no live map, no laptop/vehicle/other asset types), and is explicit that this document alone
+  **does not authorize development**.
+- [`docs/features/008-self-device-gps-tracking/compliance-review.md`](docs/features/008-self-device-gps-tracking/compliance-review.md)
+  (`compliance-specialist`) — POPIA lawful basis is **s11(1)(a) consent** (not contract-
+  necessity); rules location is **not** POPIA s26 special personal information for the customer
+  themself; flags RICA territory the moment anyone proposes getting location from a mobile
+  network operator rather than the customer's own device (**C-008-9**); explicitly not legal
+  sign-off.
+- [`docs/organization/adr/0009-self-asserted-location-ingestion-trust-boundary.md`](docs/organization/adr/0009-self-asserted-location-ingestion-trust-boundary.md)
+  (`cybersecurity-architect`, **Proposed**, pending `cto` ratification) — the load-bearing
+  document. Rules that self-asserted location is a **new, distinct trust boundary** from
+  ADR-0006's third trail (ADR-0006 governs *who reads* a location record; ADR-0009 governs
+  *whether the platform should believe* one) and does **not** reopen or amend ADR-0006. Twelve
+  binding requirements, SDL-1…SDL-12, of which the single most important is **SDL-2: a
+  self-asserted location may never, on its own, drive a real-world or third-party consequence**
+  — it may never alone dispatch a security-company partner, adjudicate a claim, or affect
+  billing, because the platform has no way to verify a self-reported coordinate is real. This
+  rule is binding on **all future work that touches self-asserted telemetry of any kind**, not
+  just Feature 008 — the ADR states explicitly that any future customer-reported signal (an
+  odometer reading, a self-declared asset condition, a self-reported theft time) inherits SDL-1/
+  SDL-2 by name. The security-architecture requirements (SDL-1…SDL-12) are binding now under
+  `cybersecurity-architect`'s standing authority; the **ADR-level packaging/precedent is still
+  pending `cto` ratification** — §15–17 (security-engineer concurrence, compliance-specialist
+  concurrence, cto ratification) are all still **reserved, not yet filed**.
+- **Cleared for Stage 3–7 design work only. Stage 8 and Stage 9 remain hard-gated** — per the
+  ADR's own §14, this package is not a Stage 8 sign-off, not a compliance ruling, not
+  `product-manager` sign-off, not an API/schema approval, and not an instruction to add
+  `expo-location` or any location permission to the mobile client. `mobile/package.json` has no
+  location dependency today and should not acquire one on the strength of this document set.
+- **One incidental finding surfaced while drafting ADR-0009, filed as SD-FU-05 (not blocking
+  today):** the recovery-case entity's partner-organisation read surface
+  (`backend/src/routes/security-cases.ts`) writes **no audit trail at all** — no `admin_access_log`
+  entry, no purpose/case reference — for partner-operator reads, which ADR-0006's AUD-9
+  partner-operator clause requires. Not exploitable today because that route exposes only a
+  timestamp (`lastLocationAt`) and identifiers, never coordinates; it becomes blocking the
+  moment any location value is exposed there.
+
+**Stage 8/10 status summary, current as of this handoff:** Features 006 and 007 have both had a
+real Stage 8 pass with chair sign-off and partial joint concurrence (security-engineer given on
+the technical findings covered above; compliance-specialist granted in part, withholding real-PII
+exposure pending owner/compliance items). Neither is a *complete* Stage 8 closure — both have
+double-digit numbered findings still open, listed above and in full in each `security-review.md`.
+Feature 008 has not reached Stage 8 at all, by design, and its own ADR says so explicitly.
 
 ## Local dev / demo environment
 
@@ -176,7 +322,7 @@ the bar this project has been held to:
 | **~~ADR-0006 ratification~~** | **Done** — ratified 2026-08-11, §16. Remaining §16.5 conditions: ~~C-16(a)(b) folded into AUD-9~~ (done); ~~FU-A4 runbook document~~ (done — [`aud-8-privileged-access-reconstruction.md`](docs/organization/runbooks/aud-8-privileged-access-reconstruction.md); **executable use still blocked on FU-A11**); AUD-11 "checked" not "enforced" until FU-A10; C-13 closed before go-live | Ratification no longer blocking; FU-A11 blocks relying on the runbook |
 | **~~Migrations 032 + 033 not applied~~** | **Applied** to the live Supabase project (2026-08-11), and **verified against its catalog** rather than taken on trust (`cto`, ADR-0006 §17.5): all four AUD-1 columns plus `result_count`, all four R-3 `CHECK`s, `account_audit_log_actor_created_at` with the right partial shape, 031's superseded actor index dropped, all three new enum values present. Both files' headers still read "NOT YET APPLIED" long after they were applied — **corrected in place**, since `.cursor/rules/database.mdc` makes the header, not a doc, the source of truth. **Residual:** the four constraints were added `NOT VALID` and have **not** been promoted; 033's verification block is `security-engineer`'s to run and there is no record of it having been run | No longer blocking deploy; constraint promotion still an open decision |
 | **FU-A13 (new)** — Trail A indexes + purge scheduling | **Indexes applied** — migration `034` created `account_audit_log_account_id_created_at` and `account_audit_log_created_at` on the live Supabase project (2026-08-11, catalog-verified). **Still open:** purge scheduling (nothing calls `app.purge_expired_audit_log()`); deploy-time live-vs-design schema check (FU-A13 second half, shares FU-A10); 033's `NOT VALID` constraint promotion (`security-engineer`) | Subject-keyed AUD-8 query no longer seq-scans; retention still not enforced until scheduled |
-| **FU-A14 (new)** — AUD-9's mandatory purpose/case reference has nothing to resolve against | **`recovery_cases` Mongo collection + API now exist** (`recovery.ts`, `security-cases.ts`) — partially addresses the "no case entity" gap for Security Dashboard reads. GPS location-access trail still needs full Stage 1 design and AUD-9 case-reference wiring on location endpoints | Blocks **GPS Phase 2** location-access trail completion; Security Dashboard case queue **unblocked at entity level** |
+| **FU-A14** — AUD-9's mandatory purpose/case reference has nothing to resolve against | **`recovery_cases` Mongo collection + API now exist** (`recovery.ts`, `security-cases.ts`) — ADR-0009 §2 records this as **discharging FU-A14's entity half**; what remains is the **wiring half** (SD-FU-07: no read path yet resolves a purpose against a case, and no location endpoint exists to attach one to) | Blocks **GPS Phase 2** location-access trail completion and Feature 008's non-owner read path (SDL-5); Security Dashboard case queue **unblocked at entity level** |
 | **FU-A11 — investigative read credential** | Read-only credential scoped to both audit trails, for whoever executes the AUD-8 runbook (`cloud-infrastructure-architect` + `database-architect`, verified `security-engineer`) | Blocks *using* the runbook before first production privileged account (§16.5 item 2) |
 | **Resend (auth email) + Supabase hook secrets** | Platform owner: Resend account, verify `tditsolutionsinsurance.co.za`, create API key, set Edge Function secrets (`RESEND_API_KEY`, `EMAIL_FROM`, `SEND_EMAIL_HOOK_SECRET`), enable Send Email Hook — see [`resend-setup.md`](docs/features/001-authentication/resend-setup.md). Code-side integration (Edge Function, templates, `transactional-email.ts`) is **built and unchanged since the last handoff**; nothing in this repo can confirm whether the owner has actually completed the Resend account/domain/secret steps (no secrets committed, correctly). **Treat as still owner-blocked until confirmed otherwise** — this is the same status the last handoff recorded, just now against Resend instead of the earlier Brevo recommendation (see `resend-setup.md` §7: "Resend replaces the earlier Brevo recommendation for this flow"). | Blocks real email delivery, which blocks real signup verification on both web (`/get-started`) and mobile — i.e. blocks Feature 006 end-to-end, not just Feature 001 |
 | **Supabase dashboard Auth email-link TTLs, and "Confirm email" toggle** | Confirm/tighten in the Supabase dashboard directly — not reachable from application code. `authentication-engineer`'s 2026-08-13 BR-2 tightening (`sync-email-verification.ts`, closing a gap where `supabaseAuthSucceeded` could override an explicit `emailConfirmed: false` from GoTrue) narrows but does not remove this: the app has no independent way to verify the Supabase project's "Confirm email" setting is actually enabled, so email verification being mandatory is still ultimately a Supabase project-config assumption, not something this codebase can assert on its own | Compliance completeness (C-5.3); load-bearing assumption for BR-2 ("email must be verified" before a session is minted) — platform owner should confirm this toggle's state in the Supabase dashboard |
@@ -184,7 +330,13 @@ the bar this project has been held to:
 | **Payment gateway selection** | Open decision (`integration-architect`). Feature 006's onboarding "Complete" step is explicit that payment/activation is pending; policies are created `status: pending_activation`, `billing.billingStatus: not_configured` | Blocks policy activation, plan enforcement, and any real subscription flow — onboarding can create a policy shell but never activate it |
 | **GPS hardware vendor / Phase 2 ingestion** | Open decision (`integration-architect`). FU-A14's location-access audit trail still has no case-reference wiring to hang off of GPS endpoints that don't exist | Blocks GPS pairing, live map, and location-based recovery — recovery/claims mobile UI remains a stub against 404s |
 | **Real integration test suite** | Automated tests against the live Supabase/Postgres/Mongo stack, beyond the manual smoke tests done so far | Not blocking, but the current test coverage is unit-level + one manual E2E pass |
-| **Mobile test coverage has not kept pace with mobile feature growth** | `mobile/` is still 30 tests / 10 suites, unchanged since the mobile production push, despite the onboarding wizard, push-notification client, and plan-catalog client all landing since. None of that new code has test coverage | Not a hard blocker for internal distribution, but a real Stage 10 gap for whichever release this ships in |
+| **Mobile test coverage has not kept pace with mobile feature growth** | `mobile/` grew from 10 to **12 test files** this session (`Toggle`, `NotificationPreferencesScreen`) — real progress, but the onboarding wizard and plan-catalog client, which are older and larger surfaces, still have none | Not a hard blocker for internal distribution, but a real Stage 10 gap for whichever release this ships in |
+| **ADR-0009 ratification (new)** — self-asserted location ingestion trust boundary | `cto` ratification of the ADR-level packaging (§17, reserved). Its SDL-1…SDL-12 security requirements are already binding under `cybersecurity-architect`'s standing authority regardless of ratification status. `security-engineer` concurrence (§15) and `compliance-specialist` concurrence (§16) are also both reserved, not yet filed | Blocks nothing today — no Feature 008 code exists to be out of compliance. Blocks treating the ADR as a closed platform-wide precedent |
+| **Feature 008 — Stage 8/9 hard-gated, by the ADR's own §14** | `compliance-specialist`'s POPIA lawful-basis ruling exists (`compliance-review.md`, s11(1)(a) consent) but is explicitly not legal sign-off; `product-manager` sign-off on OQ-SD-01/02/05 still open; no Stage 5-7 API/schema/mobile design exists yet | Blocks any Feature 008 implementation. `mobile/package.json` must **not** acquire `expo-location` on the strength of the design docs alone |
+| **SR-007-11 (new)** — no admin account-suspend/deactivate endpoint exists anywhere in this codebase | `backend-architect` design + API-design amendment, `backend-engineer` implementation, its own Stage 8. `notification-engineer` owns wiring `disableAllForAccount()` into it the moment it exists | Blocks an admin's ability to act on a compromised/fraudulent account at all — a materially larger gap than the push-token finding that surfaced it. Also blocks full closure of Feature 007's SR-007-1 |
+| **C-006-3 / C-007-2 (same underlying gap)** — Resend has never actually been reviewed as an operator | `compliance-specialist` owns producing a Resend-specific operator/s72/DPA review. The only SMTP vendor review on file (`compliance-review-smtp-vendor.md`) is for Brevo, the superseded vendor — the review was never redone after the vendor changed | Blocks concurrence on real customer PI for both Feature 006 and Feature 007, independent of whether Resend's own account/domain/secret setup (below) is complete |
+| **No account-deletion/closure path exists anywhere on the platform (C-007-11, new)** | `backend-architect` + `database-architect` design | Makes every "delete on account closure" retention rule this project has written (audit logs, push tokens, notification preferences) currently unenforceable — there is no trigger for any of them to fire on |
+| **No RoPA exists (C-006-4 / C-007-4)** | `compliance-specialist` owns producing a single platform-level Record of Processing Activities document with per-feature sections | Blocks real customer PI processing on Features 006 and 007; blocks answering an Information Regulator enquiry or a s23 access request today |
 
 ## Mobile production push (2026-08-12, `cto`) — the current directive
 
@@ -314,13 +466,67 @@ the writer from the first admin list endpoint anyone builds. Read ADR-0006 §16 
 of it — five rulings changed things §5's original text left open.
 
 If picking up Feature 006 or 007: **read the "Feature 006" and "Feature 007" entries under "What
-actually exists and works right now" first**, then `docs/features/006-customer-onboarding/` and
-`docs/features/007-notifications/README.md` directly — the latter's own honesty table is the
-source of truth this doc copies from, so re-check it hasn't drifted further before trusting the
-copy above. Neither feature has a `security-review.md` yet despite shipped code; that is the
-single highest-priority gap for whoever picks this up next, ahead of any new feature work.
+actually exists and works right now" first**, then `docs/features/006-customer-onboarding/security-review.md`
+and `docs/features/007-notifications/security-review.md` directly, in full, before trusting the
+summary above — both are long, multi-round documents with numbered findings, and both have moved
+since any earlier snapshot of this file. **The single highest-priority gap for whoever picks this
+up next is no longer "no Stage 8 exists"** — it now exists for both features — **it is closing the
+compliance conditions that stand between "sign-off granted with required changes" and "safe to
+expose to real customer accounts"**: Supabase DPA, a Resend-specific operator review (the existing
+one is for Brevo), and a platform-level RoPA. All three are owner/`compliance-specialist` items,
+not code.
 
-## Latest session (2026-08-13, `technical-writer`): HANDOFF sync after customer onboarding + notifications landed
+If picking up Feature 008 (self-device GPS): **read `docs/organization/adr/0009-self-asserted-location-ingestion-trust-boundary.md`
+in full before writing anything**, including its §14 ("what this ADR does not authorize"). It is
+design-time only — Stage 8/9 are hard-gated, `product-manager` sign-off is still open, and
+`compliance-specialist`'s lawful-basis ruling (`compliance-review.md`) is explicitly not legal
+sign-off. SDL-2 (a self-asserted location may never alone drive dispatch/claims/billing/partner-
+disclosure) is the one rule every future design against this feature must not quietly relax.
+
+## Latest session (2026-08-14, `technical-writer`): HANDOFF + Cursor-rules refresh after Stage 8 remediation on Features 006/007 and Feature 008's design package
+
+This session did not write product code. It verified, in code and in the two features'
+`security-review.md` files directly (not from commit messages, not from a prior summary), what a
+large prior pull — three commits on `main` — actually shipped, and rewrote this document and
+`.cursor/rules/*.mdc` to match. Everything below was checked against the running source or the
+signed review documents themselves.
+
+- **Feature 006 and Feature 007 both now have a real, multi-round Stage 8 record.** Both went
+  from "code shipped ahead of the gate" to "chair sign-off granted with required changes, joint
+  concurrence partial" — see the rewritten Feature 006/007 entries above for the specific findings
+  (SR-006-1/2, the idempotency-key IDOR, SR-007-1/2/11) and exactly what's still open. Read the
+  actual `security-review.md` files, not this summary, before treating either feature as closed —
+  both run past 400 lines with numbered findings this document deliberately does not reproduce in
+  full.
+- **The deferred-takeover pattern for cross-account credential-collision handling
+  (`backend/src/lib/push-token-takeover.ts`) is now a real, verified, precedent-setting mechanism**
+  on this platform — confirmed by independently reading the state machine and the regression tests
+  that assert opposite outcomes against the old vs. new code, not by trusting either doc's prose.
+- **Backend test count re-verified at 188 passing / 36 files** — this number was independently run
+  by two different roles during this session's remediation (not just claimed once), which is a
+  materially stronger evidentiary bar than most of this doc's earlier test-count citations.
+- **Feature 008 (self-device GPS tracking) is a new, substantial design-time package** — four
+  documents (`docs/features/008-self-device-gps-tracking/architecture.md`, `business-requirements.md`,
+  `compliance-review.md`, and `docs/organization/adr/0009-self-asserted-location-ingestion-trust-boundary.md`)
+  all read in full. **Confirmed nothing has been implemented**: no `expo-location` dependency in
+  `mobile/package.json`, no ingestion endpoint, no consent record. ADR-0009 is **Proposed**, not
+  ratified — its §15/§16/§17 (security-engineer concurrence, compliance-specialist concurrence,
+  `cto` ratification) are explicitly reserved and unfiled.
+- **ADR numbering corrected.** This doc's own "0009 is the next free number" line was stale the
+  moment ADR-0009 was filed. Re-verified directly against `docs/organization/adr/` (contains 0001,
+  0002, 0003, 0006, 0008, 0009) rather than taken from any doc's claim: **0010 is now the next free
+  number.**
+- **`.cursor/rules/*.mdc` reviewed against this session's changes** — `adr-process.mdc`'s ADR index
+  and "next free number" line updated; `security-compliance.mdc` gained a line on the deferred-
+  takeover pattern as a standing convention and an ADR-0009 mention; `mobile.mdc` gained a `Toggle`
+  primitive mention. Deliberately **not** rewritten into a second changelog — see each file for
+  exactly what changed and why the rest was left alone.
+- **What was not attempted this session:** confirming whether the platform owner has completed
+  Resend setup, the Supabase DPA, or either open vendor decision (object storage, payment gateway,
+  GPS hardware) — none of those are checkable from the repository, and this session did not
+  contact the owner. Same standing caveat every session before this one has recorded.
+
+## Session (2026-08-13, `technical-writer`): HANDOFF sync after customer onboarding + notifications landed
 
 This session did not write any product code — it verified and documented what a prior, larger
 pull (195 files, commits `962ba25`..`c6a0e77`, landed after this file's 2026-08-12 snapshot) had

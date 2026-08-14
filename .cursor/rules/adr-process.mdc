@@ -19,10 +19,22 @@ Date, Deciders, Context, Decision, Alternatives Considered, Consequences, Revisi
   conditions at §16.5. **§17 is a later same-day `cto` append** correcting one factual error
   inside §16 and adding FU-A13/FU-A14 — read §16 *and* §17 together; §16 was deliberately not
   edited, so reading it alone will leave you believing an index exists that doesn't.
+- **0008** — MongoDB schema provisioning mechanism. Status: **Proposed**, pending `cto`
+  ratification.
+- **0009** — self-asserted location ingestion is a new, distinct trust boundary from ADR-0006's
+  third trail (governs Feature 008 self-device GPS tracking; does not reopen or amend ADR-0006).
+  Status: **Proposed**, pending `cto` ratification — its §15 (`security-engineer` concurrence),
+  §16 (`compliance-specialist` concurrence) and §17 (`cto` ratification) are reserved and
+  unfiled. Its SDL-1…SDL-12 security requirements are binding now regardless, under
+  `cybersecurity-architect`'s standing trust-boundary authority — only the ADR-level packaging
+  awaits ratification. Read `docs/features/008-self-device-gps-tracking/` before touching
+  anything it governs.
 
 **0004 and 0005 are reserved by name** in existing documents (FU-03 deletion-vs-anonymization
 ADR; Feature 003's session-token contract ADR, referenced as M-09) but not yet written —
-don't reuse either number for an unrelated decision. The next free number is **0007**.
+don't reuse either number for an unrelated decision. **0007** is reserved for FU-08's
+third-persistence-surface ADR (ADR-0006 ruling R-4). **The next free number is 0010** —
+re-verify against `docs/organization/adr/` before relying on this line; it has drifted before.
 
 ## Before writing a new ADR
 
