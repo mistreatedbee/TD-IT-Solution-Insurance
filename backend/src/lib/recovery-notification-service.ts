@@ -25,6 +25,12 @@ export interface RecoveryNotificationService {
     referenceNumber: string;
     assetId: string;
   }): Promise<void>;
+  notifySecurityOperatorsTheftReported(params: {
+    caseId: string;
+    referenceNumber: string;
+    assetName: string;
+    assetId: string;
+  }): Promise<void>;
   notifyCaseAssigned(params: {
     accountId: string;
     assetName: string;
@@ -138,6 +144,18 @@ export function createRecoveryNotificationService(deps: {
           variables: { assetName, caseId, referenceNumber, assetId },
         },
       });
+    },
+
+    async notifySecurityOperatorsTheftReported({ caseId, referenceNumber, assetName, assetId }) {
+      const operatorIds = await deps.accounts.listActiveSecurityOperatorIds();
+      const tasks = operatorIds.map((accountId) =>
+        deps.pushNotifications.sendToAccount({
+          accountId,
+          templateId: 'recovery.case.partner.new',
+          variables: { assetName, caseId, referenceNumber, assetId },
+        }),
+      );
+      await Promise.allSettled(tasks);
     },
 
     async notifyCaseAssigned({ accountId, assetName, caseId, referenceNumber }) {

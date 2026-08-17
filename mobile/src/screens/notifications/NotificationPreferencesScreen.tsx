@@ -26,7 +26,7 @@ import {
   type NotificationCategory,
   type NotificationPreferencesResponse,
 } from '../../api/notifications';
-import { ApiError, NetworkUnavailableError } from '../../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { Alert, Button, Card, Screen, Toggle } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
 
@@ -105,11 +105,7 @@ export function NotificationPreferencesScreen() {
     getNotificationPreferences()
       .then((res) => setChannels(res.channels))
       .catch((err) => {
-        setLoadError(
-          err instanceof NetworkUnavailableError
-            ? err.message
-            : 'Could not load your notification preferences. Please try again.',
-        );
+        setLoadError(mapUserFacingError(err, { context: 'notification' }));
       })
       .finally(() => setIsLoading(false));
   }
@@ -133,13 +129,7 @@ export function NotificationPreferencesScreen() {
       setChannels(result.channels);
     } catch (err) {
       setChannels(previous);
-      if (err instanceof NetworkUnavailableError) {
-        setSaveError(err.message);
-      } else if (err instanceof ApiError) {
-        setSaveError(err.message || 'Could not save that change. Please try again.');
-      } else {
-        setSaveError('Could not save that change. Please try again.');
-      }
+      setSaveError(mapUserFacingError(err, { context: 'notification' }));
     } finally {
       setSavingKey(null);
     }

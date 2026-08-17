@@ -18,6 +18,26 @@ export function CustomerAccountSettingsPage() {
       />
 
       <Card padding="lg" interactive={false}>
+        <SectionHeading as="h3" title="Profile & verification" size="md" className="mb-2" />
+        <p className="mb-4 text-sm text-text-secondary">
+          Update personal details, residential address, emergency contact, and submit identity
+          verification.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Link to="/dashboard/profile">
+            <Button variant="secondary" size="sm">
+              Manage profile
+            </Button>
+          </Link>
+          <Link to="/dashboard/verification">
+            <Button variant="secondary" size="sm">
+              Verification centre
+            </Button>
+          </Link>
+        </div>
+      </Card>
+
+      <Card padding="lg" interactive={false}>
         <DetailGrid
           rows={[
             { label: 'Email', value: account?.email ?? '—' },
@@ -32,6 +52,19 @@ export function CustomerAccountSettingsPage() {
             { label: 'Customer ID', value: account?.id ?? '—' },
           ]}
         />
+      </Card>
+
+      <Card padding="lg" interactive={false}>
+        <SectionHeading as="h3" title="Notifications" size="md" className="mb-2" />
+        <p className="mb-4 text-sm text-text-secondary">
+          Choose how you receive alerts, billing updates, and account messages by category and
+          channel.
+        </p>
+        <Link to="/dashboard/notifications">
+          <Button variant="secondary" size="sm">
+            Manage notification preferences
+          </Button>
+        </Link>
       </Card>
 
       <Card padding="lg" interactive={false}>

@@ -12,8 +12,9 @@ import { CheckIcon } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { signup } from '../../src/api/auth';
-import { ApiError, NetworkUnavailableError } from '../../src/api/errors';
+import { mapUserFacingError } from '../../src/lib/user-facing-errors';
 import { clearSignupDraft, loadSignupDraft, saveSignupDraft } from '../../src/forms/signupDraft';
+import { savePendingSignupAuth } from '../../src/forms/pendingSignupAuth';
 import { Alert, Button, Input, Screen } from '../../src/theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
 
@@ -87,16 +88,11 @@ export default function SignupScreen() {
     setIsSubmitting(true);
     try {
       await signup({ email, password, consentAccepted: true });
+      await savePendingSignupAuth(email, password);
       await clearSignupDraft();
       router.replace({ pathname: '/(auth)/verify-pending', params: { email } });
     } catch (err) {
-      if (err instanceof NetworkUnavailableError) {
-        setFormError(err.message);
-      } else if (err instanceof ApiError) {
-        setFormError(err.message || 'Something went wrong. Please try again.');
-      } else {
-        setFormError('Something went wrong. Please try again.');
-      }
+      setFormError(mapUserFacingError(err, { context: 'signup' }));
     } finally {
       setIsSubmitting(false);
     }

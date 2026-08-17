@@ -45,6 +45,7 @@ export function AdminLayout() {
       brand="Admin"
       navItems={[
         { to: '/admin/accounts', label: 'Customers' },
+        { to: '/admin/verification', label: 'Verification' },
         { to: '/admin/policies', label: 'Policies' },
         { to: '/admin/assets', label: 'Assets' },
         { to: '/admin/plans', label: 'Plans' },

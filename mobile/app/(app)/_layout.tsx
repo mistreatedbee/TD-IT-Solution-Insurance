@@ -8,51 +8,73 @@
  * Flagged, not silently presented as final.
  */
 import { Tabs } from 'expo-router';
-import { HomeIcon, ShieldIcon, PackageIcon, UserIcon } from 'lucide-react-native';
 import React from 'react';
-import { colors } from '../../src/theme/tokens';
+import { View } from 'react-native';
+import { DraggableAssistFab } from '../../src/navigation/DraggableAssistFab';
+import { FloatingTabBar } from '../../src/navigation/FloatingTabBar';
+import { FLOATING_TAB_BAR_CLEARANCE } from '../../src/navigation/tabBarMetrics';
+import { useLocationReporter } from '../../src/location/useLocationReporter';
 import { usePushNotifications } from '../../src/notifications/usePushNotifications';
 import { useNotificationDeepLinks } from '../../src/notifications/useNotificationDeepLinks';
+import { colors } from '../../src/theme/tokens';
 
 export default function AppTabsLayout() {
   usePushNotifications();
   useNotificationDeepLinks();
+  useLocationReporter();
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.slate[400],
-      }}
-    >
+    <View style={{ flex: 1 }}>
+      <Tabs
+        tabBar={(props) => (
+          <FloatingTabBar
+            state={props.state}
+            navigation={props.navigation as never}
+          />
+        )}
+        screenOptions={{
+          headerShown: false,
+          tabBarShowLabel: false,
+          sceneStyle: { backgroundColor: colors.slate[50], paddingBottom: FLOATING_TAB_BAR_CLEARANCE },
+        }}
+      >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, size }) => <HomeIcon color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="policy"
-        options={{
-          title: 'Policy',
-          tabBarIcon: ({ color, size }) => <ShieldIcon color={color} size={size} />,
+          headerShown: false,
         }}
       />
       <Tabs.Screen
         name="assets"
         options={{
           title: 'Assets',
-          tabBarIcon: ({ color, size }) => <PackageIcon color={color} size={size} />,
+          headerShown: false,
         }}
       />
       <Tabs.Screen
-        name="profile"
+        name="map"
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => <UserIcon color={color} size={size} />,
+          title: 'Map',
+          headerShown: false,
+          sceneStyle: { backgroundColor: colors.slate[100], paddingBottom: 0 },
         }}
       />
+      <Tabs.Screen
+        name="alerts"
+        options={{
+          title: 'Alerts',
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="account"
+        options={{
+          title: 'Account',
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen name="policy" options={{ href: null }} />
+      <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen
         name="mfa-enroll"
         options={{
@@ -63,6 +85,9 @@ export default function AppTabsLayout() {
       <Tabs.Screen name="report-theft" options={{ href: null }} />
       <Tabs.Screen name="claims" options={{ href: null }} />
       <Tabs.Screen name="live-tracking" options={{ href: null }} />
-    </Tabs>
+      <Tabs.Screen name="device-locations" options={{ href: null }} />
+      </Tabs>
+      <DraggableAssistFab />
+    </View>
   );
 }

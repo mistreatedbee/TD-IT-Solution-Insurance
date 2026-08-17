@@ -1,8 +1,18 @@
 /**
  * Maps MongoDB policy/asset documents to api-design.md §6 customer-facing shapes.
  */
-import type { AssetDocument } from '../repositories/assets.js';
+import type { AssetDocument, AssetLastLocation } from '../repositories/assets.js';
 import type { PolicyDocument } from '../repositories/policies.js';
+
+function serializeAssetLastLocation(location: AssetLastLocation | null) {
+  if (!location) return null;
+  return {
+    latitude: location.latitude,
+    longitude: location.longitude,
+    accuracyMeters: location.accuracyMeters,
+    recordedAt: location.recordedAt.toISOString(),
+  };
+}
 
 export function serializePolicy(doc: PolicyDocument) {
   return {
@@ -44,6 +54,9 @@ export function serializeAsset(doc: AssetDocument) {
     photos: doc.photos,
     gpsDeviceId: doc.gpsDeviceId,
     gpsPairedAt: doc.gpsPairedAt?.toISOString() ?? null,
+    locationSource: doc.locationSource,
+    reportingDeviceId: doc.reportingDeviceId,
+    lastLocation: serializeAssetLastLocation(doc.lastLocation),
     details: doc.details,
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
@@ -91,5 +104,49 @@ export function serializeAdminAssetSummary(doc: AssetDocument) {
     legalHold: doc.legalHold,
     gpsDeviceId: doc.gpsDeviceId,
     registeredAt: doc.registeredAt.toISOString(),
+  };
+}
+
+export function serializeAssetLocation(doc: AssetDocument) {
+  return {
+    assetId: doc.id,
+    locationSource: doc.locationSource,
+    reportingDeviceId: doc.reportingDeviceId,
+    lastLocation: serializeAssetLastLocation(doc.lastLocation),
+  };
+}
+
+export function serializeAssetLocationSummaryEntry(doc: AssetDocument) {
+  return {
+    assetId: doc.id,
+    displayName: doc.displayName,
+    assetType: doc.assetType,
+    lastLocation: serializeAssetLastLocation(doc.lastLocation),
+    locationSource: doc.locationSource,
+    reportingDeviceId: doc.reportingDeviceId,
+  };
+}
+
+export function serializeLocationEvent(doc: {
+  id: string;
+  assetId: string;
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number | null;
+  recordedAt: Date;
+  receivedAt: Date;
+  source: string;
+  triggeredBy: string | null;
+}) {
+  return {
+    id: doc.id,
+    assetId: doc.assetId,
+    latitude: doc.latitude,
+    longitude: doc.longitude,
+    accuracyMeters: doc.accuracyMeters,
+    recordedAt: doc.recordedAt.toISOString(),
+    receivedAt: doc.receivedAt.toISOString(),
+    source: doc.source,
+    triggeredBy: doc.triggeredBy,
   };
 }

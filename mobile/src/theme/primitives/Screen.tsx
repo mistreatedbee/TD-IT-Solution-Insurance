@@ -17,7 +17,8 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import type { RefreshControlProps } from 'react-native';
+import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import { colors, spacing } from '../tokens';
 
 export interface ScreenProps {
@@ -27,6 +28,9 @@ export interface ScreenProps {
   scroll?: boolean;
   /** Horizontal+vertical padding around content. Default true. */
   padded?: boolean;
+  refreshControl?: React.ReactElement<RefreshControlProps>;
+  /** Safe-area edges to respect. Defaults to top + bottom. */
+  safeAreaEdges?: Edge[];
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
 }
@@ -35,6 +39,8 @@ export function Screen({
   children,
   scroll = true,
   padded = true,
+  refreshControl,
+  safeAreaEdges = ['top', 'bottom'],
   style,
   contentContainerStyle,
 }: ScreenProps) {
@@ -51,7 +57,7 @@ export function Screen({
   );
 
   return (
-    <SafeAreaView style={[styles.safeArea, style]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.safeArea, style]} edges={safeAreaEdges}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -61,6 +67,7 @@ export function Screen({
             style={styles.flex}
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
+            refreshControl={refreshControl}
           >
             {content}
           </ScrollView>

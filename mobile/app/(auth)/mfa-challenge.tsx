@@ -7,7 +7,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { mfaChallenge } from '../../src/api/auth';
 import { setRefreshToken } from '../../src/auth/secure-storage';
 import { useSessionStore } from '../../src/auth/session-store';
-import { ApiError, NetworkUnavailableError } from '../../src/api/errors';
+import { mapUserFacingError } from '../../src/lib/user-facing-errors';
 import { Alert, OtpInput, Screen } from '../../src/theme/primitives';
 import { colors, spacing, typography } from '../../src/theme/tokens';
 
@@ -28,15 +28,7 @@ export default function MfaChallengeScreen() {
       setSignedIn({ accessToken: result.accessToken, sessionId: result.sessionId });
     } catch (err) {
       setCode('');
-      if (err instanceof NetworkUnavailableError) {
-        setErrorMessage(err.message);
-      } else if (err instanceof ApiError && err.status === 410) {
-        setErrorMessage('That code has expired. Please log in again.');
-      } else if (err instanceof ApiError) {
-        setErrorMessage("That code didn't work. Try again.");
-      } else {
-        setErrorMessage("That code didn't work. Try again.");
-      }
+      setErrorMessage(mapUserFacingError(err, { context: 'mfa' }));
     } finally {
       setIsVerifying(false);
     }

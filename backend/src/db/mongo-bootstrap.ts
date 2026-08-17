@@ -9,6 +9,10 @@ import type { Db } from 'mongodb';
 import { bootstrapFeature004Collections } from './feature004-collections.js';
 import { bootstrapRecoveryCollections } from './recovery-collections.js';
 import { bootstrapNotificationCollections } from './notification-collections.js';
+import { bootstrapCustomerProfileCollections } from './customer-profile-collections.js';
+import { bootstrapTrackingDeviceCollections } from './tracking-device-collections.js';
+import { bootstrapLocationEventsCollections } from './location-events-collections.js';
+import { bootstrapAlertsCollections } from './alerts-collections.js';
 import { createPlanCatalogRepo } from '../repositories/plan-catalog.js';
 
 export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
@@ -20,6 +24,38 @@ export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
     // Non-fatal: auth/policy routes must stay up if notification bootstrap fails on Atlas.
     console.error(
       '[startup] Notification collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+    await bootstrapCustomerProfileCollections(db);
+  } catch (err) {
+    console.error(
+      '[startup] Customer profile collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+    await bootstrapTrackingDeviceCollections(db);
+  } catch (err) {
+    console.error(
+      '[startup] Tracking device collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+    await bootstrapLocationEventsCollections(db);
+  } catch (err) {
+    console.error(
+      '[startup] Location events collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+    await bootstrapAlertsCollections(db);
+  } catch (err) {
+    console.error(
+      '[startup] Alerts collection bootstrap failed:',
       err instanceof Error ? err.message : err,
     );
   }

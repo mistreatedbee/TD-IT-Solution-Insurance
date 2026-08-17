@@ -172,3 +172,12 @@ export function isMfaVerificationRequired(
 export function getCurrentAccount() {
   return apiFetch<Schemas['Account']>('/account/me', { method: 'GET' });
 }
+
+/** One-off account read during verify-pending polling — does not persist session tokens. */
+export function getAccountWithAccessToken(accessToken: string) {
+  return apiFetch<Schemas['Account']>('/account/me', {
+    method: 'GET',
+    authenticated: false,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}

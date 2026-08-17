@@ -7,6 +7,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { PlusIcon } from 'lucide-react-native';
 import { useClaimsQuery } from '../../api/hooks/useClaims';
 import { ApiError } from '../../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { Alert, Badge, Button, Card, Screen } from '../../theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
 
@@ -38,7 +39,7 @@ export function ClaimsListScreen() {
           </View>
         ) : isError && !apiMissing ? (
           <Alert tone="danger">
-            {error instanceof Error ? error.message : 'Could not load claims.'}
+            {mapUserFacingError(error, { context: 'claim' })}
           </Alert>
         ) : claims.length === 0 ? (
           <>

@@ -6,7 +6,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { isMfaVerificationRequired, resetPasswordConfirm } from '../../src/api/auth';
-import { ApiError, NetworkUnavailableError } from '../../src/api/errors';
+import { ApiError } from '../../src/api/errors';
+import { mapUserFacingError } from '../../src/lib/user-facing-errors';
 import { Alert, Button, Input, Screen } from '../../src/theme/primitives';
 import { colors, spacing, typography } from '../../src/theme/tokens';
 
@@ -25,6 +26,7 @@ export default function ResetPasswordScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorState, setErrorState] = useState<'none' | 'expired' | 'mismatch' | 'other'>('none');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   async function handleSubmit() {
@@ -37,6 +39,7 @@ export default function ResetPasswordScreen() {
       return;
     }
     setErrorState('none');
+    setErrorMessage(null);
     setIsSubmitting(true);
     try {
       const result = await resetPasswordConfirm(
@@ -55,11 +58,10 @@ export default function ResetPasswordScreen() {
       }
       setSuccess(true);
     } catch (err) {
-      if (err instanceof NetworkUnavailableError) {
-        setErrorState('other');
-      } else if (err instanceof ApiError && err.status === 410) {
+      if (err instanceof ApiError && err.status === 410) {
         setErrorState('expired');
       } else {
+        setErrorMessage(mapUserFacingError(err, { context: 'password-reset' }));
         setErrorState('other');
       }
     } finally {
@@ -115,7 +117,7 @@ export default function ResetPasswordScreen() {
       ) : errorState === 'other' ? (
         <View style={styles.alertSpacing}>
           <Alert tone="danger" announceAssertively>
-            Something went wrong. Please try again.
+            {errorMessage ?? 'Something went wrong. Please try again.'}
           </Alert>
         </View>
       ) : null}

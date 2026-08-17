@@ -1,8 +1,8 @@
 import { FormEvent, useState } from 'react';
 import { NavLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Card, Input, SectionHeading } from '../../components';
-import { ApiError } from '../api/errors';
 import { useDashboardAuth } from '../auth/DashboardAuthProvider';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { InlineAlert } from './ui';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -54,7 +54,7 @@ export function PrivilegedLoginPage({
       }
       await finishLogin(result.accessToken, result.refreshToken);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Sign in failed.');
+      setError(mapUserFacingError(err, { context: 'auth' }));
     } finally {
       setLoading(false);
     }
@@ -69,7 +69,7 @@ export function PrivilegedLoginPage({
       await auth.completeMfa(mfaToken, mfaCode.trim());
       navigate(redirect, { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Verification failed.');
+      setError(mapUserFacingError(err, { context: 'mfa' }));
     } finally {
       setLoading(false);
     }

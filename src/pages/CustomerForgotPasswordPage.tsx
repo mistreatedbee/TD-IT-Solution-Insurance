@@ -4,7 +4,8 @@ import { Button, Input, SectionHeading } from '../components';
 import { ArrowLink } from '../components/ArrowLink';
 import { InlineAlert } from '../dashboard/components/ui';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
-import { mapSupabaseAuthError, requestPasswordReset } from '../customer/supabase/auth';
+import { requestPasswordReset } from '../customer/supabase/auth';
+import { mapUserFacingError } from '../lib/user-facing-errors';
 
 export function CustomerForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -22,7 +23,7 @@ export function CustomerForgotPasswordPage() {
       setSubmitted(true);
     } catch (err) {
       // Supabase returns success-style flow; show confirmation unless hard failure.
-      const message = mapSupabaseAuthError(err instanceof Error ? err : { message: 'Request failed.' });
+      const message = mapUserFacingError(err, { context: 'password-reset' });
       if (message.toLowerCase().includes('rate limit')) {
         setNetworkError(message);
       } else {

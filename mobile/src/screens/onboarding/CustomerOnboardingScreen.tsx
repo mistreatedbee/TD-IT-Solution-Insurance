@@ -18,7 +18,8 @@ import {
 } from 'react-native';
 import { createAsset, listAssets, type Asset, type AssetType } from '../../api/assets';
 import { login, resendVerification, signup, isMfaChallenge } from '../../api/auth';
-import { ApiError, NetworkUnavailableError } from '../../api/errors';
+import { ApiError } from '../../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { formatPlanPrice, listPlans, type PlanCatalogItem } from '../../api/plans';
 import { createPolicy, listPolicies, type Policy } from '../../api/policies';
 import { setRefreshToken } from '../../auth/secure-storage';
@@ -224,11 +225,7 @@ export function CustomerOnboardingScreen({
       await signup({ email: trimmed, password, consentAccepted: true });
       setStep('verify');
     } catch (err) {
-      if (err instanceof NetworkUnavailableError) {
-        setError('Could not reach the server. Check your connection and try again.');
-      } else {
-        setError(err instanceof ApiError ? err.message : 'Sign up failed. Please try again.');
-      }
+      setError(mapUserFacingError(err, { context: 'signup' }));
     } finally {
       setLoading(false);
     }
@@ -265,7 +262,7 @@ export function CustomerOnboardingScreen({
       const live = await fetchLiveAccountForGating();
       setStep(resolveInitialStep(true, live.accountState, Boolean(firstPolicy)));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Log in failed.');
+      setError(mapUserFacingError(err, { context: 'auth' }));
     } finally {
       setLoading(false);
     }
@@ -289,7 +286,7 @@ export function CustomerOnboardingScreen({
       if (err instanceof ApiError && err.code === 'PLAN_REQUIRES_QUOTE') {
         setError('Enterprise plans require a custom quote. Contact us to continue.');
       } else {
-        setError(err instanceof ApiError ? err.message : 'Could not select plan.');
+        setError(mapUserFacingError(err, { context: 'policy' }));
       }
     } finally {
       setLoading(false);
@@ -341,7 +338,7 @@ export function CustomerOnboardingScreen({
         setStep('verify');
         setError('Verify your email before registering assets.');
       } else {
-        setError(err instanceof ApiError ? err.message : 'Could not register asset.');
+        setError(mapUserFacingError(err, { context: 'asset' }));
       }
     } finally {
       setLoading(false);
@@ -553,7 +550,7 @@ export function CustomerOnboardingScreen({
                 try {
                   await resendVerification(email.trim() || account?.email || '');
                 } catch (err) {
-                  setError(err instanceof ApiError ? err.message : 'Resend failed.');
+                  setError(mapUserFacingError(err, { context: 'verify' }));
                 } finally {
                   setLoading(false);
                 }

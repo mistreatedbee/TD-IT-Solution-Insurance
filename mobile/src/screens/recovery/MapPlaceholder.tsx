@@ -54,7 +54,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.slate[100],
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.lg,
   },
   grid: {
     height: 220,

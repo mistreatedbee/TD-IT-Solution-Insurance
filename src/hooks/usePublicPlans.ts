@@ -3,6 +3,7 @@ import { ApiError } from '../customer/api/errors';
 import { listPublicPlans, type PlanCatalogItem } from '../customer/api/plans';
 import { API_HOST } from '../customer/api/config';
 import { MARKETING_PLAN_CATALOG_FALLBACK } from '../lib/marketing-plan-catalog-fallback';
+import { mapUserFacingError } from '../lib/user-facing-errors';
 
 type PublicPlansResult = {
   plans: PlanCatalogItem[];
@@ -33,7 +34,7 @@ async function fetchPublicPlans(): Promise<PublicPlansResult> {
       return { plans: MARKETING_PLAN_CATALOG_FALLBACK, usingFallback: true, error };
     }
 
-    return { plans: [], usingFallback: false, error: 'Could not load plans right now. Please try again.' };
+    return { plans: [], usingFallback: false, error: mapUserFacingError(err, { context: 'policy' }) };
   }
 }
 

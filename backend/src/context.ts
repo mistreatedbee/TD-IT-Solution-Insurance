@@ -72,6 +72,19 @@ import {
   createRecoveryNotificationService,
   type RecoveryNotificationService,
 } from './lib/recovery-notification-service.js';
+import {
+  createCustomerProfilesRepo,
+  type CustomerProfilesRepo,
+} from './repositories/customer-profiles.js';
+import {
+  createTrackingDevicesRepo,
+  type TrackingDevicesRepo,
+} from './repositories/tracking-devices.js';
+import {
+  createLocationEventsRepo,
+  type LocationEventsRepo,
+} from './repositories/location-events.js';
+import { createAlertsRepo, type AlertsRepo } from './repositories/alerts.js';
 
 export interface AppContext {
   env: Env;
@@ -102,6 +115,10 @@ export interface AppContext {
   policyNotifications: PolicyNotificationService;
   policyActivation: PolicyActivationService;
   recoveryNotifications: RecoveryNotificationService;
+  customerProfiles: CustomerProfilesRepo;
+  trackingDevices: TrackingDevicesRepo;
+  locationEvents: LocationEventsRepo;
+  alerts: AlertsRepo;
 }
 
 export function buildAppContext(env: Env): AppContext {
@@ -184,5 +201,9 @@ export function buildAppContext(env: Env): AppContext {
     policyNotifications,
     policyActivation,
     recoveryNotifications,
+    customerProfiles: createCustomerProfilesRepo(getDb()),
+    trackingDevices: createTrackingDevicesRepo(getDb()),
+    locationEvents: createLocationEventsRepo(getDb()),
+    alerts: createAlertsRepo(getDb()),
   };
 }

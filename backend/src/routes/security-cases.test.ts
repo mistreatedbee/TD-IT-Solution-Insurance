@@ -188,6 +188,9 @@ function createHarness(opts: { cases?: RecoveryCaseDocument[]; partnerOrgId?: st
       async notifyTheftReportSubmitted() {
         return undefined;
       },
+      async notifySecurityOperatorsTheftReported() {
+        return undefined;
+      },
     },
     customerNotifications: {
       async notifyAssetRecovered() {

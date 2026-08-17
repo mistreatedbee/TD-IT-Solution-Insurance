@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePoliciesQuery } from '../../api/hooks/usePolicies';
 import { ApiError, NetworkUnavailableError } from '../../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import type { Policy } from '../../api/policies';
 import { gateWriteAction } from '../../auth/gateWriteAction';
 import {
@@ -83,14 +84,14 @@ export function PolicyListScreen() {
     }
     return (
       <Alert tone="danger" title="Could not load policies">
-        {error instanceof Error ? error.message : 'Something went wrong.'}
+        {mapUserFacingError(error, { context: 'policy' })}
       </Alert>
     );
   }
 
   return (
     <Screen>
-      <Text style={styles.title}>Your policy</Text>
+      <Text style={styles.title}>Your protection plan</Text>
 
       {isFetching && !isLoading ? (
         <Text style={styles.syncHint}>Refreshing…</Text>
@@ -111,12 +112,11 @@ export function PolicyListScreen() {
       ) : policies.length === 0 ? (
         <>
           <Text style={styles.body}>
-            You don&apos;t have a policy yet. Create one to start protecting your assets.
-            Plan tier names are free-form until business rules are ratified — enter any
-            label your advisor gave you.
+            You don&apos;t have a protection plan yet. Choose one of our plans to start protecting
+            your assets.
           </Text>
           <Button fullWidth loading={isGating} onPress={handleCreatePress}>
-            Create policy
+            Choose a plan
           </Button>
         </>
       ) : (
@@ -139,7 +139,7 @@ export function PolicyListScreen() {
               loading={isGating}
               onPress={handleCreatePress}
             >
-              Add another policy
+              Choose another plan
             </Button>
             {isError ? (
               <Button variant="tertiary" onPress={() => refetch()}>

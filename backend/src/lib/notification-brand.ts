@@ -29,6 +29,7 @@ export type PushTemplateId =
   | 'recovery.case.assigned'
   | 'recovery.case.recovered'
   | 'recovery.case.closed'
+  | 'recovery.case.partner.new'
   | 'policy.created'
   | 'policy.pending_activation'
   | 'asset.created'
@@ -178,6 +179,29 @@ export function buildBrandedPushMessage(
           ...(variables.caseId ? { caseId: variables.caseId, deepLink: deepLink(`live-tracking/${variables.caseId}`) } : {}),
         },
       };
+    case 'recovery.case.partner.new': {
+      const partnerDeepLink = variables.caseId ? deepLink(`security/cases/${variables.caseId}`) : undefined;
+      const refSuffix = variables.referenceNumber ? ` (${variables.referenceNumber})` : '';
+      return {
+        eventId: templateId,
+        title: 'New theft case',
+        body: variables.assetName
+          ? `A customer reported ${variables.assetName} stolen${refSuffix}. Open the app to respond.`
+          : `A new theft case${refSuffix} needs attention. Open the app to respond.`,
+        subtitle,
+        category: 'theft_critical',
+        deepLink: partnerDeepLink,
+        priority: 'high',
+        data: {
+          event: templateId,
+          brand: NOTIFICATION_BRAND.name,
+          logoUrl: NOTIFICATION_BRAND.logoUrl,
+          ...(variables.caseId ? { caseId: variables.caseId } : {}),
+          ...(variables.referenceNumber ? { referenceNumber: variables.referenceNumber } : {}),
+          ...(partnerDeepLink ? { deepLink: partnerDeepLink } : {}),
+        },
+      };
+    }
     case 'account.security.test':
       return {
         eventId: templateId,

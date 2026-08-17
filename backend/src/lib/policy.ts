@@ -119,6 +119,12 @@ export const DEFAULT_AUTHENTICATED_LIMIT = {
   windowSeconds: 60,
 } as const;
 
+/** Feature 008 Phase 1 — foreground/on-demand self-device location reports (ADR-0009 SDL-3 / MP-7). */
+export const ASSET_LOCATION_REPORT_LIMIT = {
+  attempts: 20,
+  windowSeconds: 15 * 60,
+} as const;
+
 /** SR-1: enrollment ticket, and SR-6's mfaVerificationToken, both minted with this TTL
  * unless a more specific constant above overrides it. Enrollment ticket TTL is 10
  * minutes per SR-1's own text. */

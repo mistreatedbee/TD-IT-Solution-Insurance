@@ -7,11 +7,12 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import * as SplashScreen from 'expo-splash-screen';
 import { Stack, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { registerForcedLogoutHandler, refreshAccessToken } from '../src/api/client';
 import { useSessionStore } from '../src/auth/session-store';
-import { useOnboardingGate } from '../src/onboarding/useOnboardingGate';
+import { useAppShellGate } from '../src/onboarding/useAppShellGate';
 import { NetworkProvider, OfflineBanner } from '../src/network/NetworkProvider';
 import { asyncStoragePersister, queryClient } from '../src/query/queryClient';
 
@@ -21,7 +22,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 export default function RootLayout() {
   const status = useSessionStore((s) => s.status);
-  const onboardingGate = useOnboardingGate();
+  const appShellGate = useAppShellGate();
   const router = useRouter();
   const [bootstrapped, setBootstrapped] = useState(false);
 
@@ -43,7 +44,11 @@ export default function RootLayout() {
     try {
       await refreshAccessToken();
     } catch {
-      // Session store is already set to 'signed-out' by client.ts.
+      // Invalid/revoked tokens are cleared in client.ts. Network failures during
+      // cold start leave status stuck on 'hydrating' unless we exit here.
+      if (useSessionStore.getState().status === 'hydrating') {
+        useSessionStore.getState().setSignedOut();
+      }
     } finally {
       setBootstrapped(true);
       SplashScreen.hideAsync().catch(() => {
@@ -56,11 +61,23 @@ export default function RootLayout() {
     bootstrap();
   }, [bootstrap]);
 
-  if (!bootstrapped || status === 'hydrating' || (status === 'signed-in' && onboardingGate === 'loading')) {
-    // Native splash screen is still showing (preventAutoHideAsync above);
-    // nothing needs to render here, but returning null (vs. a competing
-    // loading screen) avoids a flash of unstyled content underneath it.
+  const isWaitingForBootstrap = !bootstrapped || status === 'hydrating';
+  const isWaitingForShell =
+    status === 'signed-in' && appShellGate === 'loading';
+
+  if (isWaitingForBootstrap) {
+    // Splash screen still visible — avoid rendering underneath it.
     return null;
+  }
+
+  if (isWaitingForShell) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#1e3a5f" />
+        </View>
+      </GestureHandlerRootView>
+    );
   }
 
   return (
@@ -77,15 +94,21 @@ export default function RootLayout() {
                 <Stack.Protected guard={status === 'signed-out'}>
                   <Stack.Screen name="(auth)" />
                 </Stack.Protected>
-                <Stack.Protected guard={status === 'signed-in' && onboardingGate === 'onboarding'}>
+                <Stack.Protected guard={status === 'signed-in' && appShellGate === 'onboarding'}>
                   <Stack.Screen name="(onboarding)" />
                 </Stack.Protected>
-                <Stack.Protected guard={status === 'signed-in' && onboardingGate === 'app'}>
+                <Stack.Protected guard={status === 'signed-in' && appShellGate === 'app'}>
                   <Stack.Screen name="(app)" />
                   <Stack.Screen
                     name="verification-gate"
                     options={{ presentation: 'modal' }}
                   />
+                </Stack.Protected>
+                <Stack.Protected guard={status === 'signed-in' && appShellGate === 'security-app'}>
+                  <Stack.Screen name="(security-app)" />
+                </Stack.Protected>
+                <Stack.Protected guard={status === 'signed-in' && appShellGate === 'web-portal'}>
+                  <Stack.Screen name="web-portal-required" />
                 </Stack.Protected>
                 <Stack.Screen name="verify-email" />
                 <Stack.Screen name="invitations/accept" />

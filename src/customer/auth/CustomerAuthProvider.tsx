@@ -11,7 +11,8 @@ import { configureCustomerClient } from '../api/client';
 import { getAccountMe, logout, verifyMfaChallenge } from '../api/auth';
 import { ApiError } from '../api/errors';
 import { getOrCreateWebDeviceId } from './deviceId';
-import { mapSupabaseAuthError, signInWithSupabase } from '../supabase/auth';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { signInWithSupabase } from '../supabase/auth';
 
 const REFRESH_STORAGE_KEY = 'td-customer-web-refresh';
 
@@ -29,6 +30,7 @@ interface CustomerAuthContextValue {
     | { kind: 'enrollment'; enrollmentTicket: string }
   >;
   completeMfa: (mfaChallengeToken: string, code: string) => Promise<void>;
+  refreshAccount: () => Promise<import('../api/auth').AccountMe | null>;
 }
 
 const CustomerAuthContext = createContext<CustomerAuthContextValue | null>(null);
@@ -156,7 +158,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       if (err instanceof ApiError) throw err;
       throw new ApiError(401, {
-        error: { message: mapSupabaseAuthError(err instanceof Error ? err : { message: 'Sign in failed.' }) },
+        error: { message: mapUserFacingError(err, { context: 'auth' }) },
       });
     }
   }, []);
@@ -169,6 +171,17 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     [signInWithTokens],
   );
 
+  const refreshAccount = useCallback(async () => {
+    if (status !== 'signed-in' || !accessToken) return null;
+    try {
+      const me = await getAccountMe();
+      setAccount(me);
+      return me;
+    } catch {
+      return null;
+    }
+  }, [status, accessToken]);
+
   const value = useMemo(
     () => ({
       status,
@@ -178,8 +191,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       signOut,
       loginWithPassword,
       completeMfa,
+      refreshAccount,
     }),
-    [status, accessToken, account, signInWithTokens, signOut, loginWithPassword, completeMfa],
+    [status, accessToken, account, signInWithTokens, signOut, loginWithPassword, completeMfa, refreshAccount],
   );
 
   return <CustomerAuthContext.Provider value={value}>{children}</CustomerAuthContext.Provider>;

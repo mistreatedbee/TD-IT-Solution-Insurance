@@ -103,6 +103,9 @@ function sampleAsset(accountId: string, id = '507f1f77bcf86cd799439021'): AssetD
     photos: [],
     gpsDeviceId: null,
     gpsPairedAt: null,
+    locationSource: null,
+    reportingDeviceId: null,
+    lastLocation: null,
     legalHold: false,
     details: { brand: 'Dell', model: 'XPS', serialNumber: 'SN123' },
     createdAt: now,
@@ -185,6 +188,9 @@ function createHarness(opts: {
     idempotency: createInMemoryIdempotencyRepo(),
     recoveryNotifications: {
       async notifyTheftReportSubmitted() {
+        return undefined;
+      },
+      async notifySecurityOperatorsTheftReported() {
         return undefined;
       },
     },

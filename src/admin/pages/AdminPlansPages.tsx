@@ -10,6 +10,7 @@ import {
   type UpdateAdminPlanRequest,
 } from '../api/admin-plans';
 import { AdminNavLink } from '../layout/AdminLayout';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 
 const ACCOUNT_TYPE_OPTIONS = ['individual', 'business', 'both'] as const;
 
@@ -25,7 +26,7 @@ export function PlansListPage() {
         if (!cancelled) setRows(res.data);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load plans.');
+        if (!cancelled) setError(mapUserFacingError(err, { context: 'admin' }));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -126,7 +127,7 @@ export function PlanEditPage({ planId }: { planId: string }) {
         setAccountTypes([...found.accountTypes]);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load plan.');
+        if (!cancelled) setError(mapUserFacingError(err, { context: 'admin' }));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -197,7 +198,7 @@ export function PlanEditPage({ planId }: { planId: string }) {
       setPlan(updated);
       setSuccess('Plan updated.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed.');
+      setError(mapUserFacingError(err, { context: 'admin' }));
     } finally {
       setSaving(false);
     }

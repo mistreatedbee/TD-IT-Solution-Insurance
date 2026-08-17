@@ -157,11 +157,8 @@ describe('NotificationPreferencesScreen', () => {
 
   it('reverts an optimistic toggle and surfaces an error when saving fails', async () => {
     getNotificationPreferences.mockResolvedValue(buildPreferences());
-    // A plain rejection (neither ApiError nor NetworkUnavailableError) falls
-    // through to the screen's generic fallback message — asserting on that
-    // fallback text, not the rejection's own message, since the screen
-    // deliberately does not trust an arbitrary thrown value's message.
-    updateNotificationPreferences.mockRejectedValue(new Error('some internal detail'));
+    // Plain rejection with a non-user-facing message maps to the notification context fallback.
+    updateNotificationPreferences.mockRejectedValue(new Error('TypeError: fetch failed'));
 
     await render(<NotificationPreferencesScreen />);
 
@@ -177,19 +174,21 @@ describe('NotificationPreferencesScreen', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Could not save that change. Please try again.')).toBeTruthy();
+      expect(
+        screen.getByText('We could not update your notification settings. Please try again.'),
+      ).toBeTruthy();
     });
     expect(billingPushToggle.props.accessibilityState.checked).toBe(false);
   });
 
   it('shows a retry action when the initial load fails', async () => {
-    getNotificationPreferences.mockRejectedValueOnce(new Error('boom'));
+    getNotificationPreferences.mockRejectedValueOnce(new Error('TypeError: fetch failed'));
 
     await render(<NotificationPreferencesScreen />);
 
     await waitFor(() => {
       expect(
-        screen.getByText('Could not load your notification preferences. Please try again.'),
+        screen.getByText('We could not update your notification settings. Please try again.'),
       ).toBeTruthy();
     });
 

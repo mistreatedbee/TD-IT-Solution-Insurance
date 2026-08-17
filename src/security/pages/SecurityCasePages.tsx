@@ -10,6 +10,7 @@ import {
   type SecurityCaseStatus,
   type SecurityRecoveryCase,
 } from '../api/cases';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 
 const STATUS_ACTIONS: { label: string; status: SecurityCaseStatus }[] = [
   { label: 'Start investigating', status: 'investigating' },
@@ -35,7 +36,7 @@ export function CasesListPage() {
         setHasMore(page.pagination.hasMore);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load cases.');
+        if (!cancelled) setError(mapUserFacingError(err, { context: 'security-case' }));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -107,7 +108,7 @@ export function CaseDetailPage() {
     if (!caseId) return;
     getSecurityCase(caseId)
       .then(setRecoveryCase)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load case.'));
+      .catch((err) => setError(mapUserFacingError(err, { context: 'security-case' })));
   }, [caseId]);
 
   async function setStatus(status: SecurityCaseStatus) {
@@ -118,7 +119,7 @@ export function CaseDetailPage() {
       const updated = await updateSecurityCaseStatus(caseId, status);
       setRecoveryCase(updated);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update status.');
+      setError(mapUserFacingError(err, { context: 'security-case' }));
     } finally {
       setUpdating(false);
     }
@@ -132,7 +133,7 @@ export function CaseDetailPage() {
       const updated = await claimSecurityCase(caseId);
       setRecoveryCase(updated);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to claim case.');
+      setError(mapUserFacingError(err, { context: 'security-case' }));
     } finally {
       setUpdating(false);
     }

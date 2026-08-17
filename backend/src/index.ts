@@ -46,6 +46,10 @@ import { createRecoveryRouter } from './routes/recovery.js';
 import { createSecurityCasesRouter } from './routes/security-cases.js';
 import { createInternalRouter } from './routes/internal.js';
 import { createNotificationsRouter } from './routes/notifications.js';
+import { createCustomerProfileRouter } from './routes/customer-profile.js';
+import { createTrackingDevicesRouter } from './routes/tracking-devices.js';
+import { createAlertsRouter } from './routes/alerts.js';
+import { createAdminVerificationRouter } from './routes/admin-verification.js';
 import { requestIdMiddleware, notFoundHandler, errorHandler } from './middleware/error-handler.js';
 
 async function main(): Promise<void> {
@@ -112,6 +116,10 @@ async function main(): Promise<void> {
   v1.use(createSecurityCasesRouter(ctx));
   v1.use(createInternalRouter(ctx));
   v1.use(createNotificationsRouter(ctx));
+  v1.use(createCustomerProfileRouter(ctx));
+  v1.use(createTrackingDevicesRouter(ctx));
+  v1.use(createAlertsRouter(ctx));
+  v1.use(createAdminVerificationRouter(ctx));
   // api-design.md §5's platform-wide default rate-limit row
   // (`DEFAULT_AUTHENTICATED_LIMIT`, lib/policy.ts) is NOT wired as a
   // blanket middleware here — deliberately, not by omission: every route

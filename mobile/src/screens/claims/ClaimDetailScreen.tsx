@@ -6,6 +6,7 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useClaimQuery } from '../../api/hooks/useClaims';
 import { Alert, Badge, Card, Screen } from '../../theme/primitives';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { colors, spacing, typography } from '../../theme/tokens';
 
 export function ClaimDetailScreen() {
@@ -27,7 +28,7 @@ export function ClaimDetailScreen() {
       <Screen>
         <Text style={styles.title}>Claim</Text>
         <Alert tone="danger">
-          {error instanceof Error ? error.message : 'Claim not found or service unavailable.'}
+          {mapUserFacingError(error, { context: 'claim' })}
         </Alert>
       </Screen>
     );

@@ -8,7 +8,8 @@ import { isMfaChallenge, login } from '../../src/api/auth';
 import { setRefreshToken } from '../../src/auth/secure-storage';
 import { getDeviceName, getOrCreateDeviceId } from '../../src/auth/device';
 import { useSessionStore } from '../../src/auth/session-store';
-import { ApiError, NetworkUnavailableError } from '../../src/api/errors';
+import { ApiError } from '../../src/api/errors';
+import { mapUserFacingError } from '../../src/lib/user-facing-errors';
 import { Alert, Button, Input, Screen } from '../../src/theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
 import type { ForcedLogoutReason } from '../../src/api/client';
@@ -57,17 +58,13 @@ export default function LoginScreen() {
       // No explicit navigation needed — the root layout's Stack.Protected
       // guard re-renders into the (app) group once status flips.
     } catch (err) {
-      if (err instanceof NetworkUnavailableError) {
-        setErrorMessage(err.message);
-      } else if (err instanceof ApiError && err.status === 401) {
-        setErrorMessage('Incorrect email or password.');
-        if (err.attemptsRemaining !== null) setAttemptsRemaining(err.attemptsRemaining);
-      } else if (err instanceof ApiError && err.status === 423) {
+      if (err instanceof ApiError && err.status === 423) {
         setIsLocked(true);
-      } else if (err instanceof ApiError) {
-        setErrorMessage(err.message || 'Something went wrong. Please try again.');
       } else {
-        setErrorMessage('Something went wrong. Please try again.');
+        setErrorMessage(mapUserFacingError(err, { context: 'auth' }));
+        if (err instanceof ApiError && err.attemptsRemaining != null) {
+          setAttemptsRemaining(err.attemptsRemaining);
+        }
       }
     } finally {
       setIsSubmitting(false);
@@ -77,6 +74,9 @@ export default function LoginScreen() {
   return (
     <Screen>
       <Text style={styles.title}>Log in</Text>
+      <Text style={styles.partnerHint}>
+        Security partners: sign in with your operator account.
+      </Text>
 
       {reason === 'account-suspended' ? (
         <View style={styles.alertSpacing}>
@@ -169,7 +169,13 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes['2xl'],
     fontWeight: '700',
     color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  partnerHint: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
     marginBottom: spacing.xl,
+    lineHeight: typography.sizes.sm * 1.4,
   },
   alertSpacing: {
     marginBottom: spacing.lg,

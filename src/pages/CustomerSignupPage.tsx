@@ -5,7 +5,8 @@ import { ArrowLink } from '../components/ArrowLink';
 import { InlineAlert } from '../dashboard/components/ui';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { SupabaseAuthConfigNotice } from '../customer/components/SupabaseAuthConfigNotice';
-import { mapSupabaseAuthError, resendSignupVerification, signUpWithSupabase } from '../customer/supabase/auth';
+import { resendSignupVerification, signUpWithSupabase } from '../customer/supabase/auth';
+import { mapUserFacingError } from '../lib/user-facing-errors';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 10;
@@ -55,7 +56,7 @@ export function CustomerSignupPage() {
       }
       setSubmitted(true);
     } catch (err) {
-      setFormError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Something went wrong.' }));
+      setFormError(mapUserFacingError(err, { context: 'signup' }));
     } finally {
       setLoading(false);
     }
@@ -67,7 +68,7 @@ export function CustomerSignupPage() {
     try {
       await resendSignupVerification(email.trim());
     } catch (err) {
-      setFormError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Could not resend email.' }));
+      setFormError(mapUserFacingError(err, { context: 'verify' }));
     } finally {
       setLoading(false);
     }

@@ -57,7 +57,12 @@ export function CustomerDashboardLayout() {
       brand="My coverage"
       navItems={[
         { to: '/dashboard', label: 'Overview' },
+        { to: '/dashboard/map', label: 'Map' },
+        { to: '/dashboard/alerts', label: 'Alerts' },
+        { to: '/dashboard/verification', label: 'Verification' },
         { to: '/get-started', label: 'Add coverage' },
+        { to: '/dashboard/profile', label: 'Profile' },
+        { to: '/dashboard/notifications', label: 'Notifications' },
         { to: '/dashboard/account', label: 'Account' },
       ]}
       onSignOut={() => void auth.signOut()}

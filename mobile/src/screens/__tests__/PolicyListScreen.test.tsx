@@ -62,9 +62,9 @@ describe('PolicyListScreen', () => {
 
     await renderWithClient(<PolicyListScreen />);
 
-    expect(screen.getByText('Your policy')).toBeTruthy();
-    expect(screen.getByText('Create policy')).toBeTruthy();
-    expect(screen.getByText(/don't have a policy yet/i)).toBeTruthy();
+    expect(screen.getByText('Your protection plan')).toBeTruthy();
+    expect(screen.getByText('Choose a plan')).toBeTruthy();
+    expect(screen.getByText(/don't have a protection plan yet/i)).toBeTruthy();
   });
 
   it('renders policy cards when data exists', async () => {

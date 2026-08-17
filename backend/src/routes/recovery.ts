@@ -81,6 +81,15 @@ export function createRecoveryRouter(ctx: AppContext): Router {
             assetId: asset.id,
           }),
         );
+        notifyInBackground(
+          'recovery.case.partner.new',
+          ctx.recoveryNotifications.notifySecurityOperatorsTheftReported({
+            caseId: recoveryCase.id,
+            referenceNumber: recoveryCase.referenceNumber,
+            assetName: asset.displayName,
+            assetId: asset.id,
+          }),
+        );
 
         res.status(201).json(serializeRecoveryCase(recoveryCase));
       } catch (err) {

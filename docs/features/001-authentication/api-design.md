@@ -7,7 +7,7 @@
 **Consulted:** `ui-design.md` (Stage 4, for client-consumed shapes), `backend/src/middleware/error-handler.ts` (running code — this contract is written to match it, not the reverse)
 **Status:** Draft — submitted for `solution-architect` review per Stage 7 exit criteria. **No SQL is applied by this document.** The two schema additions named in §3 are proposals for `database-architect`, not migrations.
 **Exit artifact:** OpenAPI 3.1 contract (§7), reviewed and versioned as `/v1`.
-**Contract version: 1.3.0 (amended 2026-08-11 — see §11 "Contract Amendment Log" for the full, dated record, now spanning three same-day amendments: v1.1.0, §§11.A–11.D; v1.2.0, §11.E; and v1.3.0, §11.F).** The v1.3.0 amendment carries ADR-0006's ratified consequences into this contract: `POST /v1/invitations` emits the `privilege_granted` audit event rather than `privileged_data_access`, and `GET /v1/admin/accounts` records one audit row per disclosed subject rather than one row naming the calling admin. It changes no path, request body, response body, status code or field — the affected surface is the audit trail behind these endpoints, which §11.E described in prose and is therefore amended in prose. **The two admin endpoints §11.E added remain unimplemented**, so v1.3.0's list-call rule binds their future implementation rather than describing running behaviour; the `POST /v1/invitations` half is live. The v1.1.0 amendment (a) formally ratified two Stage-9 contract extensions flagged by `authentication-engineer` and `mobile-engineer` for `backend-architect` sign-off rather than self-certified, and (b) transcribed a change `security-review.md`'s SR-1 already mandated on 2026-08-08 but that was never written into this document before code shipped against it. The v1.2.0 amendment is a separate, later, purely additive change on the same day: two new admin endpoints, `GET /v1/admin/accounts` (list) and `GET /v1/admin/accounts/{id}` (detail) — closing **P-10**, the "view customers" third of `08-roadmap.md` Phase 1's named Admin Dashboard need, which `004-policy-asset-management/api-design.md` correctly flagged as belonging to this contract rather than its own (customer identity lives in Supabase, not MongoDB). No existing path, schema, or field is changed or removed by v1.2.0. §11 is the authoritative changelog; every other section below reflects the *current* (v1.2.0) contract, not a redline against any prior version — this role's own convention (per `05-development-standards.md`/`03-communication-workflow.md`) is that a single OpenAPI contract file stays the one artifact codegen and review both point at, so amendments are applied in place with a dated log, not forked into a parallel addendum document the way `database-addendum-001.md` extends `database-design.md`'s append-only DDL — a REST contract is one artifact tools regenerate from, and a second, partial file would risk `mobile-engineer`/`backend-engineer` generating types against the wrong one silently.
+**Contract version: 1.4.0 (amended 2026-08-14 — see §11 "Contract Amendment Log"; prior v1.3.0 amendments §§11.A–11.F unchanged).** v1.4.0 adds `PATCH /v1/admin/accounts/{id}/state` (§11.G, SR-007-11) — the admin account suspend/deactivate/reactivate mutation endpoint. v1.3.0 carries ADR-0006's ratified consequences into this contract: `POST /v1/invitations` emits the `privilege_granted` audit event rather than `privileged_data_access`, and `GET /v1/admin/accounts` records one audit row per disclosed subject rather than one row naming the calling admin.
 
 ---
 
@@ -180,7 +180,7 @@ Enforcement point per Stage 5 §5.1: the Redis-class counter store in front of I
 openapi: 3.1.0
 info:
   title: TD IT Solutions — Identity Service API
-  version: "1.3.0"
+  version: "1.4.0"
   description: >
     Feature 001 (Customer Account Creation & Authentication). Mediates all
     client access to Supabase Auth per ADR-0002's mediation principle —
@@ -1227,6 +1227,54 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /admin/accounts/{id}/state:
+    patch:
+      operationId: adminPatchAccountState
+      summary: >
+        Admin-only account state transition (SR-007-11). Suspends, deactivates,
+        or reactivates a non-admin account. On suspend or deactivate, revokes all
+        sessions and disables all push tokens (C-007-10). Reactivation to active
+        does not re-enable push tokens — the user must re-register on next login.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountState]
+              properties:
+                accountState:
+                  type: string
+                  enum: [active, suspended, deactivated]
+                reason:
+                  type: string
+                  maxLength: 2000
+                  description: Optional operator reason, stored in app.account_state_transitions.
+      responses:
+        '200':
+          description: Updated account detail after the transition.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminAccountDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Caller is not admin, targets self, or targets another admin account.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Invalid state transition (e.g. from deactivated, or to pending_verification).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 ```
 
 ---
@@ -1387,3 +1435,61 @@ Two problems surfaced while wiring this into the existing mechanism, both disclo
 **(c) Every privileged-access row on this contract now carries the platform join key** (AUD-1): `actor_account_id` **and** `actor_session_id` for a bearer-authenticated admin, `actor_service` for an internal caller (`GET /v1/internal/accounts/{id}/status`, previously unattributed — the trail recorded that an account's status was read but not by whom), plus `audit_request_id`, which is **always server-generated and never the client-suppliable `x-request-id`** (AUD-4: a caller-chosen correlation value lets an insider split or merge their own trail, so it cannot be evidence). `x-request-id`'s existing SR-18 behaviour — accepted when UUID-shaped, echoed in the response header and error envelope — is unchanged.
 
 **What §11.F does not do:** it adds, removes and renames nothing in §7's OpenAPI document beyond the `info.version` bump; no path, parameter, request body, response body or status code changes. It does not implement §11.E's two endpoints — they remain unbuilt, and this amendment binds their implementation rather than describing it. Feature 004's `admin_access_log` shape is resolved in addendum-001 Amendment A1 (ADR-0006 FU-A2, discharged 2026-08-11). It does not constitute a Stage 8 sign-off for Feature 004: AUD-3, C-13 and C-14 are conditions on that gate and two roles hold independent blocks there.
+
+### 11.G — New: `PATCH /v1/admin/accounts/{id}/state` — admin account suspend/deactivate/reactivate (SR-007-11)
+
+**Proposed by:** `backend-engineer`, closing SR-007-11 filed by `notification-engineer` in Feature 007's `security-review.md` §9.2 — there was no admin mechanism to suspend or deactivate an account, and C-007-10 requires session revocation plus push-token disable to ship in the same change.
+
+**Endpoint:** `PATCH /v1/admin/accounts/{id}/state`
+
+**Request body:**
+
+```json
+{
+  "accountState": "active" | "suspended" | "deactivated",
+  "reason": "optional string, max 2000 chars"
+}
+```
+
+**Allowed transitions:**
+
+| From | To |
+|---|---|
+| `active` | `suspended`, `deactivated` |
+| `suspended` | `active`, `deactivated` |
+
+**Forbidden transitions (returns `409 CONFLICT`):**
+
+- From `deactivated` — terminal for now per FU-03 (no reactivation path until deletion/anonymisation mechanism is ruled).
+- To `pending_verification` — not an admin-settable state on this endpoint.
+- Any no-op (`from === to`).
+
+**Timestamp rules on `app.accounts`:**
+
+- **Suspend (`→ suspended`):** set `suspended_at = now()`.
+- **Deactivate (`→ deactivated`):** set `deactivated_at = now()`.
+- **Reactivate (`suspended → active`):** clear `suspended_at` and `deactivated_at`.
+
+**Side effects on suspend or deactivate only (not on reactivate to `active`):**
+
+- `ctx.sessions.revokeAllForAccount(subjectAccountId, 'admin_forced')` plus `revokeJtisInKv` — Mechanism 1 immediacy per §2.1.
+- `ctx.pushTokens.disableAllForAccount(subjectAccountId)` — C-007-10 compliance requirement.
+
+**Reactivate push-token posture:** reactivation to `active` does **not** call `disableAllForAccount` and does **not** re-enable tokens disabled during the suspension. Push tokens stay disabled until the user re-registers on next login (`POST /v1/notifications/push-tokens/register`).
+
+**Authorization:**
+
+- `authenticate` + `requireUserType('admin')`.
+- Admin **cannot** suspend/deactivate themselves (`403 FORBIDDEN`).
+- Admin **cannot** mutate another `admin` account — only `customer`, `support_agent`, and `security_company_operator` targets (`403 FORBIDDEN`).
+
+**Rate limit:** platform-wide authenticated baseline — `DEFAULT_AUTHENTICATED_LIMIT` (100 requests / 1 min), keyed per admin `account_id`. Deliberately not given a bespoke row in §5's table (same posture as `GET /v1/admin/accounts/{id}` detail).
+
+**Audit:**
+
+- Append-only row in `app.account_state_transitions` (`account_id`, `from_state`, `to_state`, `reason`, `actor_account_id`).
+- One `privileged_data_access` row in `app.account_audit_log` (subject = target account, actor = calling admin, with `actor_session_id` + `audit_request_id` per ADR-0006 AUD-1).
+
+**Response:** `200 OK` with `AdminAccountDetail` body (same shape as `GET /v1/admin/accounts/{id}`).
+
+**What §11.G does not do:** it does not implement account deletion/anonymisation (C-007-11 / FU-03). It does not add support-agent self-service suspend routes. It does not add admin UI.

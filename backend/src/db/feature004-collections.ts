@@ -70,6 +70,17 @@ export const assetsJsonSchemaValidator: Document = {
       photos: { bsonType: 'array', items: { bsonType: 'string' } },
       gpsDeviceId: { bsonType: ['string', 'null'] },
       gpsPairedAt: { bsonType: ['date', 'null'] },
+      locationSource: { enum: ['self_device', null] },
+      reportingDeviceId: { bsonType: ['string', 'null'] },
+      lastLocation: {
+        bsonType: ['object', 'null'],
+        properties: {
+          latitude: { bsonType: 'number' },
+          longitude: { bsonType: 'number' },
+          accuracyMeters: { bsonType: ['number', 'null'] },
+          recordedAt: { bsonType: 'date' },
+        },
+      },
       legalHold: { bsonType: 'bool' },
       createdAt: { bsonType: 'date' },
       updatedAt: { bsonType: 'date' },

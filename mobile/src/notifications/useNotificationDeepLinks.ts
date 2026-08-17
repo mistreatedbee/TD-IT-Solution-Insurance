@@ -10,10 +10,23 @@ function routeFromDeepLink(deepLink: string): string | null {
   if (!deepLink.startsWith('tditinsurance://')) {
     return null;
   }
-  const path = deepLink.replace('tditinsurance://', '');
+  const path = deepLink.replace('tditinsurance://', '').replace(/^\//, '');
   if (!path || path === '/') {
     return '/(app)';
   }
+
+  if (path.startsWith('security/cases/')) {
+    const caseId = path.slice('security/cases/'.length);
+    if (caseId) {
+      return `/(security-app)/cases/${caseId}`;
+    }
+    return '/(security-app)';
+  }
+
+  if (path === 'security' || path.startsWith('security/')) {
+    return '/(security-app)';
+  }
+
   return `/(app)/${path}`;
 }
 
@@ -49,3 +62,6 @@ export function useNotificationDeepLinks(): void {
     };
   }, [router]);
 }
+
+/** Exported for unit tests. */
+export { routeFromDeepLink };

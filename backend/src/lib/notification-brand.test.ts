@@ -20,6 +20,22 @@ describe('notification-brand', () => {
     expect(message.deepLink).toBe('tditinsurance://live-tracking/507f1f77bcf86cd799439011');
   });
 
+  it('builds partner new-case push with security deep link', () => {
+    const message = buildBrandedPushMessage('recovery.case.partner.new', {
+      assetName: 'MacBook Pro',
+      caseId: '507f1f77bcf86cd799439011',
+      referenceNumber: 'RC-2026-0001',
+    });
+
+    expect(message.title).toBe('New theft case');
+    expect(message.body).toContain('MacBook Pro');
+    expect(message.body).toContain('RC-2026-0001');
+    expect(message.category).toBe('theft_critical');
+    expect(message.priority).toBe('high');
+    expect(message.deepLink).toBe('tditinsurance://security/cases/507f1f77bcf86cd799439011');
+    expect(message.data.deepLink).toBe('tditinsurance://security/cases/507f1f77bcf86cd799439011');
+  });
+
   it('builds branded test notification copy', () => {
     const message = buildBrandedPushMessage('account.security.test');
     expect(message.subtitle).toBe(NOTIFICATION_BRAND.tagline);

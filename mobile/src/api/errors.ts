@@ -58,3 +58,12 @@ export class NetworkUnavailableError extends Error {
     if (cause instanceof Error) this.cause = cause;
   }
 }
+
+/** True when the backend responded 404 because the route is not deployed yet. */
+export function isMissingApiRouteError(err: unknown): boolean {
+  return (
+    err instanceof ApiError &&
+    err.status === 404 &&
+    err.message.includes('No route matches')
+  );
+}

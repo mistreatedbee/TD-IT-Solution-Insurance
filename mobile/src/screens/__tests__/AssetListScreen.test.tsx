@@ -29,16 +29,16 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
 }));
 
-jest.mock('../../api/hooks/useAssets', () => ({
-  useAssetsQuery: jest.fn(),
+jest.mock('../../tracking/useAssetVault', () => ({
+  useAssetVault: jest.fn(),
 }));
 
 jest.mock('../../auth/gateWriteAction', () => ({
   gateWriteAction: jest.fn(),
 }));
 
-const { useAssetsQuery } = jest.requireMock('../../api/hooks/useAssets') as {
-  useAssetsQuery: jest.Mock;
+const { useAssetVault } = jest.requireMock('../../tracking/useAssetVault') as {
+  useAssetVault: jest.Mock;
 };
 
 async function renderWithClient(ui: React.ReactElement) {
@@ -48,43 +48,46 @@ async function renderWithClient(ui: React.ReactElement) {
 
 describe('AssetListScreen', () => {
   beforeEach(() => {
-    useAssetsQuery.mockReset();
+    useAssetVault.mockReset();
   });
 
-  it('shows empty state when the API returns no assets', async () => {
-    useAssetsQuery.mockReturnValue({
-      data: { data: [], pagination: { nextCursor: null, hasMore: false } },
+  it('shows empty state when the vault has no assets', async () => {
+    useAssetVault.mockReturnValue({
+      items: [],
+      stats: { total: 0, online: 0, needsAttention: 0 },
       isLoading: false,
       isError: false,
-      isFetching: false,
+      error: null,
+      isRefetching: false,
       refetch: jest.fn(),
     });
 
     await renderWithClient(<AssetListScreen />);
 
-    expect(screen.getByText('Your assets')).toBeTruthy();
+    expect(screen.getByText('Protection vault')).toBeTruthy();
     expect(screen.getByLabelText('Register asset')).toBeTruthy();
-    expect(screen.getByText(/No assets registered yet/i)).toBeTruthy();
+    expect(screen.getByText(/No assets yet/i)).toBeTruthy();
   });
 
   it(
     'renders asset cards when data exists',
     async () => {
-      useAssetsQuery.mockReturnValue({
-        data: {
-          data: [
-            {
-              id: '507f1f77bcf86cd799439011',
-              displayName: 'My laptop',
-              assetType: 'laptop',
-              status: 'registered',
-            },
-          ],
-          pagination: { nextCursor: null, hasMore: false },
-        },
+      useAssetVault.mockReturnValue({
+        items: [
+          {
+            assetId: '507f1f77bcf86cd799439011',
+            displayName: 'My laptop',
+            assetType: 'laptop',
+            trackingStatus: 'tracking_unavailable',
+            trackingLabel: 'Unavailable',
+            locationLabel: null,
+          },
+        ],
+        stats: { total: 1, online: 0, needsAttention: 1 },
         isLoading: false,
         isError: false,
-        isFetching: false,
+        error: null,
+        isRefetching: false,
         refetch: jest.fn(),
       });
 

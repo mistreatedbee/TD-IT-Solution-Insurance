@@ -64,6 +64,31 @@ jest.mock('expo-constants', () => ({
   easConfig: { projectId: 'test-project-id' },
 }));
 
+jest.mock('expo-location', () => ({
+  Accuracy: { Balanced: 3 },
+  hasServicesEnabledAsync: jest.fn(async () => true),
+  getForegroundPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
+  getCurrentPositionAsync: jest.fn(async () => ({
+    coords: { latitude: -26.2041, longitude: 28.0473, accuracy: 12 },
+    timestamp: Date.now(),
+  })),
+}));
+
+jest.mock('react-native-maps', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const MockMap = React.forwardRef((props: Record<string, unknown>, ref: unknown) =>
+    React.createElement(View, { ...props, ref }),
+  );
+  return {
+    __esModule: true,
+    default: MockMap,
+    Marker: View,
+    PROVIDER_DEFAULT: 'default',
+  };
+});
+
 // --- lucide-react-native -----------------------------------------------
 // Icon components are SVG-native; mock as empty Views for unit tests.
 jest.mock('lucide-react-native', () => {

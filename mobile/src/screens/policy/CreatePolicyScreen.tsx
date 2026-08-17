@@ -1,77 +1,97 @@
 /**
- * Create policy — POST /v1/policies with Idempotency-Key.
+ * Choose a protection plan — lists catalog plans and subscribes via POST /v1/policies.
  */
 import { useRouter, type Href } from 'expo-router';
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { usePlansQuery } from '../../api/hooks/usePlans';
 import { useCreatePolicyMutation } from '../../api/hooks/usePolicies';
+import type { PlanCatalogItem } from '../../api/plans';
 import { ApiError } from '../../api/errors';
-import { Alert, Button, Input, Screen } from '../../theme/primitives';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { Alert, Button, Screen } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
+import { PlanCatalogPicker } from './PlanCatalogPicker';
 
 export function CreatePolicyScreen() {
   const router = useRouter();
+  const plansQuery = usePlansQuery();
   const createMutation = useCreatePolicyMutation();
-  const [planTier, setPlanTier] = useState('');
-  const [fieldError, setFieldError] = useState<string | undefined>();
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit() {
-    const trimmed = planTier.trim();
-    if (!trimmed) {
-      setFieldError('Enter a plan tier label.');
-      return;
-    }
-    setFieldError(undefined);
+  const plans = plansQuery.data?.data ?? [];
+
+  async function handleSelectPlan(plan: PlanCatalogItem) {
+    setSelectedPlanId(plan.id);
+    setError(null);
 
     try {
-      const policy = await createMutation.mutateAsync({ planTier: trimmed });
+      const policy = await createMutation.mutateAsync({
+        planCatalogId: plan.id,
+        planTier: plan.slug,
+      });
       if (policy.id) {
         router.replace(`/policy/${policy.id}` as Href);
       } else {
         router.back();
       }
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
-        setFieldError('Your account must be verified and active before creating a policy.');
+      setSelectedPlanId(null);
+      if (err instanceof ApiError && err.code === 'PLAN_REQUIRES_QUOTE') {
+        setError('Enterprise plans require a custom quote. Contact us to continue.');
+      } else if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
+        setError('Verify your email before choosing a plan.');
+      } else {
+        setError(mapUserFacingError(err, { context: 'policy' }));
       }
     }
   }
 
-  const submitError =
-    createMutation.error instanceof ApiError && createMutation.error.code !== 'ACCOUNT_NOT_ACTIVE'
-      ? createMutation.error.message
-      : createMutation.error instanceof Error && !(createMutation.error instanceof ApiError)
-        ? createMutation.error.message
-        : undefined;
+  if (plansQuery.isLoading) {
+    return (
+      <Screen scroll={false}>
+        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
+      </Screen>
+    );
+  }
+
+  if (plansQuery.isError) {
+    return (
+      <Screen>
+        <Alert tone="danger">{mapUserFacingError(plansQuery.error, { context: 'policy' })}</Alert>
+        <Button variant="secondary" onPress={() => plansQuery.refetch()}>
+          Try again
+        </Button>
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
-      <Text style={styles.title}>Create policy</Text>
+      <Text style={styles.title}>Choose a protection plan</Text>
       <Text style={styles.body}>
-        Plan tiers are not finalized yet — enter the tier name you were given (for example
-        &quot;standard&quot; or &quot;premium&quot;). Coverage limits and pricing will be
-        configured later.
+        Select the plan that fits how many devices you want to protect. Your subscription starts
+        once billing is configured — no payment is taken on this screen.
       </Text>
 
-      {submitError ? (
-        <View style={styles.alertSpacing}>
-          <Alert tone="danger">{submitError}</Alert>
-        </View>
+      {error ? (
+        <Alert tone="danger" style={styles.alert}>
+          {error}
+        </Alert>
       ) : null}
 
-      <Input
-        label="Plan tier"
-        value={planTier}
-        onChangeText={setPlanTier}
-        placeholder="e.g. standard"
-        error={fieldError}
-        required
-        autoCapitalize="none"
-      />
+      {plans.length === 0 ? (
+        <Alert tone="info">No plans are available right now. Please try again later.</Alert>
+      ) : (
+        <PlanCatalogPicker
+          plans={plans}
+          selectedPlanId={selectedPlanId}
+          loadingPlanId={createMutation.isPending ? selectedPlanId : null}
+          onSelectPlan={(plan) => void handleSelectPlan(plan)}
+        />
+      )}
 
-      <Button fullWidth loading={createMutation.isPending} onPress={handleSubmit}>
-        Create policy
-      </Button>
       <Button variant="tertiary" onPress={() => router.back()}>
         Cancel
       </Button>
@@ -90,9 +110,12 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     color: colors.textSecondary,
     lineHeight: typography.sizes.sm * 1.4,
-    marginBottom: spacing.xl,
-  },
-  alertSpacing: {
     marginBottom: spacing.lg,
+  },
+  alert: {
+    marginBottom: spacing.lg,
+  },
+  loader: {
+    marginTop: spacing['2xl'],
   },
 });

@@ -12,7 +12,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import { mfaEnroll, mfaEnrollVerify } from '../../src/api/auth';
 import { setRefreshToken } from '../../src/auth/secure-storage';
 import { useSessionStore } from '../../src/auth/session-store';
-import { ApiError, NetworkUnavailableError } from '../../src/api/errors';
+import { mapUserFacingError } from '../../src/lib/user-facing-errors';
 import { Alert, OtpInput, Screen } from '../../src/theme/primitives';
 import { colors, spacing, typography } from '../../src/theme/tokens';
 
@@ -33,11 +33,7 @@ export default function MfaEnrollScreen() {
     mfaEnroll()
       .then(setEnrollment)
       .catch((err) => {
-        setLoadError(
-          err instanceof NetworkUnavailableError
-            ? err.message
-            : 'Could not start enrollment. Please try again.',
-        );
+        setLoadError(mapUserFacingError(err, { context: 'mfa' }));
       });
   }, []);
 
@@ -52,13 +48,7 @@ export default function MfaEnrollScreen() {
       router.back();
     } catch (err) {
       setCode('');
-      if (err instanceof ApiError && err.status === 400) {
-        setVerifyError(
-          "That code didn't match. Double-check the time on your phone is correct, and try the latest code shown in your app.",
-        );
-      } else {
-        setVerifyError('Something went wrong. Please try again.');
-      }
+      setVerifyError(mapUserFacingError(err, { context: 'mfa' }));
     } finally {
       setIsVerifying(false);
     }

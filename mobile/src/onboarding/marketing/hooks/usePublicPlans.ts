@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { MARKETING_PLAN_CATALOG_FALLBACK } from '../../../api/plan-catalog-fallback';
 import { listPublicPlans, type PlanCatalogItem } from '../../../api/plans';
 import { ApiError, NetworkUnavailableError } from '../../../api/errors';
+import { mapUserFacingError } from '../../../lib/user-facing-errors';
 import { API_HOST } from '../../../api/config';
 
 type PublicPlansResult = {
@@ -46,7 +47,7 @@ async function fetchPublicPlans(): Promise<PublicPlansResult> {
     return {
       plans: [],
       usingFallback: false,
-      error: 'Could not load plans right now. Please try again.',
+      error: mapUserFacingError(err, { context: 'onboarding' }),
     };
   }
 }

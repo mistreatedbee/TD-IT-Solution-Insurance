@@ -7,6 +7,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { useAssetsQuery } from '../../api/hooks/useAssets';
 import type { Asset } from '../../api/assets';
 import { formatAssetType } from '../../lib/asset-labels';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { Alert, Badge, Card, Screen } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
 
@@ -53,7 +54,7 @@ export function ReportTheftSelectScreen() {
         </View>
       ) : isError ? (
         <Alert tone="danger">
-          {error instanceof Error ? error.message : 'Could not load your assets.'}
+          {mapUserFacingError(error, { context: 'asset' })}
         </Alert>
       ) : assets.length === 0 ? (
         <Text style={styles.empty}>

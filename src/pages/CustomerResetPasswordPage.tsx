@@ -4,7 +4,8 @@ import { Button, Input, SectionHeading } from '../components';
 import { InlineAlert } from '../dashboard/components/ui';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
-import { mapSupabaseAuthError, updatePasswordWithSupabase } from '../customer/supabase/auth';
+import { updatePasswordWithSupabase } from '../customer/supabase/auth';
+import { mapUserFacingError } from '../lib/user-facing-errors';
 import { getSupabase } from '../customer/supabase/client';
 
 const PASSWORD_MIN_LENGTH = 10;
@@ -54,7 +55,7 @@ export function CustomerResetPasswordPage() {
       await auth.signInWithTokens(result.accessToken, result.refreshToken);
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      setError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Could not reset password.' }));
+      setError(mapUserFacingError(err, { context: 'password-reset' }));
     } finally {
       setLoading(false);
     }

@@ -7,7 +7,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { CheckIcon } from 'lucide-react-native';
 import { useAssetQuery } from '../../api/hooks/useAssets';
 import { useCreateRecoveryCaseMutation } from '../../api/hooks/useRecovery';
-import { ApiError, NetworkUnavailableError } from '../../api/errors';
+import { ApiError } from '../../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { formatAssetType } from '../../lib/asset-labels';
 import { Alert, Button, Card, Input, Screen } from '../../theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
@@ -34,14 +35,10 @@ export function ReportTheftConfirmScreen() {
         `/report-theft/success?caseId=${encodeURIComponent(created.id)}&reference=${encodeURIComponent(created.referenceNumber)}` as Href,
       );
     } catch (err) {
-      if (err instanceof NetworkUnavailableError) {
-        setErrorMessage(err.message);
-      } else if (err instanceof ApiError && err.status === 409) {
+      if (err instanceof ApiError && err.status === 409) {
         setErrorMessage('An open recovery case already exists for this asset.');
-      } else if (err instanceof ApiError) {
-        setErrorMessage(err.message || 'Could not submit your report. Try again.');
       } else {
-        setErrorMessage('Could not submit your report. Try again.');
+        setErrorMessage(mapUserFacingError(err, { context: 'recovery' }));
       }
     }
   }

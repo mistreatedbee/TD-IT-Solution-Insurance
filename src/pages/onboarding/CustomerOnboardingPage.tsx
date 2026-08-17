@@ -9,7 +9,8 @@ import { ApiError } from '../../customer/api/errors';
 import { createPolicy, listPolicies, type Policy } from '../../customer/api/policies';
 import { formatPlanPrice, listPlans, type PlanCatalogItem } from '../../customer/api/plans';
 import { useCustomerAuth } from '../../customer/auth/CustomerAuthProvider';
-import { mapSupabaseAuthError, resendSignupVerification, signUpWithSupabase } from '../../customer/supabase/auth';
+import { resendSignupVerification, signUpWithSupabase } from '../../customer/supabase/auth';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { COMPANY_CONTACT } from '../../lib/companyContact';
 import {
   ASSET_CATEGORY_OPTIONS,
@@ -26,11 +27,18 @@ import {
   type AccountType,
   type OnboardingStep,
 } from '../../onboarding/onboardingStorage';
+import {
+  clearPendingSignupAuth,
+  loadPendingSignupAuth,
+  savePendingSignupAuth,
+} from '../../onboarding/pendingSignupAuth';
 import { OnboardingProgress } from './OnboardingProgress';
 import { OnboardingShell } from './OnboardingShell';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 10;
+
+const POLL_INTERVAL_MS = 10_000;
 
 function resolveInitialStep(
   authStatus: string,
@@ -104,6 +112,49 @@ export function CustomerOnboardingPage() {
       .finally(() => setPlansLoading(false));
   }, [step]);
 
+  const tryAdvanceFromVerification = useCallback(async (): Promise<boolean> => {
+    if (auth.status === 'signed-in') {
+      const me = await auth.refreshAccount();
+      if (me?.accountState === 'active') {
+        clearPendingSignupAuth();
+        setStep('plan');
+        setError(null);
+        return true;
+      }
+    }
+
+    const creds = loadPendingSignupAuth();
+    if (!creds) return false;
+
+    try {
+      const result = await auth.loginWithPassword(creds.email, creds.password);
+      if (result.kind === 'tokens') {
+        await auth.signInWithTokens(result.accessToken, result.refreshToken);
+        const me = await auth.refreshAccount();
+        if (me?.accountState === 'active') {
+          clearPendingSignupAuth();
+          setStep('plan');
+          setError(null);
+          return true;
+        }
+      }
+    } catch {
+      /* still pending */
+    }
+    return false;
+  }, [auth]);
+
+  useEffect(() => {
+    if (step !== 'verify') return;
+
+    void tryAdvanceFromVerification();
+    const timer = window.setInterval(() => {
+      void tryAdvanceFromVerification();
+    }, POLL_INTERVAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [step, tryAdvanceFromVerification]);
+
   useEffect(() => {
     const draft = loadAssetDraft();
     if (draft) setAssetFields(draft);
@@ -136,9 +187,10 @@ export function CustomerOnboardingPage() {
         navigate('/auth/email-verified', { replace: true, state: { email: trimmed } });
         return;
       }
+      savePendingSignupAuth(trimmed, password);
       setStep('verify');
     } catch (err) {
-      setError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Sign up failed.' }));
+      setError(mapUserFacingError(err, { context: 'signup' }));
     } finally {
       setLoading(false);
     }
@@ -158,7 +210,7 @@ export function CustomerOnboardingPage() {
         setError('Additional verification is required. Use the mobile app or contact support.');
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Log in failed.');
+      setError(mapUserFacingError(err, { context: 'auth' }));
     } finally {
       setLoading(false);
     }
@@ -177,11 +229,7 @@ export function CustomerOnboardingPage() {
       setPolicy(created);
       setStep('asset-category');
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'PLAN_REQUIRES_QUOTE') {
-        setError('Enterprise plans require a custom quote. Contact us to continue.');
-      } else {
-        setError(err instanceof ApiError ? err.message : 'Could not select plan.');
-      }
+      setError(mapUserFacingError(err, { context: 'policy' }));
     } finally {
       setLoading(false);
     }
@@ -220,14 +268,10 @@ export function CustomerOnboardingPage() {
       setEstimatedValue('');
       setStep('review');
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'ASSET_LIMIT_REACHED') {
-        setError('You have reached the device limit for your plan.');
-      } else if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
+      if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
         setStep('verify');
-        setError('Verify your email before registering assets.');
-      } else {
-        setError(err instanceof ApiError ? err.message : 'Could not register asset.');
       }
+      setError(mapUserFacingError(err, { context: 'asset' }));
     } finally {
       setLoading(false);
     }
@@ -367,8 +411,15 @@ export function CustomerOnboardingPage() {
             title="Check your inbox"
             size="md"
             className="mt-4"
-            subtitle="Open the verification link we sent you, then log in below to continue onboarding."
+            subtitle="Open the verification link we sent you — we will continue automatically once it is confirmed."
           />
+          <p className="mt-3 text-sm text-text-secondary">
+            Can&apos;t find it? Check your spam or promotions folder. Verification emails from a new
+            domain sometimes land there at first.
+          </p>
+          <p className="mt-2 text-sm text-text-secondary">
+            We check every few seconds — no need to refresh your inbox.
+          </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Button
               variant="secondary"
@@ -379,7 +430,7 @@ export function CustomerOnboardingPage() {
                 try {
                   await resendSignupVerification(email.trim() || auth.account?.email || '');
                 } catch (err) {
-                  setError(mapSupabaseAuthError(err instanceof Error ? err : { message: 'Resend failed.' }));
+                  setError(mapUserFacingError(err, { context: 'verify' }));
                 } finally {
                   setLoading(false);
                 }
@@ -388,10 +439,20 @@ export function CustomerOnboardingPage() {
               Resend email
             </Button>
             <Button
+              loading={loading}
               onClick={async () => {
-                await refreshData();
-                if (auth.account?.accountState === 'active') setStep('plan');
-                else setError('Still waiting for verification — open the link in your email first.');
+                setLoading(true);
+                setError(null);
+                try {
+                  const advanced = await tryAdvanceFromVerification();
+                  if (!advanced) {
+                    setError(
+                      'Still waiting for verification — open the link in your email first, then try again.',
+                    );
+                  }
+                } finally {
+                  setLoading(false);
+                }
               }}
             >
               I&apos;ve verified — continue

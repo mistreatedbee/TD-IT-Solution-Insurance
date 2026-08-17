@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Button, Card, SectionHeading } from '../../components';
+import { Button, Card, Input, SectionHeading } from '../../components';
 import { DataTable, DetailGrid, InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import {
   getAdminAccount,
   getAdminAsset,
@@ -9,11 +10,14 @@ import {
   listAdminAccounts,
   listAdminAssets,
   listAdminPolicies,
+  updateAdminAccountState,
+  type AdminAccountDetail,
   type AdminAccountSummary,
   type AdminAssetDetail,
   type AdminAssetSummary,
   type AdminPolicyDetail,
   type AdminPolicySummary,
+  type AdminSettableAccountState,
 } from '../api/admin-data';
 import { AdminNavLink } from '../layout/AdminLayout';
 
@@ -33,7 +37,7 @@ export function AccountsListPage() {
         setCursor(page.pagination.nextCursor);
         setHasMore(page.pagination.hasMore);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load data.'))
+      .catch((err) => setError(mapUserFacingError(err, { context: 'admin' })))
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -78,14 +82,160 @@ export function AccountsListPage() {
   );
 }
 
+const ADMIN_MUTABLE_USER_TYPES = new Set(['customer', 'support_agent', 'security_company_operator']);
+
+function AccountStateActions({
+  account,
+  onUpdated,
+}: {
+  account: AdminAccountDetail;
+  onUpdated: (next: AdminAccountDetail) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState<AdminSettableAccountState | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionInfo, setActionInfo] = useState<string | null>(null);
+
+  if (!ADMIN_MUTABLE_USER_TYPES.has(account.userType)) {
+    return (
+      <p className="text-sm text-text-secondary">
+        Account state for {account.userType.replace(/_/g, ' ')} accounts cannot be changed from this panel.
+      </p>
+    );
+  }
+
+  if (account.accountState === 'deactivated') {
+    return (
+      <p className="text-sm text-text-secondary">
+        This account is deactivated. Reactivation is not available through the admin panel.
+      </p>
+    );
+  }
+
+  if (account.accountState !== 'active' && account.accountState !== 'suspended') {
+    return (
+      <p className="text-sm text-text-secondary">
+        State changes are available only for active or suspended accounts.
+      </p>
+    );
+  }
+
+  async function applyState(nextState: AdminSettableAccountState, confirmMessage: string) {
+    if (!window.confirm(confirmMessage)) return;
+
+    setBusy(nextState);
+    setActionError(null);
+    setActionInfo(null);
+
+    try {
+      const trimmedReason = reason.trim();
+      const updated = await updateAdminAccountState(account.id, {
+        accountState: nextState,
+        ...(trimmedReason ? { reason: trimmedReason } : {}),
+      });
+      onUpdated(updated);
+      setActionInfo(
+        nextState === 'active'
+          ? 'Account reactivated. Push notifications stay disabled until the customer re-registers a device.'
+          : 'Account state updated. All sessions were revoked and push tokens disabled.',
+      );
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Input
+        label="Reason (optional)"
+        type="textarea"
+        rows={2}
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+        placeholder="e.g. Suspected credential compromise"
+        disabled={busy !== null}
+      />
+      {actionError ? <InlineAlert tone="danger">{actionError}</InlineAlert> : null}
+      {actionInfo ? <InlineAlert tone="info">{actionInfo}</InlineAlert> : null}
+      <div className="flex flex-wrap gap-2">
+        {account.accountState === 'active' ? (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={busy === 'suspended'}
+              disabled={busy !== null}
+              onClick={() =>
+                void applyState(
+                  'suspended',
+                  'Suspend this account? The customer will be signed out everywhere and push notifications will stop.',
+                )
+              }
+            >
+              Suspend account
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={busy === 'deactivated'}
+              disabled={busy !== null}
+              onClick={() =>
+                void applyState(
+                  'deactivated',
+                  'Deactivate this account? This is intended to be permanent. All sessions will be revoked and push notifications disabled.',
+                )
+              }
+            >
+              Deactivate account
+            </Button>
+          </>
+        ) : null}
+        {account.accountState === 'suspended' ? (
+          <>
+            <Button
+              size="sm"
+              loading={busy === 'active'}
+              disabled={busy !== null}
+              onClick={() =>
+                void applyState(
+                  'active',
+                  'Reactivate this account? The customer can sign in again. Push tokens remain disabled until they re-register a device.',
+                )
+              }
+            >
+              Reactivate account
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={busy === 'deactivated'}
+              disabled={busy !== null}
+              onClick={() =>
+                void applyState(
+                  'deactivated',
+                  'Deactivate this suspended account? This is intended to be permanent.',
+                )
+              }
+            >
+              Deactivate account
+            </Button>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function AccountDetailPage({ accountId }: { accountId: string }) {
-  const [account, setAccount] = useState<Awaited<ReturnType<typeof getAdminAccount>> | null>(null);
+  const [account, setAccount] = useState<AdminAccountDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getAdminAccount(accountId)
       .then(setAccount)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load account.'));
+      .catch((err) => setError(mapUserFacingError(err, { context: 'admin' })));
   }, [accountId]);
 
   if (error) return <InlineAlert tone="danger">{error}</InlineAlert>;
@@ -96,11 +246,14 @@ export function AccountDetailPage({ accountId }: { accountId: string }) {
       <SectionHeading as="h1" title={account.email} size="md" className="mb-4" />
       <DetailGrid
         rows={[
-          { label: 'User type', value: account.userType },
+          { label: 'User type', value: account.userType.replace(/_/g, ' ') },
           { label: 'State', value: <StatusBadge value={account.accountState} /> },
           { label: 'MFA required', value: account.mfaRequired ? 'Yes' : 'No' },
           { label: 'Partner org', value: account.partnerOrganizationId ?? '—' },
+          { label: 'Suspended at', value: account.suspendedAt ? new Date(account.suspendedAt).toLocaleString() : '—' },
+          { label: 'Deactivated at', value: account.deactivatedAt ? new Date(account.deactivatedAt).toLocaleString() : '—' },
           { label: 'Created', value: new Date(account.createdAt).toLocaleString() },
+          { label: 'Updated', value: new Date(account.updatedAt).toLocaleString() },
         ]}
       />
       <div className="mt-6 flex gap-3">
@@ -110,6 +263,10 @@ export function AccountDetailPage({ accountId }: { accountId: string }) {
         <Link className="text-sm text-primary hover:underline" to={`/admin/assets?accountId=${account.id}`}>
           View assets
         </Link>
+      </div>
+      <div className="mt-8 border-t border-border pt-6">
+        <SectionHeading as="h2" title="Account access" size="md" className="mb-3" />
+        <AccountStateActions account={account} onUpdated={setAccount} />
       </div>
     </Card>
   );
@@ -134,7 +291,7 @@ export function PoliciesListPage() {
         setCursor(page.pagination.nextCursor);
         setHasMore(page.pagination.hasMore);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load data.'))
+      .catch((err) => setError(mapUserFacingError(err, { context: 'admin' })))
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -187,7 +344,7 @@ export function PolicyDetailPage({ policyId }: { policyId: string }) {
   useEffect(() => {
     getAdminPolicy(policyId)
       .then(setPolicy)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load policy.'));
+      .catch((err) => setError(mapUserFacingError(err, { context: 'admin' })));
   }, [policyId]);
 
   if (error) return <InlineAlert tone="danger">{error}</InlineAlert>;
@@ -227,7 +384,7 @@ export function AssetsListPage() {
         setCursor(page.pagination.nextCursor);
         setHasMore(page.pagination.hasMore);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load data.'))
+      .catch((err) => setError(mapUserFacingError(err, { context: 'admin' })))
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -280,7 +437,7 @@ export function AssetDetailPage({ assetId }: { assetId: string }) {
   useEffect(() => {
     getAdminAsset(assetId)
       .then(setAsset)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load asset.'));
+      .catch((err) => setError(mapUserFacingError(err, { context: 'admin' })));
   }, [assetId]);
 
   if (error) return <InlineAlert tone="danger">{error}</InlineAlert>;

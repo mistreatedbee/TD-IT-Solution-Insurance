@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { resetPasswordRequest } from '../../src/api/auth';
 import { NetworkUnavailableError } from '../../src/api/errors';
+import { mapUserFacingError } from '../../src/lib/user-facing-errors';
 import { Alert, Button, Input, Screen } from '../../src/theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
 
@@ -30,7 +31,7 @@ export default function ForgotPasswordScreen() {
       // differ from success (api-design.md §5's honest-limitation note) —
       // so any non-network error still shows the same confirmation.
       if (err instanceof NetworkUnavailableError) {
-        setNetworkError(err.message);
+        setNetworkError(mapUserFacingError(err, { context: 'password-reset' }));
       } else {
         setSubmitted(true);
       }

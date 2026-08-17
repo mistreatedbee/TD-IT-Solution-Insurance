@@ -4,6 +4,11 @@ import { CustomerAuthProvider } from './customer/auth/CustomerAuthProvider';
 import { CustomerAccountPage } from './pages/CustomerAccountPage';
 import { CustomerAccountSettingsPage } from './pages/customer/CustomerAccountSettingsPage';
 import { CustomerDashboardPage } from './pages/customer/CustomerDashboardPage';
+import { CustomerAlertsPage } from './pages/customer/CustomerAlertsPage';
+import { CustomerVerificationCentrePage } from './pages/customer/CustomerVerificationCentrePage';
+import { CustomerNotificationPreferencesPage } from './pages/customer/CustomerNotificationPreferencesPage';
+import { CustomerProfilePage } from './pages/customer/CustomerProfilePage';
+import { CustomerProtectionMapPage } from './pages/customer/CustomerProtectionMapPage';
 import {
   CustomerDashboardGate,
   CustomerDashboardLayout,
@@ -79,7 +84,15 @@ export function App() {
               <Route element={<CustomerDashboardGate />}>
                 <Route element={<CustomerDashboardLayout />}>
                   <Route path="/dashboard" element={<CustomerDashboardPage />} />
+                  <Route path="/dashboard/map" element={<CustomerProtectionMapPage />} />
                   <Route path="/dashboard/account" element={<CustomerAccountSettingsPage />} />
+                  <Route path="/dashboard/profile" element={<CustomerProfilePage />} />
+                  <Route path="/dashboard/verification" element={<CustomerVerificationCentrePage />} />
+                  <Route path="/dashboard/alerts" element={<CustomerAlertsPage />} />
+                  <Route
+                    path="/dashboard/notifications"
+                    element={<CustomerNotificationPreferencesPage />}
+                  />
                 </Route>
               </Route>
             </Route>

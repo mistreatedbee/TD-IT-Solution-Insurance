@@ -10,6 +10,7 @@ import {
   PoliciesListPage,
   PolicyDetailPage,
 } from './pages/AdminDataPages';
+import { VerificationQueuePage, VerificationReviewPage } from './pages/AdminVerificationPages';
 import { PlanEditRoute, PlansListPage } from './pages/AdminPlansPages';
 
 function AccountDetailRoute() {
@@ -55,6 +56,8 @@ export default function AdminRoutes() {
             <Route path="assets/:assetId" element={<AssetDetailRoute />} />
             <Route path="plans" element={<PlansListPage />} />
             <Route path="plans/:planId" element={<PlanEditRoute />} />
+            <Route path="verification" element={<VerificationQueuePage />} />
+            <Route path="verification/:accountId" element={<VerificationReviewPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="login" replace />} />

@@ -1,53 +1,38 @@
 /**
- * Assets tab — lists registered assets from GET /v1/assets.
+ * Protection vault — premium asset list (Feature 009 Phase 3).
  */
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
+import { PlusIcon } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { PlusIcon } from 'lucide-react-native';
-import { useAssetsQuery } from '../../api/hooks/useAssets';
-import type { Asset } from '../../api/assets';
-import { NetworkUnavailableError } from '../../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { gateWriteAction } from '../../auth/gateWriteAction';
-import {
-  assetStatusBadgeTone,
-  formatAssetType,
-  formatDate,
-} from '../../lib/asset-labels';
-import { Alert, Badge, Screen } from '../../theme/primitives';
+import { useAssetVault, type VaultFilter } from '../../tracking/useAssetVault';
+import { Alert, Screen } from '../../theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
-import type { Href } from 'expo-router';
+import { AssetVaultCard } from './AssetVaultCard';
+import { vaultStyles } from './assetVaultStyles';
 
-function AssetRow({ asset, onPress }: { asset: Asset; onPress: () => void }) {
-  const status = asset.status ?? 'active';
-  return (
-    <Pressable onPress={onPress} style={styles.row}>
-      <View style={styles.rowMain}>
-        <Text style={styles.displayName}>{asset.displayName}</Text>
-        <View style={styles.badgeRow}>
-          <Badge tone="gold">{formatAssetType(asset.assetType ?? 'other_electronics')}</Badge>
-          <Badge tone={assetStatusBadgeTone(status)}>{status}</Badge>
-        </View>
-        <Text style={styles.meta}>Registered {formatDate(asset.registeredAt)}</Text>
-      </View>
-    </Pressable>
-  );
-}
+const FILTERS: { id: VaultFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'trackable', label: 'Trackable' },
+  { id: 'needs_attention', label: 'Needs attention' },
+];
 
 export function AssetListScreen() {
   const router = useRouter();
-  const { data, isLoading, isError, error, refetch, isFetching } = useAssetsQuery();
+  const [filter, setFilter] = useState<VaultFilter>('all');
+  const { items, stats, isLoading, isError, error, isRefetching, refetch } = useAssetVault(filter);
   const [isGating, setIsGating] = useState(false);
   const [gateError, setGateError] = useState(false);
-
-  const assets = data?.data ?? [];
 
   async function handleRegisterPress() {
     setGateError(false);
@@ -65,17 +50,72 @@ export function AssetListScreen() {
   }
 
   return (
-    <Screen scroll={false} padded={false}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Your assets</Text>
-        {isFetching && !isLoading ? (
-          <Text style={styles.syncHint}>Refreshing…</Text>
+    <Screen scroll={false} padded={false} style={vaultStyles.screenBg}>
+      <View style={vaultStyles.header}>
+        <View style={styles.titleRow}>
+          <View style={styles.titleCopy}>
+            <Text style={vaultStyles.title}>Protection vault</Text>
+            <Text style={vaultStyles.subtitle}>
+              {stats.total === 0
+                ? 'Register devices and vehicles to build your protection portfolio.'
+                : `${stats.total} protected asset${stats.total === 1 ? '' : 's'} on your account`}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Register asset"
+            accessibilityState={{ disabled: isGating, busy: isGating }}
+            onPress={isGating ? undefined : handleRegisterPress}
+            style={[styles.addButton, isGating ? styles.addButtonDisabled : null]}
+          >
+            {isGating ? (
+              <ActivityIndicator color={colors.textInverse} size="small" />
+            ) : (
+              <PlusIcon color={colors.textInverse} size={22} strokeWidth={2.4} />
+            )}
+          </Pressable>
+        </View>
+
+        {stats.total > 0 ? (
+          <View style={vaultStyles.statRow}>
+            <View style={vaultStyles.statChip}>
+              <Text style={vaultStyles.statValue}>{stats.total}</Text>
+              <Text style={vaultStyles.statLabel}>Assets</Text>
+            </View>
+            <View style={vaultStyles.statChip}>
+              <Text style={vaultStyles.statValue}>{stats.online}</Text>
+              <Text style={vaultStyles.statLabel}>Online</Text>
+            </View>
+            <View style={vaultStyles.statChip}>
+              <Text style={vaultStyles.statValue}>{stats.needsAttention}</Text>
+              <Text style={vaultStyles.statLabel}>Attention</Text>
+            </View>
+          </View>
         ) : null}
       </View>
 
       {gateError ? (
-        <View style={[styles.padded, styles.alertSpacing]}>
+        <View style={styles.alertWrap}>
           <Alert tone="danger">Couldn&apos;t verify your account. Try again.</Alert>
+        </View>
+      ) : null}
+
+      {stats.total > 0 ? (
+        <View style={vaultStyles.filterRow}>
+          {FILTERS.map((item) => {
+            const active = filter === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() => setFilter(item.id)}
+                style={[vaultStyles.filterChip, active ? vaultStyles.filterChipActive : null]}
+              >
+                <Text style={[vaultStyles.filterText, active ? vaultStyles.filterTextActive : null]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       ) : null}
 
@@ -83,140 +123,105 @@ export function AssetListScreen() {
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : isError && assets.length === 0 ? (
+      ) : isError && items.length === 0 ? (
         <View style={styles.padded}>
-          <Alert tone="danger">
-            {error instanceof NetworkUnavailableError
-              ? 'Could not reach the server. Check your connection.'
-              : error instanceof Error
-                ? error.message
-                : 'Could not load assets.'}
-          </Alert>
-          <Pressable onPress={() => refetch()} style={styles.retryLink}>
+          <Alert tone="danger">{mapUserFacingError(error, { context: 'asset' })}</Alert>
+          <Pressable onPress={() => void refetch()} style={styles.retryLink}>
             <Text style={styles.retryText}>Try again</Text>
           </Pressable>
         </View>
-      ) : assets.length === 0 ? (
+      ) : items.length === 0 ? (
         <View style={styles.padded}>
-          <Text style={styles.body}>
-            No assets registered yet. Register a vehicle, phone, laptop, or other
-            covered item to start tracking it on your policy.
+          <Text style={styles.emptyTitle}>
+            {filter === 'all' ? 'No assets yet' : 'Nothing in this view'}
           </Text>
+          <Text style={styles.emptyBody}>
+            {filter === 'all'
+              ? 'Add a vehicle, phone, laptop, or other covered item to start building your vault.'
+              : 'Try another filter or register a new asset.'}
+          </Text>
+          {filter === 'all' ? (
+            <Pressable onPress={handleRegisterPress} style={styles.emptyCta}>
+              <Text style={styles.emptyCtaText}>Register your first asset</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : (
         <FlatList
-          data={assets}
-          keyExtractor={(item, index) => item.id ?? `asset-${index}`}
+          data={items}
+          keyExtractor={(item) => item.assetId}
           renderItem={({ item }) => (
-            <AssetRow
-              asset={item}
-              onPress={() => {
-                if (item.id) router.push(`/assets/${item.id}` as Href);
-              }}
+            <AssetVaultCard
+              item={item}
+              onPress={() => router.push(`/assets/${item.assetId}` as Href)}
             />
           )}
-          contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          contentContainerStyle={vaultStyles.listContent}
+          refreshControl={
+            <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />
+          }
         />
       )}
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Register asset"
-        accessibilityState={{ disabled: isGating, busy: isGating }}
-        onPress={isGating ? undefined : handleRegisterPress}
-        style={[styles.fab, isGating ? styles.fabDisabled : undefined]}
-      >
-        {isGating ? (
-          <ActivityIndicator color={colors.textInverse} />
-        ) : (
-          <PlusIcon color={colors.textInverse} size={28} />
-        )}
-      </Pressable>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
-  },
-  padded: {
-    paddingHorizontal: spacing.xl,
-  },
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  syncHint: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    marginTop: spacing.xs,
-  },
-  body: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-  },
-  listContent: {
-    paddingBottom: spacing['2xl'] + minTouchTarget,
-  },
-  row: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-    backgroundColor: colors.background,
-  },
-  rowMain: {
-    gap: spacing.xs,
-  },
-  displayName: {
-    fontSize: typography.sizes.base,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  badgeRow: {
+  titleRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
+    alignItems: 'flex-start',
+    gap: spacing.md,
   },
-  meta: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
+  titleCopy: {
+    flex: 1,
   },
-  separator: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.xl,
-  },
-  fab: {
-    position: 'absolute',
-    right: spacing.xl,
-    bottom: spacing.xl,
-    width: minTouchTarget + spacing.md,
-    height: minTouchTarget + spacing.md,
-    borderRadius: (minTouchTarget + spacing.md) / 2,
+  addButton: {
+    width: minTouchTarget,
+    height: minTouchTarget,
+    borderRadius: minTouchTarget / 2,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
-  fabDisabled: {
+  addButtonDisabled: {
     opacity: 0.7,
+  },
+  alertWrap: {
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  padded: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+  },
+  emptyTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  emptyBody: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+    lineHeight: typography.sizes.sm * 1.45,
+    marginBottom: spacing.lg,
+  },
+  emptyCta: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.accentGoldTint,
+    borderRadius: 999,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  emptyCtaText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: '700',
+    color: colors.accentGoldDeep,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  alertSpacing: {
-    marginBottom: spacing.md,
   },
   retryLink: {
     marginTop: spacing.md,

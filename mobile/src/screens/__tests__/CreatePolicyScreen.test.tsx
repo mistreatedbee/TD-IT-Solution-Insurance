@@ -5,10 +5,11 @@ import { CreatePolicyScreen } from '../policy/CreatePolicyScreen';
 
 jest.mock('../../theme/primitives', () => {
   const React = require('react');
-  const { Text, View, Pressable, TextInput } = require('react-native');
+  const { Text, View, Pressable } = require('react-native');
   return {
     Screen: ({ children }: { children: React.ReactNode }) => <View>{children}</View>,
     Alert: ({ children }: { children: React.ReactNode }) => <Text>{children}</Text>,
+    Card: ({ children }: { children: React.ReactNode }) => <View>{children}</View>,
     Button: ({
       children,
       onPress,
@@ -20,23 +21,6 @@ jest.mock('../../theme/primitives', () => {
         <Text>{children}</Text>
       </Pressable>
     ),
-    Input: ({
-      label,
-      value,
-      onChangeText,
-      error,
-    }: {
-      label: string;
-      value: string;
-      onChangeText: (v: string) => void;
-      error?: string;
-    }) => (
-      <View>
-        <Text>{label}</Text>
-        <TextInput value={value} onChangeText={onChangeText} />
-        {error ? <Text>{error}</Text> : null}
-      </View>
-    ),
   };
 });
 
@@ -44,21 +28,40 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
 }));
 
+jest.mock('../../api/hooks/usePlans', () => ({
+  usePlansQuery: jest.fn(),
+}));
+
 jest.mock('../../api/hooks/usePolicies', () => ({
   useCreatePolicyMutation: jest.fn(),
 }));
+
+const { usePlansQuery } = jest.requireMock('../../api/hooks/usePlans') as {
+  usePlansQuery: jest.Mock;
+};
 
 const { useCreatePolicyMutation } = jest.requireMock('../../api/hooks/usePolicies') as {
   useCreatePolicyMutation: jest.Mock;
 };
 
+const standardPlan = {
+  id: 'plan-standard',
+  slug: 'standard',
+  name: 'Standard',
+  tagline: 'For growing households',
+  maxAssets: 10,
+  monthlyAmountCents: 40000,
+  currency: 'ZAR',
+  isCustomPricing: false,
+  isActive: true,
+  sortOrder: 2,
+  features: ['GPS recovery support', 'Monthly billing'],
+  accountTypes: ['individual'],
+};
+
 async function renderWithClient(ui: React.ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
-}
-
-function pressSubmitButton() {
-  fireEvent.press(screen.getAllByRole('button')[0]!);
 }
 
 describe('CreatePolicyScreen', () => {
@@ -71,35 +74,36 @@ describe('CreatePolicyScreen', () => {
       isPending: false,
       error: null,
     });
+    usePlansQuery.mockReturnValue({
+      data: { data: [standardPlan] },
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    });
   });
 
-  it('shows validation error when plan tier is empty', async () => {
+  it('lists available plans for the customer to choose from', async () => {
     await renderWithClient(<CreatePolicyScreen />);
 
-    await act(async () => {
-      pressSubmitButton();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('Enter a plan tier label.')).toBeTruthy();
-    });
-    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(screen.getByText('Choose a protection plan')).toBeTruthy();
+    expect(screen.getByText('Standard')).toBeTruthy();
+    expect(screen.getByText('Choose this plan')).toBeTruthy();
   });
 
-  it('submits trimmed plan tier', async () => {
+  it('subscribes with the selected catalog plan', async () => {
     mockMutateAsync.mockResolvedValue({ id: '507f1f77bcf86cd799439011' });
 
     await renderWithClient(<CreatePolicyScreen />);
 
     await act(async () => {
-      fireEvent.changeText(screen.getByDisplayValue(''), '  premium  ');
-    });
-    await act(async () => {
-      pressSubmitButton();
+      fireEvent.press(screen.getByText('Choose this plan'));
     });
 
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith({ planTier: 'premium' });
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        planCatalogId: 'plan-standard',
+        planTier: 'standard',
+      });
     });
   });
 });

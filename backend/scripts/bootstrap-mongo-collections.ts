@@ -18,6 +18,9 @@ import { MongoClient } from 'mongodb';
 
 import { bootstrapFeature004Collections } from '../src/db/feature004-collections.js';
 import { bootstrapRecoveryCollections } from '../src/db/recovery-collections.js';
+import { bootstrapCustomerProfileCollections } from '../src/db/customer-profile-collections.js';
+import { bootstrapTrackingDeviceCollections } from '../src/db/tracking-device-collections.js';
+import { bootstrapLocationEventsCollections } from '../src/db/location-events-collections.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,6 +77,33 @@ async function main(): Promise<void> {
     );
     // eslint-disable-next-line no-console
     console.log('[bootstrap-mongo] recovery_cases indexes:', recovery.indexes.join(', ') || '(none new)');
+
+    const profilesCreated =
+      (await db.listCollections({ name: 'customer_profiles' }).toArray()).length === 0;
+    await bootstrapCustomerProfileCollections(db);
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[bootstrap-mongo] customer_profiles: ${profilesCreated ? 'created' : 'already existed'}, indexes ensured`,
+    );
+
+    const trackingCreated =
+      (await db.listCollections({ name: 'tracking_devices' }).toArray()).length === 0;
+    await bootstrapTrackingDeviceCollections(db);
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[bootstrap-mongo] tracking_devices: ${trackingCreated ? 'created' : 'already existed'}, indexes ensured`,
+    );
+
+    const locationEventsCreated =
+      (await db.listCollections({ name: 'location_events' }).toArray()).length === 0;
+    await bootstrapLocationEventsCollections(db);
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[bootstrap-mongo] location_events: ${locationEventsCreated ? 'created' : 'already existed'}, indexes ensured`,
+    );
 
     // eslint-disable-next-line no-console
     console.log('[bootstrap-mongo] Done.');

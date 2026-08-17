@@ -11,6 +11,7 @@ import {
   policyStatusBadgeTone,
 } from '../../lib/asset-labels';
 import { Alert, Badge, Card, Screen } from '../../theme/primitives';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { colors, spacing, typography } from '../../theme/tokens';
 
 export function PolicyDetailScreen() {
@@ -32,7 +33,7 @@ export function PolicyDetailScreen() {
       <Screen>
         <Text style={styles.title}>Policy</Text>
         <Alert tone="danger">
-          {error instanceof Error ? error.message : 'Policy not found.'}
+          {mapUserFacingError(error, { context: 'policy' })}
         </Alert>
       </Screen>
     );

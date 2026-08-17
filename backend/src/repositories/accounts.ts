@@ -9,6 +9,7 @@
  * exposing the wide row where the contract actually needs it
  * (`GET /account/me`, account creation).
  */
+import type { Pool } from 'pg';
 import type { Queryable } from './types.js';
 
 export type UserType = 'customer' | 'admin' | 'security_company_operator' | 'support_agent';
@@ -67,6 +68,38 @@ export interface AdminAccountListFilters {
   partnerOrganizationId?: string;
   /** Exact match only — backed by accounts_email_unique (api-design.md §11.E). */
   email?: string;
+}
+
+/** Target states admins may set via PATCH /v1/admin/accounts/{id}/state (§11.G). */
+export type AdminSettableAccountState = Exclude<AccountState, 'pending_verification'>;
+
+export class InvalidAccountStateTransitionError extends Error {
+  readonly fromState: AccountState;
+  readonly toState: AdminSettableAccountState;
+
+  constructor(fromState: AccountState, toState: AdminSettableAccountState) {
+    super(`invalid account state transition: ${fromState} → ${toState}`);
+    this.name = 'InvalidAccountStateTransitionError';
+    this.fromState = fromState;
+    this.toState = toState;
+  }
+}
+
+/** Validates admin-initiated transitions per api-design.md §11.G / FU-03. */
+export function isAllowedAdminAccountStateTransition(
+  fromState: AccountState,
+  toState: AdminSettableAccountState,
+): boolean {
+  if (fromState === toState) return false;
+  if (fromState === 'deactivated') return false;
+  switch (fromState) {
+    case 'active':
+      return toState === 'suspended' || toState === 'deactivated';
+    case 'suspended':
+      return toState === 'active' || toState === 'deactivated';
+    default:
+      return false;
+  }
 }
 
 interface AccountDbRow {
@@ -133,6 +166,28 @@ function toAdminDetail(row: AdminDetailDbRow): AdminAccountDetail {
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
+}
+
+function isPool(db: Queryable): db is Pool {
+  return typeof (db as Pool).connect === 'function';
+}
+
+async function withRepoTransaction<T>(db: Queryable, fn: (client: Queryable) => Promise<T>): Promise<T> {
+  if (!isPool(db)) {
+    return fn(db);
+  }
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export function createAccountsRepo(db: Queryable) {
@@ -264,6 +319,20 @@ export function createAccountsRepo(db: Queryable) {
       return result.rows.map(toAdminSummary);
     },
 
+    /**
+     * Active security-company operator account IDs — used for unassigned recovery-case
+     * alerts. All active operators are notified today; partner-org-scoped filtering when
+     * cases are pre-assigned at creation is future work.
+     */
+    async listActiveSecurityOperatorIds(): Promise<string[]> {
+      const result = await db.query<{ id: string }>(
+        `select id from app.accounts
+         where user_type = 'security_company_operator'
+           and account_state = 'active'`,
+      );
+      return result.rows.map((row) => row.id);
+    },
+
     /** GET /v1/admin/accounts/{id} — admin detail (§11.E). */
     async findByIdForAdminDetail(id: string): Promise<AdminAccountDetail | null> {
       const result = await db.query<AdminDetailDbRow>(
@@ -272,6 +341,70 @@ export function createAccountsRepo(db: Queryable) {
       );
       const row = result.rows[0];
       return row ? toAdminDetail(row) : null;
+    },
+
+    /**
+     * PATCH /v1/admin/accounts/{id}/state — transactional state transition
+     * (api-design.md §11.G): read current state, validate, update timestamps,
+     * append `app.account_state_transitions` row. Caller must run inside
+     * `withTransaction` when combined with other writes in the same unit of work.
+     */
+    async transitionAccountState(input: {
+      accountId: string;
+      toState: AdminSettableAccountState;
+      reason?: string | null;
+      actorAccountId: string;
+    }): Promise<AdminAccountDetail | null> {
+      return withRepoTransaction(db, async (tx) => {
+        const current = await tx.query<Pick<AccountDbRow, 'account_state'>>(
+          `select account_state from app.accounts where id = $1 for update`,
+          [input.accountId],
+        );
+        const fromRow = current.rows[0];
+        if (!fromRow) return null;
+
+        const fromState = fromRow.account_state;
+        if (!isAllowedAdminAccountStateTransition(fromState, input.toState)) {
+          throw new InvalidAccountStateTransitionError(fromState, input.toState);
+        }
+
+        const result = await tx.query<AdminDetailDbRow>(
+          `update app.accounts
+           set account_state = $2,
+               suspended_at = case
+                 when $2 = 'suspended' then now()
+                 when $2 = 'active' then null
+                 else suspended_at
+               end,
+               deactivated_at = case
+                 when $2 = 'deactivated' then now()
+                 when $2 = 'active' then null
+                 else deactivated_at
+               end,
+               updated_at = now()
+           where id = $1
+           returning ${ADMIN_DETAIL_COLUMNS}`,
+          [input.accountId, input.toState],
+        );
+        const updated = result.rows[0];
+        if (!updated) return null;
+
+        await tx.query(
+          `insert into app.account_state_transitions
+             (account_id, from_state, to_state, reason, actor_account_id)
+           values ($1, $2, $3, $4, $5)`,
+          [input.accountId, fromState, input.toState, input.reason ?? null, input.actorAccountId],
+        );
+
+        return toAdminDetail(updated);
+      });
+    },
+
+    async updatePhone(accountId: string, phone: string | null): Promise<void> {
+      await db.query(
+        `update app.accounts set phone = $2, updated_at = now() where id = $1`,
+        [accountId, phone],
+      );
     },
   };
 }

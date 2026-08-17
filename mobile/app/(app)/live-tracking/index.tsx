@@ -5,6 +5,7 @@ import { useRouter, type Href } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRecoveryCasesQuery } from '../../../src/api/hooks/useRecovery';
+import { mapUserFacingError } from '../../../src/lib/user-facing-errors';
 import { Alert, Badge, Button, Card, Screen } from '../../../src/theme/primitives';
 import { colors, spacing, typography } from '../../../src/theme/tokens';
 
@@ -27,7 +28,7 @@ export default function LiveTrackingIndexScreen() {
         </View>
       ) : isError ? (
         <Alert tone="danger">
-          {error instanceof Error ? error.message : 'Could not load recovery cases.'}
+          {mapUserFacingError(error, { context: 'recovery' })}
         </Alert>
       ) : cases.length === 0 ? (
         <>

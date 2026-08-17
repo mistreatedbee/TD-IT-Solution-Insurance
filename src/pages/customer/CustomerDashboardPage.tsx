@@ -7,6 +7,7 @@ import { DataTable, InlineAlert, LoadingState, StatusBadge } from '../../dashboa
 import { listAssets, type Asset, type AssetType } from '../../customer/api/assets';
 import { listPolicies, type Policy } from '../../customer/api/policies';
 import { useCustomerAuth } from '../../customer/auth/CustomerAuthProvider';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 
 function apiAssetTypeToBadge(type: AssetType): BadgeAssetType {
   switch (type) {
@@ -39,9 +40,9 @@ export function CustomerDashboardPage() {
           setPolicies(policiesRes.data);
           setAssets(assetsRes.data);
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
-          setError('Could not load your coverage details. Try refreshing the page.');
+          setError(mapUserFacingError(err, { context: 'policy' }));
         }
       } finally {
         if (!cancelled) setLoading(false);

@@ -73,6 +73,18 @@ export function getAdminAccount(id: string) {
   return apiFetch<AdminAccountDetail>(`/admin/accounts/${encodeURIComponent(id)}`);
 }
 
+export type AdminSettableAccountState = 'active' | 'suspended' | 'deactivated';
+
+export function updateAdminAccountState(
+  id: string,
+  body: { accountState: AdminSettableAccountState; reason?: string },
+) {
+  return apiFetch<AdminAccountDetail>(`/admin/accounts/${encodeURIComponent(id)}/state`, {
+    method: 'PATCH',
+    body,
+  });
+}
+
 export function listAdminPolicies(params?: { cursor?: string; accountId?: string }) {
   const search = new URLSearchParams();
   if (params?.cursor) search.set('cursor', params.cursor);

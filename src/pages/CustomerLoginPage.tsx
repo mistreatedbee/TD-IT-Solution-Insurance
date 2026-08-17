@@ -3,8 +3,8 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Input, SectionHeading } from '../components';
 import { ArrowLink } from '../components/ArrowLink';
 import { InlineAlert } from '../dashboard/components/ui';
-import { ApiError } from '../customer/api/errors';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
+import { mapUserFacingError } from '../lib/user-facing-errors';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { SupabaseAuthConfigNotice } from '../customer/components/SupabaseAuthConfigNotice';
 
@@ -60,21 +60,7 @@ export function CustomerLoginPage() {
       }
       await finishLogin(result.accessToken, result.refreshToken);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401 && err.code !== 'INVALID_CREDENTIALS') {
-        setError(err.message);
-      } else if (err instanceof ApiError && err.status === 401) {
-        setError('Incorrect email or password.');
-      } else if (err instanceof ApiError && err.status === 403 && err.code === 'ACCOUNT_NOT_ACTIVE') {
-        setError(
-          'Your account is not active yet. Verify your email from the sign-up message, wait a minute, then try again.',
-        );
-      } else if (err instanceof ApiError && err.status === 403) {
-        setError(err.message);
-      } else if (err instanceof ApiError && err.status === 423) {
-        setError('Too many failed attempts. Please wait a few minutes and try again.');
-      } else {
-        setError(err instanceof ApiError ? err.message : 'Sign in failed.');
-      }
+      setError(mapUserFacingError(err, { context: 'auth' }));
     } finally {
       setLoading(false);
     }
@@ -89,7 +75,7 @@ export function CustomerLoginPage() {
       await auth.completeMfa(mfaToken, mfaCode.trim());
       navigate(redirect, { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Verification failed.');
+      setError(mapUserFacingError(err, { context: 'mfa' }));
     } finally {
       setLoading(false);
     }

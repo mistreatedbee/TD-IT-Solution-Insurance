@@ -7,7 +7,8 @@ import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { mfaEnroll, mfaEnrollVerify } from '../../api/auth';
 import { acceptInvitation, getInvitation } from '../../api/invitations';
-import { ApiError, NetworkUnavailableError } from '../../api/errors';
+import { ApiError } from '../../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { setRefreshToken } from '../../auth/secure-storage';
 import { useSessionStore } from '../../auth/session-store';
 import { Alert, Button, Input, OtpInput, Screen } from '../../theme/primitives';
@@ -73,10 +74,8 @@ export function AcceptInvitationScreen() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 410) {
         setStep('invalid');
-      } else if (err instanceof NetworkUnavailableError) {
-        setErrorMessage(err.message);
       } else {
-        setErrorMessage('Could not accept invitation. Please try again.');
+        setErrorMessage(mapUserFacingError(err, { context: 'invitation' }));
       }
     } finally {
       setIsSubmitting(false);
@@ -97,13 +96,7 @@ export function AcceptInvitationScreen() {
       setStep('done');
     } catch (err) {
       setOtp('');
-      if (err instanceof ApiError && err.status === 400) {
-        setErrorMessage(
-          "That code didn't match. Check the time on your phone and try the latest code.",
-        );
-      } else {
-        setErrorMessage('Something went wrong. Please try again.');
-      }
+      setErrorMessage(mapUserFacingError(err, { context: 'mfa' }));
     } finally {
       setIsSubmitting(false);
     }

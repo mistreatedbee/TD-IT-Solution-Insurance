@@ -13,7 +13,7 @@ export default function AssetsLayout() {
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="register" options={{ title: 'Register asset' }} />
-      <Stack.Screen name="[id]" options={{ title: 'Asset details' }} />
+      <Stack.Screen name="[id]" options={{ headerShown: false }} />
     </Stack>
   );
 }

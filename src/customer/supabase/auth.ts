@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '../api/config';
 import { ApiError } from '../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { getOrCreateWebDeviceId } from '../auth/deviceId';
 import { saveSignupEmail, wasNotifyVerifiedPinged, markNotifyVerifiedPinged } from '../../onboarding/onboardingStorage';
 import { getSupabase, supabaseAuthRedirectUrl } from './client';
@@ -290,7 +291,7 @@ export function mapAuthCallbackError(err: unknown): string {
     if (err.code === 'INVALID_CREDENTIALS') {
       return 'This verification link is invalid or has expired. Request a new one from the sign-up page.';
     }
-    return err.message;
+    return mapUserFacingError(err, { context: 'verify' });
   }
   const msg = (err instanceof Error ? err.message : 'Verification failed.').toLowerCase();
   if (msg.includes('invalid') || msg.includes('expired') || msg.includes('already been verified')) {
@@ -322,5 +323,14 @@ export function mapSupabaseAuthError(error: { message: string }): string {
   if (msg.includes('pkce') || msg.includes('code verifier')) {
     return 'Request a new verification email from the sign-up page and open it on this device, or log in if you already verified your email.';
   }
-  return error.message;
+  if (msg.includes('invalid') && (msg.includes('expired') || msg.includes('token'))) {
+    return 'This link is invalid or has expired. Request a new one and try again.';
+  }
+  if (msg.includes('password') && msg.includes('weak')) {
+    return 'Choose a stronger password — at least 10 characters with a mix of letters and numbers.';
+  }
+  if (msg.includes('fetch') || msg.includes('network')) {
+    return 'Could not reach the server. Check your internet connection and try again.';
+  }
+  return 'Something went wrong. Please try again, or contact support if this continues.';
 }

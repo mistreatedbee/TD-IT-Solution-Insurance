@@ -6,7 +6,8 @@ import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useAssetsQuery } from '../../api/hooks/useAssets';
 import { useCreateClaimMutation } from '../../api/hooks/useClaims';
-import { ApiError, NetworkUnavailableError } from '../../api/errors';
+import { ApiError } from '../../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { formatAssetType } from '../../lib/asset-labels';
 import { Alert, Button, Input, Screen, SelectChipGroup } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
@@ -39,16 +40,12 @@ export function FileClaimScreen() {
       });
       setSuccessRef(claim.referenceNumber);
     } catch (err) {
-      if (err instanceof NetworkUnavailableError) {
-        setErrorMessage(err.message);
-      } else if (err instanceof ApiError && err.status === 404) {
+      if (err instanceof ApiError && err.status === 404) {
         setErrorMessage(
           'Claims service is not available yet. The claims API has not been deployed — nothing was saved.',
         );
-      } else if (err instanceof ApiError) {
-        setErrorMessage(err.message || 'Could not submit claim.');
       } else {
-        setErrorMessage('Could not submit claim.');
+        setErrorMessage(mapUserFacingError(err, { context: 'claim' }));
       }
     }
   }

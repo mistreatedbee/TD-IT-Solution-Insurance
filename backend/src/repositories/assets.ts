@@ -8,6 +8,15 @@ import { mongoCursorFilter, type MongoDecodedCursor } from '../lib/mongo-paginat
 
 export type AssetStatus = 'active' | 'inactive' | 'removed';
 
+export type AssetLocationSource = 'self_device';
+
+export interface AssetLastLocation {
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number | null;
+  recordedAt: Date;
+}
+
 export interface AssetEstimatedValue {
   amount: number;
   currency: string;
@@ -25,6 +34,9 @@ export interface AssetDocument {
   photos: string[];
   gpsDeviceId: string | null;
   gpsPairedAt: Date | null;
+  locationSource: AssetLocationSource | null;
+  reportingDeviceId: string | null;
+  lastLocation: AssetLastLocation | null;
   legalHold: boolean;
   details: Record<string, unknown>;
   createdAt: Date;
@@ -42,11 +54,18 @@ interface AssetDbRow {
   photos: string[];
   gpsDeviceId: string | null;
   gpsPairedAt: Date | null;
+  locationSource: AssetLocationSource | null;
+  reportingDeviceId: string | null;
+  lastLocation: AssetLastLocation | null;
   legalHold: boolean;
   details: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type ReportSelfDeviceLocationResult =
+  | { ok: true; asset: AssetDocument }
+  | { ok: false; reason: 'not_found' | 'not_active' | 'not_smartphone' | 'device_mismatch' };
 
 function toAsset(row: AssetDbRow): AssetDocument {
   return {
@@ -60,6 +79,9 @@ function toAsset(row: AssetDbRow): AssetDocument {
     photos: row.photos,
     gpsDeviceId: row.gpsDeviceId,
     gpsPairedAt: row.gpsPairedAt,
+    locationSource: row.locationSource ?? null,
+    reportingDeviceId: row.reportingDeviceId ?? null,
+    lastLocation: row.lastLocation ?? null,
     legalHold: row.legalHold,
     details: row.details,
     createdAt: row.createdAt,
@@ -93,6 +115,9 @@ export function createAssetsRepo(db: Db) {
         photos: [],
         gpsDeviceId: null,
         gpsPairedAt: null,
+        locationSource: null,
+        reportingDeviceId: null,
+        lastLocation: null,
         legalHold: false,
         details,
         createdAt: now,
@@ -184,6 +209,82 @@ export function createAssetsRepo(db: Db) {
       const row = await collection().findOneAndUpdate(
         { _id: new ObjectId(assetId), accountId, status: { $ne: 'removed' } },
         { $set: { status: 'removed', updatedAt: now } },
+        { returnDocument: 'after' },
+      );
+      return row ? toAsset(row) : null;
+    },
+
+    async reportSelfDeviceLocation(
+      accountId: string,
+      assetId: string,
+      sessionDeviceId: string,
+      location: AssetLastLocation,
+    ): Promise<ReportSelfDeviceLocationResult> {
+      if (!ObjectId.isValid(assetId)) return { ok: false, reason: 'not_found' };
+
+      const existing = await collection().findOne({ _id: new ObjectId(assetId), accountId });
+      if (!existing) return { ok: false, reason: 'not_found' };
+      if (existing.status !== 'active') return { ok: false, reason: 'not_active' };
+      if (existing.assetType !== 'smartphone') return { ok: false, reason: 'not_smartphone' };
+
+      const boundDeviceId = existing.reportingDeviceId ?? null;
+      if (boundDeviceId !== null && boundDeviceId !== sessionDeviceId) {
+        return { ok: false, reason: 'device_mismatch' };
+      }
+
+      const now = new Date();
+      const row = await collection().findOneAndUpdate(
+        {
+          _id: new ObjectId(assetId),
+          accountId,
+          status: 'active',
+          assetType: 'smartphone',
+          $or: [{ reportingDeviceId: null }, { reportingDeviceId: sessionDeviceId }],
+        },
+        {
+          $set: {
+            locationSource: 'self_device',
+            reportingDeviceId: sessionDeviceId,
+            lastLocation: location,
+            updatedAt: now,
+          },
+        },
+        { returnDocument: 'after' },
+      );
+
+      if (!row) return { ok: false, reason: 'device_mismatch' };
+      return { ok: true, asset: toAsset(row) };
+    },
+
+    async listLocationSummaryByAccount(accountId: string): Promise<AssetDocument[]> {
+      const rows = await collection()
+        .find({ accountId, status: { $ne: 'removed' } })
+        .sort({ createdAt: -1, _id: -1 })
+        .toArray();
+      return rows.map(toAsset);
+    },
+
+    async linkGpsDevice(
+      accountId: string,
+      assetId: string,
+      gpsDeviceId: string,
+    ): Promise<AssetDocument | null> {
+      if (!ObjectId.isValid(assetId)) return null;
+      const now = new Date();
+      const row = await collection().findOneAndUpdate(
+        {
+          _id: new ObjectId(assetId),
+          accountId,
+          status: 'active',
+          assetType: { $ne: 'smartphone' },
+        },
+        {
+          $set: {
+            gpsDeviceId,
+            gpsPairedAt: now,
+            updatedAt: now,
+          },
+        },
         { returnDocument: 'after' },
       );
       return row ? toAsset(row) : null;
