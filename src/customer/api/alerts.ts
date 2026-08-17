@@ -1,4 +1,4 @@
-import { apiFetch, type CursorPage } from './client';
+import { apiFetch } from './client';
 
 export type AlertSeverity = 'critical' | 'high' | 'warning' | 'info';
 export type AlertCategory =
@@ -8,6 +8,11 @@ export type AlertCategory =
   | 'insurance'
   | 'payment'
   | 'account';
+
+export interface CustomerAlertListPage {
+  data: CustomerAlert[];
+  pagination: { nextCursor: string | null; hasMore: boolean };
+}
 
 export interface CustomerAlert {
   id: string;
@@ -28,7 +33,7 @@ export function listCustomerAlerts(params?: { cursor?: string; limit?: number })
   if (params?.cursor) search.set('cursor', params.cursor);
   if (params?.limit) search.set('limit', String(params.limit));
   const qs = search.toString();
-  return apiFetch<CursorPage<CustomerAlert>>(`/alerts${qs ? `?${qs}` : ''}`);
+  return apiFetch<CustomerAlertListPage>(`/alerts${qs ? `?${qs}` : ''}`);
 }
 
 export function dismissCustomerAlert(alertId: string) {

@@ -132,7 +132,7 @@ export function VerificationReviewPage() {
 
       <Card padding="lg">
         <DetailGrid
-          items={[
+          rows={[
             { label: 'Email', value: account.email },
             { label: 'Account state', value: account.accountState },
             {
@@ -152,9 +152,9 @@ export function VerificationReviewPage() {
       </Card>
 
       <Card padding="lg">
-        <SectionHeading as="h2" title="Profile details" size="sm" className="mb-4" />
+        <SectionHeading as="h2" title="Profile details" size="md" className="mb-4" />
         <DetailGrid
-          items={[
+          rows={[
             {
               label: 'Name',
               value: [profile.firstName, profile.middleName, profile.lastName].filter(Boolean).join(' '),
@@ -187,7 +187,7 @@ export function VerificationReviewPage() {
 
       {profile.verificationStatus === 'pending_review' ? (
         <Card padding="lg" className="space-y-4">
-          <SectionHeading as="h2" title="Decision" size="sm" />
+          <SectionHeading as="h2" title="Decision" size="md" />
           <Input
             label="Customer-safe reason (required for reject / action required)"
             value={reason}

@@ -107,7 +107,7 @@ export function CustomerVerificationCentrePage() {
         <InlineAlert tone="warning">{profile.rejectionReasonCustomerSafe}</InlineAlert>
       ) : null}
 
-      <SectionHeading as="h2" title={`Pending & in review (${pending.length})`} size="sm" />
+      <SectionHeading as="h2" title={`Pending & in review (${pending.length})`} size="md" />
       {pending.length === 0 ? (
         <InlineAlert tone="info">
           Nothing is waiting on you right now. Your identity status is{' '}
@@ -138,7 +138,7 @@ export function CustomerVerificationCentrePage() {
 
       {complete.length > 0 ? (
         <>
-          <SectionHeading as="h2" title={`Completed (${complete.length})`} size="sm" />
+          <SectionHeading as="h2" title={`Completed (${complete.length})`} size="md" />
           <div className="space-y-3">
             {complete.map((item) => (
               <Card key={item.id} padding="md">
@@ -156,7 +156,7 @@ export function CustomerVerificationCentrePage() {
         </>
       ) : null}
 
-      <SectionHeading as="h2" title="Identity submission" size="sm" />
+      <SectionHeading as="h2" title="Identity submission" size="md" />
       <Card padding="md" className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-text-secondary">Current status</span>
