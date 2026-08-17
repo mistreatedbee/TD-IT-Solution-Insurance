@@ -405,7 +405,7 @@ describe('POST /auth/supabase/exchange — SR-006-1 MFA-bypass regression', () =
   const EXCHANGE_SUPABASE_TOKEN = 'supabase-aal1-access-token-stand-in';
 
   function fakeExchangeSupabase(opts: { hasVerifiedFactor: boolean }): SupabaseAdmin {
-    let enrolledFactorId: string | null = opts.hasVerifiedFactor ? randomUUID() : null;
+    const enrolledFactorId: string | null = opts.hasVerifiedFactor ? randomUUID() : null;
     const notUsed = (name: string) => (): never => {
       throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
     };

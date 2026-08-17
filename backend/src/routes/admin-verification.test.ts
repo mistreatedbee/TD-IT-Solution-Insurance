@@ -183,7 +183,9 @@ describe('admin verification routes', () => {
         async upsertForAccount() {
           return {};
         },
-        async dismissStaleKeys() {},
+        async dismissStaleKeys() {
+          return undefined;
+        },
       },
     } as unknown as AppContext;
 

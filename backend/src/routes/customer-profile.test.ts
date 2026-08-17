@@ -229,7 +229,9 @@ function createHarness(opts?: { accountState?: AccountStatus['accountState'] }) 
       async upsertForAccount() {
         return {};
       },
-      async dismissStaleKeys() {},
+      async dismissStaleKeys() {
+        return undefined;
+      },
     },
     supabase: {
       async mintTransientUserAccessToken() {
