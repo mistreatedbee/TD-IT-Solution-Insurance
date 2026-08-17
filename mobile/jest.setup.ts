@@ -81,6 +81,7 @@ jest.mock('react-native-maps', () => {
   const MockMap = React.forwardRef((props: Record<string, unknown>, ref: unknown) =>
     React.createElement(View, { ...props, ref }),
   );
+  MockMap.displayName = 'MockMap';
   return {
     __esModule: true,
     default: MockMap,

@@ -86,13 +86,15 @@ export default function VerifyPendingScreen() {
   }, [setSignedIn]);
 
   useEffect(() => {
-    void tryAdvanceIfVerified();
-
-    pollRef.current = setInterval(() => {
+    const runCheck = () => {
       void tryAdvanceIfVerified();
-    }, POLL_INTERVAL_MS);
+    };
+    const initialTimer = setTimeout(runCheck, 0);
+
+    pollRef.current = setInterval(runCheck, POLL_INTERVAL_MS);
 
     return () => {
+      clearTimeout(initialTimer);
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [tryAdvanceIfVerified]);

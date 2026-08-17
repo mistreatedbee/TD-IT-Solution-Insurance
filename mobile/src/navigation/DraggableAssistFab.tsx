@@ -1,6 +1,7 @@
 /**
  * Draggable protection-assistant entry point — floats above tab content.
  */
+/* eslint-disable react-hooks/immutability -- Reanimated shared values are UI-thread mutable stores */
 import { MessageCircleIcon } from 'lucide-react-native';
 import React, { useEffect } from 'react';
 import { Alert, StyleSheet, useWindowDimensions } from 'react-native';
@@ -52,7 +53,9 @@ export function DraggableAssistFab() {
   useEffect(() => {
     translateX.value = maxX;
     translateY.value = Math.min(Math.max(translateY.value, minY), maxY);
-  }, [maxX, maxY, minY, translateX, translateY]);
+    // Shared values are stable refs — bounds drive repositioning.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maxX, maxY, minY]);
 
   const panGesture = Gesture.Pan()
     .onBegin(() => {

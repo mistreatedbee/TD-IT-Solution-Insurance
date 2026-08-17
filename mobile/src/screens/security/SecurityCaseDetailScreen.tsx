@@ -46,16 +46,26 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 export function SecurityCaseDetailScreen() {
   const { caseId } = useLocalSearchParams<{ caseId?: string }>();
+
+  if (!caseId) {
+    return (
+      <Screen>
+        <Alert tone="danger">Missing case ID.</Alert>
+      </Screen>
+    );
+  }
+
+  return <SecurityCaseDetailBody key={caseId} caseId={caseId} />;
+}
+
+function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
   const [recoveryCase, setRecoveryCase] = useState<SecurityRecoveryCase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
-    if (!caseId) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     getSecurityCase(caseId)
       .then((data) => {
         if (!cancelled) setRecoveryCase(data);
@@ -99,14 +109,6 @@ export function SecurityCaseDetailScreen() {
     } finally {
       setUpdating(false);
     }
-  }
-
-  if (!caseId) {
-    return (
-      <Screen>
-        <Alert tone="danger">Missing case ID.</Alert>
-      </Screen>
-    );
   }
 
   if (loading) {
