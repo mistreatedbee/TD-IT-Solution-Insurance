@@ -1,5 +1,6 @@
-import { FormEvent, useState } from 'react';
-import { NavLink, useNavigate, useSearchParams } from 'react-router-dom';
+import { MenuIcon, XIcon } from 'lucide-react';
+import { FormEvent, useEffect, useState } from 'react';
+import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Card, Input, SectionHeading } from '../../components';
 import { useDashboardAuth } from '../auth/DashboardAuthProvider';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
@@ -140,10 +141,56 @@ export function DashboardShell({
   onSignOut: () => void;
   children: React.ReactNode;
 }) {
+  // Sidebar is docked (always visible) at the `md` breakpoint and above, matching
+  // the mobile-nav convention already used by `LandingHeader`. Below `md` it is a
+  // hidden-by-default slide-in drawer, toggled via the hamburger button in the
+  // mobile header bar, so it never eats screen space on narrow viewports unprompted.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const location = useLocation();
+
+  // Close the drawer on route change so navigating doesn't leave it open.
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
+  // Prevent background scroll while the drawer is open on mobile.
+  useEffect(() => {
+    document.body.style.overflow = mobileNavOpen ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileNavOpen]);
+
   return (
     <div className="flex min-h-full bg-background-alt">
-      <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-background p-4">
-        <SectionHeading as="h2" title={brand} size="md" className="mb-6" />
+      {mobileNavOpen ? (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      ) : null}
+
+      <aside
+        id="dashboard-mobile-nav"
+        className={[
+          'fixed inset-y-0 left-0 z-40 flex w-64 max-w-[80vw] shrink-0 flex-col border-r border-border bg-background p-4 transition-transform duration-200 ease-out',
+          mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
+          'md:static md:z-auto md:w-56 md:max-w-none md:translate-x-0',
+        ].join(' ')}
+      >
+        <div className="mb-6 flex items-center justify-between gap-2">
+          <SectionHeading as="h2" title={brand} size="md" className="mb-0" />
+          <button
+            type="button"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-text-secondary transition-colors hover:bg-background-alt hover:text-text-primary md:hidden"
+            aria-label="Close navigation"
+            onClick={() => setMobileNavOpen(false)}
+          >
+            <XIcon className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
         <nav className="flex flex-1 flex-col gap-1">
           {navItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={navLinkClass}>
@@ -155,7 +202,27 @@ export function DashboardShell({
           Log out
         </Button>
       </aside>
-      <main className="flex-1 overflow-y-auto p-6">{children}</main>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center gap-3 border-b border-border bg-background px-4 py-3 md:hidden">
+          <button
+            type="button"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-text-primary transition-colors hover:bg-background-alt"
+            aria-expanded={mobileNavOpen}
+            aria-controls="dashboard-mobile-nav"
+            aria-label={mobileNavOpen ? 'Close navigation' : 'Open navigation'}
+            onClick={() => setMobileNavOpen((open) => !open)}
+          >
+            {mobileNavOpen ? (
+              <XIcon className="h-5 w-5" aria-hidden="true" />
+            ) : (
+              <MenuIcon className="h-5 w-5" aria-hidden="true" />
+            )}
+          </button>
+          <span className="truncate text-sm font-semibold text-text-primary">{brand}</span>
+        </div>
+        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,18 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { PUSH_BRAND, PUSH_CATEGORIES, type PushCategoryId } from './brand';
+import { FEATURE_CLAIMS_ENABLED } from '../config/features';
+
+/**
+ * Release Gate A: don't register an OS-level notification channel/category
+ * for `claims` in a build where the claims backend can never send one —
+ * a customer opening system notification settings would otherwise see a
+ * "Claims" toggle that promises something the build can't deliver (same
+ * defect class as a dead nav link — see `src/config/features.ts`).
+ */
+const ACTIVE_PUSH_CATEGORIES = PUSH_CATEGORIES.filter(
+  (category) => category.id !== 'claims' || FEATURE_CLAIMS_ENABLED,
+);
 
 const ANDROID_CHANNEL_CONFIG: Record<
   PushCategoryId,
@@ -42,7 +54,7 @@ const ANDROID_CHANNEL_CONFIG: Record<
 
 export async function configureBrandedNotificationChannels(): Promise<void> {
   if (Platform.OS === 'android') {
-    for (const category of PUSH_CATEGORIES) {
+    for (const category of ACTIVE_PUSH_CATEGORIES) {
       const config = ANDROID_CHANNEL_CONFIG[category.id];
       await Notifications.setNotificationChannelAsync(category.id, {
         name: category.name,
@@ -58,7 +70,7 @@ export async function configureBrandedNotificationChannels(): Promise<void> {
   }
 
   if (Platform.OS === 'ios') {
-    for (const category of PUSH_CATEGORIES) {
+    for (const category of ACTIVE_PUSH_CATEGORIES) {
       await Notifications.setNotificationCategoryAsync(category.id, [
         {
           identifier: 'OPEN',

@@ -29,6 +29,7 @@ import {
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { Alert, Button, Card, Screen, Toggle } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
+import { FEATURE_CLAIMS_ENABLED } from '../../config/features';
 
 type Channel = keyof CategoryChannelPreferences;
 
@@ -38,7 +39,7 @@ const CHANNELS: ReadonlyArray<{ key: Channel; label: string }> = [
   { key: 'sms', label: 'SMS' },
 ];
 
-const CATEGORIES: ReadonlyArray<{
+const ALL_CATEGORIES: ReadonlyArray<{
   key: NotificationCategory;
   label: string;
   description: string;
@@ -80,6 +81,18 @@ const CATEGORIES: ReadonlyArray<{
     description: 'Promotions, offers, and newsletters.',
   },
 ];
+
+/**
+ * Release Gate A: the claims backend has not shipped, so a build with
+ * claims disabled must not offer preferences for notifications it can
+ * never send (same defect class as a dead nav link — see
+ * `src/config/features.ts`).
+ */
+const CATEGORIES: ReadonlyArray<{
+  key: NotificationCategory;
+  label: string;
+  description: string;
+}> = ALL_CATEGORIES.filter((category) => category.key !== 'claims' || FEATURE_CLAIMS_ENABLED);
 
 /** The one channel/category combination the backend will always reject. */
 function isLocked(category: NotificationCategory, channel: Channel): boolean {

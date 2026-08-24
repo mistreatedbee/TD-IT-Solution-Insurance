@@ -6,6 +6,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Alert, Button, Screen } from '../../theme/primitives';
 import { spacing, typography, colors } from '../../theme/tokens';
+import { FEATURE_CLAIMS_ENABLED } from '../../config/features';
 
 export function ReportTheftSuccessScreen() {
   const router = useRouter();
@@ -20,7 +21,8 @@ export function ReportTheftSuccessScreen() {
 
       <Text style={styles.body}>
         Our security partners have been notified. If GPS tracking is available for this asset, you
-        can monitor progress on the live map. You may also file an insurance claim separately.
+        can monitor progress on the live map.
+        {FEATURE_CLAIMS_ENABLED ? ' You may also file an insurance claim separately.' : ''}
       </Text>
 
       <View style={styles.actions}>
@@ -36,13 +38,15 @@ export function ReportTheftSuccessScreen() {
         <Button variant="secondary" fullWidth onPress={() => router.replace('/(app)')}>
           Back to home
         </Button>
-        <Button
-          variant="tertiary"
-          fullWidth
-          onPress={() => router.push('/claims/new' as Href)}
-        >
-          File a claim
-        </Button>
+        {FEATURE_CLAIMS_ENABLED ? (
+          <Button
+            variant="tertiary"
+            fullWidth
+            onPress={() => router.push('/claims/new' as Href)}
+          >
+            File a claim
+          </Button>
+        ) : null}
       </View>
     </Screen>
   );
