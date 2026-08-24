@@ -108,6 +108,16 @@ export function createAssetsRouter(ctx: AppContext): Router {
     validateBody(locationReportBodySchema),
     async (req, res, next) => {
       try {
+        // INC-001 kill switch: shipped without required consent gating
+        // (ADR-0009 SDL-4) / provenance marking (SDL-1). Fail-closed —
+        // checked first, before any DB/session work, and before the
+        // asset-id shape is even validated, so the write path is
+        // unreachable while this is off regardless of request contents.
+        if (ctx.env.locationIngestionEnabled !== true) {
+          next(apiError('UPSTREAM_UNAVAILABLE', undefined, 3600));
+          return;
+        }
+
         const parsed = assetIdParamsSchema.safeParse(req.params);
         if (!parsed.success) {
           next(apiError('NOT_FOUND'));

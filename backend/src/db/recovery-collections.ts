@@ -48,7 +48,7 @@ export const recoveryCasesJsonSchemaValidator: Document = {
   },
 };
 
-const recoveryCaseIndexes: IndexDescription[] = [
+export const recoveryCaseIndexes: IndexDescription[] = [
   { key: { accountId: 1, createdAt: -1 } },
   { key: { partnerOrganizationId: 1, status: 1, createdAt: -1 } },
   { key: { referenceNumber: 1 }, unique: true },

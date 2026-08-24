@@ -32,7 +32,7 @@ export const locationEventsJsonSchemaValidator: Document = {
   },
 };
 
-const indexes: IndexDescription[] = [
+export const locationEventsIndexes: IndexDescription[] = [
   {
     key: { assetId: 1, recordedAt: -1, _id: -1 },
     name: 'location_events_asset_recorded',
@@ -56,6 +56,6 @@ export async function bootstrapLocationEventsCollections(db: Db): Promise<{
     collectionsEnsured.push(LOCATION_EVENTS_COLLECTION);
   }
 
-  await db.collection(LOCATION_EVENTS_COLLECTION).createIndexes(indexes);
+  await db.collection(LOCATION_EVENTS_COLLECTION).createIndexes(locationEventsIndexes);
   return { collectionsEnsured };
 }

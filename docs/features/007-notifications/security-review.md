@@ -544,3 +544,15 @@ Test Files  36 passed (36)
 | Admin account deactivation → `disableAllForAccount` | **Not applicable — no admin deactivation endpoint exists in this codebase.** Filed as SR-007-11. |
 
 **Signed:** `notification-engineer`, 2026-08-14.
+
+---
+
+## 10. `cto`-ratified correction — 2026-08-24 (SR-007-11 status)
+
+*Appended, not substituted, per the same precedent §7.1 and §9.2 already established: the record's accuracy matters more than its consistency with an earlier session's assumption.*
+
+**§9.2's premise no longer holds against the current tree.** `backend/src/routes/admin-accounts.ts` now contains a complete `PATCH /admin/accounts/:id/state` handler (lines ~175–264): `requireUserType('admin')`, per-actor rate limiting, Zod-validated body (`accountState: 'active' | 'suspended' | 'deactivated'`, optional `reason`), self-mutation and admin-user-type-mutation blocked, `ctx.accounts.transitionAccountState(...)` with `InvalidAccountStateTransitionError` mapped to `CONFLICT`, an audit-log record on every mutation, and — the exact wiring SR-007-11 was filed to obtain — on transition to `suspended` or `deactivated` it calls `ctx.sessions.revokeAllForAccount`, revokes the issued JTIs in KV, and calls `ctx.pushTokens.disableAllForAccount(subjectId)`. The handler and the wiring both exist in code, with test coverage in `backend/src/routes/admin-accounts.test.ts` (`GET/PATCH /v1/admin/accounts*` suite).
+
+**Revised status: SR-007-11 is implemented, pending Stage 8 security review.** This is not a re-close of the finding by fiat — no chair (`cybersecurity-architect`) or `compliance-specialist` re-verification of this specific handler is recorded anywhere in this document, and one is required before it can be signed off the way SR-007-1/SR-007-2 were: RBAC posture, the `ADMIN_MUTABLE_USER_TYPES` restriction, the audit-log shape, the session-revocation and push-token-disable side effects, and the state-transition rules in `transitionAccountState` all need their own Stage 8 pass, not an inherited one. Until that pass runs, treat the endpoint as: code-complete and test-covered, not yet security-reviewed for this document's purposes. §9.4's table row "Admin account deactivation → `disableAllForAccount`" is superseded by this section — the correct current status is "closed in code, test-covered, Stage 8 review outstanding," not "not applicable."
+
+**Signed:** `technical-writer`, 2026-08-24, recording a `cto`-ratified finding. Not a Stage 8 sign-off — that authority remains `cybersecurity-architect`'s (chair) and `compliance-specialist`'s.

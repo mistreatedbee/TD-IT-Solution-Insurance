@@ -162,8 +162,10 @@ honesty table — reproduced here so this doc doesn't drift from it:
   - **SR-007-1 (push tokens surviving logout)** — now closed for `POST /session/logout-all`
     and for both branches of password-reset completion (`disableAllForAccount()` wired into
     `session.ts:61`, `auth.ts:869`, `auth.ts:944`, the last two verified and test-covered by
-    `notification-engineer`'s follow-up). **Not closed for admin-initiated deactivation** —
-    see SR-007-11 below.
+    `notification-engineer`'s follow-up). **Admin-initiated deactivation now also wires
+    `disableAllForAccount()`** (`admin-accounts.ts`'s `PATCH /admin/accounts/:id/state`, on
+    transition to `suspended`/`deactivated`) — see the corrected SR-007-11 below; this wiring is
+    implemented and test-covered but has not yet been through its own Stage 8 pass.
   - **SR-007-2 (anyone holding a victim's Expo push token could silence their theft alerts)** —
     closed via a **deferred-takeover state machine**: a cross-account `tokenHash` collision no
     longer disables the prior owner's row inline. It quarantines the *claiming* registration
@@ -181,14 +183,18 @@ honesty table — reproduced here so this doc doesn't drift from it:
     **This deferred-takeover / fail-closed-device-check pattern is now the template for any
     future cross-account credential-collision handling on this platform** — treat it as
     precedent, not a one-off.
-  - **SR-007-11 (new, filed by `notification-engineer`) — there is no admin account
-    suspend/deactivate endpoint anywhere in this codebase.** `notification-engineer` went
-    looking for the handler to wire `disableAllForAccount()` into and found it doesn't exist —
-    `backend/src/routes/admin-accounts.ts` has exactly two routes, both `GET`. This is now
-    tracked as a missing **feature** (owner: `backend-architect` + `backend-engineer`, its own
-    API-design amendment and its own Stage 8), not a missing wire-up. **Confirmed still true**
-    as of this handoff — no `PATCH`/`PUT`/`POST` route against `/admin/accounts*` exists in
-    `backend/src/routes/`.
+  - **SR-007-11 — corrected 2026-08-24, `cto`-ratified.** Originally filed by
+    `notification-engineer` when `backend/src/routes/admin-accounts.ts` had only the two `GET`
+    routes. **That is no longer true of the current tree.** `admin-accounts.ts` now has a
+    complete `PATCH /admin/accounts/:id/state` handler (~lines 175–264): admin-only RBAC,
+    per-actor rate limiting, Zod-validated body, self- and admin-type-mutation blocked, audit
+    logging on every transition, and — the exact wiring SR-007-11 was filed to obtain — session
+    revocation plus `ctx.pushTokens.disableAllForAccount()` on transition to `suspended` or
+    `deactivated`. Test-covered in `backend/src/routes/admin-accounts.test.ts`. **Status: SR-007-11
+    is implemented, pending Stage 8 security review** — no chair or `compliance-specialist`
+    re-verification of this specific handler is recorded anywhere; see
+    `docs/features/007-notifications/security-review.md` §10 for the full correction. This is a
+    factual correction only, not a Stage 8 sign-off.
   - `compliance-specialist` concurred in part — same shape as Feature 006: withheld for real
     customer PI pending C-007-1 (Expo operator review), C-007-2 (Resend operator review, same
     condition as Feature 006's C-006-3), C-007-4 (RoPA); withheld for any theft/recovery/GPS-
@@ -214,10 +220,10 @@ rulings and four conditions; see §16.5 for the conditions and §16.6 for FU-A10
 error inside §16 (an index it described as existing does not exist, §17.1) plus two new
 follow-ups, FU-A13 and FU-A14 (§17.6). §16's text stands as signed; §17 corrects it in the
 open rather than editing the ratification record. **0008** (MongoDB schema provisioning) is
-**proposed**, pending `cto` ratification, at
+**ratified** — `cto`, 2026-08-24, with three conditions — at
 [`0008-mongodb-schema-provisioning.md`](docs/organization/adr/0008-mongodb-schema-provisioning.md).
-**0009** (new — self-asserted location ingestion trust boundary) is **proposed**, pending `cto`
-ratification, at
+**0009** (self-asserted location ingestion trust boundary) is **ratified** — `cto`, 2026-08-24
+(§17), conditionally, with §15/§16 concurrences still unfiled — at
 [`0009-self-asserted-location-ingestion-trust-boundary.md`](docs/organization/adr/0009-self-asserted-location-ingestion-trust-boundary.md) —
 see the Feature 008 entry below for what it rules on. 0004/0005 remain reserved by name in other
 documents; 0007 is reserved for FU-08's third-persistence-surface ADR (ruling R-4). **0010 is
@@ -248,7 +254,7 @@ future work:
   network operator rather than the customer's own device (**C-008-9**); explicitly not legal
   sign-off.
 - [`docs/organization/adr/0009-self-asserted-location-ingestion-trust-boundary.md`](docs/organization/adr/0009-self-asserted-location-ingestion-trust-boundary.md)
-  (`cybersecurity-architect`, **Proposed**, pending `cto` ratification) — the load-bearing
+  (`cybersecurity-architect`, **Ratified** — `cto`, 2026-08-24, §17, conditionally) — the load-bearing
   document. Rules that self-asserted location is a **new, distinct trust boundary** from
   ADR-0006's third trail (ADR-0006 governs *who reads* a location record; ADR-0009 governs
   *whether the platform should believe* one) and does **not** reopen or amend ADR-0006. Twelve
@@ -260,9 +266,11 @@ future work:
   just Feature 008 — the ADR states explicitly that any future customer-reported signal (an
   odometer reading, a self-declared asset condition, a self-reported theft time) inherits SDL-1/
   SDL-2 by name. The security-architecture requirements (SDL-1…SDL-12) are binding now under
-  `cybersecurity-architect`'s standing authority; the **ADR-level packaging/precedent is still
-  pending `cto` ratification** — §15–17 (security-engineer concurrence, compliance-specialist
-  concurrence, cto ratification) are all still **reserved, not yet filed**.
+  `cybersecurity-architect`'s standing authority; the **ADR-level packaging/precedent was ratified
+  by `cto` on 2026-08-24** (§17), **conditionally** — §15 (security-engineer concurrence) and §16
+  (compliance-specialist concurrence) are still **reserved, not yet filed**, and are conditions on
+  that ratification. SD-FU-01 (the normative line in `06-security-standards.md`) is now due, its
+  trigger having fired on ratification.
 - **Cleared for Stage 3–7 design work only. Stage 8 and Stage 9 remain hard-gated** — per the
   ADR's own §14, this package is not a Stage 8 sign-off, not a compliance ruling, not
   `product-manager` sign-off, not an API/schema approval, and not an instruction to add
@@ -331,7 +339,7 @@ the bar this project has been held to:
 | **GPS hardware vendor / Phase 2 ingestion** | Open decision (`integration-architect`). FU-A14's location-access audit trail still has no case-reference wiring to hang off of GPS endpoints that don't exist | Blocks GPS pairing, live map, and location-based recovery — recovery/claims mobile UI remains a stub against 404s |
 | **Real integration test suite** | Automated tests against the live Supabase/Postgres/Mongo stack, beyond the manual smoke tests done so far | Not blocking, but the current test coverage is unit-level + one manual E2E pass |
 | **Mobile test coverage has not kept pace with mobile feature growth** | `mobile/` grew from 10 to **12 test files** this session (`Toggle`, `NotificationPreferencesScreen`) — real progress, but the onboarding wizard and plan-catalog client, which are older and larger surfaces, still have none | Not a hard blocker for internal distribution, but a real Stage 10 gap for whichever release this ships in |
-| **ADR-0009 ratification (new)** — self-asserted location ingestion trust boundary | `cto` ratification of the ADR-level packaging (§17, reserved). Its SDL-1…SDL-12 security requirements are already binding under `cybersecurity-architect`'s standing authority regardless of ratification status. `security-engineer` concurrence (§15) and `compliance-specialist` concurrence (§16) are also both reserved, not yet filed | Blocks nothing today — no Feature 008 code exists to be out of compliance. Blocks treating the ADR as a closed platform-wide precedent |
+| **~~ADR-0009 ratification~~** — self-asserted location ingestion trust boundary | **Done** — `cto` ratified the ADR-level packaging 2026-08-24 (§17), **conditionally**. SDL-1…SDL-12 were already binding under `cybersecurity-architect`'s standing authority and remain so. **Still open, as ratification conditions:** `security-engineer` concurrence (§15) and `compliance-specialist` concurrence (§16) are both still unfiled; SD-FU-01's normative line in `06-security-standards.md` is now due (`cybersecurity-architect`, trigger fired on ratification); SDL-2 may not be relaxed by a product decision; SD-FU-05 and SD-FU-04 are tracked independently of whether Feature 008 is ever built | Ratification no longer blocking the precedent. §15/§16 still block the ADR *closing*, and Feature 008 remains hard-gated by the ADR's own §14 |
 | **Feature 008 — Stage 8/9 hard-gated, by the ADR's own §14** | `compliance-specialist`'s POPIA lawful-basis ruling exists (`compliance-review.md`, s11(1)(a) consent) but is explicitly not legal sign-off; `product-manager` sign-off on OQ-SD-01/02/05 still open; no Stage 5-7 API/schema/mobile design exists yet | Blocks any Feature 008 implementation. `mobile/package.json` must **not** acquire `expo-location` on the strength of the design docs alone |
 | **SR-007-11 (new)** — no admin account-suspend/deactivate endpoint exists anywhere in this codebase | `backend-architect` design + API-design amendment, `backend-engineer` implementation, its own Stage 8. `notification-engineer` owns wiring `disableAllForAccount()` into it the moment it exists | Blocks an admin's ability to act on a compromised/fraudulent account at all — a materially larger gap than the push-token finding that surfaced it. Also blocks full closure of Feature 007's SR-007-1 |
 | **C-006-3 / C-007-2 (same underlying gap)** — Resend has never actually been reviewed as an operator | `compliance-specialist` owns producing a Resend-specific operator/s72/DPA review. The only SMTP vendor review on file (`compliance-review-smtp-vendor.md`) is for Brevo, the superseded vendor — the review was never redone after the vendor changed | Blocks concurrence on real customer PI for both Feature 006 and Feature 007, independent of whether Resend's own account/domain/secret setup (below) is complete |
@@ -383,7 +391,7 @@ distributed internally. Not: buying a plan, uploading photos, GPS, claims, or ad
 | **MP-3** | **No business rules may be invented to unblock delivery.** `planTier` stays a free-form string, `coverageLimits` stays `[]`, no eligibility check is added to `POST /v1/assets`. Concretely for mobile: **no plan-picker, no pricing screen, no tier comparison UI.** The Policy tab renders a real policy read-only if one exists and keeps its honest empty state if not. If a screen would require knowing what a tier is, it is not in this push. |
 | **MP-4** | **Stage 8 is a hard gate.** P-14 **Phase 1 stub** is filed at `field-sensitivity-review.md` (no FLE for VIN/IMEI/serials/`estimatedValue` in Phase 1). Formal `security-review.md` verdict (Wave 2) remains required before treating Stage 8 as passed. |
 | **MP-5** | **Photo upload is deferred, and the reason is a missing decision, not a missing sprint.** `Asset.photos` is `array of string` with no upload endpoint, and **no object-storage provider has been selected for this platform** — that is an open vendor decision (`integration-architect` + `cloud-infrastructure-architect`, ADR-worthy, and it carries a POPIA transborder-flow question because photos of insured assets are personal information). Assets register without photos in this push; the mobile form must not show a disabled camera affordance implying it's coming next week. |
-| **MP-6** | **MongoDB provisioning — interim mechanism in place; ADR-0008 proposed.** Shared bootstrap in `feature004-collections.ts`; applied to live Atlas; startup re-run. [`0008-mongodb-schema-provisioning.md`](docs/organization/adr/0008-mongodb-schema-provisioning.md) filed 2026-08-12 — pending `cto` ratification. |
+| **MP-6** | **MongoDB provisioning — mechanism in place; ADR-0008 ratified.** Shared bootstrap in `feature004-collections.ts`; applied to live Atlas; startup re-run. [`0008-mongodb-schema-provisioning.md`](docs/organization/adr/0008-mongodb-schema-provisioning.md) filed 2026-08-12, **ratified by `cto` 2026-08-24** with three conditions: (1) the catalog-vs-spec verification check **does not exist** — provisioning may be described as *applied*, never *verified*, until it does; (2) `backend/scripts/mongo-migrations/` must be created by the first validator **tightening**, not after it; (3) the rules bind every collection-spec module on both apply paths, including `recovery-collections.ts`, not only Feature 004's. |
 | **MP-7** | **New endpoints must carry an explicit rate limiter.** `backend/src/index.ts`'s router topology makes a blanket authenticated limiter structurally unreachable — the comment there is accurate and is not a TODO. Every route added in Wave 1 applies `createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, ...)` directly, per `api-design.md` §5's platform default. A route that ships without one is an incomplete route. |
 | **MP-8** | **No QA or load testing against the live project's production data.** There is still no staging environment and no non-prod database project — the same live Supabase/Atlas project backs local dev. At minimum Stage 10 runs against a separate Mongo database name; a real staging environment is required **before go-live**, not before Stage 10. `devops-engineer` + `cloud-infrastructure-architect`. |
 
@@ -394,7 +402,7 @@ distributed internally. Not: buying a plan, uploading photos, GPS, claims, or ad
 | Role | Deliverable | Notes |
 |---|---|---|
 | `business-analyst` | ~~Feature 004 Stage 1 `business-requirements.md`~~ **Done (minimum Stage 1, 2026-08-11)** — [`business-requirements.md`](docs/features/004-policy-asset-management/business-requirements.md). Ratifies Phase 1 shippable scope; D-01–D-08 deferred. **P-01 partially discharged** — commercial rules (tier enum, populated `coverageLimits`, eligibility checks) still open pending `product-manager` sign-off. |
-| `database-architect` | ~~Feature 004 collections live on Atlas + MP-6 provisioning proposal~~ **Done (2026-08-12)** — bootstrap applied; [`ADR-0008`](docs/organization/adr/0008-mongodb-schema-provisioning.md) **proposed** (pending `cto` ratification). |
+| `database-architect` | ~~Feature 004 collections live on Atlas + MP-6 provisioning proposal~~ **Done (2026-08-12)** — bootstrap applied; [`ADR-0008`](docs/organization/adr/0008-mongodb-schema-provisioning.md) **ratified 2026-08-24** by `cto`, with three conditions (verification check unbuilt; `mongo-migrations/` due on first tightening; scope covers all collection-spec modules). |
 | `cybersecurity-architect` + `security-engineer` | ~~P-14 stub + Stage 8~~ **Done (2026-08-12)** — [`field-sensitivity-review.md`](docs/features/004-policy-asset-management/field-sensitivity-review.md), [`security-review.md`](docs/features/004-policy-asset-management/security-review.md) with **security-engineer concurrence**. SR-004-1…5 remain tracked open items. |
 | `backend-architect` | ~~**P-12** Mongo-outage failure mode~~ **Done (2026-08-12)** — `lib/mongo-errors.ts` + error-handler maps connectivity failures to `503 UPSTREAM_UNAVAILABLE`. |
 
@@ -509,9 +517,11 @@ signed review documents themselves.
   documents (`docs/features/008-self-device-gps-tracking/architecture.md`, `business-requirements.md`,
   `compliance-review.md`, and `docs/organization/adr/0009-self-asserted-location-ingestion-trust-boundary.md`)
   all read in full. **Confirmed nothing has been implemented**: no `expo-location` dependency in
-  `mobile/package.json`, no ingestion endpoint, no consent record. ADR-0009 is **Proposed**, not
-  ratified — its §15/§16/§17 (security-engineer concurrence, compliance-specialist concurrence,
-  `cto` ratification) are explicitly reserved and unfiled.
+  `mobile/package.json`, no ingestion endpoint, no consent record. ADR-0009 was **Proposed** at the
+  time of that read — its §15/§16/§17 were reserved and unfiled. **Updated 2026-08-24:** §17 is now
+  filed — `cto` **ratified** the ADR-level packaging, conditionally; §15 (`security-engineer`) and
+  §16 (`compliance-specialist`) concurrences remain reserved and unfiled, and are conditions on that
+  ratification. Nothing is implemented either way.
 - **ADR numbering corrected.** This doc's own "0009 is the next free number" line was stale the
   moment ADR-0009 was filed. Re-verified directly against `docs/organization/adr/` (contains 0001,
   0002, 0003, 0006, 0008, 0009) rather than taken from any doc's claim: **0010 is now the next free

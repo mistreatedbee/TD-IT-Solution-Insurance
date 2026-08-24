@@ -39,7 +39,7 @@ export const customerAlertsJsonSchemaValidator: Document = {
   },
 };
 
-const customerAlertsIndexes: IndexDescription[] = [
+export const customerAlertsIndexes: IndexDescription[] = [
   { key: { accountId: 1, dedupeKey: 1 }, unique: true, name: 'accountId_1_dedupeKey_1' },
   { key: { accountId: 1, dismissedAt: 1, createdAt: -1 }, name: 'accountId_1_dismissedAt_1_createdAt_-1' },
 ];

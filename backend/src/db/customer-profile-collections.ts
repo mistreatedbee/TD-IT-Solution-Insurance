@@ -55,7 +55,7 @@ export const customerProfilesJsonSchemaValidator: Document = {
   },
 };
 
-const indexes: IndexDescription[] = [
+export const customerProfilesIndexes: IndexDescription[] = [
   {
     key: { accountId: 1 },
     name: 'customer_profiles_accountId_unique',
@@ -73,5 +73,5 @@ export async function bootstrapCustomerProfileCollections(db: Db): Promise<void>
     });
   }
 
-  await db.collection(CUSTOMER_PROFILES_COLLECTION).createIndexes(indexes);
+  await db.collection(CUSTOMER_PROFILES_COLLECTION).createIndexes(customerProfilesIndexes);
 }

@@ -58,7 +58,7 @@ export const notificationPreferencesJsonSchemaValidator: Document = {
   },
 };
 
-const devicePushTokenIndexes: IndexDescription[] = [
+export const devicePushTokenIndexes: IndexDescription[] = [
   { key: { accountId: 1, deviceId: 1 }, unique: true, name: 'accountId_1_deviceId_1' },
   {
     key: { tokenHash: 1 },
@@ -69,7 +69,7 @@ const devicePushTokenIndexes: IndexDescription[] = [
   { key: { accountId: 1, enabled: 1 }, name: 'accountId_1_enabled_1' },
 ];
 
-const notificationPreferencesIndexes: IndexDescription[] = [
+export const notificationPreferencesIndexes: IndexDescription[] = [
   { key: { accountId: 1 }, unique: true, name: 'accountId_1' },
 ];
 
@@ -97,7 +97,7 @@ export const notificationDeliveryStateJsonSchemaValidator: Document = {
   },
 };
 
-const notificationDeliveryStateIndexes: IndexDescription[] = [
+export const notificationDeliveryStateIndexes: IndexDescription[] = [
   { key: { accountId: 1 }, unique: true, name: 'accountId_1' },
 ];
 
@@ -137,7 +137,7 @@ export const pushTokenSecurityEventJsonSchemaValidator: Document = {
   },
 };
 
-const pushTokenSecurityEventIndexes: IndexDescription[] = [
+export const pushTokenSecurityEventIndexes: IndexDescription[] = [
   { key: { claimingAccountId: 1, createdAt: 1 }, name: 'claimingAccountId_1_createdAt_1' },
   { key: { contestedAccountIds: 1, createdAt: 1 }, name: 'contestedAccountIds_1_createdAt_1' },
 ];

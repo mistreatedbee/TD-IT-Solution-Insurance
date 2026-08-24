@@ -112,6 +112,22 @@ export interface Env {
 
   /** Optional Expo access token for higher push API rate limits (Feature 007). */
   expoAccessToken?: string;
+
+  /**
+   * INC-001 kill switch: `POST /v1/assets/:assetId/location-report` shipped
+   * without required consent gating (ADR-0009 SDL-4) or provenance marking
+   * (SDL-1). Fail-closed by design: this is `true` only when
+   * `LOCATION_INGESTION_ENABLED` is present and is exactly the string
+   * `"true"`. Missing, empty, or any other value (including typos like
+   * `"1"` or `"True"`) all resolve to `false` — refuse, don't guess. Do not
+   * re-enable in production without cybersecurity-architect sign-off that
+   * SDL-1/SDL-4 gating is actually in place. Optional (not a required
+   * field) so every other test harness's hand-built `Env` fixture — which
+   * predates this flag and omits it — continues to compile; an omitted
+   * value is `undefined`, which the route treats as disabled, same as
+   * `false`.
+   */
+  locationIngestionEnabled?: boolean;
 }
 
 function requireEnv(name: string): string {
@@ -291,6 +307,19 @@ export function loadEnv(): Env {
     process.env.INVITATION_ACCEPT_REDIRECT_URL?.trim() || 'tditinsurance://invitations/accept';
   const expoAccessToken = process.env.EXPO_ACCESS_TOKEN?.trim() || undefined;
 
+  // INC-001: fail-closed kill switch — only the exact string "true" enables
+  // ingestion; anything else (unset, blank, "1", "TRUE", garbage) is off.
+  const locationIngestionEnabledRaw = process.env.LOCATION_INGESTION_ENABLED;
+  const locationIngestionEnabled = locationIngestionEnabledRaw === 'true';
+  if (locationIngestionEnabledRaw !== undefined && !locationIngestionEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] LOCATION_INGESTION_ENABLED is set to an unrecognized value ` +
+        `("${locationIngestionEnabledRaw}"). Treating as disabled (fail-closed, INC-001). ` +
+        'Set it to exactly "true" to enable, or unset it to disable.',
+    );
+  }
+
   return {
     nodeEnv,
     isProduction,
@@ -315,5 +344,6 @@ export function loadEnv(): Env {
     passwordResetRedirectUrl,
     invitationAcceptRedirectUrl,
     expoAccessToken,
+    locationIngestionEnabled,
   };
 }

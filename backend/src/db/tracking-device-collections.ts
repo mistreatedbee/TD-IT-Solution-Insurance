@@ -37,7 +37,7 @@ export const trackingDevicesJsonSchemaValidator: Document = {
   },
 };
 
-const indexes: IndexDescription[] = [
+export const trackingDevicesIndexes: IndexDescription[] = [
   {
     key: { accountId: 1, createdAt: -1 },
     name: 'tracking_devices_account_created',
@@ -67,6 +67,6 @@ export async function bootstrapTrackingDeviceCollections(db: Db): Promise<{
     collectionsEnsured.push(TRACKING_DEVICES_COLLECTION);
   }
 
-  await db.collection(TRACKING_DEVICES_COLLECTION).createIndexes(indexes);
+  await db.collection(TRACKING_DEVICES_COLLECTION).createIndexes(trackingDevicesIndexes);
   return { collectionsEnsured };
 }

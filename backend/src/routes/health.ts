@@ -15,11 +15,19 @@
  *                       behind the same internal-service credential as
  *                       every other internal-only surface (SR-13's
  *                       pattern, reused rather than inventing a second one).
+ *
+ * GET /internal/health also carries `mongoCatalog` — ADR-0008 condition 3's
+ * on-demand read of the same catalog-verify.ts check that also runs at
+ * startup (see index.ts). Summary only (pass/fail + drift count); full
+ * per-collection detail is the [mongo-catalog-verify] startup log block,
+ * not re-exposed here even behind auth, to keep this endpoint cheap and
+ * avoid a second place index/validator internals can leak from.
  */
 import { Router } from 'express';
-import { pingMongo } from '../db/mongodb.js';
+import { pingMongo, getDb } from '../db/mongodb.js';
 import { pingPg } from '../db/pg.js';
 import { getSupabaseConfigStatus } from '../db/supabase.js';
+import { verifyMongoCatalog } from '../db/catalog-verify.js';
 import type { Env } from '../config/env.js';
 import { createInternalServiceAuthMiddleware } from '../middleware/internal-service-auth.js';
 
@@ -40,8 +48,22 @@ export function createHealthRouter(env: Env): Router {
   healthRouter.get('/internal/health', internalAuth, async (_req, res) => {
     const [mongoUp, pgUp] = await Promise.all([pingMongo(), pingPg()]);
     const supabase = getSupabaseConfigStatus(env);
+
+    let mongoCatalog: { status: 'verified' | 'drift' | 'unavailable'; driftCount?: number } = {
+      status: 'unavailable',
+    };
+    if (mongoUp) {
+      try {
+        const report = await verifyMongoCatalog(getDb());
+        mongoCatalog = { status: report.ok ? 'verified' : 'drift', driftCount: report.drift.length };
+      } catch {
+        mongoCatalog = { status: 'unavailable' };
+      }
+    }
+
     res.status(200).json({
       mongodb: mongoUp ? 'up' : 'down',
+      mongoCatalog,
       postgres: pgUp ? 'up' : 'down',
       supabase: supabase.configured ? 'configured' : 'not_configured',
       redis: env.redisUrl ? 'configured' : 'not_configured (dev in-memory fallback)',

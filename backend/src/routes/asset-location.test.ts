@@ -18,7 +18,7 @@ import type { Env } from '../config/env.js';
 import type { IdempotencyRepo } from '../repositories/idempotency.js';
 import type { LocationEventDocument } from '../repositories/location-events.js';
 
-function fakeEnv(): Env {
+function fakeEnv(overrides?: Partial<Env>): Env {
   return {
     nodeEnv: 'test',
     isProduction: false,
@@ -37,6 +37,11 @@ function fakeEnv(): Env {
     emailVerificationRedirectUrl: 'tditinsurance://verify-email',
     passwordResetRedirectUrl: 'tditinsurance://reset-password',
     invitationAcceptRedirectUrl: 'tditinsurance://invitations/accept',
+    // INC-001: this test file's existing coverage exercises the endpoint's
+    // actual behavior, so it opts in explicitly; the kill-switch tests below
+    // override this back off (and off-by-omission) to prove fail-closed.
+    locationIngestionEnabled: true,
+    ...overrides,
   };
 }
 
@@ -138,8 +143,9 @@ function createHarness(opts: {
   accountState?: AccountStatus['accountState'];
   assets?: AssetDocument[];
   sessionDeviceId?: string | null;
+  envOverrides?: Partial<Env>;
 }) {
-  const env = fakeEnv();
+  const env = fakeEnv(opts.envOverrides);
   const kv = new InMemoryKeyValueStore();
   const accountId = opts.accountId ?? randomUUID();
   const sessionId = randomUUID();
@@ -343,6 +349,84 @@ describe('POST /assets/:assetId/location-report', () => {
     expect(body.lastLocation.accuracyMeters).toBe(12);
     expect(storedEvents).toHaveLength(1);
     expect(storedEvents[0]?.source).toBe('self_device');
+  });
+
+  it('INC-001: refuses with 503 UPSTREAM_UNAVAILABLE when LOCATION_INGESTION_ENABLED is unset (fail-closed default)', async () => {
+    const accountId = randomUUID();
+    const phone = sampleSmartphone(accountId);
+    const { app, sessionId, env, storedEvents, storedAssets } = createHarness({
+      accountId,
+      assets: [phone],
+      envOverrides: { locationIngestionEnabled: undefined },
+    });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/assets/${phone.id}/location-report`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ latitude: -25.7479, longitude: 28.2293, accuracyMeters: 12 }),
+    });
+
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('UPSTREAM_UNAVAILABLE');
+    // No write occurred anywhere on the disabled path.
+    expect(storedEvents).toHaveLength(0);
+    expect(storedAssets.get(phone.id)?.lastLocation).toBeNull();
+  });
+
+  it('INC-001: refuses with 503 UPSTREAM_UNAVAILABLE when LOCATION_INGESTION_ENABLED is explicitly false', async () => {
+    const accountId = randomUUID();
+    const phone = sampleSmartphone(accountId);
+    const { app, sessionId, env, storedEvents } = createHarness({
+      accountId,
+      assets: [phone],
+      envOverrides: { locationIngestionEnabled: false },
+    });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/assets/${phone.id}/location-report`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ latitude: -25.7479, longitude: 28.2293, accuracyMeters: 12 }),
+    });
+
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('UPSTREAM_UNAVAILABLE');
+    expect(storedEvents).toHaveLength(0);
+  });
+
+  it('INC-001: still functions when LOCATION_INGESTION_ENABLED is explicitly true', async () => {
+    const accountId = randomUUID();
+    const phone = sampleSmartphone(accountId);
+    const { app, sessionId, env, storedEvents } = createHarness({
+      accountId,
+      assets: [phone],
+      envOverrides: { locationIngestionEnabled: true },
+    });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/assets/${phone.id}/location-report`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ latitude: -25.7479, longitude: 28.2293, accuracyMeters: 12 }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(storedEvents).toHaveLength(1);
   });
 
   it('returns 404 for another account asset', async () => {

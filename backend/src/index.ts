@@ -26,6 +26,7 @@ import cors from 'cors';
 import { loadEnv } from './config/env.js';
 import { connectMongo, closeMongo, getDb } from './db/mongodb.js';
 import { ensurePolicyAssetCollections } from './db/mongo-bootstrap.js';
+import { verifyMongoCatalog, formatCatalogReport } from './db/catalog-verify.js';
 import { closePg } from './db/pg.js';
 import { getKeyValueStore, closeKeyValueStore, rebuildRevocationSet } from './db/redis.js';
 import { getPgPool } from './db/pg.js';
@@ -61,6 +62,31 @@ async function main(): Promise<void> {
   await ensurePolicyAssetCollections(getDb());
   // eslint-disable-next-line no-console
   console.log('[startup] Policy/asset MongoDB collections and indexes ensured.');
+
+  // ADR-0008 condition 3 / ADR-0006 FU-A10 class of control: read-only
+  // assertion that the live Atlas catalog actually matches what the seven
+  // collection-spec modules declare, immediately after bootstrap applies
+  // them. Never fatal — a drift finding must be visible in Render's logs,
+  // not take the API down (bootstrap having just run above already makes an
+  // undetected drift unlikely, but this is the check that turns "applied"
+  // into "verified" rather than assuming it).
+  try {
+    const catalogReport = await verifyMongoCatalog(getDb());
+    // eslint-disable-next-line no-console
+    console.log(formatCatalogReport(catalogReport));
+    if (!catalogReport.ok) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[startup] MongoDB catalog verification FAILED with ${catalogReport.drift.length} drift finding(s) — see [mongo-catalog-verify] lines above.`,
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(
+      '[startup] MongoDB catalog verification could not run:',
+      err instanceof Error ? err.message : err,
+    );
+  }
 
   const ctx = buildAppContext(env);
 
