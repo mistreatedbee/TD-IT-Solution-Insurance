@@ -39,6 +39,7 @@ export function CustomerLookupPage() {
 
       <form className="mb-6 flex max-w-xl flex-col gap-3 sm:flex-row" onSubmit={(e) => void onSubmit(e)}>
         <Input
+          label="Customer email"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
