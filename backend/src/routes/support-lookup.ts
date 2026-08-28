@@ -7,7 +7,6 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { apiError } from '../lib/errors.js';
-import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
@@ -41,7 +40,9 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
       try {
         const parsed = lookupQuerySchema.safeParse(req.query);
         if (!parsed.success) {
-          throw apiError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid query');
+          throw apiError('VALIDATION_ERROR', {
+            message: parsed.error.issues[0]?.message ?? 'Invalid query',
+          });
         }
 
         let accountId: string | null = null;

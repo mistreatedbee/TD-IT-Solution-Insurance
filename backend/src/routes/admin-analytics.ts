@@ -29,10 +29,10 @@ export function createAdminAnalyticsRouter(ctx: AppContext): Router {
       try {
         const parsed = dauQuerySchema.safeParse(req.query);
         if (!parsed.success) {
-          throw apiError('VALIDATION_ERROR', 'from and to must be YYYY-MM-DD');
+          throw apiError('VALIDATION_ERROR', { message: 'from and to must be YYYY-MM-DD' });
         }
         if (parsed.data.from > parsed.data.to) {
-          throw apiError('VALIDATION_ERROR', 'from must be on or before to');
+          throw apiError('VALIDATION_ERROR', { message: 'from must be on or before to' });
         }
 
         const rows = await ctx.productEvents.countDistinctSessionStartsByDay(

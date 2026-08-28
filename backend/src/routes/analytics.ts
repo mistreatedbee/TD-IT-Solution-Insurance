@@ -25,7 +25,7 @@ const eventSchema = z.object({
   surface: z.enum(PRODUCT_EVENT_SURFACES).optional(),
   occurredAt: z.string().datetime({ offset: true }).optional(),
   properties: z
-    .record(z.union([z.string().max(MAX_PROPERTY_STRING_LENGTH), z.number(), z.boolean()]))
+    .record(z.string(), z.union([z.string().max(MAX_PROPERTY_STRING_LENGTH), z.number(), z.boolean()]))
     .optional(),
 });
 
@@ -81,7 +81,7 @@ export function createAnalyticsRouter(ctx: AppContext): Router {
         for (const event of body.events) {
           const occurredAt = event.occurredAt ? new Date(event.occurredAt) : new Date();
           if (Number.isNaN(occurredAt.getTime())) {
-            throw apiError('VALIDATION_ERROR', 'Invalid occurredAt');
+            throw apiError('VALIDATION_ERROR', { message: 'Invalid occurredAt' });
           }
 
           const surface = event.surface ?? defaultSurface;
