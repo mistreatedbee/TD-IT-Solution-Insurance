@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
 import {
   getAssetLocation,
   listAssetLocationSummary,
@@ -19,6 +20,7 @@ const EMPTY_LOCATION_SUMMARY: AssetLocationSummaryPage = { data: [] };
 export function useAssetLocationSummaryQuery() {
   return useQuery({
     queryKey: LOCATION_SUMMARY_QUERY_KEY,
+    enabled: FEATURE_LOCATION_TRACKING_ENABLED,
     queryFn: async () => {
       try {
         return await listAssetLocationSummary();
@@ -39,7 +41,7 @@ export function useAssetLocationQuery(assetId: string | undefined) {
   return useQuery({
     queryKey: assetLocationQueryKey(assetId ?? ''),
     queryFn: () => getAssetLocation(assetId!),
-    enabled: Boolean(assetId),
+    enabled: FEATURE_LOCATION_TRACKING_ENABLED && Boolean(assetId),
   });
 }
 

@@ -2,7 +2,7 @@
 
 Owner: `integration-architect`
 Status: **In progress — scorecard kickoff.** No vendor selected. Final ratification will be recorded as **ADR-0010** (number reserved by this document — no `0010` file exists elsewhere in `docs/organization/adr/` as of 2026-08-24).
-Date opened: 2026-08-24
+Date opened: 2026-08-24 · Last updated: 2026-08-28 (shortlist correction — see §2 Candidate E)
 Target decision date: **2026-09-14** (3 weeks from kickoff)
 Deciders on ratification: `integration-architect` (recommendation) → `cto` + `solution-architect` (joint sign-off), per this role's standing authority (see `.claude/agents/integration-architect.md`, "Decision-Making Authority"). Consulted before ratification: `cybersecurity-architect` + `compliance-specialist` (PCI posture, POPIA lawful basis/data residency), `payment-engineer` (implementation feasibility against candidate SDKs), `backend-architect` (internal billing/subscription pipeline fit).
 
@@ -63,7 +63,12 @@ All four operate in South Africa and publicly document hosted-fields/redirect ch
 - **Fit signal:** SA-domiciled (C3 advantage), explicit recurring/debit-order billing product aimed at subscription businesses (C1), hosted PayGate checkout page (C2), broad SA bank/EFT coverage (C4).
 - **Open questions:** developer experience/API and webhook quality (C5) is reported as dated relative to Peach/Paystack in third-party comparisons — needs direct sandbox evaluation, not assumed from marketing copy; modern hosted-fields (vs. older redirect-only flow) needs confirmation.
 
-**Deliberately excluded from shortlist:** **PayFast** — widely used in SA and PCI-DSS compliant with hosted checkout, but public documentation as of this research indicates recurring/subscription billing is not a native scheduled API (manual/semi-manual recurring token flow) — a poor fit for C1, this platform's highest-weighted criterion, given the product is fundamentally a monthly subscription. Kept as a **fallback candidate** (§5) rather than dropped outright, since it remains the most established generalist SA gateway and could be reconsidered if Candidates A–D fail the POPIA sub-review.
+**Re-added to the active shortlist (research pass, 2026-08-28):** **PayFast** — the original 2026-08-24 pass excluded PayFast on the assumption that recurring billing was manual/semi-manual only. A follow-up check (2026-08-28) found PayFast now publishes a dedicated "Recurring Payments & Subscription Billing" feature page with an API that supports create/update/pause/cancel of a subscription schedule (monthly/quarterly/bi-annual/annual), tokenized card storage, and is a PCI DSS Level 1 Service Provider. This materially changes the C1 assessment from the original pass and PayFast is promoted from "fallback" to **Candidate E**, pending the same unresolved items as A–D: dunning/retry-on-failed-renewal behavior (does PayFast retry automatically or does the merchant have to poll and re-trigger — not yet confirmed from public docs), POPIA operator-agreement review (C3), and a direct sandbox trial (§3). SA-domicile (Cape Town-headquartered, part of Network International group) gives it a plausible C3 edge similar to Peach. Not yet scored — do not treat this promotion as a leaning, only as a correction to the shortlist composition.
+
+### Candidate E — PayFast (promoted from fallback, 2026-08-28)
+- **What it is:** Long-established generalist SA payment gateway (Network International group), Cape Town-headquartered.
+- **Fit signal:** Publicly documented recurring/subscription billing feature and API (revised C1 assessment — see note above), hosted checkout (C2), PCI DSS Level 1 Service Provider, broad SA merchant adoption and WooCommerce/Shopify-ecosystem integration maturity signaling a mature, well-trodden integration path (lower implementation risk than newer entrants).
+- **Open questions:** whether the subscription API's retry/dunning behavior on a failed renewal is automatic or requires the merchant to build its own retry logic (needs first-party API-doc read, not the marketing feature page used for this pass); exact SA-domicile/data-processing-location details for the POPIA sub-review; fee schedule at this platform's realistic year-1 volume.
 
 ---
 
@@ -92,7 +97,7 @@ All four operate in South Africa and publicly document hosted-fields/redirect ch
 
 ## 5. Leading candidate (informal, pre-scoring)
 
-**Not a decision.** Based on the hard-constraint fit and criteria weighting alone (before the POPIA/PCI sub-reviews land), **Peach Payments** and **Paystack** are the two strongest candidates on paper — both have credible native subscription-billing APIs (this platform's highest-weighted criterion) and modern hosted-fields checkout. Peach has an edge on POPIA residency by virtue of SA domicile pending verification; Paystack has an edge on webhook/developer-experience quality. **Netcash and Ozow remain live candidates** on the strength of SA domicile and local-rail coverage but need direct evidence on subscription-API maturity before they can compete on C1. **PayFast is a documented fallback, not a leading candidate**, specifically because of the recurring-billing gap.
+**Not a decision.** Based on the hard-constraint fit and criteria weighting alone (before the POPIA/PCI sub-reviews land), **Peach Payments** and **Paystack** remain the two strongest candidates on paper — both have credible native subscription-billing APIs (this platform's highest-weighted criterion) and modern hosted-fields checkout. Peach has an edge on POPIA residency by virtue of SA domicile pending verification; Paystack has an edge on webhook/developer-experience quality. **Netcash and Ozow remain live candidates** on the strength of SA domicile and local-rail coverage but need direct evidence on subscription-API maturity before they can compete on C1. **PayFast (Candidate E) is now a live candidate, not a fallback**, following the 2026-08-28 correction above — its market maturity and PCI DSS Level 1 status are a genuine edge, but it is not yet a leader until its dunning/retry behavior and POPIA posture are confirmed in Week 2's sub-reviews.
 
 ## 6. Revisit triggers
 

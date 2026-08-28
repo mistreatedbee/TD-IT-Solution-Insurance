@@ -12,6 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "co.za.tditsolutions.insurance",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "remote-notification"
         ],

@@ -15,8 +15,9 @@ Relevant role spec: `.claude/agents/database-architect.md`.
   `architecture/database-addendum-001.md`, applied via `backend/migrations/*.sql`.
 - **MongoDB**: policies, assets (polymorphic — see
   `docs/features/004-policy-asset-management/database-design.md` for the base-shape +
-  type-specific-`details` pattern across all 8 asset types), GPS/location history (not built
-  yet), claims (not built yet).
+  type-specific-`details` pattern across all 8 asset types), GPS/location history (`Asset.
+  lastLocation`, `location_events` collection — **built and shipped, currently kill-switched**,
+  see INC-001 below), claims (not built yet — no `claims.ts` route or collection exists).
 
 ## Patterns to reuse, not reinvent
 
@@ -28,8 +29,12 @@ Relevant role spec: `.claude/agents/database-architect.md`.
   did it (`actor_account_id` / `actorAccountId`) and who it was done to (`account_id` /
   `targetAccountId`) — collapsing these into one column was a real bug (see migration 031 and
   ADR-0006). Don't add a new audit-shaped table without both from the start.
-- **TTL indexes**: reserved for genuinely time-bound, non-evidentiary data (raw GPS pings are
-  the one intended future use case). Anything that needs to survive as evidence (audit logs,
+- **TTL indexes**: reserved for genuinely time-bound, non-evidentiary data — raw GPS pings
+  (`location_events`) are the live example, and as of this sync **no TTL index exists on that
+  collection yet** (ADR-0009 SDL-8 requires a scheduled, evidenced purge before ingestion may
+  ship; it doesn't exist — see `docs/organization/incidents/INC-001-location-ingestion.md`).
+  Don't describe location retention as enforced until a purge mechanism is actually scheduled
+  and evidenced, not merely coded. Anything that needs to survive as evidence (audit logs,
   access logs) goes on the scheduled-purge + `legalHold` path instead, never a bare TTL index.
 - **Cross-store references**: a Mongo document referencing a Supabase account uses `accountId`
   as a soft reference — no FK, the backend enforces existence. Don't design as if a foreign

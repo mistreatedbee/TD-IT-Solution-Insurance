@@ -18,6 +18,7 @@ Every role described here also exists as a real, invocable Claude Code subagent 
 | [07-documentation-standards.md](07-documentation-standards.md) | Doc types, ADR template, changelog policy |
 | [08-roadmap.md](08-roadmap.md) | Product roadmap and how the org itself scales with it |
 | [09-business-continuity-policy.md](09-business-continuity-policy.md) | BCM/disaster-recovery framework, critical-activity priorities, current maturity level |
+| [10-data-protection-contract-obligations.md](10-data-protection-contract-obligations.md) | POPIA Operator/Responsible-Party split under client contract TDIT-2026-09 §19: cross-border transfer, 48h breach notice, test-data deletion, and the open conditions register |
 | [adr/](adr/) | Architecture Decision Records, starting with [ADR-0001](adr/0001-baseline-architecture.md) |
 
 ## Current reality check

@@ -9,6 +9,7 @@ import {
   useReportAssetLocationMutation,
 } from '../../api/hooks/useAssetLocation';
 import { useAssetQuery } from '../../api/hooks/useAssets';
+import { FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
 import {
   assetStatusBadgeTone,
   formatAssetType,
@@ -102,12 +103,16 @@ export function AssetDetailScreen() {
   const trackingActive = isSmartphone && consentGranted && isThisPhoneLinked;
 
   const handleEnableTracking = useCallback(() => {
+    // INC-001: defense in depth — the button that invokes this is hidden
+    // below when the flag is off, but never open the consent modal (which
+    // leads straight to an OS permission prompt) regardless.
+    if (!FEATURE_LOCATION_TRACKING_ENABLED) return;
     setActionError(null);
     setShowConsentModal(true);
   }, []);
 
   const handleConsentAccept = useCallback(async () => {
-    if (!id) return;
+    if (!id || !FEATURE_LOCATION_TRACKING_ENABLED) return;
     setActionLoading(true);
     setActionError(null);
     try {
@@ -142,7 +147,7 @@ export function AssetDetailScreen() {
   }, []);
 
   const handleUpdateLocation = useCallback(async () => {
-    if (!id) return;
+    if (!id || !FEATURE_LOCATION_TRACKING_ENABLED) return;
     setActionLoading(true);
     setActionError(null);
     try {
@@ -190,7 +195,9 @@ export function AssetDetailScreen() {
   const trackingStatus = trackingView?.trackingStatus ?? 'tracking_unavailable';
   const trackingLabel = trackingView?.trackingLabel ?? 'Unavailable';
   const locationLabel = trackingView?.locationLabel ?? null;
-  const mapCoords = location ?? trackingView?.lastLocation ?? null;
+  const mapCoords = FEATURE_LOCATION_TRACKING_ENABLED
+    ? (location ?? trackingView?.lastLocation ?? null)
+    : null;
 
   const tracked =
     trackingStatus === 'online' ||
@@ -284,7 +291,11 @@ export function AssetDetailScreen() {
           </Alert>
         ) : null}
         {isSmartphone ? (
-          trackingActive ? (
+          !FEATURE_LOCATION_TRACKING_ENABLED ? (
+            <Alert tone="info">
+              Phone-based location tracking is not available in this build.
+            </Alert>
+          ) : trackingActive ? (
             <Button
               variant="secondary"
               fullWidth

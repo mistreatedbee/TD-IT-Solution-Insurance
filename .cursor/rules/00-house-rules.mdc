@@ -13,27 +13,60 @@ and recover lost/stolen assets, coordinating with security-company partners.
 ## Current repo state — verify before assuming anything
 
 This repo has moved well past a design-system showcase. As of this handoff (verify against
-`HANDOFF.md`, which moves faster than this file):
+`HANDOFF.md` and root `CLAUDE.md`, both of which move faster than this file):
 - **Web** (`src/`): React 18 + Vite + TS + Tailwind design-system components, marketing site,
   **plus** real product surfaces — Admin Panel (`/admin/*`), Security Company Dashboard
   (`/security/*`), and a full customer surface (auth, onboarding wizard, post-login dashboard).
 - **Backend** (`backend/`): real Node.js + TS API — Feature 001 (auth), Feature 004 customer
-  **and admin** policies/assets routes, a recovery-case API scaffold, and Feature 006/007
-  (onboarding/plan-catalog, notifications) are built and tested (**188 tests green, 36 files** —
-  re-verify with `cd backend && npm test`, this number moves every session). Claims and payments
-  are **not built**.
-- **Mobile** (`mobile/`): real Expo + TS app — auth, Policy/Assets tabs, a full onboarding
-  wizard, and a notification-preferences screen wired to live API; Phase 2 recovery/claims **UI
-  scaffold** (stub APIs, backend 404s). **12 test files** (re-verify pass count with
-  `cd mobile && npm test`). App icon/splash are the real brand mark, not Expo defaults.
+  **and admin** policies/assets routes, a recovery-case / security-case API (`recovery.ts`,
+  `security-cases.ts`), Feature 006/007 (plan catalog, notifications), customer profile +
+  admin verification routes, an alerts API, and Feature 008/009 GPS-adjacent routes
+  (`asset-location.ts` self-device location reporting, `tracking-devices.ts` provider-agnostic
+  device registration). Claims and payments have **no backend routes** — no
+  `claims.ts`/`payments.ts` exists. **Test count moves every session — re-verify with
+  `cd backend && npm test` before citing a number**, don't hardcode one here.
+- **Mobile** (`mobile/`): real Expo + TS app — auth, onboarding, Policy/Assets, notification
+  preferences, plus a substantially built-out Feature 009 surface (home, alerts, map, device
+  locations, live-tracking, report-theft, device activation/health/installation-guide, and a
+  separate security-company operator portal). Claims screens exist in the UI with no backend
+  route behind them (still a stub against a 404). **Re-verify test count with
+  `cd mobile && npm test`** — don't hardcode one here.
 - **Databases**: MongoDB Atlas (domain data) + Supabase Postgres (identity/session data), per
   ADR-0002's polyglot split. Both have real, applied schemas.
-- **Feature 008** (self-device GPS tracking): design-time only, four documents under
-  `docs/features/008-self-device-gps-tracking/` plus ADR-0009. **Nothing implemented.** Don't
-  add `expo-location` or any location code on the strength of the design docs alone.
+- **Feature 008 (self-device GPS tracking) — built, then kill-switched, not "nothing
+  implemented."** Self-device location reporting (`backend/src/routes/assets.ts`'s
+  location-report endpoint, `mobile/src/location/useLocationReporter.ts`) shipped past an
+  explicit ADR-0009 §14 prohibition and a Stage 8 gate — see **INC-001**
+  (`docs/organization/incidents/INC-001-location-ingestion.md`). It is currently **contained**,
+  not removed: `LOCATION_INGESTION_ENABLED` fails closed server-side, and a client feature flag
+  (`FEATURE_LOCATION_TRACKING_ENABLED`) keeps `expo-location` from being invoked. Read INC-001
+  before touching anything in this area — this is containment, not a green light to re-enable or
+  extend it, and read ADR-0009 §18 for the correction of the earlier (wrong) "nothing shipped"
+  claim.
 
-Read `HANDOFF.md` at repo root before starting any new work — it has the full current-state
-snapshot, open items, and what's mid-flight. Don't re-derive from git log alone.
+Read `HANDOFF.md` and root `CLAUDE.md` at repo root before starting any new work — they carry the
+full current-state snapshot, open items, and what's mid-flight. Don't re-derive from git log
+alone.
+
+## Current planning documents (didn't exist when this file was last written)
+
+- **`docs/organization/north-star-2000-dau.md`** — the platform's current North Star goal
+  (2,000 sustained daily active users with a registered policy) and the milestone sequence
+  (M0…M8) toward it. Read this before proposing anything as "the next priority" — it states
+  explicitly what engineering does and doesn't control.
+- **`docs/organization/sprint-plan-release-gate-a.md`** — the active sprint-by-sprint tracker
+  for closing Release Gate A and the work immediately after it. This is the current source for
+  "what sprint is this and who owns it," not this file.
+- **`docs/organization/contract-tdit-2026-09-scope-summary.md`** — sanitized scope summary of
+  the signed client contract (TDIT-2026-09). Confirms a **Call Centre Dashboard** is now
+  in-scope under the existing retainer (a new operator-facing surface, distinct from Admin/
+  Security/Customer), sequenced to begin scoping **after Release Gate A closes** — it is not a
+  Release Gate A item. No banking details, personal phone numbers, or personal emails appear in
+  that document or should ever be copied from the source contract into this repo.
+- **`docs/organization/10-data-protection-contract-obligations.md`** — POPIA/contractual
+  obligations newly identified from TDIT-2026-09 §19 (operator/responsible-party framing,
+  48-hour breach notice to the Client, cross-border transfer consent, test-data lifecycle). See
+  `security-compliance.mdc` for the pointer into engineering-relevant items.
 
 ## Non-negotiable rules
 
@@ -53,8 +86,16 @@ snapshot, open items, and what's mid-flight. Don't re-derive from git log alone.
   reopening a settled decision — but do reopen one if a named revisit trigger fires.
 - **Compliance framework is POPIA** (South Africa) — see
   `docs/features/001-authentication/compliance-review-supabase.md` for the governing analysis
-  on cross-border data flows, retention, and third-party operators. Any new third-party
-  service touching PII needs the same s72/DPA/RoPA treatment before going live, not after.
+  on cross-border data flows, retention, and third-party operators, and
+  `docs/organization/10-data-protection-contract-obligations.md` for the newer TDIT-2026-09
+  contract-driven obligations layered on top. Any new third-party service touching PII needs
+  the same s72/DPA/RoPA treatment before going live, not after.
+- **INC-001 (location ingestion Stage-8-gate breach) is contained, not closed.** A server-side
+  and client-side kill switch stop new location writes/capture, but Release Gate A build #2 is
+  currently **blocked**: `cybersecurity-architect` withheld sign-off on Release Gate A criterion
+  6 (no surface that bypassed Stage 8 is reachable in a client build) — see
+  `docs/organization/incidents/INC-001-location-ingestion.md` §9.4 and ADR-0009 §18.7. Don't
+  describe build #2 as shippable or the incident as resolved until that sign-off lands.
 
 ## Stack baseline (ADR-0001, refined by ADR-0002)
 

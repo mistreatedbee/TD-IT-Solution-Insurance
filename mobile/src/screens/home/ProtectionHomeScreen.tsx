@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { resendVerification } from '../../api/auth';
 import { useAccountQuery } from '../../auth/useAccountQuery';
+import { FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { AssetPreviewRow } from './AssetPreviewRow';
 import { FeaturedAssetCard } from './FeaturedAssetCard';
@@ -169,7 +170,7 @@ export function ProtectionHomeScreen() {
         initials={initialsFromName(data.greetingName, account?.email)}
       />
 
-      <HomeMapPreview variant="hero" />
+      {FEATURE_LOCATION_TRACKING_ENABLED ? <HomeMapPreview variant="hero" /> : null}
 
       <FeaturedProtectionCard
         assetProtected={data.protectedAssetCount}

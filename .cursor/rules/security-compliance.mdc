@@ -51,15 +51,31 @@ Relevant role specs: `.claude/agents/cybersecurity-architect.md`, `.claude/agent
 
 ## Open items as of this handoff (check `HANDOFF.md` for current status before assuming closed)
 
+- **Contract-driven POPIA obligations (new, 2026-08-28)** —
+  `docs/organization/10-data-protection-contract-obligations.md` records obligations from
+  contract TDIT-2026-09 §19 layered on top of the existing POPIA analysis: NextWave is an
+  **Operator**, TD IT Solution is the **Responsible Party**; a 48-hour breach-notice clock to
+  the Client; **no cross-border transfer without the Client's prior written consent** (flagged
+  as a confirmed gap — Render Frankfurt hosting and the Supabase EU region currently have no
+  such consent on file); and a test-data anonymise-or-delete requirement. Read this before
+  making any claim about hosting region, breach process, or test-data handling being compliant.
 - Supabase DPA execution — was still unexecuted as of last check; a hard blocker on real
   production use, not just a nice-to-have.
 - ADR-0006 (privileged-access audit correlation) — **ratified 2026-08-11 (§16), with §17
   appended as a post-ratification correction.** Its migrations (032, 033) are applied to the
   live Supabase project.
-- ADR-0009 (self-asserted location ingestion trust boundary, Feature 008) — **Proposed, pending
-  `cto` ratification.** Its SDL-1…SDL-12 requirements are binding now under
-  `cybersecurity-architect`'s standing authority regardless of ratification status. Does **not**
-  reopen or amend ADR-0006 — read both before doing anything with location data.
+- ADR-0009 (self-asserted location ingestion trust boundary, Feature 008) — **Ratified**
+  conditionally by `cto` 2026-08-24 (§17); `security-engineer` (§15) and `compliance-specialist`
+  (§16) concurrences remain reserved/unfiled. Its SDL-1…SDL-12 requirements are binding under
+  `cybersecurity-architect`'s standing authority regardless. **Its own §14 prohibition on
+  shipping any ingestion code was breached** — the endpoint shipped to production and a
+  distributed preview APK before Stage 8 ran. See **INC-001**
+  (`docs/organization/incidents/INC-001-location-ingestion.md`): contained via a server-side +
+  client-side kill switch, **not closed**. As of 2026-08-28, `cybersecurity-architect` has
+  **withheld** Release Gate A criterion 6 sign-off (no surface that bypassed Stage 8 is
+  reachable in a client build) — see INC-001 §9.4 and ADR-0009 §18.7 — so build #2 does not
+  ship until that's resolved. Does **not** reopen or amend ADR-0006 — read both, plus INC-001,
+  before doing anything with location data.
 - AUD-3 (bulk admin list calls not recording a per-subject audit entry) — shape ruled (R-1);
   **closed on both trails** — Trail A (`GET /v1/admin/accounts` calls `recordBulkDisclosure()`)
   and Trail B (`GET /v1/admin/policies*`/`GET /v1/admin/assets*` write to `admin_access_log` via
@@ -83,10 +99,13 @@ Relevant role specs: `.claude/agents/cybersecurity-architect.md`, `.claude/agent
   Resend-specific operator review (the vendor changed from Brevo and was never re-reviewed), and
   a platform-level RoPA — none of which exist in this repo. Don't treat either feature as clear
   for real customer accounts on the strength of "Stage 8 passed" alone; check the conditions.
-- **SR-007-11** — there is no admin account-suspend/deactivate endpoint anywhere in this
-  codebase (`admin-accounts.ts` has two `GET` routes and nothing else). If you're asked to wire
-  push-token/session revocation into "the admin deactivation handler," that handler doesn't
-  exist yet — it needs its own design and its own Stage 8, not a side-effect implementation.
+- **SR-007-11 — stale, corrected.** This used to say no admin account-suspend/deactivate
+  endpoint existed. That was itself a false negative-verification (see INC-001 §5, case 1):
+  `PATCH /v1/admin/accounts/:id/state` (`backend/src/routes/admin-accounts.ts`) is built and
+  test-covered, with RBAC, audit logging, session revocation, and push-token disablement. Don't
+  repeat the old claim, and don't assume this means it has a filed Stage 8 record just because
+  it's built — verify against `docs/features/**/security-review*.md` before citing it as
+  cleared.
 
 ## Process
 

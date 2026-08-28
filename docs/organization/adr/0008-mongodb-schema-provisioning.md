@@ -73,3 +73,31 @@ Ratified now because none of these reopens the decision and all three are cheape
 - **Not an Atlas tier, cost, or access-control ruling.** ADR-0006 §16.4's C-16(c) escalation (database-layer audit capability at Atlas, and elimination of standing human access to production stores) is a separate, still-open `cto` obligation and is untouched by this ratification.
 
 **Signed:** `cto`, 2026-08-24. Ratified with the three conditions above.
+
+---
+
+## Post-ratification factual update — condition 1 remains **OPEN**
+
+**Filed by:** `solution-architect`, 2026-08-28 · **Nature:** append-only factual update, following the precedent ADR-0009 §18 and ADR-0006 §17 both used. **No text above is edited.** The verdict, the decision, and all three conditions stand exactly as signed.
+
+This section exists for one reason: condition 1's finding — *"no deploy-time or CI check asserts the live Atlas catalog against them"* — was true on 2026-08-24 and is **no longer true as written**. Leaving a stale negative assertion sitting in a ratified ADR is the precise failure mode ADR-0009 §18.3 made a standing rule against. Recording the change is not the same as closing the condition, and this section does not close it.
+
+**Search that backs this update** (per ADR-0009 §18.3 — a negative or positive assertion about the codebase must state its scope): `rg` over `backend/` for `listCollections|verifyCatalog|catalog|indexes\(\)`; `rg` over `*.yaml|*.yml|*.json` at repo root for `verify-mongo-catalog|verifyMongoCatalog|catalog`; direct read of `backend/src/db/catalog-verify.ts`, `backend/src/index.ts` (startup path), `backend/package.json` (scripts), and `render.yaml`.
+
+**What now exists:**
+
+- `backend/src/db/catalog-verify.ts` — read-only declared-vs-live catalog diff across the seven collection-spec modules of condition 3. Never creates, alters, or drops.
+- `backend/scripts/verify-mongo-catalog.ts` + `npm run verify:mongo-catalog` — on-demand/CI entry point.
+- `backend/src/index.ts` — invokes `verifyMongoCatalog(getDb())` at startup, immediately after `ensurePolicyAssetCollections()`. Render's `startCommand: npm start` (`render.yaml`) means this executes on every deploy.
+
+**Why condition 1 is nonetheless still open — three unresolved points, none of which `solution-architect` may adjudicate:**
+
+1. **The startup check is non-fatal by design.** It logs `[mongo-catalog-verify]` lines and a `console.error` on drift, but does not exit non-zero, fail the Render health check, or block the service from serving traffic. Whether a check that runs but cannot stop a bad deploy satisfies "verification wired into the deploy pipeline" (Consequences, `devops-engineer`'s line) is `devops-engineer`'s call, not this role's.
+2. **Nothing in `render.yaml` or any CI workflow invokes `verify:mongo-catalog` as a gating step.** The only invocation is the in-process startup one.
+3. **Sprint item 2.8 (`docs/organization/sprint-plan-release-gate-a.md`, Sprint 2) owns closure**, and its own text is explicit: *"a check existing in the repo but not wired into deploy does not satisfy this item."* That item is scheduled for Sprint 2 (2026-08-31 → 2026-09-06) and is unstarted.
+
+**Therefore:** Mongo provisioning may now be described as *applied, with a startup-time catalog assertion that reports drift* — and still **not** as *verified* or *enforced*, on the same ADR-0006 §16.5 condition-3 standard condition 1 invoked. Condition 1 closes only when `devops-engineer` confirms the deploy-path behaviour, and only in a section signed by that role or by `cto`.
+
+**Minor discrepancy for `devops-engineer`/`database-architect` to correct at their convenience:** `backend/src/index.ts` line ~66 and `backend/src/db/catalog-verify.ts`'s header both attribute this module to "ADR-0008 condition 3" / `§"Consequences" item 1`. It discharges **condition 1 of the ratification section** (Decision item 3 / Consequences item 2). Cosmetic, but cross-references that point at the wrong condition are how a condition gets marked closed by the wrong person.
+
+**Not signed as a closure.** `solution-architect`, 2026-08-28 — factual update only.

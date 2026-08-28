@@ -358,3 +358,4 @@ compliance conditions, (c) SR-007-11, (d) C-007-11, (e) FU-A14 wiring"):
    path, per memo §4.
 7. §1.10 (GPS/Feature 008) stays off the sprint board entirely until 1.6 and 1.9 close and
    ADR-0009 is ratified — do not let it drift onto a sprint by momentum.
+

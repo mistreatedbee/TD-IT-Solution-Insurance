@@ -4,6 +4,8 @@ Status: **Ratified** — `cto`, 2026-08-24 (§17), also standing in for `solutio
 Date: 2026-08-14
 Deciders: `cybersecurity-architect` (proposing and deciding). Consulted, via their filed artifacts rather than in person: `mobile-architect` ([`008/architecture.md`](../../features/008-self-device-gps-tracking/architecture.md) §5(b), which posed this question and expressly declined to answer it), `business-analyst` ([`008/business-requirements.md`](../../features/008-self-device-gps-tracking/business-requirements.md) §4, §9, which specified the feature without assuming either answer). Governs: `backend-architect`, `database-architect`, `gps-integration-engineer`, `mobile-architect`, `authentication-engineer` on anything that ingests, stores, or reads a self-asserted location record.
 
+> **Appended 2026-08-25 — read §18 before citing §14 or §17.4.** Those sections' statement that no location ingestion endpoint existed was factually wrong when signed; ingestion had already shipped. §18 corrects the record without editing it (INC-001).
+
 **This ADR discharges `GPS-SD-03` ([`008/architecture.md`](../../features/008-self-device-gps-tracking/architecture.md) §7) and answers `OQ-SD-04` ([`008/business-requirements.md`](../../features/008-self-device-gps-tracking/business-requirements.md) §8). It does not authorize development of Feature 008 — see §14, which is not boilerplate.**
 
 ---
@@ -389,3 +391,106 @@ Ratified now because none of these reopens the decision, and holding them as con
 - **Not a claim that anything here is implemented.** Verified on 2026-08-24: no location ingestion endpoint exists, no consent record exists, no `expo-location` dependency exists, no location purge mechanism exists, and `recovery_cases.lastLocation` remains written `null` with nothing reading or writing it. Every requirement in §5 governs design that has not yet been done — which, per RR-7, is the cheapest moment to have ratified it.
 
 **Signed:** `cto`, 2026-08-24. Ratified with the four conditions at §17.3; §15 and §16 remain open.
+
+---
+
+## 18. Correction — §14 and §17.4's "no location ingestion endpoint exists" was factually wrong (INC-001)
+
+**Filed by:** `cybersecurity-architect`, 2026-08-25, chairing INC-001 · **Nature:** append-only factual correction, following the precedent this document already used at §14 (the `[Superseded on 2026-08-24 by §17]` bullet) and that ADR-0006 §17 used against its own §16. **No text in §5, §14, §17.3 or §17.4 is edited.** SDL-1 … SDL-12 are unchanged, unamended, and were binding on the day the code below shipped.
+
+### 18.1 The statement being corrected
+
+§17.4's final bullet reads, in part:
+
+> *"Not a claim that anything here is implemented. **Verified on 2026-08-24:** no location ingestion endpoint exists, no consent record exists, no `expo-location` dependency exists, no location purge mechanism exists, and `recovery_cases.lastLocation` remains written `null` with nothing reading or writing it."*
+
+§14's framing ("This is a design-time architectural ruling… no ingestion code exists", carried into RR-7) rests on the same verification.
+
+**Three of those five clauses were false on the date they were signed.** Corrected, item by item:
+
+| Clause as signed 2026-08-24 | Actual state of the tree |
+|---|---|
+| "no location ingestion endpoint exists" | **False.** `POST /v1/assets/:assetId/location-report` existed and was live (`backend/src/routes/assets.ts` ~L100–182), writing `assets.lastLocation` and appending to `location_events`. |
+| "no consent record exists" | **True as written, and worse than it reads.** No *server-side* consent record exists — but ingestion was shipped and served anyway, gated only by a client-side SecureStore flag (`mobile/src/location/consent.ts`). SDL-4 was not deferred; it was bypassed. |
+| "no `expo-location` dependency exists" | **False.** `expo-location` is a declared dependency of `mobile/package.json`, wired through `mobile/src/location/useLocationReporter.ts`, and shipped in a client-distributed preview APK. §14's explicit instruction — "`mobile/package.json` has no location dependency today and should not acquire one on the strength of this document" — had already been contravened when it was re-signed. |
+| "no location purge mechanism exists" | **True, and now blocking rather than hypothetical.** `location_events` has no TTL index and no purge job (`backend/src/db/location-events-collections.ts`). SDL-8 was a precondition on shipping ingestion; ingestion shipped without it. |
+| "`recovery_cases.lastLocation` remains written `null` with nothing reading or writing it" | **True, and still true as of 2026-08-25** — re-verified in this audit. `getLocationForCase()` reads it; no writer exists anywhere. RR-5 / SD-FU-04 are unchanged. |
+
+### 18.2 What actually shipped, stated plainly
+
+Ungated by Stage 8, and in production plus a client-distributed preview APK:
+
+- `POST /v1/assets/:assetId/location-report` — customer-authenticated write, per-account rate-limited (`ASSET_LOCATION_REPORT_LIMIT`), server-side `smartphone`-only and owner-only enforcement, `reportingDeviceId` binding on first write.
+- `GET /v1/assets/:assetId/location`, `GET /v1/assets/location-summary`, `GET /v1/assets/:assetId/location-history` — owner-scoped coordinate reads.
+- `location_events` collection + repository; `assets.lastLocation`, `assets.locationSource`, `assets.reportingDeviceId`.
+- Mobile: `expo-location`, `useLocationReporter` (foreground trigger), `SelfDeviceProvider`, map screens on `react-native-maps`; web: a Leaflet protection map.
+
+**Conformance of what shipped against SDL-1 … SDL-12** (my own read of the code, 2026-08-25, not a report taken on trust):
+
+| Req | Verdict |
+|---|---|
+| SDL-1 provenance | **Partial.** `source: 'self_device'` is hardcoded server-side and never read from the body — the mislabeling attack is closed. But **`assertionMode` does not exist anywhere**, `assets.lastLocation` carries no provenance field at all, and the `source` enum shipped as `self_device \| hardware` rather than the discriminator this ADR named. Immutability is de-facto (nothing updates the row), not enforced. |
+| SDL-2 use limitation | **Held — see §18.4.** No consumer drives a real-world, financial or dispatch consequence. |
+| SDL-3 auth + rate limit | **Met**, including fail-closed on a session with no bound device. |
+| SDL-4 server-side consent | **Absent.** Consent is a client-side SecureStore string; the server never checks it and no consent object exists. |
+| SDL-5 read-side inheritance | **Breached at one point** — `GET /v1/admin/assets/:assetId` returns `lastLocation` (via `serializeAdminAsset` → `serializeAsset`) to a non-owner. It writes a Trail B `admin_access_log` row, but **carries no AUD-9 purpose/case reference**. The list projection correctly omits coordinates. |
+| SDL-6 leakage | **Substantially met inside our own boundary; three findings at §18.5.** |
+| SDL-7 server clock | **Partial.** `receivedAt` is server-derived and stored. But history ordering, the compound index, and cursor pagination all key on `recordedAt`, which is the client-supplied `capturedAt` (skew-checked to +5 min, no lower bound). A client controls its own history ordering. |
+| SDL-8 scheduled purge | **Absent.** No TTL, no job. |
+| SDL-9 step-up + notification | **Absent.** No re-auth on enable, no out-of-band notice, no server-side opt-out. |
+| SDL-10 device binding | **Partially met.** `reportingDeviceId` is recorded on the asset and `deviceId` on each event; a device change is refused rather than re-consented — safer than the requirement in one direction, and it means SDL-10's re-consent path simply does not exist. |
+| SDL-11 scope lock | **Met** — `smartphone`-only and `triggeredBy` enum are enforced server-side. |
+| SDL-12 attestation | Not required, correctly, because SDL-2 holds. That conditional acceptance survives only as long as §18.4 stays true. |
+
+### 18.3 Why the verification missed it — the lesson, in `cto`'s framing
+
+The 2026-08-24 verification was not fabricated and was not lazy. It was **narrow**: it checked the path this ADR had spent its §2 survey on — `recovery_cases.lastLocation`, its validator, its `getLocationForCase()` reader, and the absence of any writer for it — found exactly what §2 predicted, and generalised that one true negative into a statement about the whole platform. The live ingestion path ran through a different collection (`location_events`), a different field (`assets.lastLocation`), and a different route file (`assets.ts`, not a `location.ts` anyone would have grepped for by name).
+
+> **A negative verification must enumerate what was searched, or it proves nothing.**
+
+"No X exists" is a claim about the entire codebase and can only be discharged by a search whose scope is stated. "I checked `recovery_cases.lastLocation` and its two call sites, and found no writer" is a defensible finding. "No location ingestion endpoint exists" is not the same sentence, and the gap between them is where this incident lived for an unknown number of days. **Standing rule from this correction, binding on every future ADR ratification, security review, and status document on this platform: any negative assertion about the codebase must state the search that backs it — the paths, the patterns, and the tool.** An unenumerated negative is to be treated as unverified, whoever signed it.
+
+### 18.4 SDL-2 — confirmed intact, and this is the only reason INC-001 is contained rather than severe
+
+Every consumer of `location_events` and `assets.lastLocation` was traced in this audit (§18.2's read routes; `security-cases.ts`; `recovery.ts`; `sync-account-alerts.ts`; the notification service; the web Admin, Security and customer surfaces; all mobile screens). **Nothing dispatches, prices, adjudicates, or instructs a third party from a self-asserted coordinate.** Specifically: the partner-organisation surface exposes `lastLocationAt` (a timestamp) and never a coordinate; the security-operator live-tracking screens on both web and mobile are honest placeholders; alerts are derived from account/policy/case state and contain no location; no payment or claims consumer exists at all. SDL-2 held **because no one built the consumer**, not because a control stopped them — which is exactly the structural defence SDL-2 was written to be, and it is the thing that kept a Stage-8 bypass from becoming a personal-safety incident.
+
+### 18.5 New findings from this audit, filed rather than left
+
+- **SD-FU-08 — third-party map tile/SDK disclosure.** `src/customer/map/ProtectionMapCanvas.tsx` loads tiles from `tile.openstreetmap.org`; mobile renders through `react-native-maps` (Google/Apple map services). Tile requests quantise a customer's asset position into a URL path sent to a third party we have no operator agreement with, with our origin in the `Referer`. SDL-6's "coordinates never in a URL" is satisfied for *our* API and breached at the *vendor* boundary. Owner: `cybersecurity-architect` + `compliance-specialist` (POPIA transborder), before any map surface serves real customer data.
+- **SD-FU-09 — coordinates at rest in plaintext on the device.** `useAssetLocationHistory` and the recovery-location query run through TanStack Query, which is persisted to unencrypted `AsyncStorage` (`td_insurance.query_cache`) by `PersistQueryClientProvider`, with no `shouldDehydrateQuery` filter. `mobile/src/query/queryClient.ts`'s own header asserts the cache holds "non-sensitive display data" — an assertion this feature made false. Owner: `mobile-architect` + `security-engineer`.
+- **SD-FU-10 — admin coordinate read with no AUD-9 purpose reference** (SDL-5 breach above). Owner: `backend-architect` + `cybersecurity-architect`. Same shape as SD-FU-05 and should be closed with it.
+- **SD-FU-11 — client-controlled ordering of location history** (SDL-7 above). Owner: `database-architect` + `backend-architect`.
+
+### 18.6 Status and what this section does *not* do
+
+- The write path is **kill-switched in production** (`LOCATION_INGESTION_ENABLED`, fail-closed on unset and on any unrecognised value, checked before any DB or session work; regression-tested in `backend/src/routes/asset-location.test.ts`). Client-side, `FEATURE_LOCATION_TRACKING_ENABLED` prevents the app from calling `expo-location` at all. INC-001 is **CONTAINED, not closed.**
+- **The read paths are not gated.** Pre-containment coordinates remain readable by their owner and by an admin. That is `compliance-specialist`'s call per `INC-001-location-events-inventory.md` §3, and I am not pre-empting it.
+- **This section is not a Stage 8 sign-off and does not retroactively authorize anything.** Re-enabling ingestion requires: SDL-4 (server-side consent object + per-call check), SDL-9 (step-up, out-of-band notice, immediate server-side opt-out), SDL-1's `assertionMode`, SDL-8's scheduled purge against a `compliance-specialist` retention number, SD-FU-10, and a chaired Stage 8 with `security-engineer` and `compliance-specialist` concurrence. §15 and §16 remain unfiled and remain conditions on §17.
+- Post-mortem, root cause and the mechanical CI gates proposed in response: [`docs/organization/incidents/INC-001-location-ingestion.md`](../incidents/INC-001-location-ingestion.md).
+
+### 18.7 Second-pass correction — containment is narrower than §18.6 reads (filed 2026-08-28)
+
+**Filed by:** `cybersecurity-architect`, 2026-08-28, still chairing INC-001 · **Append-only. No text above is edited.**
+
+§18.2's SDL-1…SDL-12 conformance table was re-verified against the tree on 2026-08-28 and is **confirmed accurate** — independently, by this chair, and consistently with `security-engineer`'s parallel review. Nothing in it is corrected here. What follows is a **scope** correction to §18.6's containment statement, which is true as written and reads more broadly than it is.
+
+**The searches backing every negative below, per §18.3's own standing rule:**
+
+| Claim | Search |
+|---|---|
+| Only one `expo-location` call site exists | `rg "expo-location\|requestForegroundPermissionsAsync\|getCurrentPositionAsync" mobile/ -g '!**/__tests__/**'` → `mobile/src/location/requestForegroundLocation.ts` only; its two callers (`useLocationReporter.ts`, `AssetDetailScreen.tsx`) both flag-guarded |
+| No partner-org surface emits a coordinate | `rg "lastLocation\|dispatch\|notify\|alert" backend/src/routes/security-cases.ts` → **no matches** |
+| Which backend files touch coordinates at all | `rg "lastLocation\|location_events\|latitude" backend/src` → 17 files, all enumerated and traced |
+| No Feature 008/009 Stage 8 record exists | `glob docs/features/**/security-review*.md` → 001, 004 (×2), 006, 007 only. **No 008. No 009.** |
+
+**18.7(a) — the client-side flag gates capture, not display.** `FEATURE_LOCATION_TRACKING_ENABLED` guards `useLocationReporter` and `AssetDetailScreen`'s capture path. It does **not** guard `mobile/src/screens/location/DeviceLocationsScreen.tsx` or `mobile/src/screens/home/ProtectionMapScreen.tsx`, neither of which imports it. Both are routed and reachable in a preview/production build (`mobile/app/(app)/device-locations/`, `mobile/app/(app)/map/` — their `_layout.tsx` files contain no guard), and both call the **ungated** read endpoints `GET /v1/assets/location-summary` and `GET /v1/assets/:assetId/location-history`, rendering `latitude`/`longitude` into map pins. **In a build #2 preview APK, a customer-facing screen still displays pre-containment coordinates.** This is consistent with §18.6's "the read paths are not gated" — but §18.6 sits under a heading about the write path, and the combination is easy to read as "location is off in client builds." It is not. This is the operative fact behind `compliance-specialist`'s §7.4 order to null `Asset.lastLocation` ahead of the general purge, and behind this chair's criterion-6 decision.
+
+**18.7(b) — `fail-closed` is the wrong word in `mobile/src/config/features.ts`.** Its comment describes the convention as "fail-closed" while the implementation is `rawLocationTrackingFlag !== 'false'` — **enabled when unset**. That is fail-*open*; only `eas.json`'s explicit `"false"` on the preview and production profiles closes it. The behaviour is correct for its stated purpose (local dev keeps the feature) and the shipped profiles are correct; the **word** is wrong, and a future reader relying on it to reason about an unset environment would reason wrongly. Contrast the server switch, which genuinely fails closed on unset. Owner: `mobile-engineer`, comment-only fix, non-blocking.
+
+**18.7(c) — the build still declares location permissions nothing can use.** `mobile/app.json` retains the `expo-location` plugin, `NSLocationWhenInUseUsageDescription`, and `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION`. With capture flagged off, build #2 ships a manifest asserting a capability it does not exercise. No security exposure — an unused declared permission grants nothing — but it is a store-listing and privacy-label honesty issue, and it puts a location-tracking usage string in front of a client evaluating build #2. Owner: `mobile-architect` + `product-manager`. Non-blocking for criterion 6; flagged so nobody discovers it during a store review.
+
+**18.7(d) — SDL-6 is not complete, and §18.2's "substantially met" should not be read as closing it.** SD-FU-02 (AUD-12's field-level-encryption evaluation, to be filed as Feature 008's `field-sensitivity-review.md`) **does not exist** — `docs/features/008-self-device-gps-tracking/` contains `api-design.md`, `architecture.md`, `business-requirements.md`, `compliance-review.md` and nothing else. SDL-6's own closing clause makes that file a precondition on shipping ingestion. SD-FU-09 is also unremediated: `mobile/src/query/queryClient.ts` still constructs `createAsyncStoragePersister` with no `shouldDehydrateQuery` filter, so coordinate query results persist to plaintext `AsyncStorage` under `td_insurance.query_cache` — and because 18.7(a)'s display screens still run, **this keeps happening in a flag-off preview build.** SD-FU-08 (map-tile vendor egress) is likewise open. SDL-6 status: **floor met inside our own boundary; the mandated evaluation not started.**
+
+**18.7(e) — SDL-2 re-verified independently and still holds.** Re-traced on 2026-08-28 rather than accepted from §18.4: `security-cases.ts` matches no location identifier at all; no `claims.ts` or `payments.ts` route file exists; `recovery_cases.lastLocation` still has no writer. **No self-asserted coordinate reaches a dispatch, pricing, adjudication or third-party-instruction path.** SDL-2 is the one requirement that has held throughout this incident, and SDL-12's conditional acceptance of no-attestation survives on it.
+
+**This section changes no requirement and authorizes nothing.** §18.6's conditions on re-enabling ingestion stand in full, and SD-FU-02's absence is now named as a sixth item on that list rather than left inside "SDL-6, substantially met."

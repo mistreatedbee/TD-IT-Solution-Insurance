@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
 import { ApiError } from '../errors';
 import {
   getAssetLocationHistory,
@@ -27,7 +28,7 @@ export function useAssetLocationHistoryQuery(assetId: string | undefined, limit 
         throw error;
       }
     },
-    enabled: Boolean(assetId),
+    enabled: FEATURE_LOCATION_TRACKING_ENABLED && Boolean(assetId),
     staleTime: 30_000,
     retry: false,
   });
