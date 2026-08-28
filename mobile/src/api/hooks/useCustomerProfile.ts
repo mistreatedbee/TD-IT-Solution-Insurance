@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { FEATURE_KYC_ENABLED } from '../../config/features';
 import {
   getCustomerProfile,
   submitProfileVerification,
@@ -11,6 +12,7 @@ export const CUSTOMER_PROFILE_QUERY_KEY = ['account', 'profile'] as const;
 export function useCustomerProfileQuery() {
   return useQuery({
     queryKey: CUSTOMER_PROFILE_QUERY_KEY,
+    enabled: FEATURE_KYC_ENABLED,
     queryFn: () => getCustomerProfile(),
     retry: false,
   });

@@ -76,3 +76,37 @@ describe('FEATURE_LOCATION_TRACKING_ENABLED', () => {
     expect(FEATURE_LOCATION_TRACKING_ENABLED).toBe(true);
   });
 });
+
+/** INC-001 A-12: every gated Feature 009 surface uses the same env convention. */
+describe.each([
+  ['EXPO_PUBLIC_FEATURE_KYC', 'FEATURE_KYC_ENABLED'],
+  ['EXPO_PUBLIC_FEATURE_ALERTS', 'FEATURE_ALERTS_ENABLED'],
+  ['EXPO_PUBLIC_FEATURE_THEFT_REPORTING', 'FEATURE_THEFT_REPORTING_ENABLED'],
+  ['EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING', 'FEATURE_HARDWARE_TRACKING_ENABLED'],
+  ['EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR', 'FEATURE_SECURITY_OPERATOR_ENABLED'],
+] as const)('%s', (envKey, exportName) => {
+  const ORIGINAL_ENV = process.env[envKey];
+
+  afterEach(() => {
+    if (ORIGINAL_ENV === undefined) {
+      delete process.env[envKey];
+    } else {
+      process.env[envKey] = ORIGINAL_ENV;
+    }
+    jest.resetModules();
+  });
+
+  it('is disabled when explicitly set to "false"', () => {
+    jest.resetModules();
+    process.env[envKey] = 'false';
+    const features = require('../features');
+    expect(features[exportName]).toBe(false);
+  });
+
+  it('defaults to enabled when unset', () => {
+    jest.resetModules();
+    delete process.env[envKey];
+    const features = require('../features');
+    expect(features[exportName]).toBe(true);
+  });
+});

@@ -11,6 +11,7 @@ import { revokePushTokenFromBackend } from '../../../src/notifications/push';
 import { clearRefreshToken } from '../../../src/auth/secure-storage';
 import { useSessionStore } from '../../../src/auth/session-store';
 import { useAccountQuery } from '../../../src/auth/useAccountQuery';
+import { FEATURE_KYC_ENABLED } from '../../../src/config/features';
 import { ProfileCompletionCard } from '../../../src/screens/home/ProfileCompletionCard';
 import { useProtectionDashboard } from '../../../src/tracking/useProtectionDashboard';
 import { queryClient } from '../../../src/query/queryClient';
@@ -66,7 +67,7 @@ export default function AccountHubScreen() {
     <Screen>
       <Text style={styles.title}>Account</Text>
 
-      {dashboard ? (
+      {FEATURE_KYC_ENABLED && dashboard ? (
         <ProfileCompletionCard
           percent={dashboard.profilePercent}
           checklist={dashboard.profileChecklist}
@@ -74,25 +75,29 @@ export default function AccountHubScreen() {
         />
       ) : null}
 
-      <Pressable style={styles.row} onPress={() => router.push('/(app)/account/profile')} accessibilityRole="button">
-        <UserIcon size={20} color={colors.primary} />
-        <View style={styles.rowTextColumn}>
-          <Text style={styles.rowTitle}>Profile & identity</Text>
-          <Text style={styles.rowSubtitle}>Personal details, address, and ID verification</Text>
-        </View>
-      </Pressable>
+      {FEATURE_KYC_ENABLED ? (
+        <>
+          <Pressable style={styles.row} onPress={() => router.push('/(app)/account/profile')} accessibilityRole="button">
+            <UserIcon size={20} color={colors.primary} />
+            <View style={styles.rowTextColumn}>
+              <Text style={styles.rowTitle}>Profile & identity</Text>
+              <Text style={styles.rowSubtitle}>Personal details, address, and ID verification</Text>
+            </View>
+          </Pressable>
 
-      <Pressable
-        style={styles.row}
-        onPress={() => router.push('/(app)/account/verification')}
-        accessibilityRole="button"
-      >
-        <ShieldCheckIcon size={20} color={colors.primary} />
-        <View style={styles.rowTextColumn}>
-          <Text style={styles.rowTitle}>Verification centre</Text>
-          <Text style={styles.rowSubtitle}>Submit identity details for review</Text>
-        </View>
-      </Pressable>
+          <Pressable
+            style={styles.row}
+            onPress={() => router.push('/(app)/account/verification')}
+            accessibilityRole="button"
+          >
+            <ShieldCheckIcon size={20} color={colors.primary} />
+            <View style={styles.rowTextColumn}>
+              <Text style={styles.rowTitle}>Verification centre</Text>
+              <Text style={styles.rowSubtitle}>Submit identity details for review</Text>
+            </View>
+          </Pressable>
+        </>
+      ) : null}
 
       <Card style={styles.card}>
         <Text style={styles.label}>Email</Text>

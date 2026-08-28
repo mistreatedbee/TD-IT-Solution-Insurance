@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, typography } from '../../theme/tokens';
 import { homeShadow } from './homeStyles';
 
-export function HomeHeroActions() {
+export function HomeHeroActions({ showTheftReporting = true }: { showTheftReporting?: boolean }) {
   const router = useRouter();
 
   return (
@@ -22,17 +22,19 @@ export function HomeHeroActions() {
         <Text style={styles.body}>Register a device or vehicle</Text>
       </Pressable>
 
-      <Pressable
-        style={[styles.card, styles.cardCool]}
-        accessibilityRole="button"
-        onPress={() => router.push('/(app)/report-theft' as Href)}
-      >
-        <View style={[styles.iconWrap, styles.iconCool]}>
-          <ShieldAlertIcon size={26} color={colors.textInverse} strokeWidth={2.2} />
-        </View>
-        <Text style={[styles.title, styles.titleOnDark]}>Report theft</Text>
-        <Text style={[styles.body, styles.bodyOnDark]}>Start recovery immediately</Text>
-      </Pressable>
+      {showTheftReporting ? (
+        <Pressable
+          style={[styles.card, styles.cardCool]}
+          accessibilityRole="button"
+          onPress={() => router.push('/(app)/report-theft' as Href)}
+        >
+          <View style={[styles.iconWrap, styles.iconCool]}>
+            <ShieldAlertIcon size={26} color={colors.textInverse} strokeWidth={2.2} />
+          </View>
+          <Text style={[styles.title, styles.titleOnDark]}>Report theft</Text>
+          <Text style={[styles.body, styles.bodyOnDark]}>Start recovery immediately</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

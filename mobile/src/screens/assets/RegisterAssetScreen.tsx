@@ -7,6 +7,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useCreateAssetMutation } from '../../api/hooks/useAssets';
 import type { AssetType, CreateAssetRequest } from '../../api/assets';
 import { ApiError } from '../../api/errors';
+import { FEATURE_HARDWARE_TRACKING_ENABLED } from '../../config/features';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { ASSET_TYPE_OPTIONS } from '../../lib/asset-labels';
 import { Alert, Button, FormField, Input, Screen, SelectChipGroup } from '../../theme/primitives';
@@ -239,7 +240,7 @@ export function RegisterAssetScreen() {
       };
       const created = await createMutation.mutateAsync(body);
       if (created.id) {
-        if (isVehicleFlow && trackerIntent === 'yes') {
+        if (isVehicleFlow && trackerIntent === 'yes' && FEATURE_HARDWARE_TRACKING_ENABLED) {
           router.replace(`/assets/${created.id}/activate-tracker` as Href);
         } else {
           router.replace(`/assets/${created.id}` as Href);

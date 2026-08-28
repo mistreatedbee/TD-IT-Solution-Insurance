@@ -9,7 +9,7 @@ import {
   useReportAssetLocationMutation,
 } from '../../api/hooks/useAssetLocation';
 import { useAssetQuery } from '../../api/hooks/useAssets';
-import { FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
+import { FEATURE_HARDWARE_TRACKING_ENABLED, FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
 import {
   assetStatusBadgeTone,
   formatAssetType,
@@ -324,7 +324,7 @@ export function AssetDetailScreen() {
                 {trackingProfileQuery.data.statusMessage}
               </Alert>
             ) : null}
-            {trackingUi.showDeviceActivation ? (
+            {FEATURE_HARDWARE_TRACKING_ENABLED && trackingUi.showDeviceActivation ? (
               <Button
                 fullWidth
                 style={styles.trackerAction}
@@ -332,7 +332,7 @@ export function AssetDetailScreen() {
               >
                 Connect GPS tracker
               </Button>
-            ) : linkedDevice ? (
+            ) : FEATURE_HARDWARE_TRACKING_ENABLED && linkedDevice ? (
               <Button
                 variant="secondary"
                 fullWidth
@@ -342,14 +342,16 @@ export function AssetDetailScreen() {
                 View device health
               </Button>
             ) : null}
-            <Button variant="secondary" fullWidth onPress={() => router.push('/(app)/map' as Href)}>
-              View on protection map
-            </Button>
+            {FEATURE_LOCATION_TRACKING_ENABLED ? (
+              <Button variant="secondary" fullWidth onPress={() => router.push('/(app)/map' as Href)}>
+                View on protection map
+              </Button>
+            ) : null}
           </>
         )}
       </Card>
 
-      {!isSmartphone && trackingUi.showInstallationGuide ? (
+      {FEATURE_HARDWARE_TRACKING_ENABLED && !isSmartphone && trackingUi.showInstallationGuide ? (
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>GPS tracker</Text>
           <Text style={styles.trackerCopy}>

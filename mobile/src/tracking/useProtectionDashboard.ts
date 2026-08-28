@@ -2,6 +2,11 @@ import { useMemo } from 'react';
 import type { AssetLocationSummaryItem } from '../api/asset-location';
 import type { Asset } from '../api/assets';
 import { useAccountQuery } from '../auth/useAccountQuery';
+import {
+  FEATURE_KYC_ENABLED,
+  FEATURE_LOCATION_TRACKING_ENABLED,
+  FEATURE_THEFT_REPORTING_ENABLED,
+} from '../config/features';
 import { useAssetLocationSummaryQuery } from '../api/hooks/useAssetLocation';
 import { useAssetsQuery } from '../api/hooks/useAssets';
 import { usePoliciesQuery } from '../api/hooks/usePolicies';
@@ -13,7 +18,34 @@ import { deriveDashboardAlerts } from './deriveAlerts';
 import { deriveDashboardSubtitle } from './deriveSubtitle';
 import { mergeAssetsWithLocations } from './buildAssetTrackingView';
 import { resolveTrackingStatus } from './resolveTrackingStatus';
-import type { AssetTrackingView, ProtectionDashboardData } from './types';
+import type { AssetTrackingView, ProtectionDashboardData, DashboardAlert } from './types';
+
+function filterGatedAlerts(alerts: DashboardAlert[]): DashboardAlert[] {
+  return alerts.filter((alert) => {
+    if (
+      !FEATURE_KYC_ENABLED &&
+      (alert.id === 'complete-profile' ||
+        alert.id === 'verification-action' ||
+        alert.id === 'submit-verification' ||
+        alert.href?.includes('/account/profile') ||
+        alert.href?.includes('/account/verification'))
+    ) {
+      return false;
+    }
+    if (
+      !FEATURE_LOCATION_TRACKING_ENABLED &&
+      (alert.category === 'tracking' ||
+        alert.href?.includes('/live-tracking') ||
+        alert.href?.includes('/map'))
+    ) {
+      return false;
+    }
+    if (!FEATURE_THEFT_REPORTING_ENABLED && alert.id === 'open-recovery') {
+      return false;
+    }
+    return true;
+  });
+}
 
 function greetingFromAccount(email: string | undefined, firstName: string | null | undefined): string {
   if (firstName?.trim()) {
@@ -124,12 +156,13 @@ export function useProtectionDashboard() {
     const useServerAlerts =
       alertsQuery.isSuccess ||
       (alertsQuery.isError && !isMissingApiRouteError(alertsQuery.error));
-    const alerts =
+    const alerts = filterGatedAlerts(
       alertsQuery.isSuccess && alertsQuery.data
         ? alertsQuery.data
         : alertsQuery.isError && !isMissingApiRouteError(alertsQuery.error)
           ? []
-          : clientAlerts;
+          : clientAlerts,
+    );
 
     const base: Omit<ProtectionDashboardData, 'subtitle'> = {
       greetingName: greetingFromAccount(account?.email, profileData?.firstName),

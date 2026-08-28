@@ -8,6 +8,10 @@ import {
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  FEATURE_ALERTS_ENABLED,
+  FEATURE_LOCATION_TRACKING_ENABLED,
+} from '../config/features';
 import { colors, minTouchTarget, spacing } from '../theme/tokens';
 
 interface TabRoute {
@@ -45,6 +49,14 @@ const TAB_CONFIG: Record<
 
 const VISIBLE_TAB_ORDER = ['index', 'assets', 'map', 'alerts', 'account'] as const;
 
+const TAB_ENABLED: Record<(typeof VISIBLE_TAB_ORDER)[number], boolean> = {
+  index: true,
+  assets: true,
+  map: FEATURE_LOCATION_TRACKING_ENABLED,
+  alerts: FEATURE_ALERTS_ENABLED,
+  account: true,
+};
+
 function TabButton({
   focused,
   label,
@@ -74,9 +86,9 @@ export function FloatingTabBar({ state, navigation }: FloatingTabBarProps) {
   const insets = useSafeAreaInsets();
   const activeRouteName = state.routes[state.index]?.name;
 
-  const visibleRoutes = VISIBLE_TAB_ORDER.map((name) =>
-    state.routes.find((route) => route.name === name),
-  ).filter((route): route is TabRoute => route != null);
+  const visibleRoutes = VISIBLE_TAB_ORDER.filter((name) => TAB_ENABLED[name])
+    .map((name) => state.routes.find((route) => route.name === name))
+    .filter((route): route is TabRoute => route != null);
 
   function onTabPress(route: TabRoute) {
     const event = navigation.emit({

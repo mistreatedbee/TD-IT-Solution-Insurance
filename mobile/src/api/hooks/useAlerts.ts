@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { FEATURE_ALERTS_ENABLED } from '../../config/features';
 import { listAlerts, patchAlert, type AlertListPage } from '../alerts';
 import { isMissingApiRouteError } from '../errors';
 import { deriveDashboardAlerts } from '../../tracking/deriveAlerts';
@@ -33,6 +34,7 @@ function mapServerAlert(alert: AlertListPage['data'][number]): DashboardAlert {
 export function useAlertsQuery(params?: { limit?: number }) {
   return useQuery({
     queryKey: [...ALERTS_QUERY_KEY, params?.limit ?? 50],
+    enabled: FEATURE_ALERTS_ENABLED,
     queryFn: () => listAlerts({ limit: params?.limit ?? 50 }),
     select: (page) => page.data.map(mapServerAlert),
   });

@@ -2,6 +2,7 @@ import { useRouter, type Href } from 'expo-router';
 import { BellIcon } from 'lucide-react-native';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { FEATURE_ALERTS_ENABLED } from '../../config/features';
 import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
 
 export interface HomeHeaderProps {
@@ -33,19 +34,21 @@ export function HomeHeader({ greeting, name, subtitle, alertCount, initials }: H
         </View>
       </Pressable>
 
-      <Pressable
-        style={styles.bell}
-        accessibilityRole="button"
-        accessibilityLabel={`Alerts${alertCount > 0 ? `, ${alertCount} open` : ''}`}
-        onPress={() => router.push('/(app)/alerts' as Href)}
-      >
-        <BellIcon size={22} color={colors.primary} strokeWidth={2.2} />
-        {alertCount > 0 ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{alertCount > 9 ? '9+' : alertCount}</Text>
-          </View>
-        ) : null}
-      </Pressable>
+      {FEATURE_ALERTS_ENABLED ? (
+        <Pressable
+          style={styles.bell}
+          accessibilityRole="button"
+          accessibilityLabel={`Alerts${alertCount > 0 ? `, ${alertCount} open` : ''}`}
+          onPress={() => router.push('/(app)/alerts' as Href)}
+        >
+          <BellIcon size={22} color={colors.primary} strokeWidth={2.2} />
+          {alertCount > 0 ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{alertCount > 9 ? '9+' : alertCount}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      ) : null}
     </View>
   );
 }

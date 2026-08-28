@@ -15,7 +15,12 @@ import {
 } from 'react-native';
 import { resendVerification } from '../../api/auth';
 import { useAccountQuery } from '../../auth/useAccountQuery';
-import { FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
+import {
+  FEATURE_ALERTS_ENABLED,
+  FEATURE_KYC_ENABLED,
+  FEATURE_LOCATION_TRACKING_ENABLED,
+  FEATURE_THEFT_REPORTING_ENABLED,
+} from '../../config/features';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { AssetPreviewRow } from './AssetPreviewRow';
 import { FeaturedAssetCard } from './FeaturedAssetCard';
@@ -187,12 +192,14 @@ export function ProtectionHomeScreen() {
         onAddAsset={() => router.push('/(app)/assets/register' as Href)}
       />
 
-      <HomeHeroActions />
+      <HomeHeroActions showTheftReporting={FEATURE_THEFT_REPORTING_ENABLED} />
 
-      <HomeAlertsPreview
-        alerts={data.alerts}
-        onOpenAlerts={() => router.push('/(app)/alerts' as Href)}
-      />
+      {FEATURE_ALERTS_ENABLED ? (
+        <HomeAlertsPreview
+          alerts={data.alerts}
+          onOpenAlerts={() => router.push('/(app)/alerts' as Href)}
+        />
+      ) : null}
 
       {recentAssets.length > 0 ? (
         <>
@@ -211,13 +218,15 @@ export function ProtectionHomeScreen() {
         </>
       ) : null}
 
-      <ProfileCompletionCard
-        percent={data.profilePercent}
-        checklist={data.profileChecklist}
-        onPress={() => router.push('/(app)/account/profile' as Href)}
-      />
+      {FEATURE_KYC_ENABLED ? (
+        <ProfileCompletionCard
+          percent={data.profilePercent}
+          checklist={data.profileChecklist}
+          onPress={() => router.push('/(app)/account/profile' as Href)}
+        />
+      ) : null}
 
-      {data.openRecoveryCount > 0 ? (
+      {FEATURE_LOCATION_TRACKING_ENABLED && data.openRecoveryCount > 0 ? (
         <Pressable
           style={styles.recoveryCard}
           accessibilityRole="button"

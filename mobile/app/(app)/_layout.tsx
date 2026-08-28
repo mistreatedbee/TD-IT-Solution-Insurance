@@ -10,6 +10,10 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { View } from 'react-native';
+import {
+  FEATURE_ALERTS_ENABLED,
+  FEATURE_LOCATION_TRACKING_ENABLED,
+} from '../../src/config/features';
 import { DraggableAssistFab } from '../../src/navigation/DraggableAssistFab';
 import { FloatingTabBar } from '../../src/navigation/FloatingTabBar';
 import { FLOATING_TAB_BAR_CLEARANCE } from '../../src/navigation/tabBarMetrics';
@@ -56,6 +60,7 @@ export default function AppTabsLayout() {
         options={{
           title: 'Map',
           headerShown: false,
+          href: FEATURE_LOCATION_TRACKING_ENABLED ? undefined : null,
           sceneStyle: { backgroundColor: colors.slate[100], paddingBottom: 0 },
         }}
       />
@@ -64,6 +69,7 @@ export default function AppTabsLayout() {
         options={{
           title: 'Alerts',
           headerShown: false,
+          href: FEATURE_ALERTS_ENABLED ? undefined : null,
         }}
       />
       <Tabs.Screen
