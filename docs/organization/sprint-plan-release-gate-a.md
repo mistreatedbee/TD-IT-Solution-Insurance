@@ -25,12 +25,14 @@ This document sequences the memo into 1-week sprints starting **2026-08-24 (Spri
 
 **Remediation — four parallel work items in flight (tracked outside the sprint table below since this is incident response, not planned sprint capacity):**
 
-| Owner | Work item |
-|---|---|
-| `cybersecurity-architect` (incident chair) | SDL-2/SDL-6 completion; ADR-0009 §18 correction; Feature 009 systemic Stage-8 audit (is this an isolated miss or a pattern across other features); incident post-mortem |
-| `compliance-specialist` | POPIA exposure assessment for the data reachable via the preview APK before containment; owns the purge-vs-retain disposition decision for any data collected during the exposure window |
-| `database-architect` | Inventory of any location data that reached storage during the exposure window, and quarantine it — **no deletion** pending compliance-specialist's disposition decision |
-| `mobile-engineer` | Client-side location flag-off (kill switch's client-side counterpart) — this is full Sprint 1 priority for `mobile-engineer`, ahead of other Sprint 1 mobile items where it conflicts with capacity |
+| Owner | Work item | Status (2026-08-28) |
+|---|---|---|
+| `cybersecurity-architect` (incident chair) | SDL-2/SDL-6 completion; ADR-0009 §18 correction; Feature 009 systemic Stage-8 audit; incident post-mortem | SDL-2 closed §9.1; SDL-6 open (A-14); audit filed §7; CI-1/CI-2 partial landed |
+| `compliance-specialist` | POPIA exposure assessment; purge-vs-retain disposition | Assessment filed; A-9 pending inventory run |
+| `database-architect` | Inventory + quarantine — **no deletion** | Script ready: `backend/scripts/inc-001-location-inventory.ts` |
+| `mobile-engineer` | Client-side location flag-off + **A-12 all §9.3 surfaces** | **Done** on `main` — A-13 bundle verify is next gate |
+
+**Engineering note (2026-08-28):** A-12, A-15, A-16, A-17 (interim), CI-1, and CI-2 (partial) are on `main`. Criterion 6 sign-off blocked on A-13 only. CTO status: `docs/organization/cto-status/2026-08-28-gate-a-inc-001.md`.
 
 This incident is chaired by `cybersecurity-architect`, not `technical-project-manager` — this log entry tracks it for delivery/gate purposes only and does not substitute for the incident chair's own investigation or post-mortem artifact.
 

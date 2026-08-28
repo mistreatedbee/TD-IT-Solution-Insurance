@@ -71,6 +71,19 @@ jobs:
       - name: Build
         run: npm run build
 
+  governance:
+    name: Governance gates (INC-001 CI-1 / CI-2)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stage 8 manifest coverage (CI-1)
+        run: npm run verify:stage8-manifest
+
+      - name: ADR prohibition guard (CI-2 partial)
+        run: node scripts/check-adr-prohibitions.mjs
+
   mobile:
     name: Mobile (mobile/ — Expo/React Native)
     runs-on: ubuntu-latest

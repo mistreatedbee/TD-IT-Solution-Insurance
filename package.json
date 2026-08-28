@@ -11,6 +11,7 @@
     "preview": "npx vite preview",
     "check:no-placeholders": "node scripts/check-no-placeholders.mjs dist",
     "verify:stage8-manifest": "node scripts/verify-stage8-manifest.mjs",
+    "check:adr-prohibitions": "node scripts/check-adr-prohibitions.mjs",
     "build:production": "npm run build && npm run check:no-placeholders",
     "seed:test-accounts": "npm run seed:test-accounts --prefix backend"
   },

@@ -213,9 +213,9 @@ The statement criterion 6 asks for is not merely unproven — on the evidence ab
 
 | ID | Action | Owner | Blocks |
 |---|---|---|---|
-| A-12 | Path A build-flag guards on every §9.3 surface, `"false"` on preview/production, tests per flag | `mobile-architect` + `mobile-engineer` | **Criterion 6 / build #2** |
-| A-13 | Re-verify criterion 6 against the compiled preview bundle once A-12 lands — source-level guards are not evidence about a build | `security-engineer`, chaired by `cybersecurity-architect` | **Criterion 6 sign-off** |
+| A-12 | Path A build-flag guards on every §9.3 surface, `"false"` on preview/production, tests per flag | `mobile-architect` + `mobile-engineer` | **Criterion 6 / build #2** — **DONE 2026-08-28** (`main`) |
+| A-13 | Re-verify criterion 6 against the compiled preview bundle once A-12 lands — source-level guards are not evidence about a build | `security-engineer`, chaired by `cybersecurity-architect` | **Criterion 6 sign-off** — checklist filed; **blocked on EAS preview build** |
 | A-14 | SD-FU-02 — AUD-12 field-level-encryption evaluation, filed as `008/field-sensitivity-review.md` | `cybersecurity-architect` + `security-engineer` + `compliance-specialist` + `database-architect` | Re-enabling ingestion (SDL-6) |
-| A-15 | SD-FU-09 — `shouldDehydrateQuery` filter excluding location query keys from the persisted cache | `mobile-architect` + `security-engineer` | — (worsens while §9.3 stands) |
-| A-16 | `features.ts` comment says "fail-closed"; the implementation is enabled-when-unset. Comment-only correction | `mobile-engineer` | — |
-| A-17 | `app.json` still declares `expo-location` + `ACCESS_FINE_LOCATION` with capture flagged off — decide whether build #2 ships a manifest asserting an unused capability | `mobile-architect` + `product-manager` | Store submission, not build #2 |
+| A-15 | SD-FU-09 — `shouldDehydrateQuery` filter excluding location query keys from the persisted cache | `mobile-architect` + `security-engineer` | — **DONE 2026-08-28** |
+| A-16 | `features.ts` comment says "fail-closed"; the implementation is enabled-when-unset. Comment-only correction | `mobile-engineer` | — **DONE 2026-08-28** |
+| A-17 | `app.json` still declares `expo-location` + `ACCESS_FINE_LOCATION` with capture flagged off — decide whether build #2 ships a manifest asserting an unused capability | `mobile-architect` + `product-manager` | Store submission — **interim: `app.config.ts` strips plugin/permissions when flag off at build time (2026-08-28)** |
