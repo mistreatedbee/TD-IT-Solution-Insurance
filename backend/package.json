@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "seed:test-accounts": "tsx scripts/seed-test-accounts.ts",
-    "verify:mongo-catalog": "tsx scripts/verify-mongo-catalog.ts"
+    "verify:mongo-catalog": "tsx scripts/verify-mongo-catalog.ts",
+    "inc-001:location-inventory": "tsx scripts/inc-001-location-inventory.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",

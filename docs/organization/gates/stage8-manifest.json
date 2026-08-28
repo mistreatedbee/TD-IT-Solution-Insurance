@@ -1,0 +1,402 @@
+{
+  "$schema": "./stage8-manifest.schema.json",
+  "version": 1,
+  "description": "CI-1 Stage 8 manifest — INC-001 §6. Every client/API surface must appear here with either a filed Stage 8 record or an explicit waived entry.",
+  "surfaces": [
+    {
+      "id": "backend-auth",
+      "kind": "backend_route_group",
+      "pattern": "/auth/*",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-session-account-me",
+      "kind": "backend_route",
+      "pattern": "/account/me",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-session",
+      "kind": "backend_route_group",
+      "pattern": "/session/*",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-mfa",
+      "kind": "backend_route_group",
+      "pattern": "/mfa/*",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-invitations",
+      "kind": "backend_route_group",
+      "pattern": "/invitations*",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-internal",
+      "kind": "backend_route_group",
+      "pattern": "/internal/*",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-push-token",
+      "kind": "backend_route",
+      "pattern": "/devices/push-token",
+      "feature": "007",
+      "stage8": {
+        "doc": "docs/features/007-notifications/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-policies-customer",
+      "kind": "backend_route_group",
+      "pattern": "/policies*",
+      "feature": "004",
+      "stage8": {
+        "doc": "docs/features/004-policy-asset-management/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-assets-customer",
+      "kind": "backend_route_group",
+      "pattern": "/assets*",
+      "feature": "004",
+      "stage8": {
+        "doc": "docs/features/004-policy-asset-management/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-location-report",
+      "kind": "backend_route",
+      "pattern": "POST /assets/:assetId/location-report",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "reason": "INC-001 containment — server kill switch live; re-enable blocked on SDL-4/SDL-9 Stage 8",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "backend-location-reads",
+      "kind": "backend_route_group",
+      "pattern": "/assets/*/location*",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "reason": "INC-001 A-12 — client read paths gated; purge disposition pending compliance-specialist A-9",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "backend-customer-profile",
+      "kind": "backend_route_group",
+      "pattern": "/account/profile*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "F009-1 — KYC shipped without Stage 8; mobile gated via FEATURE_KYC (INC-001 A-12)",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "backend-alerts",
+      "kind": "backend_route_group",
+      "pattern": "/alerts*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "Feature 009 Stage 8 pending A-1; mobile gated via FEATURE_ALERTS (INC-001 A-12)",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "backend-recovery",
+      "kind": "backend_route_group",
+      "pattern": "/recovery/*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "Feature 009 Stage 8 pending A-1; mobile theft reporting gated via FEATURE_THEFT_REPORTING",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "backend-tracking-devices",
+      "kind": "backend_route_group",
+      "pattern": "/tracking*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "F009-4 — hardware registry without Stage 8; mobile gated via FEATURE_HARDWARE_TRACKING",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "backend-security-cases",
+      "kind": "backend_route_group",
+      "pattern": "/security/cases*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "Feature 009 operator surface — mobile security-app gated via FEATURE_SECURITY_OPERATOR",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "backend-notifications",
+      "kind": "backend_route_group",
+      "pattern": "/notifications*",
+      "feature": "007",
+      "stage8": {
+        "doc": "docs/features/007-notifications/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-plans",
+      "kind": "backend_route_group",
+      "pattern": "/plans*",
+      "feature": "006",
+      "stage8": {
+        "doc": "docs/features/006-customer-onboarding/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-admin",
+      "kind": "backend_route_group",
+      "pattern": "/admin/*",
+      "feature": "004",
+      "stage8": {
+        "doc": "docs/features/004-policy-asset-management/security-review-admin-surface.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-auth",
+      "kind": "mobile_route_group",
+      "pattern": "(auth)*",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-policy-assets",
+      "kind": "mobile_route_group",
+      "pattern": "(app)/{policy,assets}/*",
+      "feature": "004",
+      "stage8": {
+        "doc": "docs/features/004-policy-asset-management/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-notification-preferences",
+      "kind": "mobile_route",
+      "pattern": "(app)/notification-preferences",
+      "feature": "007",
+      "stage8": {
+        "doc": "docs/features/007-notifications/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-claims",
+      "kind": "mobile_route_group",
+      "pattern": "(app)/claims/*",
+      "feature": "005",
+      "stage8": {
+        "waived": true,
+        "reason": "Release Gate A — no claims backend; gated via FEATURE_CLAIMS",
+        "owner": "mobile-architect"
+      }
+    },
+    {
+      "id": "mobile-location",
+      "kind": "mobile_route_group",
+      "pattern": "(app)/{map,device-locations,live-tracking}/*",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "reason": "INC-001 A-12 — gated via FEATURE_LOCATION_TRACKING",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "mobile-kyc",
+      "kind": "mobile_route_group",
+      "pattern": "(app)/account/{profile,verification}",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "F009-1 — gated via FEATURE_KYC (INC-001 A-12)",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "mobile-alerts",
+      "kind": "mobile_route_group",
+      "pattern": "(app)/alerts/*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "INC-001 A-12 — gated via FEATURE_ALERTS",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "mobile-report-theft",
+      "kind": "mobile_route_group",
+      "pattern": "(app)/report-theft/*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "INC-001 A-12 — gated via FEATURE_THEFT_REPORTING",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "mobile-hardware-tracking",
+      "kind": "mobile_route_group",
+      "pattern": "(app)/assets/[id]/{activate-tracker,installation-guide,device-health}",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "INC-001 A-12 — gated via FEATURE_HARDWARE_TRACKING",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "mobile-security-app",
+      "kind": "mobile_route_group",
+      "pattern": "(security-app)*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "INC-001 A-12 — gated via FEATURE_SECURITY_OPERATOR",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "mobile-onboarding",
+      "kind": "mobile_route_group",
+      "pattern": "(onboarding)*",
+      "feature": "006",
+      "stage8": {
+        "doc": "docs/features/006-customer-onboarding/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-app-shell",
+      "kind": "mobile_route_group",
+      "pattern": "(app)*",
+      "feature": "004",
+      "stage8": {
+        "doc": "docs/features/004-policy-asset-management/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-account-hub",
+      "kind": "mobile_route",
+      "pattern": "(app)/account",
+      "feature": "004",
+      "stage8": {
+        "doc": "docs/features/004-policy-asset-management/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-mfa-enroll",
+      "kind": "mobile_route",
+      "pattern": "(app)/mfa-enroll",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-profile-legacy",
+      "kind": "mobile_route",
+      "pattern": "(app)/profile",
+      "feature": "004",
+      "stage8": {
+        "doc": "docs/features/004-policy-asset-management/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-verify-email",
+      "kind": "mobile_route",
+      "pattern": "verify-email",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-verification-gate",
+      "kind": "mobile_route",
+      "pattern": "verification-gate",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-invitations-accept",
+      "kind": "mobile_route",
+      "pattern": "invitations/accept",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "mobile-web-portal-required",
+      "kind": "mobile_route",
+      "pattern": "web-portal-required",
+      "feature": "001",
+      "stage8": {
+        "waived": true,
+        "reason": "Privileged roles directed to web portal — not a customer data surface in mobile builds",
+        "owner": "cybersecurity-architect"
+      }
+    }
+  ]
+}

@@ -14,7 +14,7 @@ import { registerForcedLogoutHandler, refreshAccessToken } from '../src/api/clie
 import { useSessionStore } from '../src/auth/session-store';
 import { useAppShellGate } from '../src/onboarding/useAppShellGate';
 import { NetworkProvider, OfflineBanner } from '../src/network/NetworkProvider';
-import { asyncStoragePersister, queryClient } from '../src/query/queryClient';
+import { asyncStoragePersister, queryClient, shouldPersistQuery } from '../src/query/queryClient';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // no-op — if this races with an already-hidden splash screen, that's fine.
@@ -86,7 +86,10 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <PersistQueryClientProvider
             client={queryClient}
-            persistOptions={{ persister: asyncStoragePersister }}
+            persistOptions={{
+              persister: asyncStoragePersister,
+              dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+            }}
           >
             <NetworkProvider>
               <OfflineBanner />

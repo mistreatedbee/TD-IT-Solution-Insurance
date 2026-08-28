@@ -20,6 +20,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient } from '@tanstack/react-query';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import { ApiError } from '../api/errors';
+import { shouldPersistQuery } from './persistPolicy';
+
+export { shouldPersistQuery } from './persistPolicy';
 
 export const queryClient = new QueryClient({
   defaultOptions: {

@@ -10,6 +10,7 @@
     "lint": "eslint src --ext .js,.jsx,.ts,.tsx",
     "preview": "npx vite preview",
     "check:no-placeholders": "node scripts/check-no-placeholders.mjs dist",
+    "verify:stage8-manifest": "node scripts/verify-stage8-manifest.mjs",
     "build:production": "npm run build && npm run check:no-placeholders",
     "seed:test-accounts": "npm run seed:test-accounts --prefix backend"
   },
