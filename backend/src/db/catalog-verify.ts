@@ -65,6 +65,11 @@ import {
   customerAlertsIndexes,
   customerAlertsJsonSchemaValidator,
 } from './alerts-collections.js';
+import {
+  PRODUCT_EVENTS_COLLECTION,
+  productEventsIndexes,
+  productEventsJsonSchemaValidator,
+} from './product-events-collections.js';
 
 /** One declared collection, as the source-of-truth modules describe it. */
 interface DeclaredCollectionSpec {
@@ -76,7 +81,8 @@ interface DeclaredCollectionSpec {
     | 'customer-profile'
     | 'tracking-device'
     | 'location-events'
-    | 'alerts';
+    | 'alerts'
+    | 'product-analytics';
   collection: string;
   /**
    * Validator this module applies via createCollection/collMod. `undefined`
@@ -174,6 +180,12 @@ const DECLARED_CATALOG: DeclaredCollectionSpec[] = [
     collection: ALERTS_COLLECTION,
     validator: customerAlertsJsonSchemaValidator,
     indexes: customerAlertsIndexes,
+  },
+  {
+    module: 'product-analytics',
+    collection: PRODUCT_EVENTS_COLLECTION,
+    validator: productEventsJsonSchemaValidator,
+    indexes: productEventsIndexes,
   },
 ];
 

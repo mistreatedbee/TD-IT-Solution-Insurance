@@ -15,6 +15,7 @@ import { useSessionStore } from '../src/auth/session-store';
 import { useAppShellGate } from '../src/onboarding/useAppShellGate';
 import { NetworkProvider, OfflineBanner } from '../src/network/NetworkProvider';
 import { asyncStoragePersister, queryClient, shouldPersistQuery } from '../src/query/queryClient';
+import { AnalyticsBootstrap } from '../src/analytics/AnalyticsBootstrap';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // no-op — if this races with an already-hidden splash screen, that's fine.
@@ -92,6 +93,7 @@ export default function RootLayout() {
             }}
           >
             <NetworkProvider>
+              <AnalyticsBootstrap />
               <OfflineBanner />
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Protected guard={status === 'signed-out'}>

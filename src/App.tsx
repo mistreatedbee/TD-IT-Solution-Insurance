@@ -25,6 +25,7 @@ import { TermsOfServicePage } from './pages/TermsOfServicePage';
 
 const AdminRoutes = lazy(() => import('./admin/AdminRoutes'));
 const SecurityRoutes = lazy(() => import('./security/SecurityRoutes'));
+const CallCentreRoutes = lazy(() => import('./call-centre/CallCentreRoutes'));
 
 // Deliberately NO `fontFamily` on the wrapper below: an inherited font here
 // would mask components that never declare one, making them look correct in
@@ -110,6 +111,14 @@ export function App() {
               element={
                 <Suspense fallback={<div className="p-6 text-sm text-text-secondary">Loading…</div>}>
                   <SecurityRoutes />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/call-centre/*"
+              element={
+                <Suspense fallback={<div className="p-6 text-sm text-text-secondary">Loading…</div>}>
+                  <CallCentreRoutes />
                 </Suspense>
               }
             />

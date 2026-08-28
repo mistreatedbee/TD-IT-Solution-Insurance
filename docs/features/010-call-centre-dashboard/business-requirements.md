@@ -36,7 +36,7 @@ TD IT Solution Insurance operates a customer support and recovery coordination f
 ### 3.1 Authentication and RBAC
 
 - FR-1: Call-centre agents authenticate via the same privileged web auth stack as Admin/Security dashboards (Feature 001 MFA, idle timeout FR-21).
-- FR-2: `user_type = call_centre_agent` (exact enum name subject to `authentication-engineer` / existing `app.accounts` schema review). Agents without this type cannot access `/call-centre/*`.
+- FR-2: `user_type = support_agent` (existing enum — maps to call-centre operators per Feature 001). Agents without this type cannot access `/call-centre/*`.
 - FR-3: Every read and write in this surface is audit-logged per ADR-0006 (Trail A for account-scoped actions; purpose/case reference on case-linked reads per C-16).
 
 ### 3.2 Customer lookup (read-only)

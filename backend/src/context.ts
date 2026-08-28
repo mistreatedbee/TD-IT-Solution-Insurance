@@ -85,6 +85,7 @@ import {
   type LocationEventsRepo,
 } from './repositories/location-events.js';
 import { createAlertsRepo, type AlertsRepo } from './repositories/alerts.js';
+import { createProductEventsRepo, type ProductEventsRepo } from './repositories/product-events.js';
 
 export interface AppContext {
   env: Env;
@@ -119,6 +120,7 @@ export interface AppContext {
   trackingDevices: TrackingDevicesRepo;
   locationEvents: LocationEventsRepo;
   alerts: AlertsRepo;
+  productEvents: ProductEventsRepo;
 }
 
 export function buildAppContext(env: Env): AppContext {
@@ -205,5 +207,6 @@ export function buildAppContext(env: Env): AppContext {
     trackingDevices: createTrackingDevicesRepo(getDb()),
     locationEvents: createLocationEventsRepo(getDb()),
     alerts: createAlertsRepo(getDb()),
+    productEvents: createProductEventsRepo(getDb()),
   };
 }

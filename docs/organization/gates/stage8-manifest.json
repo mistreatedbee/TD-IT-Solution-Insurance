@@ -397,6 +397,39 @@
         "reason": "Privileged roles directed to web portal — not a customer data surface in mobile builds",
         "owner": "cybersecurity-architect"
       }
+    },
+    {
+      "id": "backend-analytics-events",
+      "kind": "backend_route",
+      "pattern": "/events",
+      "feature": "011",
+      "stage8": {
+        "waived": true,
+        "reason": "M4 product analytics — Stage 8 scheduled before production DAU reporting; no PII in event properties",
+        "owner": "analytics-specialist"
+      }
+    },
+    {
+      "id": "backend-admin-analytics-dau",
+      "kind": "backend_route",
+      "pattern": "/dau",
+      "feature": "011",
+      "stage8": {
+        "waived": true,
+        "reason": "M4 admin DAU read API — admin-only aggregate; Stage 8 with reporting-engineer dashboard",
+        "owner": "reporting-engineer"
+      }
+    },
+    {
+      "id": "backend-support-customer-lookup",
+      "kind": "backend_route",
+      "pattern": "/customer-lookup",
+      "feature": "010",
+      "stage8": {
+        "waived": true,
+        "reason": "Feature 010 call-centre — Stage 8 required before production support_agent PII access (M1 compliance floor)",
+        "owner": "cybersecurity-architect"
+      }
     }
   ]
 }
