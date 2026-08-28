@@ -43,6 +43,8 @@ export interface Env {
   isProduction: boolean;
 
   mongodbUri: string;
+  /** When set, overrides the database name in `mongodbUri` (MP-8 staging separation). */
+  mongodbDbName?: string;
 
   supabaseUrl: string;
   supabaseServiceRoleKey: string;
@@ -207,6 +209,11 @@ export function loadEnv(): Env {
   const isProduction = nodeEnv === 'production';
 
   const mongodbUri = requireEnv('MONGODB_URI');
+  const mongodbDbNameRaw = process.env.MONGODB_DB_NAME;
+  if (mongodbDbNameRaw !== undefined && mongodbDbNameRaw.trim() === '') {
+    throw new Error('[config/env] MONGODB_DB_NAME must not be empty when set.');
+  }
+  const mongodbDbName = mongodbDbNameRaw?.trim() || undefined;
 
   const supabaseUrl = requireEnv('SUPABASE_URL');
   const supabaseServiceRoleKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
@@ -325,6 +332,7 @@ export function loadEnv(): Env {
     isProduction,
     port,
     mongodbUri,
+    mongodbDbName,
     supabaseUrl,
     supabaseServiceRoleKey,
     supabaseDbUrl,

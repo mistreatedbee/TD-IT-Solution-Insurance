@@ -26,6 +26,7 @@ import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 
 import { verifyMongoCatalog, formatCatalogReport } from '../src/db/catalog-verify.js';
+import { openMongoDatabase } from '../src/db/mongo-connection.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,13 +46,14 @@ function requireMongoUri(): string {
 
 async function main(): Promise<void> {
   const uri = requireMongoUri();
+  const dbName = process.env.MONGODB_DB_NAME?.trim() || undefined;
   const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10_000 });
 
   try {
     await client.connect();
-    await client.db().command({ ping: 1 });
+    const db = openMongoDatabase(client, dbName);
+    await db.command({ ping: 1 });
 
-    const db = client.db();
     // eslint-disable-next-line no-console
     console.log(`[verify-mongo-catalog] Connected to database "${db.databaseName}".`);
 

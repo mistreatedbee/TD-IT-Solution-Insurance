@@ -68,7 +68,7 @@ export function DataTable({
         <thead className="bg-background-alt">
           <tr>
             {columns.map((col) => (
-              <th key={col.key} className="px-4 py-3 text-left font-semibold text-text-secondary">
+              <th key={col.key} className="px-4 py-3 text-left text-sm font-semibold text-text-secondary md:px-5 md:py-4">
                 {col.header}
               </th>
             ))}
@@ -78,7 +78,7 @@ export function DataTable({
           {rows.map((row, idx) => (
             <tr key={String(row.id ?? idx)} className="hover:bg-background-alt/60">
               {columns.map((col) => (
-                <td key={col.key} className="px-4 py-3 text-text-primary">
+                <td key={col.key} className="px-4 py-3 text-sm text-text-primary md:px-5 md:py-4">
                   {col.render ? col.render(row) : String(row[col.key] ?? '—')}
                 </td>
               ))}

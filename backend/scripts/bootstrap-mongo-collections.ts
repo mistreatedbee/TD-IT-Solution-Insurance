@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 
+import { openMongoDatabase } from '../src/db/mongo-connection.js';
+
 import { bootstrapFeature004Collections } from '../src/db/feature004-collections.js';
 import { bootstrapRecoveryCollections } from '../src/db/recovery-collections.js';
 import { bootstrapCustomerProfileCollections } from '../src/db/customer-profile-collections.js';
@@ -38,19 +40,25 @@ function requireMongoUri(): string {
   return uri;
 }
 
+function requireMongoDbName(): string | undefined {
+  const name = process.env.MONGODB_DB_NAME?.trim();
+  return name || undefined;
+}
+
 async function main(): Promise<void> {
   const uri = requireMongoUri();
+  const dbName = requireMongoDbName();
   const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10_000 });
 
   try {
     await client.connect();
-    await client.db().command({ ping: 1 });
+    const db = openMongoDatabase(client, dbName);
+    await db.command({ ping: 1 });
 
-    const db = client.db();
-    const dbName = db.databaseName;
+    const resolvedDbName = db.databaseName;
 
     // eslint-disable-next-line no-console
-    console.log(`[bootstrap-mongo] Connected to database "${dbName}".`);
+    console.log(`[bootstrap-mongo] Connected to database "${resolvedDbName}".`);
 
     const feature004 = await bootstrapFeature004Collections(db);
 

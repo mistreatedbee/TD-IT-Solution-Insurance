@@ -56,7 +56,7 @@ import { requestIdMiddleware, notFoundHandler, errorHandler } from './middleware
 async function main(): Promise<void> {
   const env = loadEnv();
 
-  await connectMongo(env.mongodbUri);
+  await connectMongo(env.mongodbUri, env.mongodbDbName);
   // eslint-disable-next-line no-console
   console.log('[startup] Connected to MongoDB.');
   await ensurePolicyAssetCollections(getDb());

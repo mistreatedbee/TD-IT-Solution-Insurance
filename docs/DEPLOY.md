@@ -32,6 +32,7 @@ Required for production startup:
 |---|---|
 | `NODE_ENV` | Must be `production` on Render (blueprint sets this) |
 | `MONGODB_URI` | Atlas connection string |
+| `MONGODB_DB_NAME` | Optional. Overrides the database name in the URI — use `td_it_insurance_staging` on staging (MP-8) while sharing one cluster |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role (never in client) |
 | `SUPABASE_DB_URL` | Postgres `app` schema URL |
@@ -100,7 +101,13 @@ Host URL only — no `/api/v1` suffix. See [`mobile/docs/DEPLOY.md`](mobile/docs
 
 Use two Render blueprint instances or duplicate services with different env groups:
 
-- `api-staging` / `web-staging` → staging Mongo database name + Supabase branch
-- `api-production` / `web-production` → production data
+- `api-staging` / `web-staging` → `MONGODB_DB_NAME=td_it_insurance_staging` + separate Supabase project (see [`render-staging.yaml`](render-staging.yaml))
+- `api-production` / `web-production` → production database (default URI path or explicit `MONGODB_DB_NAME`)
+
+Bootstrap staging after first deploy:
+
+```bash
+MONGODB_URI='…' MONGODB_DB_NAME=td_it_insurance_staging npx tsx backend/scripts/bootstrap-mongo-collections.ts
+```
 
 **Signed:** `devops-engineer`, 2026-08-12 (updated for API + web blueprint).

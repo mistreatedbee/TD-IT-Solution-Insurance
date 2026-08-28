@@ -194,7 +194,7 @@ export function DashboardShell({
         <nav className="flex flex-1 flex-col gap-1">
           {navItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={navLinkClass}>
-              {item.label}
+              <span className="flex min-h-11 items-center md:min-h-10">{item.label}</span>
             </NavLink>
           ))}
         </nav>
@@ -221,7 +221,7 @@ export function DashboardShell({
           </button>
           <span className="truncate text-sm font-semibold text-text-primary">{brand}</span>
         </div>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
   );

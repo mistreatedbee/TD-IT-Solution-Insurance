@@ -28,6 +28,8 @@ import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 import { Pool } from 'pg';
 
+import { openMongoDatabase } from '../src/db/mongo-connection.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '../..');
@@ -59,12 +61,13 @@ async function main(): Promise<void> {
     );
   }
 
+  const mongoDbName = process.env.MONGODB_DB_NAME?.trim() || undefined;
   const mongo = new MongoClient(mongoUri);
   const pool = pgConnString ? new Pool({ connectionString: pgConnString }) : null;
 
   try {
     await mongo.connect();
-    const db = mongo.db();
+    const db = openMongoDatabase(mongo, mongoDbName);
 
     // ---- location_events ----------------------------------------------
     const locationEvents = db.collection('location_events');

@@ -13,10 +13,13 @@
  */
 import { MongoClient, type Db } from 'mongodb';
 
+import { openMongoDatabase } from './mongo-connection.js';
+
 let client: MongoClient | undefined;
 let db: Db | undefined;
+let connectedDatabaseName: string | undefined;
 
-export async function connectMongo(uri: string): Promise<Db> {
+export async function connectMongo(uri: string, dbName?: string): Promise<Db> {
   if (db) {
     return db;
   }
@@ -27,11 +30,16 @@ export async function connectMongo(uri: string): Promise<Db> {
   });
 
   await client.connect();
+  db = openMongoDatabase(client, dbName);
+  connectedDatabaseName = db.databaseName;
   // Verify connectivity eagerly so startup fails loudly on bad credentials/network.
-  await client.db().command({ ping: 1 });
+  await db.command({ ping: 1 });
 
-  db = client.db();
   return db;
+}
+
+export function getConnectedMongoDatabaseName(): string | undefined {
+  return connectedDatabaseName;
 }
 
 export function getDb(): Db {
@@ -45,11 +53,11 @@ export function getDb(): Db {
 }
 
 export async function pingMongo(): Promise<boolean> {
-  if (!client) {
+  if (!db) {
     return false;
   }
   try {
-    await client.db().command({ ping: 1 });
+    await db.command({ ping: 1 });
     return true;
   } catch {
     return false;
@@ -61,5 +69,6 @@ export async function closeMongo(): Promise<void> {
     await client.close();
     client = undefined;
     db = undefined;
+    connectedDatabaseName = undefined;
   }
 }
