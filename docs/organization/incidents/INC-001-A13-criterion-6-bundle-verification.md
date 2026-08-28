@@ -19,7 +19,9 @@ Source-level guards are not sufficient per INC-001 §9.5 A-13. This checklist is
 | **Commit SHA** | `d3dc6f4fe08203ecb20083ff30516f7f32ba3b6d` |
 | **Profile** | `preview` (Android) |
 | **EAS logs** | https://expo.dev/accounts/socials/projects/mobile/builds/426e5c01-193c-44ca-99d9-de75577330f0 |
-| **Status** | IN_PROGRESS (triggered 2026-08-28) — APK URL to be filled when FINISHED |
+| **Status** | **FINISHED** (2026-08-28, ~15 min build) |
+| **Install (QR / device)** | https://expo.dev/accounts/socials/projects/mobile/builds/426e5c01-193c-44ca-99d9-de75577330f0 |
+| **APK artifact** | https://expo.dev/artifacts/eas/-qLdVzWss9I3FC5DYfWlNjInmoG9bZYWpdgsDxFg4z0.apk |
 | **Flag snapshot** | All `EXPO_PUBLIC_FEATURE_*` = `"false"` per `mobile/eas.json` preview env |
 
 **`eas.json` preview env (build-time):**
