@@ -10,8 +10,29 @@ Source-level guards are not sufficient per INC-001 §9.5 A-13. This checklist is
 
 ## 1. Build under test
 
-- [ ] EAS **preview** profile APK/IPA built from `main` after A-12 commit(s)
-- [ ] Record build ID, commit SHA, and `eas.json` env snapshot in this section when complete
+- [x] EAS **preview** profile APK/IPA built from `main` after A-12 commit(s)
+- [x] Record build ID, commit SHA, and `eas.json` env snapshot in this section when complete
+
+| Field | Value |
+|---|---|
+| **Build ID** | `426e5c01-193c-44ca-99d9-de75577330f0` |
+| **Commit SHA** | `d3dc6f4fe08203ecb20083ff30516f7f32ba3b6d` |
+| **Profile** | `preview` (Android) |
+| **EAS logs** | https://expo.dev/accounts/socials/projects/mobile/builds/426e5c01-193c-44ca-99d9-de75577330f0 |
+| **Status** | IN_PROGRESS (triggered 2026-08-28) — APK URL to be filled when FINISHED |
+| **Flag snapshot** | All `EXPO_PUBLIC_FEATURE_*` = `"false"` per `mobile/eas.json` preview env |
+
+**`eas.json` preview env (build-time):**
+
+```
+EXPO_PUBLIC_FEATURE_CLAIMS=false
+EXPO_PUBLIC_FEATURE_LOCATION_TRACKING=false
+EXPO_PUBLIC_FEATURE_KYC=false
+EXPO_PUBLIC_FEATURE_ALERTS=false
+EXPO_PUBLIC_FEATURE_THEFT_REPORTING=false
+EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING=false
+EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR=false
+```
 
 ## 2. Flag-off surfaces — must show "coming soon", never mount gated APIs
 

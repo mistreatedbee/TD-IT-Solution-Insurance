@@ -35,9 +35,11 @@ Two data stores are in scope, both written by `POST /v1/assets/:assetId/location
 
 **Action needed:** someone with production Mongo + Postgres credentials (cloud-infrastructure-architect or backend-engineer) needs to run:
 ```
-npx tsx backend/scripts/inc-001-location-inventory.ts
+cd backend && npm run inc-001:location-inventory
 ```
-from repo root with `MONGODB_URI` and `DATABASE_URL` set, and paste the output back into this document (§2a below) so compliance-specialist has real numbers. I do not have a path to obtain these numbers myself in this session — flagging rather than guessing, per house rules on not asserting unverified state.
+from repo root with `MONGODB_URI` and `DATABASE_URL` set, and paste the output back into this document (§2a below) so compliance-specialist has real numbers. For counts without Postgres cross-reference, pass `--mongo-only` (test/real breakdown omitted).
+
+**2026-08-28 attempt:** local `.env.local` had `MONGODB_URI` but Mongo auth failed (`bad auth : authentication failed`). `DATABASE_URL` not present. No counts recorded — credentials need refresh before A-9 can close.
 
 ### 2a. Actual figures (pending — fill in after running the script above)
 

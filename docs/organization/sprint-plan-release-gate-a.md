@@ -32,7 +32,7 @@ This document sequences the memo into 1-week sprints starting **2026-08-24 (Spri
 | `database-architect` | Inventory + quarantine — **no deletion** | Script ready: `backend/scripts/inc-001-location-inventory.ts` |
 | `mobile-engineer` | Client-side location flag-off + **A-12 all §9.3 surfaces** | **Done** on `main` — A-13 bundle verify is next gate |
 
-**Engineering note (2026-08-28):** A-12, A-15, A-16, A-17 (interim), CI-1, and CI-2 (partial) are on `main`. Criterion 6 sign-off blocked on A-13 only. CTO status: `docs/organization/cto-status/2026-08-28-gate-a-inc-001.md`.
+**Engineering note (2026-08-28):** A-12, A-15, A-16, A-17 (interim), CI-1, and CI-2 (partial) are on `main`. EAS preview build `426e5c01` triggered for A-13 (Android, commit `d3dc6f4`). Criterion 6 sign-off blocked on A-13 device verification. CTO status: `docs/organization/cto-status/2026-08-28-gate-a-inc-001.md`.
 
 This incident is chaired by `cybersecurity-architect`, not `technical-project-manager` — this log entry tracks it for delivery/gate purposes only and does not substitute for the incident chair's own investigation or post-mortem artifact.
 

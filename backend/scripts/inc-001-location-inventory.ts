@@ -49,13 +49,18 @@ function classify(email: string | null): 'test' | 'real' | 'unresolved' {
 }
 
 async function main(): Promise<void> {
+  const mongoOnly = process.argv.includes('--mongo-only');
   const mongoUri = process.env.MONGODB_URI?.trim();
   if (!mongoUri) throw new Error('Missing MONGODB_URI');
   const pgConnString = process.env.DATABASE_URL?.trim() ?? process.env.PG_CONNECTION_STRING?.trim();
-  if (!pgConnString) throw new Error('Missing Postgres connection string (DATABASE_URL)');
+  if (!pgConnString && !mongoOnly) {
+    throw new Error(
+      'Missing Postgres connection string (DATABASE_URL). Re-run with --mongo-only for counts without account classification.',
+    );
+  }
 
   const mongo = new MongoClient(mongoUri);
-  const pool = new Pool({ connectionString: pgConnString });
+  const pool = pgConnString ? new Pool({ connectionString: pgConnString }) : null;
 
   try {
     await mongo.connect();
@@ -81,7 +86,7 @@ async function main(): Promise<void> {
       new Set([...distinctAccountIds, ...assetsWithLocation.map((a) => a.accountId as string)]),
     );
     const emailByAccountId = new Map<string, string | null>();
-    if (allAccountIds.length > 0) {
+    if (allAccountIds.length > 0 && pool) {
       const { rows } = await pool.query<{ id: string; email: string }>(
         'select id, email from app.accounts where id = any($1::uuid[])',
         [allAccountIds],
@@ -93,17 +98,22 @@ async function main(): Promise<void> {
     }
 
     const eventAccountBreakdown = { test: 0, real: 0, unresolved: 0 };
-    for (const id of distinctAccountIds) {
-      eventAccountBreakdown[classify(emailByAccountId.get(id) ?? null)]++;
+    if (pool) {
+      for (const id of distinctAccountIds) {
+        eventAccountBreakdown[classify(emailByAccountId.get(id) ?? null)]++;
+      }
     }
 
     const assetLocationBreakdown = { test: 0, real: 0, unresolved: 0 };
-    for (const a of assetsWithLocation) {
-      assetLocationBreakdown[classify(emailByAccountId.get(a.accountId as string) ?? null)]++;
+    if (pool) {
+      for (const a of assetsWithLocation) {
+        assetLocationBreakdown[classify(emailByAccountId.get(a.accountId as string) ?? null)]++;
+      }
     }
 
     const summary = {
       generatedAt: new Date().toISOString(),
+      mode: pool ? 'full' : 'mongo-only',
       locationEvents: {
         totalDocuments: totalEvents,
         distinctAccountCount: distinctAccountIds.length,
@@ -119,7 +129,9 @@ async function main(): Promise<void> {
         accountBreakdown: assetLocationBreakdown,
       },
       note:
-        'Read-only. No documents were modified or deleted by this script. ' +
+        (pool
+          ? 'Read-only. No documents were modified or deleted by this script. '
+          : 'Read-only mongo-only mode — account test/real breakdown omitted (set DATABASE_URL for full run). ') +
         '"unresolved" accountIds are ones with no matching row in app.accounts ' +
         '(deleted account, or malformed/test data) — treat as needing manual review, not as "real".',
     };
@@ -128,7 +140,7 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(summary, null, 2));
   } finally {
     await mongo.close();
-    await pool.end();
+    if (pool) await pool.end();
   }
 }
 
