@@ -29,10 +29,7 @@ export function ChangePlanScreen() {
   const plans = plansQuery.data?.data ?? [];
   const assetCount = assetsQuery.data?.data?.length ?? 0;
   const currentPlan = resolvePlanForPolicy(plans, policy);
-  const currentPlanId =
-    plans.find((plan) => plan.slug === currentPlan.slug)?.id ??
-    policy?.planCatalogId ??
-    null;
+  const currentPlanId = plans.find((plan) => plan.slug === currentPlan.slug)?.id ?? null;
 
   async function handleSelectPlan(plan: PlanCatalogItem) {
     if (!policy?.id || plan.id === currentPlanId) return;

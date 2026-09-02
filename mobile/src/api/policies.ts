@@ -29,6 +29,7 @@ export interface PolicyPlanSummary {
 
 export type Policy = Schemas['Policy'] & {
   planSummary?: PolicyPlanSummary;
+  planCatalogId?: string;
 };
 export type PolicyListPage = Schemas['PolicyListPage'] & {
   data?: Policy[];

@@ -17,6 +17,7 @@ export interface PlanCatalogItem {
   slug: string;
   name: string;
   tagline: string;
+  positioning?: string;
   maxAssets: number | null;
   monthlyAmountCents: number | null;
   currency: string;

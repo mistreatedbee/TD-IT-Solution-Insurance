@@ -45,7 +45,7 @@ export function PlanFeatureGateScreen({ feature }: PlanFeatureGateScreenProps) {
             fullWidth
             onPress={() => router.push(changePlanHref as Href)}
           >
-            Upgrade to {copy.requiredPlan}
+            {`Upgrade to ${copy.requiredPlan}`}
           </Button>
         ) : null}
         <Button variant="secondary" fullWidth onPress={() => router.back()}>

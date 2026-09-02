@@ -3,8 +3,10 @@ import { listPlans } from '../plans';
 
 export const PLANS_QUERY_KEY = ['plans'] as const;
 
-export function usePlansQuery(options?: Pick<UseQueryOptions, 'enabled'>) {
-  return useQuery({
+type PlansQueryData = Awaited<ReturnType<typeof listPlans>>;
+
+export function usePlansQuery(options?: Pick<UseQueryOptions<PlansQueryData>, 'enabled'>) {
+  return useQuery<PlansQueryData>({
     queryKey: PLANS_QUERY_KEY,
     queryFn: () => listPlans(),
     enabled: options?.enabled ?? true,
