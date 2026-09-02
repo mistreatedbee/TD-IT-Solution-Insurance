@@ -22,6 +22,22 @@ const lookupQuerySchema = z
 
 const OPEN_RECOVERY_STATUSES = new Set(['open', 'investigating', 'tracking']);
 
+const caseIdParamsSchema = z.object({
+  caseId: z.string().regex(/^[a-f0-9]{24}$/i),
+});
+
+const callCentreNoteBodySchema = z.object({
+  text: z.string().trim().min(1).max(2000),
+});
+
+function serializeCallCentreNotes(notes: { agentAccountId: string; text: string; createdAt: Date }[]) {
+  return notes.map((note) => ({
+    agentAccountId: note.agentAccountId,
+    text: note.text,
+    createdAt: note.createdAt.toISOString(),
+  }));
+}
+
 export function createSupportLookupRouter(ctx: AppContext): Router {
   const router = Router();
   const authenticate = createAuthenticateMiddleware(ctx.env, ctx.kv);
@@ -113,7 +129,67 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
               referenceNumber: c.referenceNumber,
               status: c.status,
               reportedAt: c.reportedAt.toISOString(),
+              callCentreNotes: serializeCallCentreNotes(c.callCentreNotes),
             })),
+          },
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.post(
+    '/recovery-cases/:caseId/notes',
+    authenticate,
+    requireUserType('support_agent'),
+    rateLimit,
+    async (req, res, next) => {
+      try {
+        const params = caseIdParamsSchema.safeParse(req.params);
+        if (!params.success) {
+          throw apiError('VALIDATION_ERROR', { message: 'Invalid case ID' });
+        }
+
+        const parsed = callCentreNoteBodySchema.safeParse(req.body);
+        if (!parsed.success) {
+          throw apiError('VALIDATION_ERROR', {
+            message: parsed.error.issues[0]?.message ?? 'Invalid note body',
+          });
+        }
+
+        const updated = await ctx.recoveryCases.appendCallCentreNote(
+          params.data.caseId,
+          req.auth!.accountId,
+          parsed.data.text,
+        );
+        if (!updated) {
+          throw apiError('NOT_FOUND');
+        }
+
+        const note = updated.callCentreNotes[updated.callCentreNotes.length - 1];
+        if (!note) {
+          throw apiError('INTERNAL_ERROR');
+        }
+
+        await ctx.auditLog.record({
+          accountId: updated.accountId,
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          eventType: 'privileged_data_access',
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        res.status(201).json({
+          data: {
+            caseId: updated.id,
+            note: {
+              agentAccountId: note.agentAccountId,
+              text: note.text,
+              createdAt: note.createdAt.toISOString(),
+            },
           },
         });
       } catch (err) {

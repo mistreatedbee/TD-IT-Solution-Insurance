@@ -1,13 +1,87 @@
 import { FormEvent, useState } from 'react';
 import { Button, Card, Input, SectionHeading } from '../../components';
 import { DetailGrid, InlineAlert, LoadingState } from '../../dashboard/components/ui';
-import { lookupCustomerByEmail, lookupCustomerByPolicyId } from '../api/support-lookup';
+import {
+  addCallCentreCaseNote,
+  lookupCustomerByEmail,
+  lookupCustomerByPolicyId,
+} from '../api/support-lookup';
 import { ApiError } from '../../dashboard/api/errors';
 import type { SupportCustomerLookup } from '../api/support-lookup';
 
 type SearchMode = 'email' | 'policyId';
 
 const POLICY_ID_PATTERN = /^[a-f0-9]{24}$/i;
+
+function RecoveryCasePanel({
+  recoveryCase,
+  onNoteAdded,
+}: {
+  recoveryCase: SupportCustomerLookup['recoveryCases'][number];
+  onNoteAdded: (caseId: string, note: SupportCustomerLookup['recoveryCases'][number]['callCentreNotes'][number]) => void;
+}) {
+  const [noteText, setNoteText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onAddNote(event: FormEvent) {
+    event.preventDefault();
+    const text = noteText.trim();
+    if (!text) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      const data = await addCallCentreCaseNote(recoveryCase.id, text);
+      onNoteAdded(recoveryCase.id, data.note);
+      setNoteText('');
+    } catch {
+      setError('Could not save note. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <li className="rounded-lg border border-border bg-background p-4">
+      <p className="text-sm font-medium text-text-primary">
+        {recoveryCase.referenceNumber} · {recoveryCase.status} ·{' '}
+        {new Date(recoveryCase.reportedAt).toLocaleString()}
+      </p>
+
+      {recoveryCase.callCentreNotes.length > 0 ? (
+        <ul className="mt-3 space-y-2 border-t border-border pt-3 text-sm text-text-secondary">
+          {recoveryCase.callCentreNotes.map((note) => (
+            <li key={`${note.createdAt}-${note.agentAccountId}`}>
+              <span className="block text-xs text-text-secondary">
+                {new Date(note.createdAt).toLocaleString()}
+              </span>
+              {note.text}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-xs text-text-secondary">No call-centre notes yet.</p>
+      )}
+
+      <form className="mt-4 space-y-2" onSubmit={(e) => void onAddNote(e)}>
+        <Input
+          label="Add call-centre note"
+          type="textarea"
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          placeholder="Customer verified on call — …"
+          rows={3}
+          required
+        />
+        {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+        <Button type="submit" size="sm" loading={saving}>
+          Save note
+        </Button>
+      </form>
+    </li>
+  );
+}
 
 export function CustomerLookupPage() {
   const [searchMode, setSearchMode] = useState<SearchMode>('email');
@@ -50,11 +124,28 @@ export function CustomerLookupPage() {
     }
   }
 
+  function handleNoteAdded(
+    caseId: string,
+    note: SupportCustomerLookup['recoveryCases'][number]['callCentreNotes'][number],
+  ) {
+    setResult((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        recoveryCases: current.recoveryCases.map((recoveryCase) =>
+          recoveryCase.id === caseId
+            ? { ...recoveryCase, callCentreNotes: [...recoveryCase.callCentreNotes, note] }
+            : recoveryCase,
+        ),
+      };
+    });
+  }
+
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title="Customer lookup" size="md" className="mb-2" />
       <p className="mb-6 text-sm text-text-secondary">
-        Search by customer email or policy ID. Purpose-limited read — every lookup is audit-logged.
+        Search by customer email or policy ID. Purpose-limited read — every lookup and note is audit-logged.
       </p>
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -130,12 +221,14 @@ export function CustomerLookupPage() {
           ) : null}
           {result.recoveryCases.length > 0 ? (
             <div>
-              <h2 className="mb-2 text-sm font-semibold text-text-primary">Open recovery cases</h2>
-              <ul className="space-y-2 text-sm text-text-secondary">
-                {result.recoveryCases.map((c) => (
-                  <li key={c.id}>
-                    {c.referenceNumber} · {c.status} · {new Date(c.reportedAt).toLocaleString()}
-                  </li>
+              <h2 className="mb-3 text-sm font-semibold text-text-primary">Open recovery cases</h2>
+              <ul className="space-y-4">
+                {result.recoveryCases.map((recoveryCase) => (
+                  <RecoveryCasePanel
+                    key={recoveryCase.id}
+                    recoveryCase={recoveryCase}
+                    onNoteAdded={handleNoteAdded}
+                  />
                 ))}
               </ul>
             </div>

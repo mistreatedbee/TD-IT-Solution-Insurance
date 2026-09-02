@@ -124,6 +124,7 @@ function sampleCase(accountId: string, assetId: string, id = '507f1f77bcf86cd799
     referenceNumber: 'RC-20260801-ABCD',
     reportedAt: now,
     notes: 'Stolen from office',
+    callCentreNotes: [],
     lastLocationAt: null,
     lastLocation: null,
     legalHold: false,

@@ -18,6 +18,12 @@ export interface LastKnownLocation {
   accuracyMeters: number | null;
 }
 
+export interface CallCentreNote {
+  agentAccountId: string;
+  text: string;
+  createdAt: Date;
+}
+
 export interface RecoveryCaseDocument {
   id: string;
   accountId: string;
@@ -27,6 +33,7 @@ export interface RecoveryCaseDocument {
   referenceNumber: string;
   reportedAt: Date;
   notes: string | null;
+  callCentreNotes: CallCentreNote[];
   lastLocationAt: Date | null;
   lastLocation: LastKnownLocation | null;
   legalHold: boolean;
@@ -43,6 +50,7 @@ interface RecoveryCaseDbRow {
   referenceNumber: string;
   reportedAt: Date;
   notes: string | null;
+  callCentreNotes?: CallCentreNote[];
   lastLocationAt: Date | null;
   lastLocation: LastKnownLocation | null;
   legalHold: boolean;
@@ -60,6 +68,7 @@ function toCase(row: RecoveryCaseDbRow): RecoveryCaseDocument {
     referenceNumber: row.referenceNumber,
     reportedAt: row.reportedAt,
     notes: row.notes,
+    callCentreNotes: row.callCentreNotes ?? [],
     lastLocationAt: row.lastLocationAt,
     lastLocation: row.lastLocation,
     legalHold: row.legalHold,
@@ -119,6 +128,7 @@ export function createRecoveryCasesRepo(db: Db) {
         referenceNumber: generateReferenceNumber(),
         reportedAt: now,
         notes,
+        callCentreNotes: [],
         lastLocationAt: null,
         lastLocation: null,
         legalHold: false,
@@ -225,6 +235,28 @@ export function createRecoveryCasesRepo(db: Db) {
     ): Promise<LastKnownLocation | null> {
       const doc = await this.findByIdForAccount(accountId, caseId);
       return doc?.lastLocation ?? null;
+    },
+
+    async appendCallCentreNote(
+      caseId: string,
+      agentAccountId: string,
+      text: string,
+    ): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const note: CallCentreNote = {
+        agentAccountId,
+        text,
+        createdAt: new Date(),
+      };
+      const result = await collection().findOneAndUpdate(
+        { _id: new ObjectId(caseId) },
+        {
+          $push: { callCentreNotes: note },
+          $set: { updatedAt: new Date() },
+        },
+        { returnDocument: 'after' },
+      );
+      return result ? toCase(result) : null;
     },
   };
 }

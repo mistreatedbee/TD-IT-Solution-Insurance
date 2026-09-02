@@ -31,6 +31,18 @@ export const recoveryCasesJsonSchemaValidator: Document = {
       referenceNumber: { bsonType: 'string', minLength: 8, maxLength: 32 },
       reportedAt: { bsonType: 'date' },
       notes: { bsonType: ['string', 'null'] },
+      callCentreNotes: {
+        bsonType: 'array',
+        items: {
+          bsonType: 'object',
+          required: ['agentAccountId', 'text', 'createdAt'],
+          properties: {
+            agentAccountId: { bsonType: 'string' },
+            text: { bsonType: 'string', maxLength: 2000 },
+            createdAt: { bsonType: 'date' },
+          },
+        },
+      },
       lastLocationAt: { bsonType: ['date', 'null'] },
       lastLocation: {
         bsonType: ['object', 'null'],

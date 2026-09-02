@@ -430,6 +430,17 @@
         "reason": "Feature 010 call-centre — Stage 8 required before production support_agent PII access (M1 compliance floor)",
         "owner": "cybersecurity-architect"
       }
+    },
+    {
+      "id": "backend-support-case-notes",
+      "kind": "backend_route",
+      "pattern": "/recovery-cases/:caseId/notes",
+      "feature": "010",
+      "stage8": {
+        "waived": true,
+        "reason": "Feature 010 call-centre append-only case notes — Stage 8 with customer lookup surface",
+        "owner": "cybersecurity-architect"
+      }
     }
   ]
 }

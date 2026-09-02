@@ -123,9 +123,30 @@ function createHarness() {
                 referenceNumber: 'RC-001',
                 status: 'open',
                 reportedAt: new Date('2026-08-28T10:00:00.000Z'),
+                callCentreNotes: [],
               },
             ]
           : [];
+      },
+      async appendCallCentreNote(caseId: string, agentAccountId: string, text: string) {
+        if (caseId !== 'c'.repeat(24)) return null;
+        const note = { agentAccountId, text, createdAt: new Date('2026-08-28T11:00:00.000Z') };
+        return {
+          id: caseId,
+          accountId: customerId,
+          assetId: 'd'.repeat(24),
+          partnerOrganizationId: null,
+          status: 'open' as const,
+          referenceNumber: 'RC-001',
+          reportedAt: new Date('2026-08-28T10:00:00.000Z'),
+          notes: null,
+          callCentreNotes: [note],
+          lastLocationAt: null,
+          lastLocation: null,
+          legalHold: false,
+          createdAt: new Date('2026-08-28T10:00:00.000Z'),
+          updatedAt: new Date('2026-08-28T11:00:00.000Z'),
+        };
       },
     },
     auditLog: {
@@ -269,6 +290,71 @@ describe('GET /support/customer-lookup', () => {
         { headers: { Authorization: `Bearer ${token}` } },
       );
       expect(res.status).toBe(403);
+    });
+  });
+});
+
+describe('POST /support/recovery-cases/:caseId/notes', () => {
+  it('appends a call-centre note for support_agent', async () => {
+    const { app, env, auditCalls } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/recovery-cases/${'c'.repeat(24)}/notes`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: 'Customer verified on call.' }),
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as {
+        data: { caseId: string; note: { text: string; agentAccountId: string } };
+      };
+      expect(body.data.caseId).toBe('c'.repeat(24));
+      expect(body.data.note.text).toBe('Customer verified on call.');
+      expect(body.data.note.agentAccountId).toBe(supportAgentId);
+      expect(auditCalls.length).toBe(1);
+    });
+  });
+
+  it('returns 404 for unknown case', async () => {
+    const { app, env } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/recovery-cases/${'f'.repeat(24)}/notes`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: 'Note' }),
+      });
+      expect(res.status).toBe(404);
     });
   });
 });
