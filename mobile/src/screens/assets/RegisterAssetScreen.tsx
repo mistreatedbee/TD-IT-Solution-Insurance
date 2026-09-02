@@ -158,7 +158,7 @@ function vehicleStepCount(hasTrackerStep: boolean): number {
 
 export function RegisterAssetScreen() {
   const router = useRouter();
-  const { currentPlan } = usePlanUsage();
+  const { policy, currentPlan } = usePlanUsage();
   const createMutation = useCreateAssetMutation();
   const [assetType, setAssetType] = useState<AssetType>('vehicle');
   const [displayName, setDisplayName] = useState('');
@@ -286,10 +286,16 @@ export function RegisterAssetScreen() {
             <Button
               variant="secondary"
               fullWidth
-              onPress={() => router.push('/policy/create' as Href)}
+              onPress={() => {
+                if (policy?.id) {
+                  router.push(`/policy/${policy.id}/change-plan` as Href);
+                } else {
+                  router.push('/policy/create' as Href);
+                }
+              }}
               style={styles.upgradeButton}
             >
-              View upgrade options
+              Change plan
             </Button>
           ) : null}
         </View>

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  changePolicyPlan,
   createPolicy,
   getPolicy,
   listPolicies,
@@ -38,6 +39,20 @@ export function useCreatePolicyMutation() {
     mutationFn: (body: CreatePolicyRequest) => createPolicy(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: POLICIES_QUERY_KEY });
+    },
+  });
+}
+
+export function useChangePolicyPlanMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ policyId, planCatalogId }: { policyId: string; planCatalogId: string }) =>
+      changePolicyPlan(policyId, planCatalogId),
+    onSuccess: (policy) => {
+      queryClient.invalidateQueries({ queryKey: POLICIES_QUERY_KEY });
+      if (policy.id) {
+        queryClient.invalidateQueries({ queryKey: policyQueryKey(policy.id) });
+      }
     },
   });
 }

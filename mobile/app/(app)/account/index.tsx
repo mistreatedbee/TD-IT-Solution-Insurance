@@ -12,7 +12,9 @@ import { clearRefreshToken } from '../../../src/auth/secure-storage';
 import { useSessionStore } from '../../../src/auth/session-store';
 import { useAccountQuery } from '../../../src/auth/useAccountQuery';
 import { FEATURE_KYC_ENABLED } from '../../../src/config/features';
+import { usePlanUsage } from '../../../src/api/hooks/usePlanUsage';
 import { ProfileCompletionCard } from '../../../src/screens/home/ProfileCompletionCard';
+import { PlanUsageSummary } from '../../../src/screens/policy/PlanUsageSummary';
 import { useProtectionDashboard } from '../../../src/tracking/useProtectionDashboard';
 import { queryClient } from '../../../src/query/queryClient';
 import { Badge, Card, Screen } from '../../../src/theme/primitives';
@@ -22,6 +24,7 @@ export default function AccountHubScreen() {
   const router = useRouter();
   const { data: account, isLoading } = useAccountQuery();
   const { data: dashboard } = useProtectionDashboard();
+  const { policy, plans, assetCount, planName, priceLabel, usageLabel } = usePlanUsage();
   const setSignedOut = useSessionStore((s) => s.setSignedOut);
   const [isLoggingOutAll, setIsLoggingOutAll] = useState(false);
   const [isSendingTestPush, setIsSendingTestPush] = useState(false);
@@ -111,11 +114,25 @@ export default function AccountHubScreen() {
         ) : null}
       </Card>
 
+      {policy ? (
+        <PlanUsageSummary
+          policy={policy}
+          plans={plans}
+          assetCount={assetCount}
+          showUpgradePrompt
+          compact
+        />
+      ) : null}
+
       <Pressable style={styles.row} onPress={() => router.push('/(app)/policy')} accessibilityRole="button">
         <ShieldIcon size={20} color={colors.primary} />
         <View style={styles.rowTextColumn}>
           <Text style={styles.rowTitle}>Protection plan</Text>
-          <Text style={styles.rowSubtitle}>View policy details and coverage</Text>
+          <Text style={styles.rowSubtitle}>
+            {policy
+              ? `${planName} · ${priceLabel} · ${usageLabel}`
+              : 'View policy details and coverage'}
+          </Text>
         </View>
       </Pressable>
 

@@ -124,10 +124,16 @@ export function AssetListScreen() {
           <Button
             variant="secondary"
             fullWidth
-            onPress={() => router.push('/policy/create' as Href)}
+            onPress={() => {
+              if (policy?.id) {
+                router.push(`/policy/${policy.id}/change-plan` as Href);
+              } else {
+                router.push('/policy/create' as Href);
+              }
+            }}
             style={styles.upgradeButton}
           >
-            View upgrade options
+            Change plan
           </Button>
         </View>
       ) : null}

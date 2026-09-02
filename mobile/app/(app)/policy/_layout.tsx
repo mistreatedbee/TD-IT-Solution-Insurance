@@ -13,7 +13,7 @@ export default function PolicyLayout() {
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="create" options={{ title: 'Choose a plan' }} />
-      <Stack.Screen name="[id]" options={{ title: 'Policy details' }} />
+      <Stack.Screen name="[id]" options={{ headerShown: false }} />
     </Stack>
   );
 }

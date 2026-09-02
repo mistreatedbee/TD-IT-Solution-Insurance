@@ -20,6 +20,10 @@ export interface PlanUsageSummaryProps {
   compact?: boolean;
 }
 
+function changePlanHref(policyId: string): Href {
+  return `/policy/${policyId}/change-plan` as Href;
+}
+
 export function PlanUsageSummary({
   policy,
   plans,
@@ -49,10 +53,14 @@ export function PlanUsageSummary({
           <Button
             variant="secondary"
             fullWidth
-            onPress={() => router.push('/policy/create' as Href)}
+            onPress={() => {
+              if (policy?.id) {
+                router.push(changePlanHref(policy.id));
+              }
+            }}
             style={styles.upgradeButton}
           >
-            View upgrade options
+            Change plan
           </Button>
         </View>
       ) : null}

@@ -77,16 +77,14 @@ export function PolicyDetailScreen() {
         </Alert>
       ) : null}
 
-      {atLimit ? (
-        <Button
-          variant="secondary"
-          fullWidth
-          onPress={() => router.push('/policy/create' as Href)}
-          style={styles.section}
-        >
-          View upgrade options
-        </Button>
-      ) : null}
+      <Button
+        variant="secondary"
+        fullWidth
+        onPress={() => router.push(`/policy/${policy.id}/change-plan` as Href)}
+        style={styles.section}
+      >
+        {atLimit ? 'Upgrade plan' : 'Change plan'}
+      </Button>
 
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Coverage limits</Text>

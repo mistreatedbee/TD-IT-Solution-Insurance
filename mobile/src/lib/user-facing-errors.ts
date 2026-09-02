@@ -104,6 +104,8 @@ function mapApiErrorByCode(code: string, status: number, message: string, contex
       return 'You have reached the asset limit for your plan. Upgrade to a higher tier or remove an asset to register another.';
     case 'PLAN_REQUIRES_QUOTE':
       return 'This plan needs a custom quote. Contact us and we will help you choose the right coverage.';
+    case 'PLAN_DOWNGRADE_NOT_ALLOWED':
+      return 'You have more registered assets than this plan allows. Remove assets first, then try again.';
     case 'VALIDATION_ERROR':
       return 'Some details look incorrect. Review the form and try again.';
     case 'NOT_FOUND':

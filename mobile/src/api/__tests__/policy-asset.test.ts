@@ -2,7 +2,7 @@
  * Policy & Asset API client — Feature 004 contract paths and headers.
  */
 import { useSessionStore } from '../../auth/session-store';
-import { createPolicy, listPolicies } from '../policies';
+import { changePolicyPlan, createPolicy, listPolicies } from '../policies';
 import { createAsset, listAssets } from '../assets';
 
 function jsonResponse(status: number, body: unknown) {
@@ -49,6 +49,24 @@ describe('api/policies', () => {
     expect((init?.headers as Record<string, string>)['Idempotency-Key']).toBe(
       '00000000-0000-4000-8000-000000000000',
     );
+  });
+
+  it('PATCH /policies/:policyId/plan sends planCatalogId body', async () => {
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(200, {
+        id: '507f1f77bcf86cd799439011',
+        planTier: 'plus',
+        status: 'pending_activation',
+      }),
+    );
+
+    await changePolicyPlan('507f1f77bcf86cd799439011', 'plan-plus-id');
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://localhost:3000/api/v1/policies/507f1f77bcf86cd799439011/plan');
+    expect(init?.method).toBe('PATCH');
+    expect(JSON.parse(init?.body as string)).toEqual({ planCatalogId: 'plan-plus-id' });
+    expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer access-token');
   });
 });
 

@@ -10,6 +10,8 @@ export interface PlanCatalogPickerProps {
   plans: PlanCatalogItem[];
   selectedPlanId?: string | null;
   loadingPlanId?: string | null;
+  /** When set, marks the matching plan as current and disables selection. */
+  currentPlanId?: string | null;
   onSelectPlan: (plan: PlanCatalogItem) => void;
 }
 
@@ -17,6 +19,7 @@ export function PlanCatalogPicker({
   plans,
   selectedPlanId,
   loadingPlanId,
+  currentPlanId,
   onSelectPlan,
 }: PlanCatalogPickerProps) {
   function handlePress(plan: PlanCatalogItem) {
@@ -34,6 +37,7 @@ export function PlanCatalogPicker({
       {plans.map((plan) => {
         const isLoading = loadingPlanId === plan.id;
         const isSelected = selectedPlanId === plan.id;
+        const isCurrent = currentPlanId != null && plan.id === currentPlanId;
         const isPopular = plan.isMostPopular === true;
         return (
           <Card
@@ -62,14 +66,19 @@ export function PlanCatalogPicker({
                 variant={plan.isCustomPricing ? 'secondary' : 'primary'}
                 fullWidth
                 loading={isLoading}
+                disabled={isCurrent}
                 onPress={() => handlePress(plan)}
                 style={styles.planButton}
               >
                 {plan.isCustomPricing
                   ? 'Request a quote'
-                  : isSelected && isLoading
-                    ? 'Selecting…'
-                    : 'Choose this plan'}
+                  : isCurrent
+                    ? 'Current plan'
+                    : isSelected && isLoading
+                      ? 'Updating…'
+                      : currentPlanId
+                        ? 'Switch to this plan'
+                        : 'Choose this plan'}
               </Button>
             </View>
           </Card>

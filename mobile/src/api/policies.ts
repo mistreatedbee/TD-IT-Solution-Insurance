@@ -48,3 +48,14 @@ export function createPolicy(body: CreatePolicyRequest) {
     headers: { 'Idempotency-Key': newIdempotencyKey() },
   });
 }
+
+export interface ChangePolicyPlanRequest {
+  planCatalogId: string;
+}
+
+export function changePolicyPlan(policyId: string, planCatalogId: string) {
+  return apiFetch<Policy>(`/policies/${encodeURIComponent(policyId)}/plan`, {
+    method: 'PATCH',
+    body: { planCatalogId } satisfies ChangePolicyPlanRequest,
+  });
+}
