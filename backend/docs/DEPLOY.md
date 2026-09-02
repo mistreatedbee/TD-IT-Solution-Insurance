@@ -12,7 +12,7 @@ Per [ADR-0003](../../docs/organization/adr/0003-backend-hosting-platform.md), th
 | Build | `npm ci && npm run build` |
 | Start | `npm start` |
 | Health check | `/api/health/ready` |
-| Node | 24 (`.node-version`) |
+| Node | **24** (`backend/.node-version`) — required for `@supabase/supabase-js` native WebSocket (Node 22+) |
 
 ## Mongo bootstrap
 

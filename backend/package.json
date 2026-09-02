@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "description": "TD IT Solution Insurance — Node.js/TypeScript backend API (ADR-0001). Separate deployable from the web frontend, per ADR-0001's service decomposition.",
   "scripts": {
     "dev": "tsx watch src/index.ts",

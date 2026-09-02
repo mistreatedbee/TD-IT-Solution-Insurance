@@ -12,6 +12,7 @@ services:
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health/ready
+    # Node 22+ required — @supabase/supabase-js RealtimeClient needs native WebSocket (see backend/.node-version).
     envVars:
       - key: NODE_ENV
         value: production
