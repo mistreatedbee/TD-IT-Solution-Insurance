@@ -94,8 +94,10 @@ assuming either the old "ungated" status or a full clean bill of health:
   rate-limited, for the pre-signup marketing funnel) and `GET /v1/plans` (authenticated) —
   both backed by MongoDB `insurance_plan_catalog` via `ctx.planCatalog`. Admin editor:
   `GET /v1/admin/plans` + `PATCH /v1/admin/plans/:planId` (`admin-plans.ts`), Zod-validated,
-  admin-only. Plans are `starter` (5 assets, R200/mo), `standard` (10 assets, R400/mo),
-  `enterprise` (custom/quote-only — `PLAN_REQUIRES_QUOTE`, no self-serve checkout).
+  admin-only. Plans are **Essential** (5 assets, R199/mo), **Plus** (10 assets, R399/mo, most
+  popular), **Pro** (25 assets, R699/mo), **Business** (custom/quote-only — `PLAN_REQUIRES_QUOTE`,
+  no self-serve checkout). Canonical spec: `docs/organization/pricing-model-v2.md`. Legacy slugs
+  `starter`/`standard`/`enterprise` map to v2 via `normalizePlanSlug()` for migrated policies.
 - **Paper trail:** `docs/features/006-customer-onboarding/` has `business-requirements.md`
   (**Status: Draft** — client-directed plan structure ratified for Phase 1; payment, photos,
   GPS assignment, full profile/KYC explicitly deferred with owners), `ui-design.md`,
@@ -367,7 +369,8 @@ pretend otherwise:
   **This has since been superseded, on the record, not silently worked around:** Feature 006's
   `business-requirements.md` explicitly "supersedes partially: Feature 004 `business-requirements.md`
   D-01 (tier catalog) for onboarding UX only" and ships a real plan-picker on both web and mobile
-  (`starter`/`standard`/`enterprise`, prices read from `GET /v1/plans`, never hard-coded).
+  (`essential`/`plus`/`pro`/`business`, prices read from `GET /v1/plans`, never hard-coded;
+  see `docs/organization/pricing-model-v2.md`).
   What MP-3 was actually guarding against — invented pricing and a fake "purchase" — still holds:
   selecting a plan creates a `pending_activation` policy with `billingStatus: not_configured`,
   not a real subscription. Read this as the plan-picker constraint being formally lifted by a
