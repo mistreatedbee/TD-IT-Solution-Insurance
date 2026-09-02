@@ -10,10 +10,10 @@ import { ApiError } from '../../api/errors';
 import { FEATURE_HARDWARE_TRACKING_ENABLED } from '../../config/features';
 import { usePlanUsage } from '../../api/hooks/usePlanUsage';
 import { assetLimitUpgradeMessage } from '../../api/plans';
-import { ASSET_TYPE_OPTIONS } from '../../lib/asset-labels';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { AssetTypePickerGrid } from '../../components/AssetTypePickerGrid';
 import { Alert, Button, FormField, Input, Screen, SelectChipGroup } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
-import { AssetTypeImage } from '../home/assetVisuals';
 
 type DetailFields = Record<string, string>;
 type TrackerIntent = 'yes' | 'no' | 'unsure';
@@ -304,23 +304,18 @@ export function RegisterAssetScreen() {
       {step === 0 ? (
         <>
           <FormField label="Asset type" required>
-            <SelectChipGroup
-              options={ASSET_TYPE_OPTIONS}
+            <AssetTypePickerGrid
               value={assetType}
               onChange={(value) => {
                 setAssetType(value);
                 setDetailFields({});
-                setStep(0);
               }}
             />
           </FormField>
 
-          <View style={styles.previewRow}>
-            <AssetTypeImage assetType={assetType} size="md" />
-            <Text style={styles.previewHint}>
-              Choose the type that best matches what you want to protect.
-            </Text>
-          </View>
+          <Text style={styles.previewHint}>
+            Choose the type that best matches what you want to protect.
+          </Text>
 
           <Input
             label="Display name"
@@ -438,17 +433,11 @@ const styles = StyleSheet.create({
     lineHeight: typography.sizes.sm * 1.45,
     marginBottom: spacing.md,
   },
-  previewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.lg,
-  },
   previewHint: {
-    flex: 1,
     fontSize: typography.sizes.sm,
     color: colors.textSecondary,
     lineHeight: typography.sizes.sm * 1.4,
+    marginBottom: spacing.lg,
   },
   trackerAlert: {
     marginTop: spacing.md,

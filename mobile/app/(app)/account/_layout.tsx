@@ -11,7 +11,7 @@ export default function AccountLayout() {
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Account' }} />
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="profile" options={{ title: 'Edit profile' }} />
       <Stack.Screen name="verification" options={{ title: 'Verification centre' }} />
     </Stack>

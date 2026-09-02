@@ -29,6 +29,16 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
 }));
 
+jest.mock('../../api/hooks/usePlanUsage', () => ({
+  usePlanUsage: () => ({
+    policy: null,
+    plans: [],
+    assetCount: 0,
+    atLimit: false,
+    isLoading: false,
+  }),
+}));
+
 jest.mock('../../tracking/useAssetVault', () => ({
   useAssetVault: jest.fn(),
 }));

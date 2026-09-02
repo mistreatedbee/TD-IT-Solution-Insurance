@@ -35,6 +35,48 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   other: 'Other electronics',
 };
 
+/** Labels shown on the landing-page coverage grid — matches AssetBadge defaults. */
+export const ASSET_COVERAGE_LABELS: Record<AssetType, string> = {
+  vehicle: 'Vehicle',
+  laptop: 'Laptop',
+  phone: 'Phone',
+  tablet: 'Tablet',
+  tv: 'TV',
+  business: 'Business equipment',
+  desktop: 'Desktop computer',
+  other: 'Other electronics',
+};
+
+/**
+ * Per-asset image bounds for the landing coverage grid.
+ * Same card size on every tile; images keep natural proportions.
+ */
+export const COVERAGE_IMAGE_BOUNDS: Record<
+  AssetType,
+  { maxWidth: string; maxHeight: string }
+> = {
+  vehicle: { maxWidth: '94%', maxHeight: '5.25rem' },
+  business: { maxWidth: '92%', maxHeight: '4.125rem' },
+  laptop: { maxWidth: '72%', maxHeight: '5rem' },
+  phone: { maxWidth: '46%', maxHeight: '6.125rem' },
+  tablet: { maxWidth: '70%', maxHeight: '5.5rem' },
+  tv: { maxWidth: '82%', maxHeight: '4.875rem' },
+  desktop: { maxWidth: '72%', maxHeight: '5rem' },
+  other: { maxWidth: '78%', maxHeight: '5rem' },
+};
+
+/** Landing-page grid order (4×2 desktop). */
+export const COVERAGE_ASSET_ORDER: AssetType[] = [
+  'vehicle',
+  'business',
+  'laptop',
+  'phone',
+  'tablet',
+  'tv',
+  'desktop',
+  'other',
+];
+
 /** Map API asset types to marketing badge keys for imagery. */
 export function apiAssetTypeToBadgeType(
   apiType: string,

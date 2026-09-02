@@ -30,7 +30,7 @@ export function AssetVaultCard({ item, onPress }: AssetVaultCardProps) {
       onPress={onPress}
       style={styles.card}
     >
-      <AssetTypeImage assetType={item.assetType} size="lg" />
+      <AssetTypeImage assetType={item.assetType} size="md" />
 
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1}>

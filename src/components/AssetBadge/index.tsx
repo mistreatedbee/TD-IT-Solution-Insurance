@@ -67,6 +67,9 @@ export function AssetBadge({
     selected ? 'opacity-95' : '',
   ].join(' ');
 
+  const labelSectionClass =
+    size === 'sm' ? 'px-2.5 py-2 text-center' : 'px-3 py-3 text-center';
+
   const content = showImage ? (
     <>
       {selected ? (
@@ -86,7 +89,7 @@ export function AssetBadge({
           decoding="async"
         />
       </div>
-      <div className={size === 'sm' ? 'px-2.5 py-2 text-center' : 'px-3 py-3 text-center'}>
+      <div className={labelSectionClass}>
         <span className={`block font-semibold leading-tight ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
           {displayLabel}
         </span>

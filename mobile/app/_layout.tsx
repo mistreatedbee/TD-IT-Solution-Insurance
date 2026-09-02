@@ -2,7 +2,6 @@
  * Root layout — session bootstrap + auth-state route gating.
  * architecture.md §1.3/§1.4/§2.3/§2.6.
  */
-import { QueryClientProvider } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import * as SplashScreen from 'expo-splash-screen';
 import { Stack, useRouter } from 'expo-router';
@@ -84,14 +83,15 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <PersistQueryClientProvider
-            client={queryClient}
-            persistOptions={{
-              persister: asyncStoragePersister,
-              dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
-            }}
-          >
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{
+            persister: asyncStoragePersister,
+            // Bust stale persisted caches that can crash hydration after query-shape changes.
+            buster: 'asset-visuals-v3',
+            dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+          }}
+        >
             <NetworkProvider>
               <AnalyticsBootstrap />
               <OfflineBanner />
@@ -119,8 +119,7 @@ export default function RootLayout() {
                 <Stack.Screen name="invitations/accept" />
               </Stack>
             </NetworkProvider>
-          </PersistQueryClientProvider>
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

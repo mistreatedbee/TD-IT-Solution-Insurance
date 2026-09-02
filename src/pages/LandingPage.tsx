@@ -14,7 +14,7 @@ import { Button } from '../components/Button';
 import { ArrowLink } from '../components/ArrowLink';
 import { Reveal } from '../components/Reveal';
 import { Logo } from '../components/Logo';
-import { AssetBadge, type AssetType } from '../components/AssetBadge';
+import { CoverageAssetsGrid } from '../components/CoverageAssetsGrid';
 import { WaitlistForm } from './WaitlistForm';
 import { ChevronDivider } from './ChevronMotif';
 import { LandingHeader } from './LandingHeader';
@@ -30,12 +30,6 @@ import {
   AccordionItem
 } from '../components/Accordion';
 import { useLandingPageMeta } from '../hooks/useLandingPageMeta';
-
-// The two highest-value/most-differentiating categories (vehicle = biggest-
-// ticket asset; business = the category that must not read as an
-// afterthought) are rendered larger (col-span-2) and separately below;
-// this list drives the six standard-size badges in between.
-const STANDARD_ASSET_TYPES: AssetType[] = ['laptop', 'phone', 'tablet', 'tv', 'desktop', 'other'];
 
 function scrollToWaitlist() {
   document.getElementById('waitlist')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -155,30 +149,14 @@ export function LandingPage() {
         </ol>
       </Section>
 
-      {/* 3. Asset Types Covered — staggered/uneven grid */}
+      {/* 3. Asset Types Covered — uniform coverage grid */}
       <Section background="white" id="coverage" className="scroll-mt-20">
         <SectionHeading
           eyebrow="What's Covered"
           title="Cover for the assets you actually own"
           subtitle="From the car in your driveway to the laptop on your desk. Cover is subject to policy terms, underwriting and claims assessment."
         />
-        <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
-          {/* vehicle + business span two columns for emphasis */}
-          <Reveal className="col-span-2" delay={0}>
-            <AssetBadge type="vehicle" size="md" className="h-full" />
-          </Reveal>
-          {STANDARD_ASSET_TYPES.slice(0, 5).map((type, i) => (
-            <Reveal key={type} delay={0.05 + i * 0.05}>
-              <AssetBadge type={type} size="md" />
-            </Reveal>
-          ))}
-          <Reveal className="col-span-2" delay={0.3}>
-            <AssetBadge type="business" size="md" className="h-full" />
-          </Reveal>
-          <Reveal delay={0.35}>
-            <AssetBadge type={STANDARD_ASSET_TYPES[5]} size="md" />
-          </Reveal>
-        </div>
+        <CoverageAssetsGrid />
       </Section>
 
       {/* 4. Trust / Credibility — two-column asymmetric */}

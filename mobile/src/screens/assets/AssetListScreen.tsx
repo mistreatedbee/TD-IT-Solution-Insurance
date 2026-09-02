@@ -9,6 +9,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -16,6 +17,8 @@ import {
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { gateWriteAction } from '../../auth/gateWriteAction';
 import { usePlanUsage } from '../../api/hooks/usePlanUsage';
+import { ASSET_CATEGORY_OPTIONS } from '../../onboarding/assetFormConfig';
+import { AssetTypeImage } from '../home/assetVisuals';
 import { PlanUsageSummary } from '../policy/PlanUsageSummary';
 import { useAssetVault, type VaultFilter } from '../../tracking/useAssetVault';
 import { Alert, Button, Screen } from '../../theme/primitives';
@@ -185,9 +188,24 @@ export function AssetListScreen() {
               : 'Try another filter or register a new asset.'}
           </Text>
           {filter === 'all' ? (
-            <Pressable onPress={handleRegisterPress} style={styles.emptyCta}>
-              <Text style={styles.emptyCtaText}>Register your first asset</Text>
-            </Pressable>
+            <>
+              <Text style={styles.emptyPickerLabel}>Protect vehicles, devices & equipment</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.emptyShowcaseRow}
+              >
+                {ASSET_CATEGORY_OPTIONS.map((opt) => (
+                  <View key={opt.api} style={styles.emptyShowcaseTile}>
+                    <AssetTypeImage assetType={opt.api} size="sm" />
+                    <Text style={styles.emptyShowcaseLabel}>{opt.label}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+              <Pressable onPress={handleRegisterPress} style={styles.emptyCta}>
+                <Text style={styles.emptyCtaText}>Register your first asset</Text>
+              </Pressable>
+            </>
           ) : null}
         </View>
       ) : (
@@ -257,6 +275,28 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: typography.sizes.sm * 1.45,
     marginBottom: spacing.lg,
+  },
+  emptyPickerLabel: {
+    fontSize: typography.sizes.sm,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  emptyShowcaseRow: {
+    gap: spacing.sm,
+    paddingBottom: spacing.lg,
+  },
+  emptyShowcaseTile: {
+    width: 88,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  emptyShowcaseLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 12,
   },
   emptyCta: {
     alignSelf: 'flex-start',
