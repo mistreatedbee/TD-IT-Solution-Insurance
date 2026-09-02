@@ -21,6 +21,24 @@ export interface PlanSubscriptionSummary {
   assetUsageLabel: string;
 }
 
+/** Slim projection for policy list/detail when `include=planSummary`. */
+export interface PlanSummary {
+  planName: string | null;
+  maxAssets: number | null;
+  activeAssetCount: number;
+  assetUsageLabel: string;
+  supportLevel: string;
+  monthlyAmountCents: number | null;
+}
+
+/** Admin list enrichment for upgrade-opportunity visibility. */
+export interface AdminPolicyAssetUsage {
+  planName: string | null;
+  maxAssets: number | null;
+  activeAssetCount: number;
+  assetUsageLabel: string;
+}
+
 function buildUsageLabel(activeCount: number, maxAssets: number | null): string {
   if (maxAssets == null) {
     return `${activeCount} assets (custom limit)`;
@@ -58,4 +76,62 @@ export async function buildPlanSubscriptionSummary(
     activeAssetCount,
     assetUsageLabel: buildUsageLabel(activeAssetCount, maxAssets),
   };
+}
+
+export function toPlanSummary(summary: PlanSubscriptionSummary): PlanSummary {
+  return {
+    planName: summary.planName,
+    maxAssets: summary.maxAssets,
+    activeAssetCount: summary.activeAssetCount,
+    assetUsageLabel: summary.assetUsageLabel,
+    supportLevel: summary.supportLevel,
+    monthlyAmountCents: summary.monthlyAmountCents,
+  };
+}
+
+export async function buildPlanSummary(
+  ctx: Pick<AppContext, 'assets' | 'planCatalog'>,
+  policy: PolicyDocument,
+): Promise<PlanSummary> {
+  const summary = await buildPlanSubscriptionSummary(ctx, policy);
+  return toPlanSummary(summary!);
+}
+
+export async function buildAdminPolicyAssetUsageBatch(
+  ctx: Pick<AppContext, 'assets' | 'planCatalog'>,
+  policies: PolicyDocument[],
+): Promise<Map<string, AdminPolicyAssetUsage>> {
+  const result = new Map<string, AdminPolicyAssetUsage>();
+  if (policies.length === 0) return result;
+
+  const uniqueAccountIds = [...new Set(policies.map((p) => p.accountId))];
+  const activeCounts = new Map<string, number>();
+  await Promise.all(
+    uniqueAccountIds.map(async (accountId) => {
+      activeCounts.set(accountId, await ctx.assets.countActiveByAccount(accountId));
+    }),
+  );
+
+  const planIds = [...new Set(policies.map((p) => p.planCatalogId).filter(Boolean))] as string[];
+  const plans = new Map<string, PlanCatalogDocument>();
+  await Promise.all(
+    planIds.map(async (planId) => {
+      const plan = await ctx.planCatalog.findById(planId);
+      if (plan) plans.set(planId, plan);
+    }),
+  );
+
+  for (const policy of policies) {
+    const activeAssetCount = activeCounts.get(policy.accountId) ?? 0;
+    const plan = policy.planCatalogId ? plans.get(policy.planCatalogId) ?? null : null;
+    const maxAssets = plan?.maxAssets ?? null;
+    result.set(policy.id, {
+      planName: plan?.name ?? policy.planTier,
+      maxAssets,
+      activeAssetCount,
+      assetUsageLabel: buildUsageLabel(activeAssetCount, maxAssets),
+    });
+  }
+
+  return result;
 }

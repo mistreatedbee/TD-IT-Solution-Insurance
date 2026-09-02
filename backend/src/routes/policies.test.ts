@@ -17,7 +17,12 @@ import type { AccountStatus } from '../repositories/accounts.js';
 import type { PolicyDocument } from '../repositories/policies.js';
 import type { Env } from '../config/env.js';
 import type { IdempotencyRepo } from '../repositories/idempotency.js';
-import { essentialPlanFixture, businessPlanFixture } from '../lib/plan-test-fixtures.js';
+import {
+  essentialPlanFixture,
+  plusPlanFixture,
+  proPlanFixture,
+  businessPlanFixture,
+} from '../lib/plan-test-fixtures.js';
 
 function fakeEnv(): Env {
   return {
@@ -121,10 +126,16 @@ function samplePolicy(accountId: string, id = '507f1f77bcf86cd799439011'): Polic
   };
 }
 
+const ESSENTIAL_PLAN_ID = '507f1f77bcf86cd799439088';
+const PLUS_PLAN_ID = '507f1f77bcf86cd799439089';
+const PRO_PLAN_ID = '507f1f77bcf86cd799439086';
+const BUSINESS_PLAN_ID = '507f1f77bcf86cd799439087';
+
 function createHarness(opts: {
   accountId?: string;
   accountState?: AccountStatus['accountState'];
   policies?: PolicyDocument[];
+  activeAssetCount?: number;
 }) {
   const env = fakeEnv();
   const kv = new InMemoryKeyValueStore();
@@ -202,10 +213,34 @@ function createHarness(opts: {
     idempotency: createInMemoryIdempotencyRepo(),
     planCatalog: {
       async findActiveById(id: string) {
-        if (id === '507f1f77bcf86cd799439088') {
+        if (id === ESSENTIAL_PLAN_ID) {
           return essentialPlanFixture(id);
         }
-        if (id === '507f1f77bcf86cd799439087') {
+        if (id === PLUS_PLAN_ID) {
+          return plusPlanFixture(id);
+        }
+        if (id === PRO_PLAN_ID) {
+          return proPlanFixture(id);
+        }
+        if (id === BUSINESS_PLAN_ID) {
+          return businessPlanFixture(id);
+        }
+        if (id === '507f1f77bcf86cd799439090') {
+          return essentialPlanFixture(id, { maxAssets: 5 });
+        }
+        return null;
+      },
+      async findById(id: string) {
+        if (id === ESSENTIAL_PLAN_ID) {
+          return essentialPlanFixture(id);
+        }
+        if (id === PLUS_PLAN_ID) {
+          return plusPlanFixture(id);
+        }
+        if (id === PRO_PLAN_ID) {
+          return proPlanFixture(id);
+        }
+        if (id === BUSINESS_PLAN_ID) {
           return businessPlanFixture(id);
         }
         if (id === '507f1f77bcf86cd799439090') {
@@ -215,8 +250,9 @@ function createHarness(opts: {
       },
     },
     assets: {
+      activeCount: opts.activeAssetCount ?? 0,
       async countActiveByAccount() {
-        return 0;
+        return this.activeCount;
       },
     },
     customerNotifications: {
@@ -235,7 +271,7 @@ function createHarness(opts: {
   app.use(createPoliciesRouter(ctx));
   app.use(errorHandler);
 
-  return { app, accountId, sessionId, env, statusHistory };
+  return { app, accountId, sessionId, env, statusHistory, ctx };
 }
 
 async function listen(app: Express): Promise<{ server: Server; baseUrl: string }> {
@@ -446,6 +482,42 @@ describe('GET /policies', () => {
     expect(body.data).toHaveLength(1);
     expect(body.data[0]?.id).toBe(ownPolicy.id);
   });
+
+  it('includes planSummary when include=planSummary', async () => {
+    const accountId = randomUUID();
+    const policy = samplePolicy(accountId);
+    policy.planCatalogId = '507f1f77bcf86cd799439088';
+    const { app, sessionId, env, ctx } = createHarness({ accountId, policies: [policy] });
+    (ctx.assets as { activeCount: number }).activeCount = 3;
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/policies?include=planSummary`, {
+      headers: { authorization: `Bearer ${customerToken(env, accountId, sessionId)}` },
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: Array<{
+        planSummary: {
+          planName: string;
+          maxAssets: number;
+          activeAssetCount: number;
+          assetUsageLabel: string;
+          supportLevel: string;
+          monthlyAmountCents: number;
+        };
+      }>;
+    };
+    expect(body.data[0]?.planSummary).toMatchObject({
+      planName: 'Essential',
+      maxAssets: 5,
+      activeAssetCount: 3,
+      assetUsageLabel: '3 / 5 assets',
+      monthlyAmountCents: 19_900,
+    });
+    expect(body.data[0]?.planSummary.supportLevel).toBeTruthy();
+  });
 });
 
 describe('GET /policies/:policyId', () => {
@@ -486,6 +558,33 @@ describe('GET /policies/:policyId', () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { id: string };
     expect(body.id).toBe(policy.id);
+    expect(body).not.toHaveProperty('planSummary');
+  });
+
+  it('includes planSummary on detail when include=planSummary', async () => {
+    const accountId = randomUUID();
+    const policy = samplePolicy(accountId);
+    policy.planCatalogId = '507f1f77bcf86cd799439088';
+    const { app, sessionId, env, ctx } = createHarness({ accountId, policies: [policy] });
+    (ctx.assets as { activeCount: number }).activeCount = 2;
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/policies/${policy.id}?include=planSummary`, {
+      headers: { authorization: `Bearer ${customerToken(env, accountId, sessionId)}` },
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      id: string;
+      planSummary: { planName: string; activeAssetCount: number; assetUsageLabel: string };
+    };
+    expect(body.id).toBe(policy.id);
+    expect(body.planSummary).toMatchObject({
+      planName: 'Essential',
+      activeAssetCount: 2,
+      assetUsageLabel: '2 / 5 assets',
+    });
   });
 });
 
@@ -499,11 +598,16 @@ describe('PATCH /policies/:policyId/plan', () => {
     }
   });
 
-  it('changes plan when downgrade is allowed', async () => {
+  it('upgrades Essential to Plus when asset count is within the new limit', async () => {
     const accountId = randomUUID();
     const policy = samplePolicy(accountId);
-    policy.planCatalogId = '507f1f77bcf86cd799439088';
-    const { app, sessionId, env } = createHarness({ accountId, policies: [policy] });
+    policy.planTier = 'essential';
+    policy.planCatalogId = ESSENTIAL_PLAN_ID;
+    const { app, sessionId, env } = createHarness({
+      accountId,
+      policies: [policy],
+      activeAssetCount: 4,
+    });
     const listened = await listen(app);
     server = listened.server;
 
@@ -513,12 +617,40 @@ describe('PATCH /policies/:policyId/plan', () => {
         authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ planCatalogId: '507f1f77bcf86cd799439088' }),
+      body: JSON.stringify({ planCatalogId: PLUS_PLAN_ID }),
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { planTier: string };
-    expect(body.planTier).toBe('essential');
+    const body = (await response.json()) as { planTier: string; planCatalogId: string };
+    expect(body.planTier).toBe('plus');
+    expect(body.planCatalogId).toBe(PLUS_PLAN_ID);
+  });
+
+  it('blocks Pro to Plus downgrade when 18 assets exceed Plus limit', async () => {
+    const accountId = randomUUID();
+    const policy = samplePolicy(accountId);
+    policy.planTier = 'pro';
+    policy.planCatalogId = PRO_PLAN_ID;
+    const { app, sessionId, env } = createHarness({
+      accountId,
+      policies: [policy],
+      activeAssetCount: 18,
+    });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/policies/${policy.id}/plan`, {
+      method: 'PATCH',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ planCatalogId: PLUS_PLAN_ID }),
+    });
+
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('PLAN_DOWNGRADE_NOT_ALLOWED');
   });
 
   it('returns PLAN_REQUIRES_QUOTE for business/custom plan', async () => {
@@ -534,7 +666,7 @@ describe('PATCH /policies/:policyId/plan', () => {
         authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ planCatalogId: '507f1f77bcf86cd799439087' }),
+      body: JSON.stringify({ planCatalogId: BUSINESS_PLAN_ID }),
     });
 
     expect(response.status).toBe(422);

@@ -13,6 +13,7 @@ import {
   DEFAULT_AUTHENTICATED_LIMIT,
 } from '../lib/policy.js';
 import { serializeAdminPolicy, serializeAdminPolicySummary } from '../lib/policy-asset-serializers.js';
+import { buildAdminPolicyAssetUsageBatch } from '../lib/plan-subscription-summary.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
@@ -80,8 +81,12 @@ export function createAdminPoliciesRouter(ctx: AppContext): Router {
           userAgent: req.header('user-agent') ?? null,
         });
 
+        const assetUsageByPolicyId = await buildAdminPolicyAssetUsageBatch(ctx, page.data);
+
         res.status(200).json({
-          data: page.data.map(serializeAdminPolicySummary),
+          data: page.data.map((policy) =>
+            serializeAdminPolicySummary(policy, assetUsageByPolicyId.get(policy.id)),
+          ),
           pagination: { nextCursor: page.nextCursor, hasMore: page.hasMore },
         });
       } catch (err) {

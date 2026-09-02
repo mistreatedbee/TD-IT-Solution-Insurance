@@ -9,6 +9,7 @@ import { apiError } from '../lib/errors.js';
 import { assertPlanChangeAllowed } from '../lib/plan-change.js';
 import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js';
 import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
+import { buildPlanSummary } from '../lib/plan-subscription-summary.js';
 import { serializePolicy } from '../lib/policy-asset-serializers.js';
 import { notifyInBackground } from '../lib/customer-notification-service.js';
 import { validateBody } from '../lib/validation.js';
@@ -27,6 +28,22 @@ const updatePolicyPlanSchema = z.object({
 const policyIdParamsSchema = z.object({
   policyId: z.string().regex(/^[0-9a-f]{24}$/i),
 });
+
+function queryIncludesPlanSummary(query: Record<string, unknown>): boolean {
+  const raw = query.include;
+  if (typeof raw !== 'string' || raw.trim() === '') return false;
+  return raw.split(',').map((part) => part.trim()).includes('planSummary');
+}
+
+async function serializePolicyResponse(
+  ctx: AppContext,
+  policy: Parameters<typeof serializePolicy>[0],
+  includePlanSummary: boolean,
+) {
+  const body = serializePolicy(policy);
+  if (!includePlanSummary) return body;
+  return { ...body, planSummary: await buildPlanSummary(ctx, policy) };
+}
 
 export function createPoliciesRouter(ctx: AppContext): Router {
   const router = Router();
@@ -106,14 +123,19 @@ export function createPoliciesRouter(ctx: AppContext): Router {
       try {
         const accountId = req.auth!.accountId;
         const { limit, cursor } = parseMongoPaginationQuery(req.query as Record<string, unknown>);
+        const includePlanSummary = queryIncludesPlanSummary(req.query as Record<string, unknown>);
         const rows = await ctx.policies.listByAccount(accountId, limit + 1, cursor);
         const page = buildPage(
           rows.map((row) => ({ ...row, id: row.id })),
           limit,
         );
 
+        const data = includePlanSummary
+          ? await Promise.all(page.data.map((policy) => serializePolicyResponse(ctx, policy, true)))
+          : page.data.map(serializePolicy);
+
         res.status(200).json({
-          data: page.data.map(serializePolicy),
+          data,
           pagination: { nextCursor: page.nextCursor, hasMore: page.hasMore },
         });
       } catch (err) {
@@ -144,7 +166,8 @@ export function createPoliciesRouter(ctx: AppContext): Router {
           return;
         }
 
-        res.status(200).json(serializePolicy(policy));
+        const includePlanSummary = queryIncludesPlanSummary(req.query as Record<string, unknown>);
+        res.status(200).json(await serializePolicyResponse(ctx, policy, includePlanSummary));
       } catch (err) {
         next(err);
       }

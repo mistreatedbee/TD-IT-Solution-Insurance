@@ -19,6 +19,7 @@ import type {
 } from '../repositories/admin-access-log.js';
 import type { PolicyDocument } from '../repositories/policies.js';
 import type { Env } from '../config/env.js';
+import { essentialPlanFixture } from '../lib/plan-test-fixtures.js';
 
 function fakeEnv(): Env {
   return {
@@ -110,6 +111,8 @@ function createHarness(opts: { policies?: PolicyDocument[] }) {
     createdAt: new Date(),
   };
 
+  const assetCounts = new Map<string, number>();
+
   const ctx = {
     env,
     kv,
@@ -145,6 +148,19 @@ function createHarness(opts: { policies?: PolicyDocument[] }) {
         detailCalls.push(input);
       },
     },
+    planCatalog: {
+      async findById(id: string) {
+        if (id === '507f1f77bcf86cd799439099') {
+          return essentialPlanFixture(id, { maxAssets: 5, name: 'Essential' });
+        }
+        return null;
+      },
+    },
+    assets: {
+      async countActiveByAccount(accountId: string) {
+        return assetCounts.get(accountId) ?? 0;
+      },
+    },
   } as unknown as AppContext;
 
   const app: Express = express();
@@ -161,6 +177,7 @@ function createHarness(opts: { policies?: PolicyDocument[] }) {
     sessionId,
     bulkCalls,
     detailCalls,
+    assetCounts,
     token: adminToken(env, adminId, sessionId),
     async start() {
       await new Promise<void>((resolve) => {
@@ -282,7 +299,9 @@ describe('routes/admin-policies', () => {
 
   it('list returns summary projection without coverageLimits or billing object (SR-004-admin-6)', async () => {
     const subjectId = randomUUID();
-    harness = createHarness({ policies: [samplePolicy(subjectId)] });
+    const policy = samplePolicy(subjectId);
+    policy.planCatalogId = '507f1f77bcf86cd799439099';
+    harness = createHarness({ policies: [policy] });
     await harness.start();
 
     const res = await fetch(harness.url('/admin/policies'), {
@@ -293,9 +312,35 @@ describe('routes/admin-policies', () => {
     expect(body.data[0]).toMatchObject({
       planTier: 'essential',
       billingStatus: 'not_configured',
+      planName: 'Essential',
+      maxAssets: 5,
+      activeAssetCount: 0,
+      assetUsageLabel: '0 / 5 assets',
     });
     expect(body.data[0]).not.toHaveProperty('coverageLimits');
     expect(body.data[0]).not.toHaveProperty('billing');
+  });
+
+  it('list includes asset usage for upgrade-opportunity visibility', async () => {
+    const subjectId = randomUUID();
+    const policy = samplePolicy(subjectId);
+    policy.planCatalogId = '507f1f77bcf86cd799439099';
+    harness = createHarness({ policies: [policy] });
+    harness.assetCounts.set(subjectId, 4);
+    await harness.start();
+
+    const res = await fetch(harness.url('/admin/policies'), {
+      headers: { authorization: `Bearer ${harness.token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: Array<{ activeAssetCount: number; assetUsageLabel: string; maxAssets: number }>;
+    };
+    expect(body.data[0]).toMatchObject({
+      activeAssetCount: 4,
+      maxAssets: 5,
+      assetUsageLabel: '4 / 5 assets',
+    });
   });
 
   it('rejects limit above ADMIN_REGISTRY_LIST_MAX_PAGE_LIMIT (50)', async () => {

@@ -38,7 +38,16 @@
 
 ## 3. Entitlements per tier
 
-Entitlements are defined in `PlanEntitlements` (`plan-catalog-defaults.ts`). **Most entitlements are not yet enforced in code** — only `maxAssets` is gated today via `assertAssetRegistrationAllowed()`. Marketing and agent copy must still describe honestly what is built vs. roadmap.
+Entitlements are defined in `PlanEntitlements` (`plan-catalog-defaults.ts`). **Enforcement in code (2026-09-02):**
+
+| Entitlement / limit | Enforcement |
+|---------------------|-------------|
+| `maxAssets` | `assertAssetRegistrationAllowed()` on `POST /v1/assets` — returns `ASSET_LIMIT_REACHED` when at cap |
+| `locationHistory` | `assertPlanEntitlement()` on `GET /v1/assets/:assetId/location-history` — returns `PLAN_FEATURE_NOT_INCLUDED` on Essential |
+| `gpsAlerts` | `GET /v1/alerts` filters out `tracking` / `device` category alerts when plan lacks `gpsAlerts` (Essential sees non-GPS alerts only) |
+| All other entitlements | **Not yet gated** — marketing copy must still distinguish built vs. roadmap |
+
+Customer policy responses support `?include=planSummary` on `GET /v1/policies` and `GET /v1/policies/:policyId` for plan name, asset usage, support level, and catalog price without a second fetch. Admin `GET /v1/admin/policies` includes `planName`, `maxAssets`, `activeAssetCount`, and `assetUsageLabel` per row for upgrade-opportunity visibility.
 
 ### Essential — Protection
 - Basic asset management, customer mobile app
@@ -152,7 +161,7 @@ All AI agents (`.claude/agents/`, Cursor rules, Forge work orders) **must:**
 ## 9. Open items (unchanged by v2)
 
 - Payment gateway selection and live charging (M2)
-- Entitlement gating beyond `maxAssets` (monitoring, dashboards, multi-user)
+- Entitlement gating beyond `maxAssets`, `locationHistory`, and `gpsAlerts` (monitoring dashboards, multi-user, incident workflows)
 - D-03 coverage limits per asset type (insurance, not subscription)
 - D-08 claims eligibility
 - GPS hardware vendor and connectivity pricing

@@ -1,6 +1,7 @@
 /**
  * Maps MongoDB policy/asset documents to api-design.md §6 customer-facing shapes.
  */
+import type { AdminPolicyAssetUsage } from './plan-subscription-summary.js';
 import type { AssetDocument, AssetLastLocation } from '../repositories/assets.js';
 import type { PolicyDocument } from '../repositories/policies.js';
 
@@ -72,16 +73,24 @@ export function serializeAdminPolicy(doc: PolicyDocument) {
 }
 
 /** Admin list projection — omits coverageLimits and billing sub-object (SR-004-admin-6). */
-export function serializeAdminPolicySummary(doc: PolicyDocument) {
+export function serializeAdminPolicySummary(
+  doc: PolicyDocument,
+  assetUsage?: AdminPolicyAssetUsage,
+) {
   return {
     id: doc.id,
     accountId: doc.accountId,
     planTier: doc.planTier,
+    planCatalogId: doc.planCatalogId,
     status: doc.status,
     legalHold: doc.legalHold,
     billingStatus: doc.billing.billingStatus,
     effectiveDate: doc.effectiveDate.toISOString(),
     createdAt: doc.createdAt.toISOString(),
+    planName: assetUsage?.planName ?? null,
+    maxAssets: assetUsage?.maxAssets ?? null,
+    activeAssetCount: assetUsage?.activeAssetCount ?? 0,
+    assetUsageLabel: assetUsage?.assetUsageLabel ?? '0 assets',
   };
 }
 
