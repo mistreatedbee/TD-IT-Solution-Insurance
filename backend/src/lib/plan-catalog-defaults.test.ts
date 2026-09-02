@@ -1,8 +1,7 @@
 /**
  * Pricing model v2 — canonical defaults and legacy slug normalization.
  *
- * QA run 2026-09-02: 253 backend tests (see plan-enforcement, plan-change,
- * plan-catalog repo migration, plans routes). Mobile 129 passed. Frontend: typecheck only.
+ * QA run 2026-09-02: backend 270 passed, mobile 130 passed, web typecheck clean.
  */
 import { describe, it, expect } from 'vitest';
 import {
