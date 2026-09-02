@@ -25,14 +25,6 @@ export const MARKETING_ASSET_TYPES: { type: AssetType; label: string }[] = [
   { type: 'other', label: 'Other electronics' },
 ];
 
-export function formatPerItemIndicative(plan: PlanCatalogItem): string | null {
-  if (plan.isCustomPricing || plan.monthlyAmountCents == null || plan.maxAssets == null || plan.maxAssets <= 0) {
-    return null;
-  }
-  const perItem = Math.round(plan.monthlyAmountCents / 100 / plan.maxAssets);
-  return `~R${perItem}/item`;
-}
-
 export function formatPlanCellPrice(plan: PlanCatalogItem): { primary: string; secondary: string | null } {
   if (plan.isCustomPricing) {
     return { primary: 'Custom quote', secondary: 'Contact us for pricing' };
@@ -40,11 +32,48 @@ export function formatPlanCellPrice(plan: PlanCatalogItem): { primary: string; s
   if (plan.monthlyAmountCents == null) {
     return { primary: '—', secondary: null };
   }
-  const perItem = formatPerItemIndicative(plan);
-  const limit =
-    plan.maxAssets == null ? null : `Up to ${plan.maxAssets} registered items (any mix)`;
   return {
     primary: formatPlanPrice(plan),
-    secondary: perItem && limit ? `${perItem} · ${limit}` : limit,
+    secondary: null,
   };
+}
+
+/** Marketing card — asset limit as the hero metric under price. */
+export function formatPlanAssetLimit(plan: PlanCatalogItem): string {
+  if (plan.isCustomPricing || plan.maxAssets == null) {
+    return '25+ assets · custom limits';
+  }
+  return `Up to ${plan.maxAssets} assets`;
+}
+
+export function formatPlanPriceDisplay(plan: PlanCatalogItem): {
+  amount: string;
+  period: string;
+  isCustom: boolean;
+} {
+  if (plan.isCustomPricing || plan.monthlyAmountCents == null) {
+    return { amount: 'Custom', period: 'quote', isCustom: true };
+  }
+  const zar = plan.monthlyAmountCents / 100;
+  return {
+    amount: `R${zar.toFixed(0)}`,
+    period: '/month',
+    isCustom: false,
+  };
+}
+
+/** Strip redundant bullets already shown in the price block or inheritance pill. */
+export function getMarketingPlanFeatures(plan: PlanCatalogItem): {
+  inheritsFrom: string | null;
+  highlights: string[];
+} {
+  const inheritsMatch = plan.features.find((f) => f.startsWith('Everything in '));
+  const inheritsFrom = inheritsMatch?.replace(/^Everything in /, '') ?? null;
+  const assetLimitPattern = /^Up to \d+ registered assets$/;
+
+  const highlights = plan.features.filter(
+    (f) => !f.startsWith('Everything in ') && !assetLimitPattern.test(f),
+  );
+
+  return { inheritsFrom, highlights };
 }

@@ -2,10 +2,10 @@ import {
   BriefcaseIcon,
   CarIcon,
   CheckIcon,
+  ChevronDownIcon,
   CpuIcon,
   CrownIcon,
   LaptopIcon,
-  LayersIcon,
   MonitorIcon,
   ShieldCheckIcon,
   SmartphoneIcon,
@@ -14,9 +14,9 @@ import {
   TvIcon,
   type LucideIcon,
 } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { type AssetType } from '../components/AssetBadge';
-import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { InlineAlert } from '../dashboard/components/ui';
 import { Reveal } from '../components/Reveal';
@@ -24,26 +24,26 @@ import { Section } from '../components/Section';
 import { SectionHeading } from '../components/SectionHeading';
 import { type PlanCatalogItem } from '../customer/api/plans';
 import { usePublicPlans } from '../hooks/usePublicPlans';
+import { COMPANY_CONTACT } from '../lib/companyContact';
 import {
-  formatPlanCellPrice,
+  formatPlanAssetLimit,
+  formatPlanPriceDisplay,
+  getMarketingPlanFeatures,
   MARKETING_ASSET_TYPES,
   MARKETING_COVERAGE_BY_ASSET,
 } from '../lib/marketing-asset-pricing';
 
 const PLAN_ICONS: Record<string, LucideIcon> = {
   essential: ShieldCheckIcon,
-  plus: LayersIcon,
-  pro: SparklesIcon,
+  plus: SparklesIcon,
+  pro: CrownIcon,
   business: BriefcaseIcon,
   starter: ShieldCheckIcon,
-  standard: LayersIcon,
+  standard: SparklesIcon,
   enterprise: BriefcaseIcon,
 };
 
-/** Mirrors AssetBadge's icon-per-type mapping — used here at avatar size for a
- * compact table row, since AssetBadge itself renders as a full tile/card with
- * its own baked-in label and isn't meant for inline row use. */
-const ASSET_TYPE_ICONS: Record<AssetType, LucideIcon> = {
+const ASSET_CHIP_ICONS: Record<AssetType, LucideIcon> = {
   vehicle: CarIcon,
   laptop: LaptopIcon,
   phone: SmartphoneIcon,
@@ -54,166 +54,169 @@ const ASSET_TYPE_ICONS: Record<AssetType, LucideIcon> = {
   other: CpuIcon,
 };
 
-function PlanTierPanel({ plan }: { plan: PlanCatalogItem }) {
+const VISIBLE_FEATURE_COUNT = 5;
+
+function AssetTypeChips() {
+  return (
+    <div className="mx-auto mt-6 flex max-w-3xl flex-wrap items-center justify-center gap-2">
+      {MARKETING_ASSET_TYPES.map(({ type, label }) => {
+        const Icon = ASSET_CHIP_ICONS[type as AssetType];
+        return (
+          <span
+            key={type}
+            className="inline-flex items-center gap-1.5 rounded-full border border-primary/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-text-secondary shadow-sm backdrop-blur-sm"
+          >
+            <Icon className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlanTierCard({ plan }: { plan: PlanCatalogItem }) {
   const Icon = PLAN_ICONS[plan.slug] ?? ShieldCheckIcon;
-  const price = formatPlanCellPrice(plan);
-  const isMostPopular = plan.isMostPopular === true;
+  const isPopular = plan.isMostPopular === true;
+  const price = formatPlanPriceDisplay(plan);
+  const assetLimit = formatPlanAssetLimit(plan);
+  const { inheritsFrom, highlights } = getMarketingPlanFeatures(plan);
+  const visibleFeatures = highlights.slice(0, VISIBLE_FEATURE_COUNT);
+  const moreCount = highlights.length - visibleFeatures.length;
+
+  const ctaHref = plan.isCustomPricing
+    ? `mailto:${COMPANY_CONTACT.email}?subject=Business%20plan%20quote`
+    : '/get-started';
+  const ctaLabel = plan.isCustomPricing ? 'Request a quote' : 'Get started';
 
   return (
     <article
-      className={`flex h-full flex-col overflow-hidden rounded-2xl border shadow-elevated ${
-        isMostPopular
-          ? 'border-accent-gold-deep ring-2 ring-accent-gold-deep/40 scale-[1.02] lg:scale-105'
-          : 'border-primary/15'
+      className={`relative flex h-full flex-col rounded-2xl bg-white transition-shadow duration-300 ${
+        isPopular
+          ? 'z-10 border-2 border-accent-gold-deep shadow-glow-gold lg:-mt-3 lg:mb-3'
+          : 'border border-primary/10 shadow-resting hover:shadow-hover'
       }`}
     >
-      <div className={`px-5 py-6 text-text-inverse ${isMostPopular ? 'bg-primary' : 'bg-primary'}`}>
-        <div className="flex items-start gap-4">
+      {isPopular ? (
+        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-accent-gold-deep px-4 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-md">
+          Most popular
+        </div>
+      ) : null}
+
+      <div className={`px-6 pt-8 ${isPopular ? 'pb-2' : 'pb-4'}`}>
+        <div className="flex items-center gap-3">
           <span
-            className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-md ${
-              isMostPopular ? 'bg-accent-gold-deep text-white' : 'bg-accent-gold-deep text-white'
+            className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+              isPopular ? 'bg-accent-gold-deep text-white' : 'bg-primary/8 text-primary'
             }`}
             aria-hidden="true"
           >
-            <Icon className="h-6 w-6" />
+            <Icon className="h-5 w-5" />
           </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-heading text-xl font-semibold tracking-tight">{plan.name}</h3>
-              {isMostPopular ? (
-                <Badge tone="gold" className="!bg-accent-gold-deep !text-white">
-                  <CrownIcon className="mr-1 inline h-3 w-3" aria-hidden="true" />
-                  Most popular
-                </Badge>
-              ) : null}
-            </div>
-            <p className="mt-1 text-sm leading-6 text-text-inverse-muted">
-              {plan.positioning ?? plan.tagline}
-            </p>
+          <div>
+            <h3 className="font-heading text-lg font-semibold tracking-tight text-primary">{plan.name}</h3>
+            <p className="text-sm text-text-secondary">{plan.positioning ?? plan.tagline}</p>
           </div>
+        </div>
+
+        <div className="mt-6">
+          {price.isCustom ? (
+            <p className="font-heading text-3xl font-bold tracking-tight text-primary">Custom quote</p>
+          ) : (
+            <p className="flex items-baseline gap-1">
+              <span className="font-heading text-4xl font-bold tracking-tight text-primary">{price.amount}</span>
+              <span className="text-sm font-medium text-text-secondary">{price.period}</span>
+            </p>
+          )}
+          <p className="mt-2 inline-flex items-center rounded-lg bg-background-alt px-3 py-1.5 text-sm font-semibold text-primary">
+            {assetLimit}
+          </p>
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col bg-card px-5 py-6">
-        <div
-          className={`rounded-xl border px-4 py-4 ${
-            isMostPopular ? 'border-accent-gold-deep/50 bg-accent-gold/10' : 'border-accent-gold-deep/30 bg-white'
-          }`}
-        >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
-            Monthly subscription
+      <div className="flex flex-1 flex-col border-t border-primary/8 px-6 py-5">
+        {inheritsFrom ? (
+          <p className="mb-4 rounded-lg bg-accent-gold-tint/40 px-3 py-2 text-xs font-medium text-primary">
+            Everything in {inheritsFrom}, plus:
           </p>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-primary">{price.primary}</p>
-          {price.secondary ? (
-            <p className="mt-1 text-xs leading-5 text-text-secondary">{price.secondary}</p>
-          ) : null}
-        </div>
+        ) : null}
 
-        <ul className="mt-6 flex flex-1 flex-col gap-3">
-          {plan.features.map((feature) => (
-            <li key={feature} className="flex items-start gap-2.5 text-sm leading-6 text-text-secondary">
+        <ul className="flex flex-1 flex-col gap-2.5">
+          {visibleFeatures.map((feature) => (
+            <li key={feature} className="flex items-start gap-2 text-sm leading-snug text-text-secondary">
               <CheckIcon
                 className="mt-0.5 h-4 w-4 shrink-0 text-accent-gold-deep"
                 strokeWidth={2.5}
                 aria-hidden="true"
               />
-              {feature}
+              <span>{feature}</span>
             </li>
           ))}
+          {moreCount > 0 ? (
+            <li className="pl-6 text-xs text-text-secondary">+ {moreCount} more included</li>
+          ) : null}
         </ul>
 
-        <div className="mt-6 border-t border-primary/10 pt-4">
-          <Link to="/get-started">
-            <Button variant={isMostPopular ? 'primary' : 'primary'} fullWidth>
-              {plan.isCustomPricing ? 'Request a quote' : 'Get started'}
-            </Button>
-          </Link>
+        <div className="mt-6">
+          {plan.isCustomPricing ? (
+            <a href={ctaHref}>
+              <Button variant={isPopular ? 'primary' : 'secondary'} fullWidth>
+                {ctaLabel}
+              </Button>
+            </a>
+          ) : (
+            <Link to={ctaHref}>
+              <Button variant={isPopular ? 'primary' : 'secondary'} fullWidth>
+                {ctaLabel}
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
     </article>
   );
 }
 
-function AssetPricingTable({ plans }: { plans: PlanCatalogItem[] }) {
-  return (
-    <div className="mt-12 overflow-hidden rounded-2xl border border-primary/15 bg-white shadow-sm">
-      <div className="border-b border-primary/10 bg-background-alt px-4 py-4 sm:px-6">
-        <h3 className="font-heading text-lg font-semibold text-primary">Monthly pricing by asset type</h3>
-        <p className="mt-1 text-sm text-text-secondary">
-          All asset categories are available on every plan. Plan fees apply to your account — register
-          any mix of items up to your plan limit. Cover and limits are subject to policy terms,
-          underwriting and claims assessment.
-        </p>
-      </div>
+function CoverageLimitsAccordion() {
+  const [open, setOpen] = useState(false);
 
-      <div className="overflow-x-auto">
-        <table className="min-w-[640px] w-full border-collapse text-left text-sm">
-          <thead>
-            <tr className="border-b border-primary/10 bg-white">
-              <th scope="col" className="px-4 py-3 font-semibold text-text-primary sm:px-6">
-                Asset type
-              </th>
-              <th scope="col" className="hidden px-4 py-3 font-semibold text-text-secondary sm:table-cell sm:px-6">
-                Illustrative cover limit
-              </th>
-              {plans.map((plan) => (
-                <th key={plan.id} scope="col" className="px-4 py-3 font-semibold text-primary sm:px-6">
-                  {plan.name}
-                  {plan.isMostPopular ? (
-                    <span className="ml-1 text-xs font-normal text-accent-gold-deep">★</span>
-                  ) : null}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {MARKETING_ASSET_TYPES.map(({ type, label }, rowIndex) => {
-              const AssetIcon = ASSET_TYPE_ICONS[type as AssetType];
-              return (
-              <tr
-                key={type}
-                className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-background-alt/40'}
-              >
-                <td className="px-4 py-3 sm:px-6">
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-background-alt text-primary"
-                      aria-hidden="true"
-                    >
-                      <AssetIcon className="h-4 w-4" />
-                    </span>
-                    <span className="font-medium text-text-primary">{label}</span>
-                  </div>
-                </td>
-                <td className="hidden px-4 py-3 text-text-secondary sm:table-cell sm:px-6">
+  return (
+    <div className="mx-auto mt-10 max-w-3xl overflow-hidden rounded-2xl border border-primary/10 bg-white shadow-sm">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-background-alt/50"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <div>
+          <p className="font-heading text-base font-semibold text-primary">Illustrative cover limits by asset type</p>
+          <p className="mt-0.5 text-sm text-text-secondary">
+            Same plan price for every category — limits shown are not guarantees.
+          </p>
+        </div>
+        <ChevronDownIcon
+          className={`h-5 w-5 shrink-0 text-text-secondary transition-transform ${open ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+      {open ? (
+        <ul className="divide-y divide-primary/8 border-t border-primary/8 px-5 py-2">
+          {MARKETING_ASSET_TYPES.map(({ type, label }) => {
+            const Icon = ASSET_CHIP_ICONS[type as AssetType];
+            return (
+              <li key={type} className="flex items-center justify-between gap-4 py-3 text-sm">
+                <span className="flex items-center gap-2.5 text-text-primary">
+                  <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
+                  {label}
+                </span>
+                <span className="font-medium text-text-secondary">
                   Up to {MARKETING_COVERAGE_BY_ASSET[type as AssetType]}
-                </td>
-                {plans.map((plan) => {
-                  const cell = formatPlanCellPrice(plan);
-                  return (
-                    <td key={plan.id} className="px-4 py-3 align-top sm:px-6">
-                      <p className="font-semibold text-primary">{cell.primary}</p>
-                      {cell.secondary ? (
-                        <p className="mt-0.5 text-xs leading-5 text-text-secondary">{cell.secondary}</p>
-                      ) : null}
-                    </td>
-                  );
-                })}
-              </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr className="border-t border-primary/10 bg-background-alt/60">
-              <td colSpan={2 + plans.length} className="px-4 py-3 text-xs leading-5 text-text-secondary sm:px-6">
-                Prices shown are monthly plan subscriptions in South African Rand (ZAR). Illustrative
-                cover limits are not guarantees. Payment and full activation are completed during
-                account setup.
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -225,10 +228,12 @@ export function PlansSection({ onJoinWaitlist }: { onJoinWaitlist: () => void })
     <Section background="warm" id="plans" className="scroll-mt-20">
       <SectionHeading
         align="center"
-        eyebrow="Plans"
-        title="Plans and pricing for every asset type"
-        subtitle="Choose a plan based on how many items you want to protect. Essential, Plus, Pro and Business tiers cover vehicles, laptops, phones, tablets, TVs, desktops, business equipment and other electronics."
+        eyebrow="Plans & pricing"
+        title="Simple monthly plans. One price, every asset type."
+        subtitle="Pick a tier by how many items you want to protect — vehicles, laptops, phones and more on the same plan. Insurance cover and claims follow your policy terms, not the subscription tier alone."
       />
+
+      <AssetTypeChips />
 
       {error ? (
         <div className="mx-auto mt-6 max-w-2xl">
@@ -251,23 +256,27 @@ export function PlansSection({ onJoinWaitlist }: { onJoinWaitlist: () => void })
         <p className="mt-10 text-center text-sm text-text-secondary">Loading plans…</p>
       ) : (
         <>
-          <div className="mx-auto mt-10 grid max-w-6xl items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mx-auto mt-10 grid max-w-6xl items-end gap-5 sm:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan, index) => (
-              <Reveal key={plan.id} delay={index * 0.06} className="h-full">
-                <PlanTierPanel plan={plan} />
+              <Reveal key={plan.id} delay={index * 0.05} className="h-full">
+                <PlanTierCard plan={plan} />
               </Reveal>
             ))}
           </div>
 
-          {plans.length > 0 ? (
-            <Reveal delay={0.12}>
-              <AssetPricingTable plans={plans} />
-            </Reveal>
-          ) : null}
+          <Reveal delay={0.1}>
+            <CoverageLimitsAccordion />
+          </Reveal>
+
+          <p className="mx-auto mt-6 max-w-2xl text-center text-xs leading-5 text-text-secondary">
+            Prices are monthly platform subscriptions in ZAR. GPS hardware, connectivity and insurance premiums
+            may be quoted separately. Activation completes during account setup — payment integration is coming
+            soon.
+          </p>
         </>
       )}
 
-      <Reveal delay={0.18}>
+      <Reveal delay={0.15}>
         <div className="mx-auto mt-10 flex max-w-2xl flex-col items-center gap-4 rounded-2xl bg-primary px-6 py-6 text-center text-text-inverse sm:flex-row sm:justify-between sm:text-left">
           <div>
             <p className="text-sm font-semibold">Ready to protect your assets?</p>
