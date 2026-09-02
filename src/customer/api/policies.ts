@@ -1,6 +1,16 @@
 import { apiFetch } from './client';
 import { newIdempotencyKey } from './idempotency';
 
+/** Returned when `GET /policies?include=planSummary` is used. */
+export interface PolicyPlanSummary {
+  planName: string | null;
+  maxAssets: number | null;
+  activeAssetCount: number;
+  assetUsageLabel: string;
+  supportLevel: string;
+  monthlyAmountCents: number | null;
+}
+
 export interface Policy {
   id: string;
   planTier: string;
@@ -11,6 +21,7 @@ export interface Policy {
     currency?: string;
     amount?: number | null;
   };
+  planSummary?: PolicyPlanSummary;
 }
 
 export interface PolicyListPage {
@@ -18,8 +29,13 @@ export interface PolicyListPage {
   pagination: { nextCursor: string | null; hasMore: boolean };
 }
 
-export function listPolicies() {
-  return apiFetch<PolicyListPage>('/policies', { method: 'GET' });
+export interface ListPoliciesOptions {
+  includePlanSummary?: boolean;
+}
+
+export function listPolicies(options?: ListPoliciesOptions) {
+  const qs = options?.includePlanSummary ? '?include=planSummary' : '';
+  return apiFetch<PolicyListPage>(`/policies${qs}`, { method: 'GET' });
 }
 
 export function createPolicy(body: { planCatalogId?: string; planTier?: string }) {

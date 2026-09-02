@@ -10,16 +10,24 @@ import {
   resolvePlanForPolicy,
 } from '../plans';
 
+function formatSummaryPrice(monthlyAmountCents: number | null | undefined): string {
+  if (monthlyAmountCents == null) return 'Custom pricing';
+  return `R${(monthlyAmountCents / 100).toFixed(0)}/month`;
+}
+
 export function usePlanUsage() {
-  const policiesQuery = usePoliciesQuery();
-  const plansQuery = usePlansQuery();
+  const policiesQuery = usePoliciesQuery({ includePlanSummary: true });
+  const policy = policiesQuery.data?.data?.[0] ?? null;
+  const summary = policy?.planSummary;
+
+  const needsCatalogFallback = !summary;
+  const plansQuery = usePlansQuery({ enabled: needsCatalogFallback });
   const assetsQuery = useAssetsQuery();
 
-  const policy = policiesQuery.data?.data?.[0] ?? null;
   const plans = plansQuery.data?.data ?? [];
-  const assetCount = assetsQuery.data?.data?.length ?? 0;
+  const assetCount = summary?.activeAssetCount ?? assetsQuery.data?.data?.length ?? 0;
   const currentPlan = findPlanForPolicy(plans, policy) ?? resolvePlanForPolicy(plans, policy);
-  const maxAssets = currentPlan.maxAssets;
+  const maxAssets = summary?.maxAssets ?? currentPlan.maxAssets;
   const atLimit = isAtAssetLimit(assetCount, maxAssets);
 
   return {
@@ -29,9 +37,13 @@ export function usePlanUsage() {
     currentPlan,
     maxAssets,
     atLimit,
-    planName: currentPlan.name || formatPlanTierName(policy?.planTier),
-    priceLabel: formatPlanPrice(currentPlan as Parameters<typeof formatPlanPrice>[0]),
-    usageLabel: formatAssetUsage(assetCount, maxAssets),
-    isLoading: policiesQuery.isLoading || plansQuery.isLoading || assetsQuery.isLoading,
+    planName: summary?.planName ?? (currentPlan.name || formatPlanTierName(policy?.planTier)),
+    priceLabel: summary ? formatSummaryPrice(summary.monthlyAmountCents) : formatPlanPrice(currentPlan as Parameters<typeof formatPlanPrice>[0]),
+    usageLabel: summary?.assetUsageLabel ?? formatAssetUsage(assetCount, maxAssets),
+    supportLevel: summary?.supportLevel ?? null,
+    isLoading:
+      policiesQuery.isLoading ||
+      (needsCatalogFallback && plansQuery.isLoading) ||
+      (!summary && assetsQuery.isLoading),
   };
 }

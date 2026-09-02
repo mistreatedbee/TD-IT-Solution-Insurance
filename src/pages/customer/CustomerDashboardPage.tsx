@@ -47,15 +47,20 @@ export function CustomerDashboardPage() {
       setLoading(true);
       setError(null);
       try {
-        const [policiesRes, assetsRes, plansRes] = await Promise.all([
-          listPolicies(),
+        const [policiesRes, assetsRes] = await Promise.all([
+          listPolicies({ includePlanSummary: true }),
           listAssets(),
-          listPlans(),
         ]);
         if (!cancelled) {
           setPolicies(policiesRes.data);
           setAssets(assetsRes.data);
-          setPlans(plansRes.data);
+          const summary = policiesRes.data[0]?.planSummary;
+          if (!summary) {
+            const plansRes = await listPlans();
+            if (!cancelled) setPlans(plansRes.data);
+          } else if (!cancelled) {
+            setPlans([]);
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -71,18 +76,30 @@ export function CustomerDashboardPage() {
   }, []);
 
   const activePolicy = policies[0] ?? null;
-  const registeredAssetCount = useMemo(() => countRegisteredAssets(assets), [assets]);
+  const planSummary = activePolicy?.planSummary;
+  const registeredAssetCount = useMemo(
+    () => planSummary?.activeAssetCount ?? countRegisteredAssets(assets),
+    [planSummary, assets],
+  );
   const planCatalogEntry = useMemo(
-    () => (activePolicy ? resolvePlanFromCatalog(plans, activePolicy) : undefined),
-    [activePolicy, plans],
+    () => (activePolicy && !planSummary ? resolvePlanFromCatalog(plans, activePolicy) : undefined),
+    [activePolicy, plans, planSummary],
   );
 
-  const planDisplayName = planCatalogEntry?.name ?? (activePolicy ? formatPlanTierLabel(activePolicy.planTier) : '—');
-  const planPriceLabel = planCatalogEntry
-    ? formatPlanPrice(planCatalogEntry)
-    : activePolicy?.billing.amount != null
-      ? `${activePolicy.billing.currency ?? 'ZAR'} ${activePolicy.billing.amount}/month`
-      : null;
+  const planDisplayName =
+    planSummary?.planName ??
+    planCatalogEntry?.name ??
+    (activePolicy ? formatPlanTierLabel(activePolicy.planTier) : '—');
+  const planPriceLabel = planSummary?.monthlyAmountCents != null
+    ? `R${(planSummary.monthlyAmountCents / 100).toFixed(0)}/month`
+    : planCatalogEntry
+      ? formatPlanPrice(planCatalogEntry)
+      : activePolicy?.billing.amount != null
+        ? `${activePolicy.billing.currency ?? 'ZAR'} ${activePolicy.billing.amount}/month`
+        : null;
+  const assetUsageLabel =
+    planSummary?.assetUsageLabel ??
+    formatAssetUsage(registeredAssetCount, planCatalogEntry?.maxAssets ?? planSummary?.maxAssets);
 
   if (loading) {
     return <LoadingState label="Loading your dashboard…" />;
@@ -114,9 +131,7 @@ export function CustomerDashboardPage() {
         </Card>
         <Card padding="md" interactive={false}>
           <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Asset usage</p>
-          <p className="mt-2 text-2xl font-bold text-text-primary">
-            {formatAssetUsage(registeredAssetCount, planCatalogEntry?.maxAssets)}
-          </p>
+          <p className="mt-2 text-2xl font-bold text-text-primary">{assetUsageLabel}</p>
         </Card>
         <Card padding="md" interactive={false}>
           <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Account</p>
@@ -147,14 +162,15 @@ export function CustomerDashboardPage() {
               </div>
               <div>
                 <dt className="text-xs font-medium uppercase text-text-secondary">Registered assets</dt>
-                <dd className="mt-1 text-sm">
-                  {formatAssetUsage(registeredAssetCount, planCatalogEntry?.maxAssets)}
-                </dd>
+                <dd className="mt-1 text-sm">{assetUsageLabel}</dd>
               </div>
-              {planCatalogEntry?.supportLevel ? (
+              {(planSummary?.supportLevel ?? planCatalogEntry?.supportLevel) ? (
                 <div>
                   <dt className="text-xs font-medium uppercase text-text-secondary">Support level</dt>
-                  <dd className="mt-1 text-sm">{formatSupportLevel(planCatalogEntry.supportLevel)}</dd>
+                  <dd className="mt-1 text-sm">
+                    {planSummary?.supportLevel ??
+                      formatSupportLevel(planCatalogEntry!.supportLevel!)}
+                  </dd>
                 </div>
               ) : null}
               <div>

@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Card, SectionHeading } from '../../components';
 import { InlineAlert, LoadingState } from '../../dashboard/components/ui';
-import { listAssets, type Asset } from '../../customer/api/assets';
 import { changePolicyPlan, listPolicies, type Policy } from '../../customer/api/policies';
 import { formatPlanPrice, listPlans, type PlanCatalogItem } from '../../customer/api/plans';
 import {
@@ -14,13 +13,8 @@ import {
 import { COMPANY_CONTACT } from '../../lib/companyContact';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 
-function countRegisteredAssets(assets: Asset[]): number {
-  return assets.filter((a) => a.status !== 'removed' && a.status !== 'cancelled').length;
-}
-
 export function CustomerChangePlanPage() {
   const [policies, setPolicies] = useState<Policy[]>([]);
-  const [assets, setAssets] = useState<Asset[]>([]);
   const [plans, setPlans] = useState<PlanCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,14 +27,12 @@ export function CustomerChangePlanPage() {
       setLoading(true);
       setError(null);
       try {
-        const [policiesRes, assetsRes, plansRes] = await Promise.all([
-          listPolicies(),
-          listAssets(),
+        const [policiesRes, plansRes] = await Promise.all([
+          listPolicies({ includePlanSummary: true }),
           listPlans(),
         ]);
         if (!cancelled) {
           setPolicies(policiesRes.data);
-          setAssets(assetsRes.data);
           setPlans(plansRes.data);
         }
       } catch (err) {
@@ -57,7 +49,7 @@ export function CustomerChangePlanPage() {
   }, []);
 
   const activePolicy = policies[0] ?? null;
-  const registeredAssetCount = useMemo(() => countRegisteredAssets(assets), [assets]);
+  const planSummary = activePolicy?.planSummary;
   const currentPlan = useMemo(
     () => (activePolicy ? resolvePlanFromCatalog(plans, activePolicy) : undefined),
     [activePolicy, plans],
@@ -130,13 +122,26 @@ export function CustomerChangePlanPage() {
 
       <Card padding="lg" interactive={false}>
         <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Current plan</p>
-        <p className="mt-2 text-xl font-bold text-text-primary">{currentPlan?.name ?? activePolicy.planTier}</p>
-        {currentPlan ? (
+        <p className="mt-2 text-xl font-bold text-text-primary">
+          {planSummary?.planName ?? currentPlan?.name ?? activePolicy.planTier}
+        </p>
+        {planSummary?.monthlyAmountCents != null ? (
+          <p className="mt-1 text-sm text-text-secondary">
+            R{(planSummary.monthlyAmountCents / 100).toFixed(0)}/month
+          </p>
+        ) : currentPlan ? (
           <p className="mt-1 text-sm text-text-secondary">{formatPlanPrice(currentPlan)}</p>
         ) : null}
         <p className="mt-3 text-sm text-text-secondary">
-          Asset usage: {formatAssetUsage(registeredAssetCount, currentPlan?.maxAssets)}
+          Asset usage:{' '}
+          {planSummary?.assetUsageLabel ??
+            formatAssetUsage(planSummary?.activeAssetCount ?? 0, currentPlan?.maxAssets)}
         </p>
+        {planSummary?.supportLevel ? (
+          <p className="mt-1 text-sm text-text-secondary">
+            Support: {planSummary.supportLevel}
+          </p>
+        ) : null}
         {activePolicy.billing.billingStatus === 'not_configured' ? (
           <p className="mt-2 text-xs text-text-secondary">
             Billing is not live yet — plan changes update your entitlement limits only.

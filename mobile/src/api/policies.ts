@@ -13,8 +13,22 @@ import type { components } from './generated/policy-asset-service';
 
 type Schemas = components['schemas'];
 
-export type Policy = Schemas['Policy'];
-export type PolicyListPage = Schemas['PolicyListPage'];
+/** Returned when `GET /policies?include=planSummary` is used. */
+export interface PolicyPlanSummary {
+  planName: string | null;
+  maxAssets: number | null;
+  activeAssetCount: number;
+  assetUsageLabel: string;
+  supportLevel: string;
+  monthlyAmountCents: number | null;
+}
+
+export type Policy = Schemas['Policy'] & {
+  planSummary?: PolicyPlanSummary;
+};
+export type PolicyListPage = Schemas['PolicyListPage'] & {
+  data?: Policy[];
+};
 export type CreatePolicyRequest = Schemas['CreatePolicyRequest'] & {
   planCatalogId?: string;
 };
@@ -22,6 +36,7 @@ export type CreatePolicyRequest = Schemas['CreatePolicyRequest'] & {
 export interface ListPoliciesParams {
   cursor?: string;
   limit?: number;
+  includePlanSummary?: boolean;
 }
 
 function buildQuery(params?: ListPoliciesParams): string {
@@ -29,6 +44,7 @@ function buildQuery(params?: ListPoliciesParams): string {
   const search = new URLSearchParams();
   if (params.cursor) search.set('cursor', params.cursor);
   if (params.limit !== undefined) search.set('limit', String(params.limit));
+  if (params.includePlanSummary) search.set('include', 'planSummary');
   const qs = search.toString();
   return qs ? `?${qs}` : '';
 }
@@ -37,8 +53,9 @@ export function listPolicies(params?: ListPoliciesParams) {
   return apiFetch<PolicyListPage>(`/policies${buildQuery(params)}`, { method: 'GET' });
 }
 
-export function getPolicy(policyId: string) {
-  return apiFetch<Policy>(`/policies/${encodeURIComponent(policyId)}`, { method: 'GET' });
+export function getPolicy(policyId: string, options?: { includePlanSummary?: boolean }) {
+  const qs = options?.includePlanSummary ? '?include=planSummary' : '';
+  return apiFetch<Policy>(`/policies/${encodeURIComponent(policyId)}${qs}`, { method: 'GET' });
 }
 
 export function createPolicy(body: CreatePolicyRequest) {
