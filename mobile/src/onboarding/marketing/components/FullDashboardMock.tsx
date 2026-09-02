@@ -20,7 +20,7 @@ export function FullDashboardMock() {
         <Text style={styles.sectionTitle}>Protection overview</Text>
         <View style={styles.overviewRow}>
           <OverviewStat label="Assets" value="5" />
-          <OverviewStat label="Monthly" value="R400" hint="Illustrative" />
+          <OverviewStat label="Monthly" value="R399" hint="Illustrative" />
         </View>
 
         <Text style={[styles.sectionTitle, styles.mt]}>My assets</Text>

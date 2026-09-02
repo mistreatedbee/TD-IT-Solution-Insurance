@@ -13,6 +13,7 @@ import {
   normalizePlanSlug,
   type PlanCatalogItem,
 } from '../plans';
+import { MARKETING_PLAN_CATALOG_FALLBACK } from '../plan-catalog-fallback';
 import { ApiError } from '../errors';
 
 function jsonResponse(status: number, body: unknown) {
@@ -148,6 +149,26 @@ describe('api/plans', () => {
     it('builds asset-limit upgrade messaging', () => {
       expect(assetLimitUpgradeMessage(samplePlan)).toContain('10 assets');
       expect(assetLimitUpgradeMessage(samplePlan)).toContain('Plus');
+    });
+  });
+
+  describe('MARKETING_PLAN_CATALOG_FALLBACK', () => {
+    it('mirrors v2 tiers with Essential/Plus/Pro/Business limits and prices', () => {
+      expect(MARKETING_PLAN_CATALOG_FALLBACK).toHaveLength(4);
+      expect(MARKETING_PLAN_CATALOG_FALLBACK.map((p) => p.slug)).toEqual([
+        'essential',
+        'plus',
+        'pro',
+        'business',
+      ]);
+      const bySlug = Object.fromEntries(MARKETING_PLAN_CATALOG_FALLBACK.map((p) => [p.slug, p]));
+      expect(bySlug.essential?.maxAssets).toBe(5);
+      expect(bySlug.plus?.maxAssets).toBe(10);
+      expect(bySlug.pro?.maxAssets).toBe(25);
+      expect(bySlug.essential?.monthlyAmountCents).toBe(19_900);
+      expect(bySlug.plus?.monthlyAmountCents).toBe(39_900);
+      expect(bySlug.pro?.monthlyAmountCents).toBe(69_900);
+      expect(bySlug.business?.isCustomPricing).toBe(true);
     });
   });
 });

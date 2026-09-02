@@ -260,7 +260,26 @@ export function CustomerLookupPage() {
               { label: 'Open recovery cases', value: String(result.openRecoveryCaseCount) },
             ]}
           />
-          {result.policies && result.policies.length > 0 ? (
+          {result.subscription ? (
+            <div>
+              <h2 className="mb-3 text-sm font-semibold text-text-primary">Subscription</h2>
+              <div className="rounded-lg border border-border bg-background p-4 text-sm">
+                <p className="font-medium text-text-primary">
+                  {result.subscription.planName ?? formatPlanTierLabel(result.subscription.planSlug)}
+                </p>
+                <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-xs text-text-secondary">Asset usage</dt>
+                    <dd>{result.subscription.assetUsageLabel}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-secondary">Support level</dt>
+                    <dd>{result.subscription.supportLevel}</dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
+          ) : result.policies && result.policies.length > 0 ? (
             <div>
               <h2 className="mb-3 text-sm font-semibold text-text-primary">Subscription</h2>
               <ul className="space-y-3 text-sm">
@@ -294,7 +313,7 @@ export function CustomerLookupPage() {
           ) : result.policyCount > 0 ? (
             <InlineAlert tone="info">
               This customer has {result.policyCount} policy(ies) and {result.assetCount} registered asset(s).
-              Detailed plan and support-level fields will appear here once the lookup API exposes them.
+              Plan details are not available for this lookup.
             </InlineAlert>
           ) : null}
           {result.assets.length > 0 ? (

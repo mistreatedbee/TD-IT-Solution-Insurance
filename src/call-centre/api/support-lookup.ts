@@ -24,7 +24,16 @@ export interface SupportCustomerLookup {
     displayName: string;
     status: string;
   }>;
-  /** Populated when backend exposes subscription summary on lookup. */
+  /** Primary plan summary from customer-lookup API. */
+  subscription?: {
+    planName: string | null;
+    planSlug: string;
+    assetUsageLabel: string;
+    supportLevel: string;
+    activeAssetCount: number;
+    maxAssets: number | null;
+  } | null;
+  /** Legacy shape — prefer `subscription` when present. */
   policies?: SupportCustomerPolicy[];
   openRecoveryCaseCount: number;
   recoveryCases: Array<{
