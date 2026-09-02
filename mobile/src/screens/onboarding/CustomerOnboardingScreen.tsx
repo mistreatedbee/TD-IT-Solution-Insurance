@@ -8,7 +8,7 @@ import {
   ShieldCheckIcon,
   UserIcon,
 } from 'lucide-react-native';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Linking,
   Pressable,
@@ -118,6 +118,10 @@ export function CustomerOnboardingScreen({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedPlan = plans.find(
+    (plan) => plan.id === selectedPlanId || plan.slug === policy?.planTier,
+  );
 
   const refreshData = useCallback(async () => {
     if (!signedIn) return;
@@ -362,11 +366,6 @@ export function CustomerOnboardingScreen({
     await markOnboardingComplete();
     router.replace('/(app)');
   }
-
-  const selectedPlan = useMemo(
-    () => plans.find((p) => p.id === selectedPlanId || p.slug === policy?.planTier),
-    [plans, selectedPlanId, policy],
-  );
 
   return (
     <Screen>

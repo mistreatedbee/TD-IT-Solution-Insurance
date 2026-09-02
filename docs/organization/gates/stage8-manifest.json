@@ -191,6 +191,16 @@
       }
     },
     {
+      "id": "backend-subscription",
+      "kind": "backend_route",
+      "pattern": "/subscription",
+      "feature": "006",
+      "stage8": {
+        "doc": "docs/features/006-customer-onboarding/security-review.md",
+        "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
       "id": "backend-admin",
       "kind": "backend_route_group",
       "pattern": "/admin/*",
