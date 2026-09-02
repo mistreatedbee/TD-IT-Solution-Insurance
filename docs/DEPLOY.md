@@ -4,17 +4,12 @@ Full-stack deployment for TD IT Solution Insurance on [Render](https://render.co
 
 ## Services (`render.yaml`)
 
-| Service | Name | Type | URL path |
+| Service | Name | Type | URL |
 |---|---|---|---|
-| **API** | `td-it-insurance-api` | Node web service (`backend/`) | `/api/v1/*`, `/api/health*` |
-| **Web** | `td-it-insurance-web` | Static site (repo root Vite build) | `/`, `/admin/*`, `/security/*` |
+| **API** | `td-it-solution-insurance` | Node web service (`backend/`) | `https://td-it-solution-insurance.onrender.com` |
+| **Web** | Vercel project | Static SPA (repo root Vite build) | `https://td-it-solution-insurance-alpha.vercel.app` |
 
-The blueprint wires:
-
-- **`VITE_API_BASE_URL`** on the web service → API hostname (build-time)
-- **`CORS_ALLOWED_ORIGINS`** on the API → web hostname (runtime)
-
-Both use Render `fromService` / `property: host`. Hostnames are normalized to `https://…` in code (`backend/src/config/env.ts`, `src/dashboard/api/config.ts`).
+The blueprint in `render.yaml` provisions **only the API**. The web app is deployed separately on Vercel per ADR-0003. `CORS_ALLOWED_ORIGINS` on the API must include the Vercel hostname.
 
 ## First-time setup
 
@@ -24,7 +19,7 @@ Both use Render `fromService` / `property: host`. Hostnames are normalized to `h
 2. Connect `mistreatedbee/TD-IT-Solution-Insurance` and apply `render.yaml`
 3. When prompted, set **secret** env vars on the API service (see below)
 
-### 2. API secrets (Render dashboard → `td-it-insurance-api` → Environment)
+### 2. API secrets (Render dashboard → `td-it-solution-insurance` → Environment)
 
 Required for production startup:
 
@@ -55,10 +50,10 @@ Auth email (verification, reset, invitations) is sent by the **Supabase `auth-se
 
 ```bash
 # API readiness (Mongo + Postgres)
-curl -sS "https://td-it-insurance-api.onrender.com/api/health/ready"
+curl -sS "https://td-it-solution-insurance.onrender.com/api/health/ready"
 
-# Web SPA
-curl -sS -o /dev/null -w "%{http_code}" "https://td-it-insurance-web.onrender.com/admin/login"
+# Web SPA (Vercel)
+curl -sS -o /dev/null -w "%{http_code}" "https://td-it-solution-insurance-alpha.vercel.app/admin/login"
 # expect 200
 ```
 
@@ -78,7 +73,7 @@ Creates/updates: `policies`, `policy_status_history`, `assets`, `admin_access_lo
 ```bash
 cd mobile
 eas env:create --name EXPO_PUBLIC_API_BASE_URL \
-  --value "https://td-it-insurance-api.onrender.com" \
+  --value "https://td-it-solution-insurance.onrender.com" \
   --environment preview --visibility plaintext
 ```
 

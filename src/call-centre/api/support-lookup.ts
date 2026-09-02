@@ -36,6 +36,11 @@ export async function lookupCustomerByPolicyId(policyId: string): Promise<Suppor
   return apiFetch<{ data: SupportCustomerLookup }>(`/support/customer-lookup?${qs}`).then((r) => r.data);
 }
 
+export async function lookupCustomerByPhone(phone: string): Promise<SupportCustomerLookup> {
+  const qs = new URLSearchParams({ phone });
+  return apiFetch<{ data: SupportCustomerLookup }>(`/support/customer-lookup?${qs}`).then((r) => r.data);
+}
+
 export async function addCallCentreCaseNote(caseId: string, text: string) {
   return apiFetch<{
     data: {

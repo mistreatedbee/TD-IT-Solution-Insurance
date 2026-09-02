@@ -11,13 +11,21 @@ import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 
+const phoneQuerySchema = z
+  .string()
+  .trim()
+  .min(7)
+  .max(20)
+  .regex(/^\+?[0-9\s()-]+$/);
+
 const lookupQuerySchema = z
   .object({
     email: z.string().email().optional(),
     policyId: z.string().regex(/^[a-f0-9]{24}$/i).optional(),
+    phone: phoneQuerySchema.optional(),
   })
-  .refine((value) => Boolean(value.email ?? value.policyId), {
-    message: 'Provide email or policyId',
+  .refine((value) => Boolean(value.email ?? value.policyId ?? value.phone), {
+    message: 'Provide email, policyId, or phone',
   });
 
 const OPEN_RECOVERY_STATUSES = new Set(['open', 'investigating', 'tracking']);
@@ -66,6 +74,13 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
 
         if (parsed.data.email) {
           const account = await ctx.accounts.findByEmail(parsed.data.email);
+          if (!account || account.userType !== 'customer') {
+            throw apiError('NOT_FOUND');
+          }
+          accountId = account.id;
+          email = account.email;
+        } else if (parsed.data.phone) {
+          const account = await ctx.accounts.findByPhone(parsed.data.phone);
           if (!account || account.userType !== 'customer') {
             throw apiError('NOT_FOUND');
           }

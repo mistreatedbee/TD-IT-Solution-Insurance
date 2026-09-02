@@ -55,7 +55,23 @@ function createHarness() {
             email: 'customer@example.com',
             userType: 'customer',
             accountState: 'active',
-            phone: null,
+            phone: '+27821234567',
+            mfaRequired: false,
+            partnerOrganizationId: null,
+            invitedBy: null,
+            createdAt: new Date(),
+          };
+        }
+        return null;
+      },
+      async findByPhone(phone: string) {
+        if (phone === '+27821234567') {
+          return {
+            id: customerId,
+            email: 'customer@example.com',
+            userType: 'customer',
+            accountState: 'active',
+            phone: '+27821234567',
             mfaRequired: false,
             partnerOrganizationId: null,
             invitedBy: null,
@@ -211,6 +227,34 @@ describe('GET /support/customer-lookup', () => {
       expect(body.data.email).toBe('customer@example.com');
       expect(body.data.policyCount).toBe(1);
       expect(body.data.openRecoveryCaseCount).toBe(1);
+      expect(auditCalls.length).toBe(1);
+    });
+  });
+
+  it('returns customer summary for support_agent by phone', async () => {
+    const { app, env, auditCalls } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(
+        `${baseUrl}/v1/support/customer-lookup?phone=${encodeURIComponent('+27821234567')}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { email: string; accountId: string } };
+      expect(body.data.email).toBe('customer@example.com');
+      expect(body.data.accountId).toBe(customerId);
       expect(auditCalls.length).toBe(1);
     });
   });

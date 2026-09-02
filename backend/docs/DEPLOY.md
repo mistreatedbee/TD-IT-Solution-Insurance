@@ -2,7 +2,7 @@
 
 See the full-stack guide: [`docs/DEPLOY.md`](../../docs/DEPLOY.md).
 
-Per [ADR-0003](../../docs/organization/adr/0003-backend-hosting-platform.md), the backend runs as **`td-it-insurance-api`** — a persistent Node web service on Render.
+Per [ADR-0003](../../docs/organization/adr/0003-backend-hosting-platform.md), the backend runs as **`td-it-solution-insurance`** on Render (`https://td-it-solution-insurance.onrender.com`).
 
 ## Quick reference
 

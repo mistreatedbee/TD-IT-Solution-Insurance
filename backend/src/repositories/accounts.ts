@@ -238,6 +238,17 @@ export function createAccountsRepo(db: Queryable) {
       return row ? toAccount(row) : null;
     },
 
+    async findByPhone(phone: string): Promise<AccountRow | null> {
+      const normalized = phone.trim();
+      if (!normalized) return null;
+      const result = await db.query<AccountDbRow>(
+        `select ${ACCOUNT_COLUMNS} from app.accounts where phone = $1`,
+        [normalized],
+      );
+      const row = result.rows[0];
+      return row ? toAccount(row) : null;
+    },
+
     async markEmailVerified(id: string): Promise<void> {
       await db.query(
         `update app.accounts set account_state = 'active', updated_at = now()

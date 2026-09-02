@@ -4,14 +4,16 @@ import { DetailGrid, InlineAlert, LoadingState } from '../../dashboard/component
 import {
   addCallCentreCaseNote,
   lookupCustomerByEmail,
+  lookupCustomerByPhone,
   lookupCustomerByPolicyId,
 } from '../api/support-lookup';
 import { ApiError } from '../../dashboard/api/errors';
 import type { SupportCustomerLookup } from '../api/support-lookup';
 
-type SearchMode = 'email' | 'policyId';
+type SearchMode = 'email' | 'policyId' | 'phone';
 
 const POLICY_ID_PATTERN = /^[a-f0-9]{24}$/i;
+const PHONE_PATTERN = /^\+?[0-9\s()-]{7,20}$/;
 
 function RecoveryCasePanel({
   recoveryCase,
@@ -102,19 +104,28 @@ export function CustomerLookupPage() {
       setLoading(false);
       return;
     }
+    if (searchMode === 'phone' && !PHONE_PATTERN.test(trimmed)) {
+      setError('Enter a valid phone number (7–20 digits, optional + prefix).');
+      setLoading(false);
+      return;
+    }
 
     try {
       const data =
         searchMode === 'email'
           ? await lookupCustomerByEmail(trimmed)
-          : await lookupCustomerByPolicyId(trimmed);
+          : searchMode === 'phone'
+            ? await lookupCustomerByPhone(trimmed)
+            : await lookupCustomerByPolicyId(trimmed);
       setResult(data);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setError(
           searchMode === 'email'
             ? 'No customer found for that email.'
-            : 'No customer found for that policy ID.',
+            : searchMode === 'phone'
+              ? 'No customer found for that phone number.'
+              : 'No customer found for that policy ID.',
         );
       } else {
         setError('Lookup failed. Try again or contact engineering.');
@@ -145,7 +156,7 @@ export function CustomerLookupPage() {
     <Card padding="lg">
       <SectionHeading as="h1" title="Customer lookup" size="md" className="mb-2" />
       <p className="mb-6 text-sm text-text-secondary">
-        Search by customer email or policy ID. Purpose-limited read — every lookup and note is audit-logged.
+        Search by customer email, registered phone, or policy ID. Purpose-limited read — every lookup and note is audit-logged.
       </p>
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -165,6 +176,19 @@ export function CustomerLookupPage() {
         <Button
           type="button"
           size="sm"
+          variant={searchMode === 'phone' ? 'primary' : 'secondary'}
+          onClick={() => {
+            setSearchMode('phone');
+            setQuery('');
+            setError(null);
+            setResult(null);
+          }}
+        >
+          Phone
+        </Button>
+        <Button
+          type="button"
+          size="sm"
           variant={searchMode === 'policyId' ? 'primary' : 'secondary'}
           onClick={() => {
             setSearchMode('policyId');
@@ -179,11 +203,23 @@ export function CustomerLookupPage() {
 
       <form className="mb-6 flex max-w-xl flex-col gap-3 sm:flex-row" onSubmit={(e) => void onSubmit(e)}>
         <Input
-          label={searchMode === 'email' ? 'Customer email' : 'Policy ID'}
+          label={
+            searchMode === 'email'
+              ? 'Customer email'
+              : searchMode === 'phone'
+                ? 'Registered phone'
+                : 'Policy ID'
+          }
           type={searchMode === 'email' ? 'email' : 'text'}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={searchMode === 'email' ? 'customer@example.com' : '507f1f77bcf86cd799439011'}
+          placeholder={
+            searchMode === 'email'
+              ? 'customer@example.com'
+              : searchMode === 'phone'
+                ? '+27821234567'
+                : '507f1f77bcf86cd799439011'
+          }
           required
           autoComplete="off"
         />

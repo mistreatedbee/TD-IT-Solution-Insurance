@@ -51,10 +51,7 @@ services:
       - key: INVITATION_ACCEPT_REDIRECT_URL
         value: tditinsurance://invitations/accept
       - key: CORS_ALLOWED_ORIGINS
-        fromService:
-          type: web
-          name: td-it-insurance-web-staging
-          property: host
+        value: https://td-it-insurance-web-staging.onrender.com,http://localhost:5173
 
   - type: web
     name: td-it-insurance-web-staging
