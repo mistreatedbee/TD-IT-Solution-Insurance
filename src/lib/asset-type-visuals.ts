@@ -8,7 +8,7 @@ export const ASSET_TYPE_IMAGE_SRC: Record<AssetType, string> = {
   tablet: '/assets/tablet.png',
   tv: '/assets/tv.png',
   business: '/assets/business.png',
-  desktop: '/assets/desktop.jpg',
+  desktop: '/assets/desktop.png',
   other: '/assets/other.png',
 };
 
@@ -61,7 +61,7 @@ export const COVERAGE_IMAGE_BOUNDS: Record<
   phone: { maxWidth: '46%', maxHeight: '6.125rem' },
   tablet: { maxWidth: '70%', maxHeight: '5.5rem' },
   tv: { maxWidth: '82%', maxHeight: '4.875rem' },
-  desktop: { maxWidth: '72%', maxHeight: '5rem' },
+  desktop: { maxWidth: '88%', maxHeight: '5.5rem' },
   other: { maxWidth: '78%', maxHeight: '5rem' },
 };
 

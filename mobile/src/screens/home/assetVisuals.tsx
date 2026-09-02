@@ -27,7 +27,7 @@ const ASSET_IMAGES: Record<AssetType, ImageSourcePropType> = {
   laptop: require('../../../assets/asset-types/asset-laptop.jpg'),
   tablet: require('../../../assets/asset-types/asset-tablet.png'),
   tv: require('../../../assets/asset-types/asset-tv.png'),
-  desktop: require('../../../assets/asset-types/asset-desktop.jpg'),
+  desktop: require('../../../assets/asset-types/asset-desktop.png'),
   business_equipment: require('../../../assets/asset-types/asset-business-equipment.png'),
   other_electronics: require('../../../assets/asset-types/asset-other-electronics.png'),
 };
