@@ -27,9 +27,9 @@ async function fetchPublicPlans(): Promise<PublicPlansResult> {
     if (canUseFallback) {
       let error: string | null = null;
       if (isNetwork) {
-        error = `Could not reach ${API_HOST}. Showing standard plan guide — live pricing loads at sign-up.`;
+        error = `Could not reach ${API_HOST}. Showing plan guide — live pricing loads at sign-up.`;
       } else if (err instanceof ApiError && err.status !== 404) {
-        error = 'Live plan pricing is temporarily unavailable. Showing standard plan guide.';
+        error = 'Live plan pricing is temporarily unavailable. Showing plan guide.';
       }
       return { plans: MARKETING_PLAN_CATALOG_FALLBACK, usingFallback: true, error };
     }

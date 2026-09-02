@@ -11,6 +11,7 @@ import {
 } from '../api/admin-plans';
 import { AdminNavLink } from '../layout/AdminLayout';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { formatSupportLevel } from '../../lib/plan-catalog-display';
 
 const ACCOUNT_TYPE_OPTIONS = ['individual', 'business', 'both'] as const;
 
@@ -68,6 +69,17 @@ export function PlansListPage() {
                 const plan = row as unknown as AdminPlanCatalogItem;
                 return plan.maxAssets == null ? '—' : String(plan.maxAssets);
               },
+            },
+            {
+              key: 'supportLevel',
+              header: 'Support',
+              render: (row) => formatSupportLevel((row as unknown as AdminPlanCatalogItem).supportLevel),
+            },
+            {
+              key: 'isMostPopular',
+              header: 'Popular',
+              render: (row) =>
+                (row as unknown as AdminPlanCatalogItem).isMostPopular ? 'Yes' : '—',
             },
             {
               key: 'isActive',
@@ -238,6 +250,9 @@ export function PlanEditPage({ planId }: { planId: string }) {
           rows={[
             { label: 'ID', value: plan.id },
             { label: 'Slug', value: plan.slug },
+            { label: 'Positioning', value: plan.positioning ?? plan.tagline },
+            { label: 'Support level', value: formatSupportLevel(plan.supportLevel) },
+            { label: 'Most popular', value: plan.isMostPopular ? 'Yes' : 'No' },
             { label: 'Currency', value: plan.currency },
             { label: 'Updated', value: new Date(plan.updatedAt).toLocaleString() },
           ]}
@@ -250,7 +265,7 @@ export function PlanEditPage({ planId }: { planId: string }) {
 
         <label className="flex items-center gap-2 text-sm text-text-primary">
           <input type="checkbox" checked={isCustomPricing} onChange={(e) => setIsCustomPricing(e.target.checked)} />
-          Custom pricing (enterprise-style — no fixed monthly price)
+          Custom pricing (Business-style — no fixed monthly price)
         </label>
 
         {!isCustomPricing ? (

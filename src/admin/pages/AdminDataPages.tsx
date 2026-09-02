@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Button, Card, Input, SectionHeading } from '../../components';
 import { DataTable, DetailGrid, InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { formatPlanTierLabel } from '../../lib/plan-catalog-display';
 import {
   getAdminAccount,
   getAdminAsset,
@@ -319,7 +320,7 @@ export function PoliciesListPage() {
         <>
           <DataTable
             columns={[
-              { key: 'planTier', header: 'Plan', render: (row) => <AdminNavLink to={`/admin/policies/${row.id}`}>{String(row.planTier)}</AdminNavLink> },
+              { key: 'planTier', header: 'Plan', render: (row) => <AdminNavLink to={`/admin/policies/${row.id}`}>{formatPlanTierLabel(String(row.planTier))}</AdminNavLink> },
               { key: 'status', header: 'Status', render: (row) => <StatusBadge value={String(row.status)} /> },
               { key: 'accountId', header: 'Account', render: (row) => <AdminNavLink to={`/admin/accounts/${row.accountId}`}>{String(row.accountId).slice(0, 8)}…</AdminNavLink> },
               { key: 'effectiveDate', header: 'Effective', render: (row) => new Date(String(row.effectiveDate)).toLocaleDateString() },
@@ -352,7 +353,7 @@ export function PolicyDetailPage({ policyId }: { policyId: string }) {
 
   return (
     <Card padding="lg">
-      <SectionHeading as="h1" title={`Policy ${policy.planTier}`} size="md" className="mb-4" />
+      <SectionHeading as="h1" title={`Policy — ${formatPlanTierLabel(policy.planTier)}`} size="md" className="mb-4" />
       <DetailGrid
         rows={[
           { label: 'Status', value: <StatusBadge value={policy.status} /> },

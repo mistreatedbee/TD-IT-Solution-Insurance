@@ -5,7 +5,7 @@
 export const LANDING_SEO = {
   documentTitle: 'TD IT Solution Insurance | Recover Your Insured Items',
   description:
-    'Insurance that helps you recover your insured items. Monthly plans from R200/mo for vehicles, laptops, phones, tablets, TVs, desktops and business equipment — with GPS-assisted recovery in Nelspruit, South Africa.',
+    'Insurance that helps you recover your insured items. Monthly plans from R199/mo for vehicles, laptops, phones, tablets, TVs, desktops and business equipment — with GPS-assisted recovery in Nelspruit, South Africa.',
   ogTitle: 'TD IT Solution Insurance — Insurance that helps you recover your insured items',
   ogDescription:
     'Recover your insured items with monthly plans, GPS-assisted tracking and security-partner coordination. Cover vehicles, devices and business equipment — Nelspruit, South Africa.',

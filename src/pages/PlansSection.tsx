@@ -3,17 +3,20 @@ import {
   CarIcon,
   CheckIcon,
   CpuIcon,
+  CrownIcon,
   LaptopIcon,
   LayersIcon,
   MonitorIcon,
   ShieldCheckIcon,
   SmartphoneIcon,
+  SparklesIcon,
   TabletIcon,
   TvIcon,
   type LucideIcon,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { type AssetType } from '../components/AssetBadge';
+import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { InlineAlert } from '../dashboard/components/ui';
 import { Reveal } from '../components/Reveal';
@@ -28,6 +31,10 @@ import {
 } from '../lib/marketing-asset-pricing';
 
 const PLAN_ICONS: Record<string, LucideIcon> = {
+  essential: ShieldCheckIcon,
+  plus: LayersIcon,
+  pro: SparklesIcon,
+  business: BriefcaseIcon,
   starter: ShieldCheckIcon,
   standard: LayersIcon,
   enterprise: BriefcaseIcon,
@@ -50,26 +57,49 @@ const ASSET_TYPE_ICONS: Record<AssetType, LucideIcon> = {
 function PlanTierPanel({ plan }: { plan: PlanCatalogItem }) {
   const Icon = PLAN_ICONS[plan.slug] ?? ShieldCheckIcon;
   const price = formatPlanCellPrice(plan);
+  const isMostPopular = plan.isMostPopular === true;
 
   return (
-    <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-primary/15 shadow-elevated">
-      <div className="bg-primary px-5 py-6 text-text-inverse">
+    <article
+      className={`flex h-full flex-col overflow-hidden rounded-2xl border shadow-elevated ${
+        isMostPopular
+          ? 'border-accent-gold-deep ring-2 ring-accent-gold-deep/40 scale-[1.02] lg:scale-105'
+          : 'border-primary/15'
+      }`}
+    >
+      <div className={`px-5 py-6 text-text-inverse ${isMostPopular ? 'bg-primary' : 'bg-primary'}`}>
         <div className="flex items-start gap-4">
           <span
-            className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent-gold-deep text-white shadow-md"
+            className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-md ${
+              isMostPopular ? 'bg-accent-gold-deep text-white' : 'bg-accent-gold-deep text-white'
+            }`}
             aria-hidden="true"
           >
             <Icon className="h-6 w-6" />
           </span>
           <div className="min-w-0">
-            <h3 className="font-heading text-xl font-semibold tracking-tight">{plan.name}</h3>
-            <p className="mt-1 text-sm leading-6 text-text-inverse-muted">{plan.tagline}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-heading text-xl font-semibold tracking-tight">{plan.name}</h3>
+              {isMostPopular ? (
+                <Badge tone="gold" className="!bg-accent-gold-deep !text-white">
+                  <CrownIcon className="mr-1 inline h-3 w-3" aria-hidden="true" />
+                  Most popular
+                </Badge>
+              ) : null}
+            </div>
+            <p className="mt-1 text-sm leading-6 text-text-inverse-muted">
+              {plan.positioning ?? plan.tagline}
+            </p>
           </div>
         </div>
       </div>
 
       <div className="flex flex-1 flex-col bg-card px-5 py-6">
-        <div className="rounded-xl border border-accent-gold-deep/30 bg-white px-4 py-4">
+        <div
+          className={`rounded-xl border px-4 py-4 ${
+            isMostPopular ? 'border-accent-gold-deep/50 bg-accent-gold/10' : 'border-accent-gold-deep/30 bg-white'
+          }`}
+        >
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
             Monthly subscription
           </p>
@@ -94,7 +124,7 @@ function PlanTierPanel({ plan }: { plan: PlanCatalogItem }) {
 
         <div className="mt-6 border-t border-primary/10 pt-4">
           <Link to="/get-started">
-            <Button variant="primary" fullWidth>
+            <Button variant={isMostPopular ? 'primary' : 'primary'} fullWidth>
               {plan.isCustomPricing ? 'Request a quote' : 'Get started'}
             </Button>
           </Link>
@@ -129,6 +159,9 @@ function AssetPricingTable({ plans }: { plans: PlanCatalogItem[] }) {
               {plans.map((plan) => (
                 <th key={plan.id} scope="col" className="px-4 py-3 font-semibold text-primary sm:px-6">
                   {plan.name}
+                  {plan.isMostPopular ? (
+                    <span className="ml-1 text-xs font-normal text-accent-gold-deep">★</span>
+                  ) : null}
                 </th>
               ))}
             </tr>
@@ -194,7 +227,7 @@ export function PlansSection({ onJoinWaitlist }: { onJoinWaitlist: () => void })
         align="center"
         eyebrow="Plans"
         title="Plans and pricing for every asset type"
-        subtitle="Choose a plan based on how many items you want to protect. Vehicles, laptops, phones, tablets, TVs, desktops, business equipment and other electronics are all covered."
+        subtitle="Choose a plan based on how many items you want to protect. Essential, Plus, Pro and Business tiers cover vehicles, laptops, phones, tablets, TVs, desktops, business equipment and other electronics."
       />
 
       {error ? (
@@ -218,7 +251,7 @@ export function PlansSection({ onJoinWaitlist }: { onJoinWaitlist: () => void })
         <p className="mt-10 text-center text-sm text-text-secondary">Loading plans…</p>
       ) : (
         <>
-          <div className="mx-auto mt-10 grid max-w-6xl items-stretch gap-6 sm:grid-cols-3">
+          <div className="mx-auto mt-10 grid max-w-6xl items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {plans.map((plan, index) => (
               <Reveal key={plan.id} delay={index * 0.06} className="h-full">
                 <PlanTierPanel plan={plan} />

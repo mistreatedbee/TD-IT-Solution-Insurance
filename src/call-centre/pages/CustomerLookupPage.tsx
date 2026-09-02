@@ -6,14 +6,31 @@ import {
   lookupCustomerByEmail,
   lookupCustomerByPhone,
   lookupCustomerByPolicyId,
+  type SupportCustomerPolicy,
 } from '../api/support-lookup';
 import { ApiError } from '../../dashboard/api/errors';
 import type { SupportCustomerLookup } from '../api/support-lookup';
+import { formatPlanTierLabel, formatSupportLevel } from '../../lib/plan-catalog-display';
 
 type SearchMode = 'email' | 'policyId' | 'phone';
 
 const POLICY_ID_PATTERN = /^[a-f0-9]{24}$/i;
 const PHONE_PATTERN = /^\+?[0-9\s()-]{7,20}$/;
+
+function formatPolicyPrice(policy: SupportCustomerPolicy): string | null {
+  if (policy.monthlyAmountCents == null) return null;
+  return `R${(policy.monthlyAmountCents / 100).toFixed(0)}/month`;
+}
+
+function formatPolicyAssetUsage(policy: SupportCustomerPolicy, totalAssets: number): string {
+  if (policy.registeredAssetCount != null && policy.maxAssets != null) {
+    return `${policy.registeredAssetCount}/${policy.maxAssets} assets`;
+  }
+  if (policy.maxAssets != null) {
+    return `${totalAssets}/${policy.maxAssets} assets`;
+  }
+  return `${totalAssets} assets`;
+}
 
 function RecoveryCasePanel({
   recoveryCase,
@@ -243,6 +260,43 @@ export function CustomerLookupPage() {
               { label: 'Open recovery cases', value: String(result.openRecoveryCaseCount) },
             ]}
           />
+          {result.policies && result.policies.length > 0 ? (
+            <div>
+              <h2 className="mb-3 text-sm font-semibold text-text-primary">Subscription</h2>
+              <ul className="space-y-3 text-sm">
+                {result.policies.map((policy) => (
+                  <li key={policy.id} className="rounded-lg border border-border bg-background p-4">
+                    <p className="font-medium text-text-primary">
+                      {policy.planName ?? formatPlanTierLabel(policy.planTier)} · {policy.status}
+                    </p>
+                    <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {formatPolicyPrice(policy) ? (
+                        <div>
+                          <dt className="text-xs text-text-secondary">Monthly</dt>
+                          <dd>{formatPolicyPrice(policy)}</dd>
+                        </div>
+                      ) : null}
+                      <div>
+                        <dt className="text-xs text-text-secondary">Asset usage</dt>
+                        <dd>{formatPolicyAssetUsage(policy, result.assetCount)}</dd>
+                      </div>
+                      {policy.supportLevel ? (
+                        <div>
+                          <dt className="text-xs text-text-secondary">Support level</dt>
+                          <dd>{formatSupportLevel(policy.supportLevel)}</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : result.policyCount > 0 ? (
+            <InlineAlert tone="info">
+              This customer has {result.policyCount} policy(ies) and {result.assetCount} registered asset(s).
+              Detailed plan and support-level fields will appear here once the lookup API exposes them.
+            </InlineAlert>
+          ) : null}
           {result.assets.length > 0 ? (
             <div>
               <h2 className="mb-2 text-sm font-semibold text-text-primary">Assets</h2>

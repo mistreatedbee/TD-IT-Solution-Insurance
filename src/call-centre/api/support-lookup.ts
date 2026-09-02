@@ -1,4 +1,16 @@
 import { apiFetch } from '../../dashboard/api/client';
+import type { PlanSupportLevel } from '../../customer/api/plans';
+
+export interface SupportCustomerPolicy {
+  id: string;
+  planTier: string;
+  planName?: string;
+  status: string;
+  monthlyAmountCents?: number | null;
+  maxAssets?: number | null;
+  supportLevel?: PlanSupportLevel;
+  registeredAssetCount?: number;
+}
 
 export interface SupportCustomerLookup {
   accountId: string;
@@ -12,6 +24,8 @@ export interface SupportCustomerLookup {
     displayName: string;
     status: string;
   }>;
+  /** Populated when backend exposes subscription summary on lookup. */
+  policies?: SupportCustomerPolicy[];
   openRecoveryCaseCount: number;
   recoveryCases: Array<{
     id: string;

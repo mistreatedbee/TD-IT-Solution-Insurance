@@ -1,12 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge, Button, Card, SectionHeading, StatBlock } from '../../components';
+import { Badge, Button, Card, SectionHeading } from '../../components';
 import { ArrowLink } from '../../components/ArrowLink';
 import { AssetBadge, type AssetType as BadgeAssetType } from '../../components/AssetBadge';
 import { DataTable, InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
 import { listAssets, type Asset, type AssetType } from '../../customer/api/assets';
 import { listPolicies, type Policy } from '../../customer/api/policies';
+import { formatPlanPrice, listPlans, type PlanCatalogItem } from '../../customer/api/plans';
 import { useCustomerAuth } from '../../customer/auth/CustomerAuthProvider';
+import {
+  formatAssetUsage,
+  formatPlanTierLabel,
+  formatSupportLevel,
+  resolvePlanFromCatalog,
+} from '../../lib/plan-catalog-display';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 
 function apiAssetTypeToBadge(type: AssetType): BadgeAssetType {
@@ -22,10 +29,15 @@ function apiAssetTypeToBadge(type: AssetType): BadgeAssetType {
   }
 }
 
+function countRegisteredAssets(assets: Asset[]): number {
+  return assets.filter((a) => a.status !== 'removed' && a.status !== 'cancelled').length;
+}
+
 export function CustomerDashboardPage() {
   const auth = useCustomerAuth();
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [plans, setPlans] = useState<PlanCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,10 +47,15 @@ export function CustomerDashboardPage() {
       setLoading(true);
       setError(null);
       try {
-        const [policiesRes, assetsRes] = await Promise.all([listPolicies(), listAssets()]);
+        const [policiesRes, assetsRes, plansRes] = await Promise.all([
+          listPolicies(),
+          listAssets(),
+          listPlans(),
+        ]);
         if (!cancelled) {
           setPolicies(policiesRes.data);
           setAssets(assetsRes.data);
+          setPlans(plansRes.data);
         }
       } catch (err) {
         if (!cancelled) {
@@ -53,11 +70,24 @@ export function CustomerDashboardPage() {
     };
   }, []);
 
+  const activePolicy = policies[0] ?? null;
+  const registeredAssetCount = useMemo(() => countRegisteredAssets(assets), [assets]);
+  const planCatalogEntry = useMemo(
+    () => (activePolicy ? resolvePlanFromCatalog(plans, activePolicy) : undefined),
+    [activePolicy, plans],
+  );
+
+  const planDisplayName = planCatalogEntry?.name ?? (activePolicy ? formatPlanTierLabel(activePolicy.planTier) : '—');
+  const planPriceLabel = planCatalogEntry
+    ? formatPlanPrice(planCatalogEntry)
+    : activePolicy?.billing.amount != null
+      ? `${activePolicy.billing.currency ?? 'ZAR'} ${activePolicy.billing.amount}/month`
+      : null;
+
   if (loading) {
     return <LoadingState label="Loading your dashboard…" />;
   }
 
-  const activePolicy = policies[0] ?? null;
   const needsSetup = policies.length === 0;
 
   return (
@@ -76,15 +106,17 @@ export function CustomerDashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card padding="md" interactive={false}>
-          <StatBlock
-            value={policies.length}
-            label="Active policies"
-            size="md"
-            align="left"
-          />
+          <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Current plan</p>
+          <p className="mt-2 text-2xl font-bold text-text-primary">{planDisplayName}</p>
+          {planPriceLabel ? (
+            <p className="mt-1 text-sm text-text-secondary">{planPriceLabel}</p>
+          ) : null}
         </Card>
         <Card padding="md" interactive={false}>
-          <StatBlock value={assets.length} label="Registered assets" size="md" align="left" />
+          <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Asset usage</p>
+          <p className="mt-2 text-2xl font-bold text-text-primary">
+            {formatAssetUsage(registeredAssetCount, planCatalogEntry?.maxAssets)}
+          </p>
         </Card>
         <Card padding="md" interactive={false}>
           <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Account</p>
@@ -100,26 +132,35 @@ export function CustomerDashboardPage() {
           <Card padding="lg" interactive={false}>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-lg font-semibold text-text-primary capitalize">
-                  {activePolicy.planTier.replace(/_/g, ' ')}
-                </p>
+                <p className="text-lg font-semibold text-text-primary">{planDisplayName}</p>
+                {planCatalogEntry?.positioning ? (
+                  <p className="mt-1 text-sm text-text-secondary">{planCatalogEntry.positioning}</p>
+                ) : null}
                 <p className="mt-1 text-sm text-text-secondary">Policy ID {activePolicy.id.slice(0, 8)}…</p>
               </div>
               <StatusBadge value={activePolicy.status} />
             </div>
-            <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+            <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <dt className="text-xs font-medium uppercase text-text-secondary">Monthly subscription</dt>
+                <dd className="mt-1 text-sm">{planPriceLabel ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase text-text-secondary">Registered assets</dt>
+                <dd className="mt-1 text-sm">
+                  {formatAssetUsage(registeredAssetCount, planCatalogEntry?.maxAssets)}
+                </dd>
+              </div>
+              {planCatalogEntry?.supportLevel ? (
+                <div>
+                  <dt className="text-xs font-medium uppercase text-text-secondary">Support level</dt>
+                  <dd className="mt-1 text-sm">{formatSupportLevel(planCatalogEntry.supportLevel)}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt className="text-xs font-medium uppercase text-text-secondary">Billing</dt>
                 <dd className="mt-1 text-sm capitalize">{activePolicy.billing.billingStatus.replace(/_/g, ' ')}</dd>
               </div>
-              {activePolicy.billing.amount != null ? (
-                <div>
-                  <dt className="text-xs font-medium uppercase text-text-secondary">Monthly</dt>
-                  <dd className="mt-1 text-sm">
-                    {activePolicy.billing.currency ?? 'ZAR'} {activePolicy.billing.amount}
-                  </dd>
-                </div>
-              ) : null}
             </dl>
             {activePolicy.status === 'pending_activation' ? (
               <Badge tone="gold" className="mt-4">
