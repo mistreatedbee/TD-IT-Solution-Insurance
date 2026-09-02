@@ -88,4 +88,33 @@ export const accountStyles = StyleSheet.create({
     overflow: 'hidden',
     padding: 0,
   },
+  statRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  statChip: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    ...accountShadow,
+  },
+  statValue: {
+    fontSize: typography.sizes.lg,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 2,
+    textAlign: 'center',
+  },
 });
