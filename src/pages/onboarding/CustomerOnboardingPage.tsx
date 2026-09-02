@@ -541,7 +541,7 @@ export function CustomerOnboardingPage() {
             title="What would you like to protect?"
             subtitle="Pick a category to register your first asset. You can add more after this step."
           />
-          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
             {ASSET_CATEGORY_OPTIONS.map((opt) => (
               <AssetBadge
                 key={opt.api}

@@ -6,7 +6,9 @@ export { Accordion } from './Accordion';
 export * from './ArrowLink';
 export { ArrowLink } from './ArrowLink';
 export * from './AssetBadge';
-export { AssetBadge } from './AssetBadge';
+export { AssetBadge, AssetTypeThumbnail } from './AssetBadge';
+export * from './AssetTypeImage';
+export { AssetTypeImage } from './AssetTypeImage';
 // Avatar's `getInitials` is an internal helper (not documented as public
 // API in Avatar/Context.md) and collides with TestimonialCard's documented
 // `getInitials` export, so it's intentionally left out of the flattened

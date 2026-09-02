@@ -229,17 +229,17 @@ export function CustomerDashboardPage() {
           </Card>
         ) : (
           <>
-            <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {assets.map((asset) => (
-                <Card key={asset.id} padding="md" interactive={false}>
-                  <AssetBadge
-                    type={apiAssetTypeToBadge(asset.assetType)}
-                    label={asset.displayName}
-                    description={asset.status.replace(/_/g, ' ')}
-                    selected={asset.status === 'active' || asset.status === 'registered'}
-                    size="md"
-                  />
-                </Card>
+                <AssetBadge
+                  key={asset.id}
+                  type={apiAssetTypeToBadge(asset.assetType)}
+                  label={asset.displayName}
+                  description={asset.status.replace(/_/g, ' ')}
+                  selected={asset.status === 'active' || asset.status === 'registered'}
+                  size="md"
+                  className="h-full"
+                />
               ))}
             </div>
             <DataTable

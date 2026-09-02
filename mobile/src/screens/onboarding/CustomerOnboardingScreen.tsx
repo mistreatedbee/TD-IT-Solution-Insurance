@@ -28,6 +28,7 @@ import {
   type PlanCatalogItem,
 } from '../../api/plans';
 import { PlanCatalogPicker } from '../policy/PlanCatalogPicker';
+import { AssetTypeImage } from '../home/assetVisuals';
 import { createPolicy, listPolicies, type Policy } from '../../api/policies';
 import { setRefreshToken } from '../../auth/secure-storage';
 import { getDeviceName, getOrCreateDeviceId } from '../../auth/device';
@@ -633,9 +634,7 @@ export function CustomerOnboardingScreen({
                   selectedAssetType === opt.api && styles.categoryChipSelected,
                 ]}
               >
-                <View style={styles.categoryIconWrap}>
-                  <opt.Icon size={22} color={colors.primary} />
-                </View>
+                <AssetTypeImage assetType={opt.api} size="md" />
                 <Text style={styles.categoryLabel}>{opt.label}</Text>
               </Pressable>
             ))}
@@ -1023,14 +1022,14 @@ const styles = StyleSheet.create({
     width: '47%',
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    padding: spacing.md,
-    minHeight: minTouchTarget * 1.5,
+    borderRadius: 16,
+    padding: spacing.sm,
+    paddingBottom: spacing.md,
+    minHeight: minTouchTarget * 2,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoryIconWrap: {
-    marginBottom: spacing.sm,
+    justifyContent: 'flex-start',
+    backgroundColor: colors.background,
+    gap: spacing.sm,
   },
   categoryChipSelected: {
     borderColor: colors.primary,

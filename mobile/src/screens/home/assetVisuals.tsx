@@ -22,12 +22,12 @@ export interface AssetVisualSpec {
 }
 
 const ASSET_IMAGES: Record<AssetType, ImageSourcePropType> = {
-  vehicle: require('../../../assets/asset-types/asset-vehicle.png'),
-  smartphone: require('../../../assets/asset-types/asset-smartphone.png'),
-  laptop: require('../../../assets/asset-types/asset-laptop.png'),
+  vehicle: require('../../../assets/asset-types/asset-vehicle.jpg'),
+  smartphone: require('../../../assets/asset-types/asset-smartphone.jpg'),
+  laptop: require('../../../assets/asset-types/asset-laptop.jpg'),
   tablet: require('../../../assets/asset-types/asset-tablet.png'),
   tv: require('../../../assets/asset-types/asset-tv.png'),
-  desktop: require('../../../assets/asset-types/asset-desktop.png'),
+  desktop: require('../../../assets/asset-types/asset-desktop.jpg'),
   business_equipment: require('../../../assets/asset-types/asset-business-equipment.png'),
   other_electronics: require('../../../assets/asset-types/asset-other-electronics.png'),
 };
@@ -35,7 +35,7 @@ const ASSET_IMAGES: Record<AssetType, ImageSourcePropType> = {
 const ASSET_VISUALS: Record<AssetType, AssetVisualSpec> = {
   vehicle: {
     Icon: Car,
-    background: '#E8F1FA',
+    background: '#E8EEF4',
     foreground: '#1D4E89',
     image: ASSET_IMAGES.vehicle,
   },
@@ -47,7 +47,7 @@ const ASSET_VISUALS: Record<AssetType, AssetVisualSpec> = {
   },
   laptop: {
     Icon: Laptop,
-    background: '#F3E8FF',
+    background: '#F5F0FF',
     foreground: '#7C3AED',
     image: ASSET_IMAGES.laptop,
   },
@@ -96,9 +96,10 @@ export function AssetTypeImage({
 }) {
   const visual = getAssetVisual(assetType);
   const dim =
-    size === 'hero' ? 120 : size === 'lg' ? 88 : size === 'sm' ? 52 : 68;
+    size === 'hero' ? 128 : size === 'lg' ? 92 : size === 'sm' ? 56 : 72;
   const borderRadius =
-    size === 'hero' ? radius.cardLg : size === 'lg' ? radius.card : radius.input + 6;
+    size === 'hero' ? radius.cardLg : size === 'lg' ? radius.card : radius.input + 8;
+  const padding = size === 'hero' ? 12 : size === 'sm' ? 6 : 8;
 
   return (
     <View
@@ -109,10 +110,16 @@ export function AssetTypeImage({
           height: dim,
           borderRadius,
           backgroundColor: visual.background,
+          padding,
         },
       ]}
     >
-      <Image source={visual.image} style={styles.image} resizeMode="cover" accessibilityIgnoresInvertColors />
+      <Image
+        source={visual.image}
+        style={styles.image}
+        resizeMode="contain"
+        accessibilityIgnoresInvertColors
+      />
     </View>
   );
 }
@@ -138,6 +145,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(44,62,80,0.08)',
+    shadowColor: '#2C3E50',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   image: {
     width: '100%',

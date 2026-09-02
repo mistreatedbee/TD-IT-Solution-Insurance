@@ -1,21 +1,15 @@
 import {
   BriefcaseIcon,
-  CarIcon,
   ChevronDownIcon,
-  CpuIcon,
-  LaptopIcon,
-  MonitorIcon,
   ShieldCheckIcon,
-  SmartphoneIcon,
   SparklesIcon,
-  TabletIcon,
-  TvIcon,
   CrownIcon,
   type LucideIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { type AssetType } from '../components/AssetBadge';
+import { AssetTypeImage } from '../components/AssetTypeImage';
 import { Button } from '../components/Button';
 import { PlanMarketingCard } from '../components/PlanMarketingCard';
 import { InlineAlert } from '../dashboard/components/ui';
@@ -35,32 +29,18 @@ const PLAN_ICONS: Record<string, LucideIcon> = {
   enterprise: BriefcaseIcon,
 };
 
-const ASSET_CHIP_ICONS: Record<AssetType, LucideIcon> = {
-  vehicle: CarIcon,
-  laptop: LaptopIcon,
-  phone: SmartphoneIcon,
-  tablet: TabletIcon,
-  tv: TvIcon,
-  desktop: MonitorIcon,
-  business: BriefcaseIcon,
-  other: CpuIcon,
-};
-
 function AssetTypeChips() {
   return (
     <div className="mx-auto mt-6 flex max-w-3xl flex-wrap items-center justify-center gap-2">
-      {MARKETING_ASSET_TYPES.map(({ type, label }) => {
-        const Icon = ASSET_CHIP_ICONS[type as AssetType];
-        return (
-          <span
-            key={type}
-            className="inline-flex items-center gap-1.5 rounded-full border border-primary/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-text-secondary shadow-sm backdrop-blur-sm"
-          >
-            <Icon className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-            {label}
-          </span>
-        );
-      })}
+      {MARKETING_ASSET_TYPES.map(({ type, label }) => (
+        <span
+          key={type}
+          className="inline-flex items-center gap-2 rounded-full border border-primary/10 bg-white/90 py-1 pl-1 pr-3 text-xs font-medium text-text-secondary shadow-sm backdrop-blur-sm"
+        >
+          <AssetTypeImage type={type as AssetType} size="xs" className="!shadow-none !ring-0" />
+          {label}
+        </span>
+      ))}
     </div>
   );
 }
@@ -89,20 +69,17 @@ function CoverageLimitsAccordion() {
       </button>
       {open ? (
         <ul className="divide-y divide-primary/8 border-t border-primary/8 px-5 py-2">
-          {MARKETING_ASSET_TYPES.map(({ type, label }) => {
-            const Icon = ASSET_CHIP_ICONS[type as AssetType];
-            return (
-              <li key={type} className="flex items-center justify-between gap-4 py-3 text-sm">
-                <span className="flex items-center gap-2.5 text-text-primary">
-                  <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
-                  {label}
-                </span>
-                <span className="font-medium text-text-secondary">
-                  Up to {MARKETING_COVERAGE_BY_ASSET[type as AssetType]}
-                </span>
-              </li>
-            );
-          })}
+          {MARKETING_ASSET_TYPES.map(({ type, label }) => (
+            <li key={type} className="flex items-center justify-between gap-4 py-3 text-sm">
+              <span className="flex items-center gap-3 text-text-primary">
+                <AssetTypeImage type={type as AssetType} size="xs" />
+                {label}
+              </span>
+              <span className="font-medium text-text-secondary">
+                Up to {MARKETING_COVERAGE_BY_ASSET[type as AssetType]}
+              </span>
+            </li>
+          ))}
         </ul>
       ) : null}
     </div>

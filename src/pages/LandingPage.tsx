@@ -162,7 +162,7 @@ export function LandingPage() {
           title="Cover for the assets you actually own"
           subtitle="From the car in your driveway to the laptop on your desk. Cover is subject to policy terms, underwriting and claims assessment."
         />
-        <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+        <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
           {/* vehicle + business span two columns for emphasis */}
           <Reveal className="col-span-2" delay={0}>
             <AssetBadge type="vehicle" size="md" className="h-full" />
