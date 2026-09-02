@@ -1,0 +1,38 @@
+---
+description: Route work to the 35 TD IT Solution Insurance role agents defined in .claude/agents/
+alwaysApply: true
+---
+
+# Agent routing (Cursor ↔ Claude parity)
+
+This project has **35 specialized agents** indexed in [`AGENTS.md`](../AGENTS.md). Each role spec lives at `.claude/agents/<role-name>.md`.
+
+## How to invoke in Cursor
+
+1. **Task tool** — set `subagent_type` to the role slug (e.g. `backend-engineer`, `frontend-engineer`, `mobile-engineer`, `payment-engineer`, `automation-qa-engineer`).
+2. **Before non-trivial domain work** — read the matching `.claude/agents/<role>.md` for standards and current-state honesty rules.
+3. **Cross-cutting requests** — orchestrate as `cto`; do not do backend-architecture work silently when `backend-architect` exists.
+
+## Default routing
+
+| Domain | Agent |
+|--------|--------|
+| REST API, plan catalog, entitlements | `backend-engineer` |
+| Marketing, admin, call-centre web UI | `frontend-engineer` |
+| Expo customer app | `mobile-engineer` |
+| Billing / subscription amounts | `payment-engineer` |
+| Tier rules / acceptance criteria | `business-analyst` |
+| Upgrade recommendations | `recommendation-engine-specialist` |
+| Tests & CI | `automation-qa-engineer` |
+| Docs & agent specs | `technical-writer` |
+
+## Pricing model v2 (current)
+
+Use **Essential / Plus / Pro / Business** only in customer-facing work. Legacy Starter/Standard/Enterprise are migration slugs only.
+
+- **Source of truth:** `backend/src/lib/plan-catalog-defaults.ts` + Mongo `insurance_plan_catalog`
+- **Spec:** `docs/organization/pricing-model-v2.md`
+- **Never conflate:** platform subscription ≠ insurance premium ≠ GPS hardware cost
+- **Never promise coverage** based on plan tier alone — use policy data
+
+Spawn parallel agents for large cross-surface changes (backend + web + mobile + QA).
