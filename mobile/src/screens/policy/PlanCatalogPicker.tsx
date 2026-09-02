@@ -1,9 +1,9 @@
 import React from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
 import type { PlanCatalogItem } from '../../api/plans';
-import { formatPlanPrice } from '../../api/plans';
+import { formatAssetAllowance, formatPlanPrice } from '../../api/plans';
 import { COMPANY_CONTACT } from '../../lib/companyContact';
-import { Button, Card } from '../../theme/primitives';
+import { Badge, Button, Card } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
 
 export interface PlanCatalogPickerProps {
@@ -22,7 +22,7 @@ export function PlanCatalogPicker({
   function handlePress(plan: PlanCatalogItem) {
     if (plan.isCustomPricing) {
       void Linking.openURL(
-        `mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent('Enterprise plan quote')}`,
+        `mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent('Business plan quote')}`,
       );
       return;
     }
@@ -34,17 +34,25 @@ export function PlanCatalogPicker({
       {plans.map((plan) => {
         const isLoading = loadingPlanId === plan.id;
         const isSelected = selectedPlanId === plan.id;
+        const isPopular = plan.isMostPopular === true;
         return (
-          <Card key={plan.id} padding="none" style={styles.planCard}>
-            <View style={styles.planHeader}>
-              <Text style={styles.planName}>{plan.name}</Text>
+          <Card
+            key={plan.id}
+            padding="none"
+            style={[styles.planCard, isPopular ? styles.planCardPopular : null]}
+          >
+            <View style={[styles.planHeader, isPopular ? styles.planHeaderPopular : null]}>
+              <View style={styles.planHeaderRow}>
+                <Text style={styles.planName}>{plan.name}</Text>
+                {isPopular ? (
+                  <Badge tone="gold">Most popular</Badge>
+                ) : null}
+              </View>
               <Text style={styles.planTagline}>{plan.tagline}</Text>
             </View>
             <View style={styles.planBody}>
               <Text style={styles.planPrice}>{formatPlanPrice(plan)}</Text>
-              {plan.maxAssets != null ? (
-                <Text style={styles.planFeature}>Up to {plan.maxAssets} protected assets</Text>
-              ) : null}
+              <Text style={styles.planFeature}>{formatAssetAllowance(plan)}</Text>
               {plan.features.map((feature) => (
                 <Text key={feature} style={styles.planFeature}>
                   • {feature}
@@ -76,11 +84,25 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     overflow: 'hidden',
   },
+  planCardPopular: {
+    borderWidth: 2,
+    borderColor: colors.accentGoldDeep,
+  },
   planHeader: {
     backgroundColor: colors.primary,
     padding: spacing.md,
   },
+  planHeaderPopular: {
+    backgroundColor: colors.accentGoldDeep,
+  },
+  planHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   planName: {
+    flex: 1,
     fontSize: typography.sizes.base,
     fontWeight: '700',
     color: colors.textInverse,

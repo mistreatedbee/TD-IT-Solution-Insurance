@@ -1,9 +1,9 @@
 import { CheckIcon } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { formatPlanPrice, type PlanCatalogItem } from '../../../api/plans';
+import { formatAssetAllowance, formatPlanPrice, type PlanCatalogItem } from '../../../api/plans';
 import { BRAND } from '../../../brand/constants';
-import { Button } from '../../../theme/primitives';
+import { Badge, Button } from '../../../theme/primitives';
 import { colors, radius, spacing, typography } from '../../../theme/tokens';
 
 interface PlanCardProps {
@@ -13,15 +13,17 @@ interface PlanCardProps {
 }
 
 export function PlanCard({ plan, onSelect, selectable = false }: PlanCardProps) {
-  const assetLimit =
-    plan.maxAssets == null ? 'Custom asset limits' : `Up to ${plan.maxAssets} assets`;
+  const isPopular = plan.isMostPopular === true;
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.name}>{plan.name}</Text>
+    <View style={[styles.card, isPopular ? styles.cardPopular : null]}>
+      <View style={styles.headerRow}>
+        <Text style={styles.name}>{plan.name}</Text>
+        {isPopular ? <Badge tone="gold">Most popular</Badge> : null}
+      </View>
       {plan.tagline ? <Text style={styles.tagline}>{plan.tagline}</Text> : null}
       <Text style={styles.price}>{formatPlanPrice(plan)}</Text>
-      <Text style={styles.limit}>{assetLimit}</Text>
+      <Text style={styles.limit}>{formatAssetAllowance(plan)}</Text>
       {plan.features.slice(0, 3).map((feature) => (
         <View key={feature} style={styles.featureRow}>
           <CheckIcon size={14} color={BRAND.accent} strokeWidth={2.5} />
@@ -46,7 +48,18 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: spacing.md,
   },
+  cardPopular: {
+    borderColor: colors.accentGoldDeep,
+    borderWidth: 2,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   name: {
+    flex: 1,
     fontSize: typography.sizes.lg,
     fontWeight: '700',
     color: BRAND.primaryMid,

@@ -33,12 +33,28 @@ jest.mock('../../api/hooks/usePolicies', () => ({
   usePoliciesQuery: jest.fn(),
 }));
 
+jest.mock('../../api/hooks/usePlans', () => ({
+  usePlansQuery: jest.fn(),
+}));
+
+jest.mock('../../api/hooks/useAssets', () => ({
+  useAssetsQuery: jest.fn(),
+}));
+
 jest.mock('../../auth/gateWriteAction', () => ({
   gateWriteAction: jest.fn(),
 }));
 
 const { usePoliciesQuery } = jest.requireMock('../../api/hooks/usePolicies') as {
   usePoliciesQuery: jest.Mock;
+};
+
+const { usePlansQuery } = jest.requireMock('../../api/hooks/usePlans') as {
+  usePlansQuery: jest.Mock;
+};
+
+const { useAssetsQuery } = jest.requireMock('../../api/hooks/useAssets') as {
+  useAssetsQuery: jest.Mock;
 };
 
 async function renderWithClient(ui: React.ReactElement) {
@@ -49,6 +65,33 @@ async function renderWithClient(ui: React.ReactElement) {
 describe('PolicyListScreen', () => {
   beforeEach(() => {
     usePoliciesQuery.mockReset();
+    usePlansQuery.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 'plan-plus',
+            slug: 'plus',
+            name: 'Plus',
+            tagline: 'Protection + Monitoring',
+            maxAssets: 10,
+            monthlyAmountCents: 39900,
+            currency: 'ZAR',
+            isCustomPricing: false,
+            isActive: true,
+            sortOrder: 2,
+            features: [],
+            accountTypes: ['both'],
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    });
+    useAssetsQuery.mockReturnValue({
+      data: { data: [{ id: 'asset-1' }, { id: 'asset-2' }], pagination: { nextCursor: null, hasMore: false } },
+      isLoading: false,
+      isError: false,
+    });
   });
 
   it('shows empty state when the API returns no policies', async () => {
@@ -67,13 +110,13 @@ describe('PolicyListScreen', () => {
     expect(screen.getByText(/don't have a protection plan yet/i)).toBeTruthy();
   });
 
-  it('renders policy cards when data exists', async () => {
+  it('renders policy cards with plan pricing and asset usage', async () => {
     usePoliciesQuery.mockReturnValue({
       data: {
         data: [
           {
             id: '507f1f77bcf86cd799439011',
-            planTier: 'premium',
+            planTier: 'plus',
             status: 'active',
             billing: { billingStatus: 'not_configured' },
             effectiveDate: '2026-08-01T00:00:00.000Z',
@@ -90,7 +133,9 @@ describe('PolicyListScreen', () => {
 
     await renderWithClient(<PolicyListScreen />);
 
-    expect(screen.getByText('premium')).toBeTruthy();
+    expect(screen.getByText('Plus')).toBeTruthy();
+    expect(screen.getByText('R399/month')).toBeTruthy();
+    expect(screen.getByText('2 / 10 assets')).toBeTruthy();
     expect(screen.getByText('active')).toBeTruthy();
   });
 });

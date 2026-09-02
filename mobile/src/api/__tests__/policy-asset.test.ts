@@ -35,17 +35,17 @@ describe('api/policies', () => {
     const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse(201, {
         id: '507f1f77bcf86cd799439011',
-        planTier: 'standard',
+        planTier: 'plus',
         status: 'pending_activation',
       }),
     );
 
-    await createPolicy({ planTier: 'standard' });
+    await createPolicy({ planTier: 'plus' });
 
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe('http://localhost:3000/api/v1/policies');
     expect(init?.method).toBe('POST');
-    expect(JSON.parse(init?.body as string)).toEqual({ planTier: 'standard' });
+    expect(JSON.parse(init?.body as string)).toEqual({ planTier: 'plus' });
     expect((init?.headers as Record<string, string>)['Idempotency-Key']).toBe(
       '00000000-0000-4000-8000-000000000000',
     );

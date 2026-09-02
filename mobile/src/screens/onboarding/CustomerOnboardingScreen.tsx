@@ -1,7 +1,7 @@
 /**
  * Customer onboarding wizard — mirrors web /get-started flow.
  */
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import {
   BriefcaseIcon,
   CheckIcon,
@@ -20,7 +20,14 @@ import { createAsset, listAssets, type Asset, type AssetType } from '../../api/a
 import { login, resendVerification, signup, isMfaChallenge } from '../../api/auth';
 import { ApiError } from '../../api/errors';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { formatPlanPrice, listPlans, type PlanCatalogItem } from '../../api/plans';
+import {
+  assetLimitUpgradeMessage,
+  formatAssetUsage,
+  formatPlanPrice,
+  listPlans,
+  type PlanCatalogItem,
+} from '../../api/plans';
+import { PlanCatalogPicker } from '../policy/PlanCatalogPicker';
 import { createPolicy, listPolicies, type Policy } from '../../api/policies';
 import { setRefreshToken } from '../../auth/secure-storage';
 import { getDeviceName, getOrCreateDeviceId } from '../../auth/device';
@@ -271,7 +278,7 @@ export function CustomerOnboardingScreen({
   async function handleSelectPlan(plan: PlanCatalogItem) {
     if (plan.isCustomPricing) {
       void Linking.openURL(
-        `mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent('Enterprise plan quote')}`,
+        `mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent('Business plan quote')}`,
       );
       return;
     }
@@ -284,7 +291,7 @@ export function CustomerOnboardingScreen({
       setStep('asset-category');
     } catch (err) {
       if (err instanceof ApiError && err.code === 'PLAN_REQUIRES_QUOTE') {
-        setError('Enterprise plans require a custom quote. Contact us to continue.');
+        setError('Business plans require a custom quote. Contact us to continue.');
       } else {
         setError(mapUserFacingError(err, { context: 'policy' }));
       }
@@ -333,7 +340,7 @@ export function CustomerOnboardingScreen({
       setStep('review');
     } catch (err) {
       if (err instanceof ApiError && err.code === 'ASSET_LIMIT_REACHED') {
-        setError('You have reached the device limit for your plan.');
+        setError(assetLimitUpgradeMessage(selectedPlan));
       } else if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
         setStep('verify');
         setError('Verify your email before registering assets.');
@@ -403,7 +410,7 @@ export function CustomerOnboardingScreen({
                 {
                   type: 'business' as const,
                   title: 'My business assets',
-                  body: 'Protect company assets — enterprise plans available for larger fleets.',
+                  body: 'Protect company assets — Business plans available for larger fleets.',
                   Icon: BriefcaseIcon,
                 },
               ] as const
@@ -595,31 +602,16 @@ export function CustomerOnboardingScreen({
             Select the plan that matches how many devices you want to protect. Payment is configured in a later step.
           </Text>
           {step === 'plan' && !plansLoaded ? <Text style={styles.hint}>Loading plans…</Text> : null}
-          {plans.map((plan) => (
-            <Card key={plan.id} padding="none" style={styles.planCard}>
-              <View style={styles.planHeader}>
-                <Text style={styles.planName}>{plan.name}</Text>
-                <Text style={styles.planTagline}>{plan.tagline}</Text>
-              </View>
-              <View style={styles.planBody}>
-                <Text style={styles.planPrice}>{formatPlanPrice(plan)}</Text>
-                {plan.features.map((f) => (
-                  <Text key={f} style={styles.planFeature}>
-                    • {f}
-                  </Text>
-                ))}
-                <Button
-                  variant={plan.isCustomPricing ? 'secondary' : 'primary'}
-                  fullWidth
-                  loading={loading && selectedPlanId === plan.id}
-                  onPress={() => void handleSelectPlan(plan)}
-                  style={styles.planButton}
-                >
-                  {plan.isCustomPricing ? 'Request a quote' : 'Select plan'}
-                </Button>
-              </View>
-            </Card>
-          ))}
+          {plans.length > 0 ? (
+            <PlanCatalogPicker
+              plans={plans}
+              selectedPlanId={selectedPlanId}
+              loadingPlanId={loading ? selectedPlanId : null}
+              onSelectPlan={(plan) => void handleSelectPlan(plan)}
+            />
+          ) : plansLoaded ? (
+            <Alert tone="info">No plans are available right now. Please try again later.</Alert>
+          ) : null}
         </>
       ) : null}
 
@@ -750,6 +742,11 @@ export function CustomerOnboardingScreen({
               {selectedPlan?.name ?? policy?.planTier ?? '—'}
               {selectedPlan ? ` (${formatPlanPrice(selectedPlan)})` : ''}
             </Text>
+            {selectedPlan?.maxAssets != null ? (
+              <Text style={styles.hint}>
+                Asset allowance: {formatAssetUsage(assets.length, selectedPlan.maxAssets)}
+              </Text>
+            ) : null}
             <View style={styles.mtSm}>
               <Badge tone="warning">Pending activation — payment not configured yet</Badge>
             </View>
@@ -769,9 +766,21 @@ export function CustomerOnboardingScreen({
             Insurance activation and monthly billing will be completed once payment integration is live.
           </Alert>
           <View style={styles.actions}>
-            <Button variant="secondary" onPress={() => setStep('asset-category')}>
-              Add another asset
-            </Button>
+            {selectedPlan?.maxAssets != null && assets.length >= selectedPlan.maxAssets ? (
+              <>
+                <Alert tone="warning">
+                  {assetLimitUpgradeMessage(selectedPlan)} View upgrade options from your plan tab
+                  after setup.
+                </Alert>
+                <Button variant="secondary" onPress={() => router.push('/(app)/policy' as Href)}>
+                  View upgrade options
+                </Button>
+              </>
+            ) : (
+              <Button variant="secondary" onPress={() => setStep('asset-category')}>
+                Add another asset
+              </Button>
+            )}
             <Button onPress={() => void handleFinish()}>Continue</Button>
           </View>
         </>

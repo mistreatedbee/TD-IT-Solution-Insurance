@@ -39,7 +39,7 @@ export function CreatePolicyScreen() {
     } catch (err) {
       setSelectedPlanId(null);
       if (err instanceof ApiError && err.code === 'PLAN_REQUIRES_QUOTE') {
-        setError('Enterprise plans require a custom quote. Contact us to continue.');
+        setError('Business plans require a custom quote. Contact us to continue.');
       } else if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
         setError('Verify your email before choosing a plan.');
       } else {

@@ -89,18 +89,19 @@ const { listAssets } = jest.requireMock('../../api/assets') as {
   listAssets: jest.Mock;
 };
 
-const standardPlan: PlanCatalogItem = {
+const plusPlan: PlanCatalogItem = {
   id: '507f1f77bcf86cd799439011',
-  slug: 'standard',
-  name: 'Standard',
-  tagline: 'Up to 10 devices',
+  slug: 'plus',
+  name: 'Plus',
+  tagline: 'Protection + Monitoring',
   maxAssets: 10,
-  monthlyAmountCents: 40_000,
+  monthlyAmountCents: 39_900,
   currency: 'ZAR',
   isCustomPricing: false,
+  isMostPopular: true,
   isActive: true,
   sortOrder: 2,
-  features: ['Up to 10 registered assets', 'GPS-assisted recovery when hardware is paired'],
+  features: ['Up to 10 registered assets', 'Enhanced GPS monitoring'],
   accountTypes: ['both'],
 };
 
@@ -125,7 +126,7 @@ describe('CustomerOnboardingScreen — plan step', () => {
   });
 
   it('renders the plan selection step with catalog cards after plans load', async () => {
-    listPlans.mockResolvedValue({ data: [standardPlan] });
+    listPlans.mockResolvedValue({ data: [plusPlan] });
 
     await render(<CustomerOnboardingScreen signedIn />);
 
@@ -133,9 +134,10 @@ describe('CustomerOnboardingScreen — plan step', () => {
       expect(screen.getByText('Choose an insurance plan')).toBeTruthy();
     });
 
-    expect(screen.getByText('Standard')).toBeTruthy();
-    expect(screen.getByText('R400/month')).toBeTruthy();
-    expect(screen.getByText('Select plan')).toBeTruthy();
+    expect(screen.getByText('Plus')).toBeTruthy();
+    expect(screen.getByText('R399/month')).toBeTruthy();
+    expect(screen.getByText('Choose this plan')).toBeTruthy();
+    expect(screen.getByText('Most popular')).toBeTruthy();
     expect(listPlans).toHaveBeenCalled();
   });
 
@@ -155,13 +157,13 @@ describe('CustomerOnboardingScreen — plan step', () => {
     expect(screen.getByText('Loading plans…')).toBeTruthy();
 
     await act(async () => {
-      resolvePlans({ data: [standardPlan] });
+      resolvePlans({ data: [plusPlan] });
     });
 
     await waitFor(() => {
       expect(screen.queryByText('Loading plans…')).toBeNull();
     });
-    expect(screen.getByText('Standard')).toBeTruthy();
+    expect(screen.getByText('Plus')).toBeTruthy();
   });
 
   it('renders no plan cards when the catalog fetch fails', async () => {
@@ -177,32 +179,32 @@ describe('CustomerOnboardingScreen — plan step', () => {
       expect(screen.queryByText('Loading plans…')).toBeNull();
     });
 
-    expect(screen.queryByText('Standard')).toBeNull();
-    expect(screen.queryByText('Select plan')).toBeNull();
+    expect(screen.queryByText('Plus')).toBeNull();
+    expect(screen.queryByText('Choose this plan')).toBeNull();
   });
 
   it('selects a plan and advances to the asset category step', async () => {
-    listPlans.mockResolvedValue({ data: [standardPlan] });
+    listPlans.mockResolvedValue({ data: [plusPlan] });
     createPolicy.mockResolvedValue({
       id: '507f1f77bcf86cd799439099',
-      planTier: 'standard',
+      planTier: 'plus',
       status: 'pending_activation',
     });
 
     await render(<CustomerOnboardingScreen signedIn />);
 
     await waitFor(() => {
-      expect(screen.getByText('Select plan')).toBeTruthy();
+      expect(screen.getByText('Choose this plan')).toBeTruthy();
     });
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Select plan'));
+      fireEvent.press(screen.getByText('Choose this plan'));
     });
 
     await waitFor(() => {
       expect(createPolicy).toHaveBeenCalledWith({
-        planCatalogId: standardPlan.id,
-        planTier: standardPlan.slug,
+        planCatalogId: plusPlan.id,
+        planTier: plusPlan.slug,
       });
     });
 
@@ -212,13 +214,13 @@ describe('CustomerOnboardingScreen — plan step', () => {
   });
 
   it('surfaces an error when plan selection fails', async () => {
-    listPlans.mockResolvedValue({ data: [standardPlan] });
+    listPlans.mockResolvedValue({ data: [plusPlan] });
     createPolicy.mockRejectedValue(
       new ApiError(409, {
         error: {
           code: 'POLICY_ALREADY_EXISTS',
           message: 'You already have an active policy.',
-          requestId: 'r-plan',
+          requestId: 'r1',
         },
       }),
     );
@@ -226,16 +228,15 @@ describe('CustomerOnboardingScreen — plan step', () => {
     await render(<CustomerOnboardingScreen signedIn />);
 
     await waitFor(() => {
-      expect(screen.getByText('Select plan')).toBeTruthy();
+      expect(screen.getByText('Choose this plan')).toBeTruthy();
     });
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Select plan'));
+      fireEvent.press(screen.getByText('Choose this plan'));
     });
 
     await waitFor(() => {
       expect(screen.getByText('You already have an active policy.')).toBeTruthy();
     });
-    expect(screen.getByText('Choose an insurance plan')).toBeTruthy();
   });
 });

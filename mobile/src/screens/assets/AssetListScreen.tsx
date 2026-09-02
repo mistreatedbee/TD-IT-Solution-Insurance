@@ -15,8 +15,10 @@ import {
 } from 'react-native';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { gateWriteAction } from '../../auth/gateWriteAction';
+import { usePlanUsage } from '../../api/hooks/usePlanUsage';
+import { PlanUsageSummary } from '../policy/PlanUsageSummary';
 import { useAssetVault, type VaultFilter } from '../../tracking/useAssetVault';
-import { Alert, Screen } from '../../theme/primitives';
+import { Alert, Button, Screen } from '../../theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
 import { AssetVaultCard } from './AssetVaultCard';
 import { vaultStyles } from './assetVaultStyles';
@@ -31,10 +33,17 @@ export function AssetListScreen() {
   const router = useRouter();
   const [filter, setFilter] = useState<VaultFilter>('all');
   const { items, stats, isLoading, isError, error, isRefetching, refetch } = useAssetVault(filter);
+  const { policy, plans, assetCount, atLimit } = usePlanUsage();
   const [isGating, setIsGating] = useState(false);
   const [gateError, setGateError] = useState(false);
+  const [limitMessage, setLimitMessage] = useState(false);
 
   async function handleRegisterPress() {
+    if (atLimit) {
+      setLimitMessage(true);
+      return;
+    }
+    setLimitMessage(false);
     setGateError(false);
     setIsGating(true);
     try {
@@ -93,6 +102,35 @@ export function AssetListScreen() {
           </View>
         ) : null}
       </View>
+
+      {policy ? (
+        <View style={styles.planUsageWrap}>
+          <PlanUsageSummary
+            policy={policy}
+            plans={plans}
+            assetCount={assetCount}
+            showUpgradePrompt
+            compact
+          />
+        </View>
+      ) : null}
+
+      {limitMessage && atLimit ? (
+        <View style={styles.alertWrap}>
+          <Alert tone="warning">
+            You&apos;ve reached your plan&apos;s asset limit. Upgrade your plan to register more
+            devices.
+          </Alert>
+          <Button
+            variant="secondary"
+            fullWidth
+            onPress={() => router.push('/policy/create' as Href)}
+            style={styles.upgradeButton}
+          >
+            View upgrade options
+          </Button>
+        </View>
+      ) : null}
 
       {gateError ? (
         <View style={styles.alertWrap}>
@@ -189,6 +227,14 @@ const styles = StyleSheet.create({
   alertWrap: {
     paddingHorizontal: spacing.xl,
     marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  planUsageWrap: {
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  upgradeButton: {
+    marginTop: spacing.sm,
   },
   padded: {
     paddingHorizontal: spacing.xl,

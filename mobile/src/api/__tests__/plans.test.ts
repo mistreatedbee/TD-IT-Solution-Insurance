@@ -3,9 +3,14 @@
  */
 import { useSessionStore } from '../../auth/session-store';
 import {
+  assetLimitUpgradeMessage,
+  formatAssetAllowance,
+  formatAssetUsage,
   formatPlanPrice,
+  formatPlanTierName,
   listPlans,
   listPublicPlans,
+  normalizePlanSlug,
   type PlanCatalogItem,
 } from '../plans';
 import { ApiError } from '../errors';
@@ -20,16 +25,17 @@ function jsonResponse(status: number, body: unknown) {
 
 const samplePlan: PlanCatalogItem = {
   id: '507f1f77bcf86cd799439011',
-  slug: 'standard',
-  name: 'Standard',
-  tagline: 'Up to 10 devices',
+  slug: 'plus',
+  name: 'Plus',
+  tagline: 'Protection + Monitoring',
   maxAssets: 10,
-  monthlyAmountCents: 40_000,
+  monthlyAmountCents: 39_900,
   currency: 'ZAR',
   isCustomPricing: false,
+  isMostPopular: true,
   isActive: true,
   sortOrder: 2,
-  features: ['Up to 10 registered assets', 'GPS-assisted recovery when hardware is paired'],
+  features: ['Up to 10 registered assets', 'Enhanced GPS monitoring'],
   accountTypes: ['both'],
 };
 
@@ -96,10 +102,10 @@ describe('api/plans', () => {
 
   describe('formatPlanPrice', () => {
     it('formats fixed monthly pricing in ZAR', () => {
-      expect(formatPlanPrice(samplePlan)).toBe('R400/month');
+      expect(formatPlanPrice(samplePlan)).toBe('R399/month');
     });
 
-    it('returns custom pricing label for enterprise-style plans', () => {
+    it('returns custom pricing label for business-style plans', () => {
       expect(
         formatPlanPrice({
           ...samplePlan,
@@ -117,6 +123,31 @@ describe('api/plans', () => {
           monthlyAmountCents: null,
         }),
       ).toBe('Custom pricing');
+    });
+  });
+
+  describe('plan display helpers', () => {
+    it('normalizes legacy slugs to the new tier names', () => {
+      expect(normalizePlanSlug('starter')).toBe('essential');
+      expect(normalizePlanSlug('standard')).toBe('plus');
+      expect(normalizePlanSlug('enterprise')).toBe('business');
+      expect(normalizePlanSlug('pro')).toBe('pro');
+    });
+
+    it('formats tier names for display', () => {
+      expect(formatPlanTierName('standard')).toBe('Plus');
+      expect(formatPlanTierName('plus')).toBe('Plus');
+    });
+
+    it('formats asset allowance and usage', () => {
+      expect(formatAssetAllowance(samplePlan)).toBe('Up to 10 assets');
+      expect(formatAssetUsage(7, 10)).toBe('7 / 10 assets');
+      expect(formatAssetUsage(3, null)).toBe('3 assets registered');
+    });
+
+    it('builds asset-limit upgrade messaging', () => {
+      expect(assetLimitUpgradeMessage(samplePlan)).toContain('10 assets');
+      expect(assetLimitUpgradeMessage(samplePlan)).toContain('Plus');
     });
   });
 });

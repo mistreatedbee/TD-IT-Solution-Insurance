@@ -1,4 +1,5 @@
 import type { VerificationStatus } from '../../api/customer-profile';
+import { formatPlanTierName } from '../../api/plans';
 import type { Policy } from '../../api/policies';
 import type { BadgeTone } from '../../theme/primitives/Badge';
 
@@ -206,9 +207,7 @@ export function deriveVerificationCentreItems(input: {
     for (const policy of input.policies) {
       const status = policy.status ?? 'pending_activation';
       const state = policyState(status);
-      const planName = policy.planTier
-        ? policy.planTier.charAt(0).toUpperCase() + policy.planTier.slice(1)
-        : 'Protection plan';
+      const planName = formatPlanTierName(policy.planTier);
       items.push({
         id: `plan-${policy.id ?? policy.planTier}`,
         category: 'plan',

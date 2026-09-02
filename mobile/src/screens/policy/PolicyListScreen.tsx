@@ -5,6 +5,14 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import type { PlanCatalogItem } from '../../api/plans';
+import {
+  formatAssetUsage,
+  formatPlanPrice,
+  resolvePlanForPolicy,
+} from '../../api/plans';
+import { usePlansQuery } from '../../api/hooks/usePlans';
+import { useAssetsQuery } from '../../api/hooks/useAssets';
 import { usePoliciesQuery } from '../../api/hooks/usePolicies';
 import { ApiError, NetworkUnavailableError } from '../../api/errors';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
@@ -19,19 +27,32 @@ import { Alert, Badge, Button, Card, Screen } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
 import type { Href } from 'expo-router';
 
-function PolicyCard({ policy, onPress }: { policy: Policy; onPress?: () => void }) {
+function PolicyCard({
+  policy,
+  plans,
+  assetCount,
+  onPress,
+}: {
+  policy: Policy;
+  plans: PlanCatalogItem[];
+  assetCount: number;
+  onPress?: () => void;
+}) {
   const status = policy.status ?? 'pending_activation';
   const billingStatus = policy.billing?.billingStatus ?? 'not_configured';
+  const plan = resolvePlanForPolicy(plans ?? [], policy);
 
   return (
     <Pressable onPress={onPress} disabled={!onPress}>
       <Card style={styles.card}>
         <View style={styles.cardHeader}>
-          <Text style={styles.planTier}>{policy.planTier ?? 'Policy'}</Text>
+          <Text style={styles.planTier}>{plan.name}</Text>
           <Badge tone={policyStatusBadgeTone(status)}>
             {formatPolicyStatus(status)}
           </Badge>
         </View>
+        <Text style={styles.meta}>{formatPlanPrice(plan as Parameters<typeof formatPlanPrice>[0])}</Text>
+        <Text style={styles.meta}>{formatAssetUsage(assetCount, plan.maxAssets)}</Text>
         <Text style={styles.meta}>Billing: {billingStatus.replace(/_/g, ' ')}</Text>
         <Text style={styles.meta}>Effective: {formatDate(policy.effectiveDate)}</Text>
         {policy.coverageLimits && policy.coverageLimits.length > 0 ? (
@@ -51,10 +72,14 @@ function PolicyCard({ policy, onPress }: { policy: Policy; onPress?: () => void 
 export function PolicyListScreen() {
   const router = useRouter();
   const { data, isLoading, isError, error, refetch, isFetching } = usePoliciesQuery();
+  const plansQuery = usePlansQuery();
+  const assetsQuery = useAssetsQuery();
   const [isGating, setIsGating] = useState(false);
   const [gateError, setGateError] = useState(false);
 
   const policies = data?.data ?? [];
+  const plans = plansQuery.data?.data ?? [];
+  const assetCount = assetsQuery.data?.data?.length ?? 0;
 
   async function handleCreatePress() {
     setGateError(false);
@@ -125,6 +150,8 @@ export function PolicyListScreen() {
             <PolicyCard
               key={policy.id}
               policy={policy}
+              plans={plans}
+              assetCount={assetCount}
               onPress={
                 policy.id
                   ? () => router.push(`/policy/${policy.id}` as Href)

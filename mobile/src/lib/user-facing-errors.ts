@@ -101,7 +101,7 @@ function mapApiErrorByCode(code: string, status: number, message: string, contex
     case 'ACCOUNT_SUSPENDED':
       return 'This account is currently unavailable. Contact support if you believe this is a mistake.';
     case 'ASSET_LIMIT_REACHED':
-      return 'You have reached the asset limit for your plan. Upgrade your plan or remove an asset to add another.';
+      return 'You have reached the asset limit for your plan. Upgrade to a higher tier or remove an asset to register another.';
     case 'PLAN_REQUIRES_QUOTE':
       return 'This plan needs a custom quote. Contact us and we will help you choose the right coverage.';
     case 'VALIDATION_ERROR':

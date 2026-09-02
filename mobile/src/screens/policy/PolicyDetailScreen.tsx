@@ -1,22 +1,34 @@
 /**
  * Policy detail — GET /v1/policies/{policyId}.
  */
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { usePolicyQuery } from '../../api/hooks/usePolicies';
+import { usePlansQuery } from '../../api/hooks/usePlans';
+import { useAssetsQuery } from '../../api/hooks/useAssets';
+import {
+  formatAssetUsage,
+  formatPlanPrice,
+  formatPlanTierName,
+  isAtAssetLimit,
+  resolvePlanForPolicy,
+} from '../../api/plans';
 import {
   formatDate,
   formatPolicyStatus,
   policyStatusBadgeTone,
 } from '../../lib/asset-labels';
-import { Alert, Badge, Card, Screen } from '../../theme/primitives';
+import { Alert, Badge, Button, Card, Screen } from '../../theme/primitives';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { colors, spacing, typography } from '../../theme/tokens';
 
 export function PolicyDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const { data: policy, isLoading, isError, error } = usePolicyQuery(id);
+  const plansQuery = usePlansQuery();
+  const assetsQuery = useAssetsQuery();
 
   if (isLoading) {
     return (
@@ -40,18 +52,41 @@ export function PolicyDetailScreen() {
   }
 
   const status = policy.status ?? 'pending_activation';
+  const plans = plansQuery.data?.data ?? [];
+  const plan = resolvePlanForPolicy(plans, policy);
+  const assetCount = assetsQuery.data?.data?.length ?? 0;
+  const atLimit = isAtAssetLimit(assetCount, plan.maxAssets);
 
   return (
     <Screen>
-      <Text style={styles.title}>{policy.planTier ?? 'Policy'}</Text>
+      <Text style={styles.title}>{plan.name || formatPlanTierName(policy.planTier)}</Text>
       <Badge tone={policyStatusBadgeTone(status)}>{formatPolicyStatus(status)}</Badge>
 
       <Card style={styles.section}>
+        <DetailRow label="Monthly price" value={formatPlanPrice(plan as Parameters<typeof formatPlanPrice>[0])} />
+        <DetailRow label="Asset usage" value={formatAssetUsage(assetCount, plan.maxAssets)} />
         <DetailRow label="Billing status" value={policy.billing?.billingStatus?.replace(/_/g, ' ') ?? '—'} />
         <DetailRow label="Effective date" value={formatDate(policy.effectiveDate)} />
         <DetailRow label="Renewal date" value={formatDate(policy.renewalDate)} />
         <DetailRow label="Created" value={formatDate(policy.createdAt)} />
       </Card>
+
+      {atLimit ? (
+        <Alert tone="warning" style={styles.section}>
+          You&apos;ve used all asset slots on {plan.name}. Upgrade to register more devices.
+        </Alert>
+      ) : null}
+
+      {atLimit ? (
+        <Button
+          variant="secondary"
+          fullWidth
+          onPress={() => router.push('/policy/create' as Href)}
+          style={styles.section}
+        >
+          View upgrade options
+        </Button>
+      ) : null}
 
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Coverage limits</Text>

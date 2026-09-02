@@ -31,11 +31,11 @@ async function fetchPublicPlans(): Promise<PublicPlansResult> {
     if (canUseFallback) {
       let error: string | null = null;
       if (err instanceof NetworkUnavailableError) {
-        error = `Could not reach ${API_HOST}. Showing standard plan guide — live pricing loads after sign-in.`;
+        error = `Could not reach ${API_HOST}. Showing current plan guide — live pricing loads after sign-in.`;
       } else if (err instanceof ApiError && err.status === 404) {
         error = null;
       } else {
-        error = 'Live plan pricing is temporarily unavailable. Showing standard plan guide.';
+        error = 'Live plan pricing is temporarily unavailable. Showing current plan guide.';
       }
       return {
         plans: MARKETING_PLAN_CATALOG_FALLBACK,

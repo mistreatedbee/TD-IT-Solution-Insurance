@@ -20,7 +20,7 @@ describe('deriveVerificationCentreItems', () => {
       policies: [
         {
           id: '507f1f77bcf86cd799439011',
-          planTier: 'standard',
+          planTier: 'plus',
           status: 'pending_activation',
           effectiveDate: '2026-08-14T00:00:00.000Z',
         },
@@ -29,6 +29,7 @@ describe('deriveVerificationCentreItems', () => {
     });
 
     expect(items.find((item) => item.id === 'email')?.statusLabel).toBe('Pending');
+    expect(items.find((item) => item.id === 'plan-507f1f77bcf86cd799439011')?.title).toBe('Plus');
     expect(items.find((item) => item.id === 'plan-507f1f77bcf86cd799439011')?.statusLabel).toBe(
       'Pending activation',
     );

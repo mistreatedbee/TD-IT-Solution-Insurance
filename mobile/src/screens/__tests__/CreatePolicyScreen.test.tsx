@@ -9,6 +9,7 @@ jest.mock('../../theme/primitives', () => {
   return {
     Screen: ({ children }: { children: React.ReactNode }) => <View>{children}</View>,
     Alert: ({ children }: { children: React.ReactNode }) => <Text>{children}</Text>,
+    Badge: ({ children }: { children: React.ReactNode }) => <Text>{children}</Text>,
     Card: ({ children }: { children: React.ReactNode }) => <View>{children}</View>,
     Button: ({
       children,
@@ -44,19 +45,20 @@ const { useCreatePolicyMutation } = jest.requireMock('../../api/hooks/usePolicie
   useCreatePolicyMutation: jest.Mock;
 };
 
-const standardPlan = {
-  id: 'plan-standard',
-  slug: 'standard',
-  name: 'Standard',
-  tagline: 'For growing households',
+const plusPlan = {
+  id: 'plan-plus',
+  slug: 'plus',
+  name: 'Plus',
+  tagline: 'Protection + Monitoring',
   maxAssets: 10,
-  monthlyAmountCents: 40000,
+  monthlyAmountCents: 39900,
   currency: 'ZAR',
   isCustomPricing: false,
+  isMostPopular: true,
   isActive: true,
   sortOrder: 2,
-  features: ['GPS recovery support', 'Monthly billing'],
-  accountTypes: ['individual'],
+  features: ['Up to 10 registered assets', 'Enhanced GPS monitoring'],
+  accountTypes: ['both'],
 };
 
 async function renderWithClient(ui: React.ReactElement) {
@@ -75,7 +77,7 @@ describe('CreatePolicyScreen', () => {
       error: null,
     });
     usePlansQuery.mockReturnValue({
-      data: { data: [standardPlan] },
+      data: { data: [plusPlan] },
       isLoading: false,
       isError: false,
       refetch: jest.fn(),
@@ -86,7 +88,8 @@ describe('CreatePolicyScreen', () => {
     await renderWithClient(<CreatePolicyScreen />);
 
     expect(screen.getByText('Choose a protection plan')).toBeTruthy();
-    expect(screen.getByText('Standard')).toBeTruthy();
+    expect(screen.getByText('Plus')).toBeTruthy();
+    expect(screen.getByText('R399/month')).toBeTruthy();
     expect(screen.getByText('Choose this plan')).toBeTruthy();
   });
 
@@ -101,8 +104,8 @@ describe('CreatePolicyScreen', () => {
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
-        planCatalogId: 'plan-standard',
-        planTier: 'standard',
+        planCatalogId: 'plan-plus',
+        planTier: 'plus',
       });
     });
   });

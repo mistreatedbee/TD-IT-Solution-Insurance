@@ -8,7 +8,8 @@ import { useCreateAssetMutation } from '../../api/hooks/useAssets';
 import type { AssetType, CreateAssetRequest } from '../../api/assets';
 import { ApiError } from '../../api/errors';
 import { FEATURE_HARDWARE_TRACKING_ENABLED } from '../../config/features';
-import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { usePlanUsage } from '../../api/hooks/usePlanUsage';
+import { assetLimitUpgradeMessage } from '../../api/plans';
 import { ASSET_TYPE_OPTIONS } from '../../lib/asset-labels';
 import { Alert, Button, FormField, Input, Screen, SelectChipGroup } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
@@ -157,6 +158,7 @@ function vehicleStepCount(hasTrackerStep: boolean): number {
 
 export function RegisterAssetScreen() {
   const router = useRouter();
+  const { currentPlan } = usePlanUsage();
   const createMutation = useCreateAssetMutation();
   const [assetType, setAssetType] = useState<AssetType>('vehicle');
   const [displayName, setDisplayName] = useState('');
@@ -259,9 +261,16 @@ export function RegisterAssetScreen() {
     createMutation.error instanceof ApiError &&
     createMutation.error.code === 'ACCOUNT_NOT_ACTIVE'
       ? undefined
-      : createMutation.error
-        ? mapUserFacingError(createMutation.error, { context: 'asset' })
-        : undefined;
+      : createMutation.error instanceof ApiError &&
+          createMutation.error.code === 'ASSET_LIMIT_REACHED'
+        ? assetLimitUpgradeMessage(currentPlan)
+        : createMutation.error
+          ? mapUserFacingError(createMutation.error, { context: 'asset' })
+          : undefined;
+
+  const showUpgradeCta =
+    createMutation.error instanceof ApiError &&
+    createMutation.error.code === 'ASSET_LIMIT_REACHED';
 
   return (
     <Screen>
@@ -273,6 +282,16 @@ export function RegisterAssetScreen() {
       {(formError || submitError) ? (
         <View style={styles.alertSpacing}>
           <Alert tone="danger">{formError ?? submitError}</Alert>
+          {showUpgradeCta ? (
+            <Button
+              variant="secondary"
+              fullWidth
+              onPress={() => router.push('/policy/create' as Href)}
+              style={styles.upgradeButton}
+            >
+              View upgrade options
+            </Button>
+          ) : null}
         </View>
       ) : null}
 
@@ -430,5 +449,9 @@ const styles = StyleSheet.create({
   },
   alertSpacing: {
     marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  upgradeButton: {
+    marginTop: spacing.sm,
   },
 });
