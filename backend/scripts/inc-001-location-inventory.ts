@@ -28,7 +28,7 @@ import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 import { Pool } from 'pg';
 
-import { openMongoDatabase } from '../src/db/mongo-connection.js';
+import { openMongoDatabase, resolveMongoDatabaseName } from '../src/db/mongo-connection.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,13 +61,32 @@ async function main(): Promise<void> {
     );
   }
 
-  const mongoDbName = process.env.MONGODB_DB_NAME?.trim() || undefined;
+  const mongoDbNameOverride = process.env.MONGODB_DB_NAME?.trim() || undefined;
+  const resolvedDbName = resolveMongoDatabaseName(mongoUri, mongoDbNameOverride);
   const mongo = new MongoClient(mongoUri);
   const pool = pgConnString ? new Pool({ connectionString: pgConnString }) : null;
 
+  // INC-001-C-13: print the resolved database name unconditionally, before any
+  // query runs, so a run against the wrong/empty database is never mistaken
+  // for a genuine zero. `resolveMongoDatabaseName` mirrors exactly what
+  // `openMongoDatabase` will use below (MONGODB_DB_NAME override, else the
+  // path segment embedded in MONGODB_URI, else undefined -> driver default).
+  // eslint-disable-next-line no-console
+  console.error(
+    `[inc-001-location-inventory] resolvedDatabaseName=${resolvedDbName ?? '(driver default — no db name in URI or MONGODB_DB_NAME; almost certainly wrong)'}`,
+  );
+
   try {
     await mongo.connect();
-    const db = openMongoDatabase(mongo, mongoDbName);
+    const db = openMongoDatabase(mongo, mongoDbNameOverride);
+    // Guard against openMongoDatabase and resolveMongoDatabaseName ever
+    // silently disagreeing (e.g. a future refactor of one without the
+    // other) — assert what we actually queried matches what we printed.
+    if (db.databaseName !== (resolvedDbName ?? db.databaseName)) {
+      throw new Error(
+        `Resolved database name (${resolvedDbName}) does not match the database actually opened (${db.databaseName}) — refusing to run.`,
+      );
+    }
 
     // ---- location_events ----------------------------------------------
     const locationEvents = db.collection('location_events');
@@ -83,6 +102,26 @@ async function main(): Promise<void> {
       .find({ lastLocation: { $ne: null } })
       .project({ accountId: 1, lastLocation: 1 })
       .toArray();
+
+    // ---- INC-001-C-13 positive control -----------------------------------
+    // Unfiltered counts on sibling collections known to hold data in any
+    // populated environment. If these are also zero, the run reached the
+    // wrong/empty database and every location-data zero above is VOID.
+    const policies = db.collection('policies');
+    const recoveryCases = db.collection('recovery_cases');
+    const [positiveControlAssetsTotal, positiveControlPoliciesTotal, recoveryCasesTotal] =
+      await Promise.all([
+        assets.estimatedDocumentCount(),
+        policies.estimatedDocumentCount(),
+        recoveryCases.estimatedDocumentCount(),
+      ]);
+    // D-A-9: confirm recovery_cases carries no location data either, now
+    // that we're querying it anyway for the positive control.
+    const recoveryCasesWithLocation = await recoveryCases
+      .find({ $or: [{ lastLocation: { $ne: null } }, { lastLocationAt: { $ne: null } }] })
+      .project({ accountId: 1 })
+      .toArray();
+    const positiveControlPassed = positiveControlAssetsTotal > 0 || positiveControlPoliciesTotal > 0;
 
     // ---- cross-reference against Postgres accounts ----------------------
     const allAccountIds = Array.from(
@@ -117,6 +156,22 @@ async function main(): Promise<void> {
     const summary = {
       generatedAt: new Date().toISOString(),
       mode: pool ? 'full' : 'mongo-only',
+      resolvedDatabaseName: resolvedDbName ?? db.databaseName,
+      positiveControl: {
+        description:
+          'Unfiltered estimatedDocumentCount() on sibling collections known to hold data. ' +
+          'If both are 0, this run reached the wrong/empty database and every location-data ' +
+          'figure below (locationEvents.* and assetLastLocation.*) is VOID — do not cite as evidence.',
+        assetsTotalDocuments: positiveControlAssetsTotal,
+        policiesTotalDocuments: positiveControlPoliciesTotal,
+        passed: positiveControlPassed,
+      },
+      runVoid: !positiveControlPassed,
+      recoveryCases: {
+        // D-A-9
+        totalDocuments: recoveryCasesTotal,
+        documentsWithNonNullLastLocation: recoveryCasesWithLocation.length,
+      },
       locationEvents: {
         totalDocuments: totalEvents,
         distinctAccountCount: distinctAccountIds.length,
@@ -132,6 +187,11 @@ async function main(): Promise<void> {
         accountBreakdown: assetLocationBreakdown,
       },
       note:
+        (positiveControlPassed
+          ? ''
+          : 'RUN VOID — positive control (assets/policies) returned zero. The database queried ' +
+            '(see resolvedDatabaseName) is empty or wrong; the location-data zeros above are ' +
+            'NOT evidence of anything and must not be cited. Fix MONGODB_URI/MONGODB_DB_NAME and re-run. ') +
         (pool
           ? 'Read-only. No documents were modified or deleted by this script. '
           : 'Read-only mongo-only mode — account test/real breakdown omitted (set DATABASE_URL for full run). ') +
@@ -141,6 +201,14 @@ async function main(): Promise<void> {
 
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(summary, null, 2));
+    if (!positiveControlPassed) {
+      // eslint-disable-next-line no-console
+      console.error(
+        '[inc-001-location-inventory] POSITIVE CONTROL FAILED — assets and policies both empty ' +
+          `in database "${resolvedDbName ?? db.databaseName}". This run is VOID. Do not treat the ` +
+          'location-event zeros above as a real finding.',
+      );
+    }
   } finally {
     await mongo.close();
     if (pool) await pool.end();

@@ -224,6 +224,7 @@ Consistent with INC-001 §10, flagged rather than decided here:
    position: notify the Client about INC-001 regardless, on the same reasoning as INC-001 §6.5's
    ruling on data subjects — a narrow statutory trigger is not a reason to leave a counterparty
    uninformed about their own data.** Recorded as a recommendation to `cto`, not a decision.
+   **Reassessed 2026-09-02 against the nil inventory return — position UNCHANGED. See §8.**
 
 **Standing statement:** this document is a compliance determination made from contract terms as
 summarised to me, from the repository, and from the statute. It is **not legal advice**, and it
@@ -232,6 +233,105 @@ repository or already recorded in a cited compliance review.
 
 ---
 
-**Filed by:** `compliance-specialist`, 2026-08-28.
-**Does not discharge:** C-6 (breach runbook) · INC-001-C-3/C-7/C-8/C-10 · any C-008 condition ·
+---
+
+## 8. §19(b) reassessed against the INC-001 nil inventory return — 2026-09-02
+
+The INC-001 inventory returned **zero** `location_events` documents and **zero** assets with a
+non-null `lastLocation`. Figures, their limits, and the A-9 disposition are at
+[`incidents/INC-001-location-events-inventory.md`](./incidents/INC-001-location-events-inventory.md)
+§2a/§2b/§6 and are not restated here. I re-read §7.3 above before writing this.
+
+**Ruling: the §19(b) notification position at §7.3 does not change. Notify the Client about
+INC-001.** Four reasons, and the first is dispositive on its own.
+
+1. **The clock, if it runs, started on awareness and awareness was 2026-08-25.** §19(b) runs 48
+   hours **from the Developer becoming aware of a breach** — not from the Developer establishing its
+   consequences. Evidence obtained on 2026-09-02 cannot retroactively stop a clock that started
+   eight days earlier. Whether the notice is now late is a **fact to be handled**, not a question to
+   be reopened, and the remedy for a late notification is to send it, not to re-derive that it was
+   never owed. Reasoning backwards from a favourable outcome to "so nothing was notifiable" is the
+   precise failure mode §3.4 above already flags — an undefined awareness trigger becoming an
+   arguable one, which in a dispute is the Client's argument to make, not ours.
+
+2. **§19(b) is a breach clause, not a harm clause.** It says "breach." A notification obligation
+   that fires only where data was in fact captured would be a *damage* term, and the parties did not
+   write one. A consent-less, retention-less ingestion endpoint deployed to production and to a
+   distributed APK, past a hard Stage 8 gate, against an explicit ratified prohibition, is a breach
+   of the Operator's §19 security-safeguards duty **whatever the row count** — and it is a breach of
+   the §19(a) documented-instructions duty, since no Client instruction authorised location
+   processing at all.
+
+3. **The vulnerability was reachable, not theoretical.** The endpoint was deployed and callable; the
+   client shipped `expo-location` and a consent primer that promised a withdrawal control the app did
+   not contain. The only thing standing between that and captured coordinates was
+   `LOCATION_INGESTION_ENABLED` failing closed — a control doing its job, which is a *defence*, not
+   an *absence of incident*. Withholding notice because a fail-safe held would tell the Client only
+   about failures that were also unlucky.
+
+4. **The Client's own exposure is the point of the clause.** TD IT Solution is the Responsible Party.
+   Their s22, s23 and s99 posture is theirs to assess on complete information. Deciding on their
+   behalf that a matter touching their data does not merit telling them is exactly the substitution
+   of our judgement for theirs that the Operator framing forbids — and if the relationship is closer
+   to **joint** responsibility than the contract assumes (§7.2), it is worse than a misjudgement.
+
+### 8.1 What the nil return **does** change
+
+Materially, and in the Client's favour. This is exculpatory content for the notice, not a defeater
+of it — the distinction the task rightly pressed on, and it holds:
+
+- **The notice's substance changes completely.** From "your customers' GPS coordinates were captured
+  and stored without a lawful basis" to "an ungated location-ingestion endpoint reached production
+  and a preview build; on inventory, **no location data was ever captured, and there are no affected
+  data subjects**." Severity to the Client drops from a data-loss event to a control-and-governance
+  failure that was caught and that captured nothing.
+- **CT-6 is materially wrong as filed and is corrected.** §4(b) states that *"real people's real GPS
+  coordinates, captured during preview-APK testing, are sitting in the live cluster with no retention
+  rule and no deletion job."* **On the inventory, they are not — no such data exists.** The §19(d)
+  test-data breach I characterised as "already happened, and it is INC-001" **did not happen on the
+  location limb.** CT-6 is accordingly **withdrawn as a §19(d) finding** — INC-001-C-7 becomes a nil
+  purge certificate and discharges nothing under §19(d) because there is nothing to discharge. I made
+  that finding on an assumption I flagged as an assumption; it was wrong, and correcting it promptly
+  and in the counterparty's favour is the same obligation that required making it.
+  **What survives §19(d) untouched: CT-5** — seeded accounts persisting in the live Supabase project
+  with no teardown path is a real, current, unremediated §19(d) failure, and it is now the *only*
+  live one. The MP-8 single-cluster co-mingling that made INC-001 possible is also unchanged.
+- **CT-3's urgency is unchanged; its first live test is not.** The runbook gap stands as a go-live
+  blocker and a contractual exposure from execution (§3). But INC-001 no longer demonstrates a
+  *failed* notification to data subjects — there were none to reach. **INC-001-C-8** (unreachable
+  data subjects, blocked production email) therefore was not exercised for real; it remains open as a
+  standing blocker on the same footing as before, and the runbook must still be written assuming the
+  next incident has data subjects.
+- **§7.3's counsel referral narrows.** The question for counsel is no longer "was INC-001 a
+  notifiable breach and has the clock run" in the abstract. It is: **the notice is due and late; what
+  is the correct form and framing of a late §19(b) notice whose content is substantially
+  exculpatory?** That is a better question to bring than the one I filed.
+
+### 8.2 Two caveats on this reassessment
+
+- **It is conditional on INC-001-C-13** (database-identity positive control, due 2026-09-08). If the
+  re-run shows the zero came from the wrong database, §8.1 reverts in full and CT-6 is reinstated. **Do
+  not send a notice asserting "no data was captured" before C-13 returns** — an incident notification
+  is a legal document that will be read back to us, and the one thing worse than a late notice is a
+  late notice that is wrong.
+- **The nil return does not narrow the non-location limbs of the Client conversation.** Feature 009
+  shipped ~24 surfaces with zero Stage 8 records, including a live KYC pipeline collecting SA ID
+  numbers and residential addresses (INC-001 §9.3, F009-1). `location_events` being empty says nothing
+  about `customer_profiles`. **If a §19(b) notice is sent, it should not be scoped to the location
+  endpoint alone** — scoping it narrowly, and having the wider gap surface later, would be worse than
+  not sending it.
+
+### 8.3 Register changes
+
+| ID | Change |
+|---|---|
+| **CT-6** | **WITHDRAWN as a §19(d) finding.** Premise (coordinates in the live cluster) is disproved by the INC-001 inventory. INC-001-C-7 becomes a nil certificate discharging nothing under §19(d). Conditional on INC-001-C-13; reinstates if C-13 voids the return |
+| **CT-3** | **Unchanged** — go-live blocker, 2026-09-12. Must be written for an incident that *does* have data subjects |
+| **CT-5** | **Unchanged, and now the only live §19(d) exposure.** Raised in priority accordingly |
+| **CT-10** *(new)* | **Serve the §19(b) notice to the Client on INC-001**, drafted by me, reviewed by counsel per §7.3, sent after INC-001-C-13 returns. Must state the nil inventory result, that the notice is late and why, and must **not** be scoped to the location endpoint alone (§8.2). Owner `cto` (decision + service), `compliance-specialist` (drafts) — **2026-09-12** |
+
+---
+
+**Filed by:** `compliance-specialist`, 2026-08-28; §8 appended 2026-09-02.
+**Does not discharge:** C-6 (breach runbook) · INC-001-C-3/C-8/C-10/C-13 · any C-008 condition ·
 Feature 008 Stage 8 · legal sign-off.

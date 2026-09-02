@@ -147,7 +147,7 @@ Every Feature 009 surface found in the tree, mapped to its Stage 8 record. **The
 | A-6 | F009-1 data classification + field-sensitivity review for `customer_profiles` | `compliance-specialist` + `database-architect` | Real identity data |
 | A-7 | SDL-4 + SDL-9 design (server-side consent object, step-up, out-of-band notice, immediate opt-out) | `authentication-engineer` + `backend-architect` | Re-enabling ingestion |
 | A-8 | SDL-1 `assertionMode` + SDL-8 scheduled purge against a retention number | `database-architect`; period from `compliance-specialist` | Re-enabling ingestion |
-| A-9 | Purge/retain decision on pre-containment location data | `compliance-specialist` | Closing INC-001 |
+| A-9 | Purge/retain decision on pre-containment location data | `compliance-specialist` | **CLOSED 2026-09-02 — NIL PURGE.** Inventory returned zero `location_events` documents and zero assets with a non-null `lastLocation`; the §7 purge ruling stands with nothing to operate on. Ruling and its limits: [`INC-001-location-events-inventory.md` §2a/§2b/§6](./INC-001-location-events-inventory.md). **No longer blocks closing INC-001.** New condition **INC-001-C-13** (database-identity positive control, `database-architect`, 2026-09-08) blocks the nil purge certificate (C-7), not A-9 |
 | A-10 | CI-4 asset non-blankness; re-cut `android-icon-monochrome.png` | `devops-engineer` + `ui-designer` | Store-bound builds |
 | A-11 | `HANDOFF.md` corrected — it still describes Feature 008 as wholly unimplemented, ADR-0009 as design-time only, and `mobile/package.json` as free of `expo-location`; `CLAUDE.md` cites a `backend/src/routes/asset-location.ts` that does not exist (the location routes live in `assets.ts`) | `technical-writer` | — |
 

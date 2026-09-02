@@ -445,8 +445,54 @@ Flagged explicitly. **I have given my best professional assessment on each; none
 
 ## 12. Purge certificate — *reserved, to be filed on execution (INC-001-C-7)*
 
+**Now a NIL certificate.** See §13.
+
 ---
 
-**Filed by:** `compliance-specialist`, 2026-08-25.
+## 13. Correction on the inventory return — appended 2026-09-02
+
+**Appended, not rewritten**, per this document's own §8.2 precedent. §0–§12 stand as filed except as
+corrected here.
+
+The inventory required at §5.2 returned on 2026-09-02: **zero `location_events` documents, zero
+assets with a non-null `lastLocation`.** The figures, the precise limits of a `--mongo-only` return,
+the **A-9 disposition (CLOSED — NIL PURGE)**, and the gate-by-gate effect on §6 and §7.3 are recorded
+once, at [`INC-001-location-events-inventory.md`](./INC-001-location-events-inventory.md) §2a, §2b and
+§6. **They are not restated here.** Three corrections belong in this document because they correct
+statements made in it:
+
+**(1) §0(1) and §4.3 are narrowed.** Both say, in terms, that *every location record written by the
+endpoint was written without a lawful basis*. **No location record was written.** The sentence is
+conditionally true and factually inapplicable, and it must not be cited downstream as evidence that
+unlawfully-processed customer location data exists. The finding survives in substance as: an
+unlawful processing *capability* — no consent object, no retention period, no withdrawal mechanism,
+an inaccurate s18 notice — was built past no gate and deployed to production and to a distributed
+APK. That is a contravention of s8 and s19 in its own right, and of s11/s13/s14/s17/s18 as to any
+request the endpoint received. **What did not occur is the harm those conditions exist to prevent.**
+Reasoning at inventory §6.5.
+
+**(2) §6.6's s22 provisional negative becomes FINAL NEGATIVE**, subject to INC-001-C-13. It no
+longer rests on the statutory-construction argument at §6.2 — that unlawful processing by the
+responsible party is not "access or acquisition by an unauthorised person" — but on the simpler
+fact that there was no personal information in the store capable of being accessed by anyone. The
+counsel referral at **§10.1 is accordingly de-prioritised**, not withdrawn: it re-arms in full the
+moment C-13 surfaces a single record, and the construction question remains unsettled for any future
+incident. **§6.5's direct-notification requirement closes on its own alternative limb** — a recorded
+finding that no non-`staff_test` data subject exists. Notification of nobody is not required.
+
+**(3) §2.8's volume assumption is retired.** That paragraph reasoned from the rate-limiter *ceiling*
+(~1,920 points/account/day) because actual counts were unavailable, and expressly said so. Actual
+density is zero. The behavioural-profile characterisation at §3 of the 2026-08-14 review remains the
+correct **classification** of this data class and is unaffected — no such profile was in fact built.
+
+**Unchanged, and stated so nobody reads this as a general relaxation:** every C-008 condition
+(§8.5(2)); every INC-001-C condition except as noted at inventory §6.4; §8.5's four conditions on the
+ADR-0009 concurrence; the ruling that Feature 008 restarts at Stage 1; and the §9 register — of which
+**C-4 (client-side SDL-6 egress), C-9 (governance routing), C-10 (RoPA), C-11 (erasure path) and
+C-12 (tabletop) are entirely untouched by a zero row count.**
+
+---
+
+**Filed by:** `compliance-specialist`, 2026-08-25; §13 appended 2026-09-02.
 **Discharges:** ADR-0009 §16 (`compliance-specialist` concurrence), subject to the conditions at §8.5.
 **Does not discharge:** ADR-0009 §15 (`security-engineer`) · Feature 008 Stage 8 · C-008-1 … C-008-12 · legal sign-off.
