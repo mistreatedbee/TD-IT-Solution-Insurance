@@ -106,6 +106,10 @@ function mapApiErrorByCode(code: string, status: number, message: string, contex
       return 'This plan needs a custom quote. Contact us and we will help you choose the right coverage.';
     case 'PLAN_DOWNGRADE_NOT_ALLOWED':
       return 'You have more registered assets than this plan allows. Remove assets first, then try again.';
+    case 'PLAN_FEATURE_NOT_INCLUDED':
+      return context === 'recovery'
+        ? 'Theft reporting and incident management are included from the Plus plan upward. Upgrade your plan to report a theft.'
+        : 'This feature is not included in your current plan. Upgrade to unlock it.';
     case 'VALIDATION_ERROR':
       return 'Some details look incorrect. Review the form and try again.';
     case 'NOT_FOUND':

@@ -1,7 +1,14 @@
-import { CrownIcon } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Badge, Button, Card, Input, SectionHeading } from '../../components';
+import {
+  BriefcaseIcon,
+  CrownIcon,
+  ShieldCheckIcon,
+  SparklesIcon,
+  type LucideIcon,
+} from 'lucide-react';
+import { Button, Badge, Card, Input, SectionHeading } from '../../components';
+import { PlanMarketingCard } from '../../components/PlanMarketingCard';
 import { ArrowLink } from '../../components/ArrowLink';
 import { AssetBadge, type AssetType as BadgeAssetType } from '../../components/AssetBadge';
 import { InlineAlert } from '../../dashboard/components/ui';
@@ -12,7 +19,6 @@ import { formatPlanPrice, listPlans, type PlanCatalogItem } from '../../customer
 import { useCustomerAuth } from '../../customer/auth/CustomerAuthProvider';
 import { resendSignupVerification, signUpWithSupabase } from '../../customer/supabase/auth';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { formatSupportLevel } from '../../lib/plan-catalog-display';
 import { COMPANY_CONTACT } from '../../lib/companyContact';
 import {
   ASSET_CATEGORY_OPTIONS,
@@ -41,6 +47,16 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 10;
 
 const POLL_INTERVAL_MS = 10_000;
+
+const ONBOARDING_PLAN_ICONS: Record<string, LucideIcon> = {
+  essential: ShieldCheckIcon,
+  plus: SparklesIcon,
+  pro: CrownIcon,
+  business: BriefcaseIcon,
+  starter: ShieldCheckIcon,
+  standard: SparklesIcon,
+  enterprise: BriefcaseIcon,
+};
 
 function resolveInitialStep(
   authStatus: string,
@@ -502,56 +518,17 @@ export function CustomerOnboardingPage() {
             subtitle="Select the plan that matches how many devices you want to protect. Prices are shown for planning — payment is configured in a later step."
           />
           {plansLoading ? <p className="text-sm text-text-secondary">Loading plans…</p> : null}
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {visiblePlans.map((plan) => {
-              const isMostPopular = plan.isMostPopular === true;
-              return (
-              <Card
+          <div className="mt-8 grid items-end gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {visiblePlans.map((plan) => (
+              <PlanMarketingCard
                 key={plan.id}
-                className={`flex flex-col overflow-hidden p-0 ${
-                  selectedPlanId === plan.id ? 'ring-2 ring-primary' : ''
-                } ${isMostPopular ? 'ring-2 ring-accent-gold-deep/50 lg:scale-[1.02]' : ''}`}
-              >
-                <div className="bg-primary px-4 py-3 text-white">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-bold">{plan.name}</p>
-                    {isMostPopular ? (
-                      <Badge tone="gold" className="!bg-accent-gold-deep !text-white text-[10px]">
-                        <CrownIcon className="mr-0.5 inline h-3 w-3" aria-hidden="true" />
-                        Most popular
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <p className="text-sm text-white/80">{plan.positioning ?? plan.tagline}</p>
-                </div>
-                <div className="flex flex-1 flex-col p-4">
-                  <p className="text-2xl font-bold text-text-primary">{formatPlanPrice(plan)}</p>
-                  {plan.supportLevel ? (
-                    <p className="mt-1 text-xs text-text-secondary">
-                      Support: {formatSupportLevel(plan.supportLevel)}
-                    </p>
-                  ) : null}
-                  <ul className="mt-3 flex-1 space-y-1 text-sm text-text-secondary">
-                    {plan.features.slice(0, 5).map((f) => (
-                      <li key={f}>• {f}</li>
-                    ))}
-                    {plan.features.length > 5 ? (
-                      <li className="text-xs text-text-secondary">+ {plan.features.length - 5} more</li>
-                    ) : null}
-                  </ul>
-                  <Button
-                    className="mt-4"
-                    variant={plan.isCustomPricing ? 'secondary' : isMostPopular ? 'primary' : 'primary'}
-                    fullWidth
-                    loading={loading && selectedPlanId === plan.id}
-                    onClick={() => void handleSelectPlan(plan)}
-                  >
-                    {plan.isCustomPricing ? 'Request a quote' : 'Select plan'}
-                  </Button>
-                </div>
-              </Card>
-              );
-            })}
+                plan={plan}
+                icon={ONBOARDING_PLAN_ICONS[plan.slug] ?? ShieldCheckIcon}
+                onSelect={() => void handleSelectPlan(plan)}
+                loading={loading && selectedPlanId === plan.id}
+                selected={selectedPlanId === plan.id}
+              />
+            ))}
           </div>
         </>
       ) : null}

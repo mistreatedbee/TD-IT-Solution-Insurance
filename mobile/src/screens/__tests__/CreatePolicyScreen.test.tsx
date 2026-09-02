@@ -89,7 +89,8 @@ describe('CreatePolicyScreen', () => {
 
     expect(screen.getByText('Choose a protection plan')).toBeTruthy();
     expect(screen.getByText('Plus')).toBeTruthy();
-    expect(screen.getByText('R399/month')).toBeTruthy();
+    expect(screen.getByText('R399')).toBeTruthy();
+    expect(screen.getByText('/month')).toBeTruthy();
     expect(screen.getByText('Choose this plan')).toBeTruthy();
   });
 

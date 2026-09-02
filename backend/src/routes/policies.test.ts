@@ -510,13 +510,19 @@ describe('GET /policies', () => {
       }>;
     };
     expect(body.data[0]?.planSummary).toMatchObject({
+      planSlug: 'essential',
       planName: 'Essential',
       maxAssets: 5,
+      maxUsers: 1,
       activeAssetCount: 3,
       assetUsageLabel: '3 / 5 assets',
       monthlyAmountCents: 19_900,
     });
     expect(body.data[0]?.planSummary.supportLevel).toBeTruthy();
+    expect(body.data[0]?.planSummary.entitlements).toMatchObject({
+      incidentManagement: false,
+      locationHistory: false,
+    });
   });
 });
 

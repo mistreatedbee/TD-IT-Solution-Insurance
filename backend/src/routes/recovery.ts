@@ -13,6 +13,7 @@ import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
+import { assertPlanEntitlement } from '../lib/plan-entitlements.js';
 import { notifyInBackground } from '../lib/customer-notification-service.js';
 
 const createCaseSchema = z.object({
@@ -48,6 +49,7 @@ export function createRecoveryRouter(ctx: AppContext): Router {
 
         const accountId = req.auth!.accountId;
         await requireActiveAccount(ctx.accounts, accountId);
+        await assertPlanEntitlement(ctx, accountId, 'incidentManagement');
 
         const asset = await ctx.assets.findByIdForAccount(accountId, parsed.data.assetId);
         if (!asset) {

@@ -64,6 +64,7 @@ describe('plan-subscription-summary', () => {
       maxUsers: 1,
       activeAssetCount: 2,
       assetUsageLabel: '2 / 5 assets',
+      entitlements: essentialPlanFixture('507f1f77bcf86cd799439088').entitlements,
     })).toEqual(summary);
   });
 

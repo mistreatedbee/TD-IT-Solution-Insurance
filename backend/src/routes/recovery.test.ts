@@ -15,8 +15,13 @@ import type { AppContext } from '../context.js';
 import type { AccountStatus } from '../repositories/accounts.js';
 import type { AssetDocument } from '../repositories/assets.js';
 import type { RecoveryCaseDocument } from '../repositories/recovery-cases.js';
+import type { PolicyDocument } from '../repositories/policies.js';
 import type { Env } from '../config/env.js';
 import type { IdempotencyRepo } from '../repositories/idempotency.js';
+import { essentialPlanFixture, plusPlanFixture } from '../lib/plan-test-fixtures.js';
+
+const ESSENTIAL_PLAN_ID = '507f1f77bcf86cd799439088';
+const PLUS_PLAN_ID = '507f1f77bcf86cd799439089';
 
 function fakeEnv(): Env {
   return {
@@ -133,11 +138,42 @@ function sampleCase(accountId: string, assetId: string, id = '507f1f77bcf86cd799
   };
 }
 
+function samplePolicy(accountId: string, planCatalogId: string): PolicyDocument {
+  const now = new Date('2026-08-01T12:00:00.000Z');
+  return {
+    id: '507f1f77bcf86cd799439010',
+    accountId,
+    planTier: planCatalogId === PLUS_PLAN_ID ? 'plus' : 'essential',
+    planCatalogId,
+    status: 'active',
+    coverageLimits: [],
+    billing: {
+      provider: null,
+      externalCustomerId: null,
+      externalSubscriptionId: null,
+      billingStatus: 'not_configured',
+      currency: 'ZAR',
+      amount: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      nextBillingAt: null,
+      cancelAt: null,
+    },
+    effectiveDate: now,
+    renewalDate: null,
+    cancelledAt: null,
+    legalHold: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 function createHarness(opts: {
   accountId?: string;
   accountState?: AccountStatus['accountState'];
   assets?: AssetDocument[];
   cases?: RecoveryCaseDocument[];
+  planCatalogId?: string | null;
 }) {
   const env = fakeEnv();
   const kv = new InMemoryKeyValueStore();
@@ -145,6 +181,7 @@ function createHarness(opts: {
   const sessionId = randomUUID();
   const assets = new Map((opts.assets ?? []).map((a) => [a.id, a]));
   const cases = [...(opts.cases ?? [])];
+  const policy = opts.planCatalogId ? samplePolicy(accountId, opts.planCatalogId) : null;
 
   const ctx = {
     env,
@@ -193,6 +230,19 @@ function createHarness(opts: {
       },
       async notifySecurityOperatorsTheftReported() {
         return undefined;
+      },
+    },
+    policies: {
+      async listByAccount(acctId: string, limit: number) {
+        if (!policy || policy.accountId !== acctId) return [];
+        return [policy].slice(0, limit);
+      },
+    },
+    planCatalog: {
+      async findById(id: string) {
+        if (id === ESSENTIAL_PLAN_ID) return essentialPlanFixture(id);
+        if (id === PLUS_PLAN_ID) return plusPlanFixture(id);
+        return null;
       },
     },
   } as unknown as AppContext;
@@ -323,5 +373,55 @@ describe('routes/recovery', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(403);
+  });
+
+  it('returns 403 PLAN_FEATURE_NOT_INCLUDED for Essential plan theft reports', async () => {
+    const assetId = '507f1f77bcf86cd799439021';
+    const acctId = randomUUID();
+    const { app, accountId, sessionId, env } = createHarness({
+      accountId: acctId,
+      assets: [sampleAsset(acctId, assetId)],
+      planCatalogId: ESSENTIAL_PLAN_ID,
+    });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const res = await fetch(`${listened.baseUrl}/recovery/cases`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+        'idempotency-key': randomUUID(),
+      },
+      body: JSON.stringify({ assetId }),
+    });
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('PLAN_FEATURE_NOT_INCLUDED');
+  });
+
+  it('allows theft reports on Plus plan and above', async () => {
+    const assetId = '507f1f77bcf86cd799439021';
+    const acctId = randomUUID();
+    const { app, accountId, sessionId, env } = createHarness({
+      accountId: acctId,
+      assets: [sampleAsset(acctId, assetId)],
+      planCatalogId: PLUS_PLAN_ID,
+    });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const res = await fetch(`${listened.baseUrl}/recovery/cases`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+        'idempotency-key': randomUUID(),
+      },
+      body: JSON.stringify({ assetId }),
+    });
+
+    expect(res.status).toBe(201);
   });
 });

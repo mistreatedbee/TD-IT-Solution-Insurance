@@ -1,10 +1,16 @@
 import React from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
 import type { PlanCatalogItem } from '../../api/plans';
-import { formatAssetAllowance, formatPlanPrice } from '../../api/plans';
 import { COMPANY_CONTACT } from '../../lib/companyContact';
+import {
+  formatPlanAssetLimitLabel,
+  formatPlanPriceParts,
+  getMarketingPlanFeatures,
+} from '../../lib/marketing-plan-display';
 import { Badge, Button, Card } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
+
+const VISIBLE_FEATURE_COUNT = 5;
 
 export interface PlanCatalogPickerProps {
   plans: PlanCatalogItem[];
@@ -39,31 +45,59 @@ export function PlanCatalogPicker({
         const isSelected = selectedPlanId === plan.id;
         const isCurrent = currentPlanId != null && plan.id === currentPlanId;
         const isPopular = plan.isMostPopular === true;
+        const price = formatPlanPriceParts(plan);
+        const assetLimit = formatPlanAssetLimitLabel(plan);
+        const { inheritsFrom, highlights } = getMarketingPlanFeatures(plan);
+        const visibleFeatures = highlights.slice(0, VISIBLE_FEATURE_COUNT);
+        const moreCount = highlights.length - visibleFeatures.length;
+
         return (
           <Card
             key={plan.id}
             padding="none"
-            style={[styles.planCard, isPopular ? styles.planCardPopular : null]}
+            style={[
+              styles.planCard,
+              isPopular ? styles.planCardPopular : null,
+              isSelected ? styles.planCardSelected : null,
+            ]}
           >
-            <View style={[styles.planHeader, isPopular ? styles.planHeaderPopular : null]}>
+            {isPopular ? (
+              <View style={styles.popularBanner}>
+                <Text style={styles.popularBannerText}>Most popular</Text>
+              </View>
+            ) : null}
+            <View style={styles.planHeader}>
               <View style={styles.planHeaderRow}>
                 <Text style={styles.planName}>{plan.name}</Text>
-                {isPopular ? (
-                  <Badge tone="gold">Most popular</Badge>
-                ) : null}
+                {isCurrent ? <Badge tone="neutral">Current</Badge> : null}
               </View>
-              <Text style={styles.planTagline}>{plan.tagline}</Text>
+              <Text style={styles.planTagline}>{plan.positioning ?? plan.tagline}</Text>
             </View>
             <View style={styles.planBody}>
-              <Text style={styles.planPrice}>{formatPlanPrice(plan)}</Text>
-              <Text style={styles.planFeature}>{formatAssetAllowance(plan)}</Text>
-              {plan.features.map((feature) => (
+              {price.isCustom ? (
+                <Text style={styles.planPrice}>Custom quote</Text>
+              ) : (
+                <View style={styles.priceRow}>
+                  <Text style={styles.planPrice}>{price.amount}</Text>
+                  <Text style={styles.planPeriod}>{price.period}</Text>
+                </View>
+              )}
+              <View style={styles.assetLimitPill}>
+                <Text style={styles.assetLimitText}>{assetLimit}</Text>
+              </View>
+              {inheritsFrom ? (
+                <Text style={styles.inheritsText}>Everything in {inheritsFrom}, plus:</Text>
+              ) : null}
+              {visibleFeatures.map((feature) => (
                 <Text key={feature} style={styles.planFeature}>
-                  • {feature}
+                  ✓ {feature}
                 </Text>
               ))}
+              {moreCount > 0 ? (
+                <Text style={styles.moreFeatures}>+ {moreCount} more included</Text>
+              ) : null}
               <Button
-                variant={plan.isCustomPricing ? 'secondary' : 'primary'}
+                variant={plan.isCustomPricing ? 'secondary' : isPopular ? 'primary' : 'secondary'}
                 fullWidth
                 loading={isLoading}
                 disabled={isCurrent}
@@ -97,12 +131,26 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.accentGoldDeep,
   },
-  planHeader: {
-    backgroundColor: colors.primary,
-    padding: spacing.md,
+  planCardSelected: {
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
-  planHeaderPopular: {
+  popularBanner: {
     backgroundColor: colors.accentGoldDeep,
+    paddingVertical: spacing.xs,
+    alignItems: 'center',
+  },
+  popularBannerText: {
+    fontSize: typography.sizes.xs,
+    fontWeight: '700',
+    color: colors.textInverse,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  planHeader: {
+    padding: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
   planHeaderRow: {
     flexDirection: 'row',
@@ -112,28 +160,66 @@ const styles = StyleSheet.create({
   },
   planName: {
     flex: 1,
-    fontSize: typography.sizes.base,
+    fontSize: typography.sizes.lg,
     fontWeight: '700',
-    color: colors.textInverse,
+    color: colors.textPrimary,
   },
   planTagline: {
     fontSize: typography.sizes.sm,
-    color: 'rgba(255,255,255,0.85)',
+    color: colors.textSecondary,
     marginTop: spacing.xs,
   },
   planBody: {
     padding: spacing.md,
   },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.xs,
+  },
   planPrice: {
-    fontSize: typography.sizes['2xl'],
+    fontSize: typography.sizes['3xl'],
     fontWeight: '700',
     color: colors.textPrimary,
+  },
+  planPeriod: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  assetLimitPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  assetLimitText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  inheritsText: {
+    fontSize: typography.sizes.xs,
+    fontWeight: '500',
+    color: colors.primary,
+    backgroundColor: colors.accentGoldTint,
+    padding: spacing.sm,
+    borderRadius: 8,
     marginBottom: spacing.sm,
   },
   planFeature: {
     fontSize: typography.sizes.sm,
     color: colors.textSecondary,
     marginBottom: spacing.xs,
+    lineHeight: 20,
+  },
+  moreFeatures: {
+    fontSize: typography.sizes.xs,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
   },
   planButton: {
     marginTop: spacing.md,

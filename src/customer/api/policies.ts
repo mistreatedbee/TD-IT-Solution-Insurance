@@ -3,12 +3,16 @@ import { newIdempotencyKey } from './idempotency';
 
 /** Returned when `GET /policies?include=planSummary` is used. */
 export interface PolicyPlanSummary {
+  planSlug: string;
   planName: string | null;
+  positioning: string | null;
   maxAssets: number | null;
+  maxUsers: number | null;
   activeAssetCount: number;
   assetUsageLabel: string;
   supportLevel: string;
   monthlyAmountCents: number | null;
+  entitlements: Record<string, boolean> | null;
 }
 
 export interface Policy {

@@ -41,7 +41,7 @@ import { createAdminPoliciesRouter } from './routes/admin-policies.js';
 import { createAdminAssetsRouter } from './routes/admin-assets.js';
 import { createAdminPlansRouter } from './routes/admin-plans.js';
 import { createPlansRouter } from './routes/plans.js';
-import { createPoliciesRouter } from './routes/policies.js';
+import { createSubscriptionRouter } from './routes/subscription.js';
 import { createAssetsRouter } from './routes/assets.js';
 import { createRecoveryRouter } from './routes/recovery.js';
 import { createSecurityCasesRouter } from './routes/security-cases.js';
@@ -140,6 +140,7 @@ async function main(): Promise<void> {
   v1.use(createAdminPlansRouter(ctx));
   v1.use(createPlansRouter(ctx));
   v1.use(createPoliciesRouter(ctx));
+  v1.use(createSubscriptionRouter(ctx));
   v1.use(createAssetsRouter(ctx));
   v1.use(createRecoveryRouter(ctx));
   v1.use(createSecurityCasesRouter(ctx));

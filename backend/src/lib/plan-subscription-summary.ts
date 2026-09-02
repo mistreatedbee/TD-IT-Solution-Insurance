@@ -19,16 +19,21 @@ export interface PlanSubscriptionSummary {
   maxUsers: number | null;
   activeAssetCount: number;
   assetUsageLabel: string;
+  entitlements: PlanCatalogDocument['entitlements'] | null;
 }
 
 /** Slim projection for policy list/detail when `include=planSummary`. */
 export interface PlanSummary {
+  planSlug: string;
   planName: string | null;
+  positioning: string | null;
   maxAssets: number | null;
+  maxUsers: number | null;
   activeAssetCount: number;
   assetUsageLabel: string;
   supportLevel: string;
   monthlyAmountCents: number | null;
+  entitlements: PlanCatalogDocument['entitlements'] | null;
 }
 
 /** Admin list enrichment for upgrade-opportunity visibility. */
@@ -75,17 +80,22 @@ export async function buildPlanSubscriptionSummary(
     maxUsers,
     activeAssetCount,
     assetUsageLabel: buildUsageLabel(activeAssetCount, maxAssets),
+    entitlements: plan?.entitlements ?? null,
   };
 }
 
 export function toPlanSummary(summary: PlanSubscriptionSummary): PlanSummary {
   return {
+    planSlug: summary.planSlug,
     planName: summary.planName,
+    positioning: summary.positioning,
     maxAssets: summary.maxAssets,
+    maxUsers: summary.maxUsers,
     activeAssetCount: summary.activeAssetCount,
     assetUsageLabel: summary.assetUsageLabel,
     supportLevel: summary.supportLevel,
     monthlyAmountCents: summary.monthlyAmountCents,
+    entitlements: summary.entitlements,
   };
 }
 

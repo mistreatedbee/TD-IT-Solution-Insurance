@@ -135,7 +135,8 @@ describe('CustomerOnboardingScreen — plan step', () => {
     });
 
     expect(screen.getByText('Plus')).toBeTruthy();
-    expect(screen.getByText('R399/month')).toBeTruthy();
+    expect(screen.getByText('R399')).toBeTruthy();
+    expect(screen.getByText('/month')).toBeTruthy();
     expect(screen.getByText('Choose this plan')).toBeTruthy();
     expect(screen.getByText('Most popular')).toBeTruthy();
     expect(listPlans).toHaveBeenCalled();
