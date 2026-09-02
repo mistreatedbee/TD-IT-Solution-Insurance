@@ -65,8 +65,10 @@ export async function bootstrapProductEventsCollections(db: Db): Promise<void> {
   for (const spec of productEventsIndexes) {
     await col.createIndex(spec.key, {
       name: spec.name,
-      unique: spec.unique,
-      partialFilterExpression: spec.partialFilterExpression,
+      ...(spec.unique !== undefined ? { unique: spec.unique } : {}),
+      ...(spec.partialFilterExpression !== undefined
+        ? { partialFilterExpression: spec.partialFilterExpression }
+        : {}),
     });
   }
 }
