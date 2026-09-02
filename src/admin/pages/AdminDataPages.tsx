@@ -3,7 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Button, Card, Input, SectionHeading } from '../../components';
 import { DataTable, DetailGrid, InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { formatPlanTierLabel } from '../../lib/plan-catalog-display';
+import {
+  formatAssetUsage,
+  formatPlanTierLabel,
+  isApproachingAssetLimit,
+  resolvePlanFromCatalog,
+} from '../../lib/plan-catalog-display';
+import { listAdminPlans, type AdminPlanCatalogItem } from '../api/admin-plans';
 import {
   getAdminAccount,
   getAdminAsset,
@@ -21,6 +27,30 @@ import {
   type AdminSettableAccountState,
 } from '../api/admin-data';
 import { AdminNavLink } from '../layout/AdminLayout';
+
+function countRegisteredAdminAssets(assets: AdminAssetSummary[]): number {
+  return assets.filter((a) => a.status !== 'removed' && a.status !== 'cancelled').length;
+}
+
+function AssetUsageCell({
+  assetCount,
+  maxAssets,
+}: {
+  assetCount: number | null;
+  maxAssets: number | null | undefined;
+}) {
+  if (assetCount == null) return '—';
+  const label = formatAssetUsage(assetCount, maxAssets);
+  if (isApproachingAssetLimit(assetCount, maxAssets)) {
+    return (
+      <span className="font-medium text-amber-700">
+        {label}
+        <span className="ml-1 text-xs">(≥80%)</span>
+      </span>
+    );
+  }
+  return label;
+}
 
 export function AccountsListPage() {
   const [rows, setRows] = useState<AdminAccountSummary[]>([]);
@@ -277,6 +307,8 @@ export function PoliciesListPage() {
   const [params] = useSearchParams();
   const accountId = params.get('accountId') ?? undefined;
   const [rows, setRows] = useState<AdminPolicySummary[]>([]);
+  const [plans, setPlans] = useState<AdminPlanCatalogItem[]>([]);
+  const [accountAssetCount, setAccountAssetCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -285,17 +317,35 @@ export function PoliciesListPage() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    listAdminPolicies({ accountId })
-      .then((page) => {
+    const loads: Promise<unknown>[] = [
+      listAdminPolicies({ accountId }).then((page) => {
         if (cancelled) return;
         setRows(page.data);
         setCursor(page.pagination.nextCursor);
         setHasMore(page.pagination.hasMore);
+      }),
+      listAdminPlans().then((res) => {
+        if (!cancelled) setPlans(res.data);
+      }),
+    ];
+    if (accountId) {
+      loads.push(
+        listAdminAssets({ accountId }).then((page) => {
+          if (!cancelled) setAccountAssetCount(countRegisteredAdminAssets(page.data));
+        }),
+      );
+    } else {
+      setAccountAssetCount(null);
+    }
+
+    Promise.all(loads)
+      .catch((err) => {
+        if (!cancelled) setError(mapUserFacingError(err, { context: 'admin' }));
       })
-      .catch((err) => setError(mapUserFacingError(err, { context: 'admin' })))
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
@@ -321,6 +371,19 @@ export function PoliciesListPage() {
           <DataTable
             columns={[
               { key: 'planTier', header: 'Plan', render: (row) => <AdminNavLink to={`/admin/policies/${row.id}`}>{formatPlanTierLabel(String(row.planTier))}</AdminNavLink> },
+              ...(accountId
+                ? [
+                    {
+                      key: 'assetUsage',
+                      header: 'Asset usage',
+                      render: (row: Record<string, unknown>) => {
+                        const policy = row as unknown as AdminPolicySummary;
+                        const plan = resolvePlanFromCatalog(plans, policy);
+                        return <AssetUsageCell assetCount={accountAssetCount} maxAssets={plan?.maxAssets} />;
+                      },
+                    },
+                  ]
+                : []),
               { key: 'status', header: 'Status', render: (row) => <StatusBadge value={String(row.status)} /> },
               { key: 'accountId', header: 'Account', render: (row) => <AdminNavLink to={`/admin/accounts/${row.accountId}`}>{String(row.accountId).slice(0, 8)}…</AdminNavLink> },
               { key: 'effectiveDate', header: 'Effective', render: (row) => new Date(String(row.effectiveDate)).toLocaleDateString() },
@@ -340,24 +403,62 @@ export function PoliciesListPage() {
 
 export function PolicyDetailPage({ policyId }: { policyId: string }) {
   const [policy, setPolicy] = useState<AdminPolicyDetail | null>(null);
+  const [plans, setPlans] = useState<AdminPlanCatalogItem[]>([]);
+  const [assetCount, setAssetCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     getAdminPolicy(policyId)
-      .then(setPolicy)
-      .catch((err) => setError(mapUserFacingError(err, { context: 'admin' })));
+      .then(async (detail) => {
+        if (cancelled) return;
+        setPolicy(detail);
+        const [plansRes, assetsRes] = await Promise.all([
+          listAdminPlans(),
+          listAdminAssets({ accountId: detail.accountId }),
+        ]);
+        if (cancelled) return;
+        setPlans(plansRes.data);
+        setAssetCount(countRegisteredAdminAssets(assetsRes.data));
+      })
+      .catch((err) => {
+        if (!cancelled) setError(mapUserFacingError(err, { context: 'admin' }));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [policyId]);
 
   if (error) return <InlineAlert tone="danger">{error}</InlineAlert>;
   if (!policy) return <LoadingState />;
 
+  const planCatalogEntry = resolvePlanFromCatalog(plans, policy);
+  const approachingLimit =
+    assetCount != null && isApproachingAssetLimit(assetCount, planCatalogEntry?.maxAssets);
+
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title={`Policy — ${formatPlanTierLabel(policy.planTier)}`} size="md" className="mb-4" />
+      {approachingLimit ? (
+        <div className="mb-4">
+          <InlineAlert tone="warning">
+            Customer is at or above 80% of their plan asset limit (
+            {formatAssetUsage(assetCount!, planCatalogEntry?.maxAssets)}). Consider outreach about an upgrade.
+          </InlineAlert>
+        </div>
+      ) : null}
       <DetailGrid
         rows={[
           { label: 'Status', value: <StatusBadge value={policy.status} /> },
           { label: 'Account', value: <AdminNavLink to={`/admin/accounts/${policy.accountId}`}>{policy.accountId}</AdminNavLink> },
+          {
+            label: 'Asset usage',
+            value:
+              assetCount != null
+                ? formatAssetUsage(assetCount, planCatalogEntry?.maxAssets)
+                : '—',
+          },
+          { label: 'Plan cap', value: planCatalogEntry?.maxAssets ?? 'Custom / unlimited' },
           { label: 'Legal hold', value: policy.legalHold ? 'Yes' : 'No' },
           { label: 'Effective', value: new Date(policy.effectiveDate).toLocaleString() },
         ]}

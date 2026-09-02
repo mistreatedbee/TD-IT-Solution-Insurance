@@ -57,6 +57,7 @@ export function CustomerDashboardLayout() {
       brand="My coverage"
       navItems={[
         { to: '/dashboard', label: 'Overview' },
+        { to: '/dashboard/plan', label: 'Change plan' },
         { to: '/dashboard/map', label: 'Map' },
         { to: '/dashboard/alerts', label: 'Alerts' },
         { to: '/dashboard/verification', label: 'Verification' },

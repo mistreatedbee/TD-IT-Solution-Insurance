@@ -3,6 +3,7 @@ import { BrowserRouter, Outlet, Routes, Route } from 'react-router-dom';
 import { CustomerAuthProvider } from './customer/auth/CustomerAuthProvider';
 import { CustomerAccountPage } from './pages/CustomerAccountPage';
 import { CustomerAccountSettingsPage } from './pages/customer/CustomerAccountSettingsPage';
+import { CustomerChangePlanPage } from './pages/customer/CustomerChangePlanPage';
 import { CustomerDashboardPage } from './pages/customer/CustomerDashboardPage';
 import { CustomerAlertsPage } from './pages/customer/CustomerAlertsPage';
 import { CustomerVerificationCentrePage } from './pages/customer/CustomerVerificationCentrePage';
@@ -85,6 +86,7 @@ export function App() {
               <Route element={<CustomerDashboardGate />}>
                 <Route element={<CustomerDashboardLayout />}>
                   <Route path="/dashboard" element={<CustomerDashboardPage />} />
+                  <Route path="/dashboard/plan" element={<CustomerChangePlanPage />} />
                   <Route path="/dashboard/map" element={<CustomerProtectionMapPage />} />
                   <Route path="/dashboard/account" element={<CustomerAccountSettingsPage />} />
                   <Route path="/dashboard/profile" element={<CustomerProfilePage />} />

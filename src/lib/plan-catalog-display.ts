@@ -49,3 +49,18 @@ export function formatAssetUsage(activeCount: number, maxAssets: number | null |
   if (maxAssets == null) return `${activeCount} assets (no fixed limit)`;
   return `${activeCount}/${maxAssets} assets`;
 }
+
+/** Share of the plan asset cap in use (0–1). Returns null when unlimited or cap is zero. */
+export function assetUsageRatio(activeCount: number, maxAssets: number | null | undefined): number | null {
+  if (maxAssets == null || maxAssets <= 0) return null;
+  return activeCount / maxAssets;
+}
+
+export function isApproachingAssetLimit(
+  activeCount: number,
+  maxAssets: number | null | undefined,
+  threshold = 0.8,
+): boolean {
+  const ratio = assetUsageRatio(activeCount, maxAssets);
+  return ratio != null && ratio >= threshold;
+}

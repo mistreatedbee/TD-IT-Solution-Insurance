@@ -29,3 +29,10 @@ export function createPolicy(body: { planCatalogId?: string; planTier?: string }
     headers: { 'Idempotency-Key': newIdempotencyKey() },
   });
 }
+
+export function changePolicyPlan(policyId: string, planCatalogId: string) {
+  return apiFetch<Policy>(`/policies/${encodeURIComponent(policyId)}/plan`, {
+    method: 'PATCH',
+    body: { planCatalogId },
+  });
+}

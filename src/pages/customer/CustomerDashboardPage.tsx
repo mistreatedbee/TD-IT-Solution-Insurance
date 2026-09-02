@@ -167,6 +167,13 @@ export function CustomerDashboardPage() {
                 Pending activation — payment integration coming soon
               </Badge>
             ) : null}
+            <div className="mt-4">
+              <Link to="/dashboard/plan">
+                <Button variant="secondary" size="sm">
+                  Change plan
+                </Button>
+              </Link>
+            </div>
           </Card>
         ) : (
           <Card padding="lg" interactive={false}>

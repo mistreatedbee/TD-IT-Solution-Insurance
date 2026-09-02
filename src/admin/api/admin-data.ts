@@ -23,6 +23,7 @@ export interface AdminPolicySummary {
   id: string;
   accountId: string;
   planTier: string;
+  planCatalogId: string | null;
   status: string;
   legalHold: boolean;
   billingStatus: string;
