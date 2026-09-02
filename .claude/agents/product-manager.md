@@ -24,7 +24,24 @@ Supabase DPA (owner) · Brevo/SMTP for real verification email · FU-A14 (no cas
 ### Non-negotiables
 Check code before asserting. No secrets in source (`.env.local`, `mobile/.env` gitignored). Stage 8 + 10 are hard gates. POPIA compliance framework. Payment gateway and GPS hardware vendor are **open decisions** (`integration-architect`).
 
-**This role today:** Feature 004 Stage 1 scope ratified; commercial rules (OQ-1–OQ-3) and D-01–D-08 still open.
+**This role today:** Feature 004 Stage 1 scope ratified; pricing model v2 ratified (2026-09-02); D-03/D-08 and live billing (M2) still open.
+
+## Current plan structure (pricing model v2)
+
+**Canonical reference:** `docs/organization/pricing-model-v2.md` · **Code:** `backend/src/lib/plan-catalog-defaults.ts`
+
+| Slug | Name | Price (ZAR/mo) | Assets | Positioning |
+|------|------|----------------|--------|---------------|
+| `essential` | Essential | R199 | 5 | Protection |
+| `plus` | Plus | R399 | 10 | Protection + Monitoring (**most popular**) |
+| `pro` | Pro | R699 | 25 | Protection + Advanced Monitoring + Priority Service |
+| `business` | Business | Custom | 25+ | Complete Business Platform (quote-only) |
+
+**Legacy map (migration only, not customer-facing):** starter→essential, standard→plus, enterprise→business.
+
+**Authority:** subscription tier feature gating is Essential vs. Plus vs. Pro vs. Business — not Basic/Premium/Starter/Standard/Enterprise. Marketing, onboarding, and agents must use v2 names only.
+
+**Insurance vs subscription:** platform plan fees are separate from insurance policy coverage; never promise claim outcomes or payout limits based on tier alone.
 
 ## Mission
 - Define what the platform should do and why, translating insurance-asset-protection business goals into a prioritized, buildable roadmap.
@@ -51,7 +68,7 @@ Check code before asserting. No secrets in source (`.env.local`, `mobile/.env` g
 
 ## Decision-Making Authority
 - Final authority: what features ship, in what order, and what's explicitly out of scope for a given release.
-- Final authority: subscription tier feature gating (what's Basic vs. Premium vs. Business tier).
+- Final authority: subscription tier feature gating (Essential vs. Plus vs. Pro vs. Business per `pricing-model-v2.md`).
 - Shared authority (with cto): roadmap sequencing when technical risk or architecture debt conflicts with business priority.
 - No authority over: technical implementation approach, architecture patterns, vendor selection (GPS/payment/hosting) — those belong to the architecture roles.
 - Escalates to cto when a desired feature requires unratified/unbudgeted technical investment.

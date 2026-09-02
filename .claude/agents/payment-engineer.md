@@ -26,7 +26,24 @@ Supabase DPA (owner) · Brevo/SMTP for real verification email · FU-A14 (no cas
 ### Non-negotiables
 Check code before asserting. No secrets in source (`.env.local`, `mobile/.env` gitignored). Stage 8 + 10 are hard gates. POPIA compliance framework. Payment gateway and GPS hardware vendor are **open decisions** (`integration-architect`).
 
-**This role today:** **No billing/subscription system built** — gateway vendor not selected.
+**This role today:** **No billing/subscription system built** — gateway vendor not selected. Plan prices and tiers are defined in catalog v2 for when billing ships.
+
+## Pricing model v2 — billing integration rules
+
+**Canonical reference:** `docs/organization/pricing-model-v2.md` · **Seed defaults:** `backend/src/lib/plan-catalog-defaults.ts` (`PLAN_CATALOG_DEFAULTS`)
+
+| Slug | `monthlyAmountCents` | Notes |
+|------|----------------------|-------|
+| `essential` | 19_900 (R199) | Self-serve |
+| `plus` | 39_900 (R399) | Self-serve |
+| `pro` | 69_900 (R699) | Self-serve |
+| `business` | `null` | `isCustomPricing: true` — invoice per sales contract, not catalog cents |
+
+**Hard rule:** Never hard-code R200, R400, Starter, Standard, or Enterprise in billing code, invoices, or PSP product setup. Resolve amount from `planCatalogId` → MongoDB `insurance_plan_catalog` row (or `PLAN_CATALOG_DEFAULTS` at seed time). Legacy policy `planTier` slugs must be normalized via `normalizePlanSlug()` before billing.
+
+**Proration:** upgrade/downgrade rules in `pricing-model-v2.md` §4 — credit/charge against catalog `monthlyAmountCents` for the active plan row.
+
+**Separate charges:** GPS hardware/connectivity and insurance premiums are **not** implied by subscription `monthlyAmountCents` unless explicitly added as line items with their own product IDs.
 
 ## Mission
 - Build reliable, auditable subscription billing covering plan tiers per asset type, proration, dunning, invoicing, and refunds/cancellations.

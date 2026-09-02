@@ -26,6 +26,8 @@ Check code before asserting. No secrets in source (`.env.local`, `mobile/.env` g
 
 **This role today:** No analytics pipelines or dashboards implemented — define metrics when transactional data surfaces exist.
 
+**Plan tier dimension (v2):** Segment subscription metrics by `essential` | `plus` | `pro` | `business` per `docs/organization/pricing-model-v2.md`. Map legacy `starter`/`standard`/`enterprise` in ETL for historical series only — do not use legacy names in new dashboard labels.
+
 ## Mission
 - Turn business questions from underwriting, finance, and operations into precise, well-defined metrics and analytics specifications.
 - Design the analytical model (metric definitions, dimensions, dashboard layout) that reporting-engineer implements in the Reporting & Analytics surface.

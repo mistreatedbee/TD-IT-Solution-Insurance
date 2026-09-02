@@ -1,7 +1,11 @@
 # Subscription Tier Strategy — Starter / Professional / Enterprise
 
-**Owner:** `product-manager` · **Status:** Proposed — pricing amounts and seed-data changes need
-platform-owner sign-off before any admin edits the live catalog · **Last reviewed:** 2026-08-28
+> **Superseded (2026-09-02):** Plan names, prices, and agent behaviour are governed by
+> [`pricing-model-v2.md`](pricing-model-v2.md) (Essential / Plus / Pro / Business; R199 / R399 /
+> R699 / custom). This file is retained for historical upgrade-pull rationale only. Do not cite
+> Starter, Standard, Enterprise, or R200/R400 as current pricing.
+
+**Owner:** `product-manager` · **Status:** Superseded by `pricing-model-v2.md` · **Last reviewed:** 2026-08-28
 
 **Purpose:** define a subscription tier structure clear and differentiated enough to actually
 drive upgrades ("bring the juices in"), grounded in what Feature 006's plan catalog already is,

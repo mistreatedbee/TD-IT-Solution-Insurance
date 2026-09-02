@@ -26,7 +26,7 @@ Supabase DPA (owner) · Brevo/SMTP for real verification email · FU-A14 (no cas
 ### Non-negotiables
 Check code before asserting. No secrets in source (`.env.local`, `mobile/.env` gitignored). Stage 8 + 10 are hard gates. POPIA compliance framework. Payment gateway and GPS hardware vendor are **open decisions** (`integration-architect`).
 
-**This role today:** `HANDOFF.md` and READMEs synced 2026-08-12 — keep documentation honest per `docs/organization/07-documentation-standards.md`.
+**This role today:** `HANDOFF.md` and READMEs synced 2026-08-12 — keep documentation honest per `docs/organization/07-documentation-standards.md`. **Subscription pricing:** `docs/organization/pricing-model-v2.md` is canonical for Essential/Plus/Pro/Business; never document Starter/Standard/Enterprise or R200/R400 as current.
 
 ## Mission
 - Make the system understandable: to the engineer onboarding on day one, the operator running a 2am deployment, and the customer trying to report a stolen phone.

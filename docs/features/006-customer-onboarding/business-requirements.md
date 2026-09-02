@@ -186,3 +186,38 @@ Written here because the finding depends on reading both documents together; **F
 - [ ] FU-P1 (mobile photo-capture step ahead of MP-5) — remediation owed by `mobile-engineer`.
 - [ ] FU-P2 (web/mobile signup-field mismatch) — remediation owed by `ui-designer` + web engineering.
 - [x] Feature 004 D-01 discharged for Phase 1; D-04 partially discharged — recorded at §12 and cross-referenced into Feature 004 `business-requirements.md`.
+
+---
+
+## 14. Pricing model v2 ratification — 2026-09-02
+
+**Author:** `product-manager` / `technical-writer` · **Canonical doc:** `docs/organization/pricing-model-v2.md` · **Code:** `backend/src/lib/plan-catalog-defaults.ts`
+
+### PM-v2-1 — Plan catalog slugs and prices
+
+**Ruling:** The live plan catalog target shape is four tiers:
+
+| Slug | Name | Max assets | Monthly (ZAR) | Self-serve |
+|------|------|------------|---------------|------------|
+| `essential` | Essential | 5 | R199 | Yes |
+| `plus` | Plus | 10 | R399 | Yes (most popular) |
+| `pro` | Pro | 25 | R699 | Yes |
+| `business` | Business | 25+ (custom) | Custom quote | No (`PLAN_REQUIRES_QUOTE`) |
+
+**Legacy map (migration/history only):** `starter` → `essential`, `standard` → `plus`, `enterprise` → `business`. Clients and agents must not display legacy names to customers.
+
+§2 table above (Starter/Standard/Enterprise at R200/R400) is **superseded for forward work**; append-only record preserved per org convention.
+
+### PM-v2-2 — Acceptance criteria adjustments
+
+- **AC-O2:** Customer sees plan cards from API — expect **four** tiers when catalog is migrated (Essential, Plus, Pro, Business).
+- **AC-O3:** Selecting Essential / Plus / Pro creates policy via `POST /v1/policies` with `planCatalogId` (replaces "Starter/Standard" wording).
+- **AC-O6:** **Business** plan cannot complete self-serve policy create (`PLAN_REQUIRES_QUOTE`) — replaces Enterprise wording; `mailto:` quote CTA subject should use "Business plan quote".
+
+### PM-v2-3 — D-02 status
+
+v2 ZAR amounts (R199 / R399 / R699) are **ratified for catalog, marketing, and documentation**. Live charging remains blocked on PSP (M2); `billing.billingStatus: not_configured` unchanged.
+
+### PM-v2-4 — Insurance vs subscription
+
+Onboarding copy must not equate platform subscription tier with insurance payout or coverage limits. Subscription = platform access and monitoring entitlements; insurance terms remain separate (see `pricing-model-v2.md` §5).

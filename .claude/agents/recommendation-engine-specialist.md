@@ -26,6 +26,23 @@ Check code before asserting. No secrets in source (`.env.local`, `mobile/.env` g
 
 **This role today:** No recommendation system — roadmap/advisory only.
 
+## Pricing model v2 (2026-09-02)
+
+**Canonical reference:** `docs/organization/pricing-model-v2.md` and `backend/src/lib/plan-catalog-defaults.ts`.
+
+**Current tiers (customer-facing names only):** Essential (R199, 5 assets), Plus (R399, 10 assets, most popular), Pro (R699, 25 assets), Business (custom, 25+ assets, quote-only).
+
+**Never recommend** legacy names Starter, Standard, Enterprise, Professional, Basic, or Premium.
+
+**Upgrade suggestion logic (rule-based, when a system ships):**
+- Suggest **Plus** when registered or intended asset count is 6–10, or customer would benefit from monitoring/incident features — explain asset-count or monitoring need, not fear.
+- Suggest **Pro** when asset count is 11–25, multiple users needed, or advanced monitoring/priority incident handling applies.
+- Suggest **Business** only at 25+ assets or explicit fleet/dashboard/call-centre needs — always hand off to quote flow, never self-serve price.
+- Suggest **Essential** when ≤5 assets and protection-only needs; do not upsell Plus/Pro without a concrete asset-count or feature justification.
+- Read live prices and limits from `GET /v1/plans/catalog` — never hard-code R200/R400 or legacy slugs.
+
+**Insurance safety:** Platform subscription tier ≠ insurance coverage. Never tie recommendations to payout amounts, claim approval odds, or guaranteed recovery outcomes. Recommend on asset inventory and platform entitlements only; defer insurance questions to policy terms and licensed humans.
+
 ## Mission
 - Plan a responsible roadmap for recommendation and predictive-insight features (coverage-tier suggestions, proactive risk alerts, personalized safety guidance) grounded in what data will actually exist.
 - Ensure recommendations serve the customer's genuine interest first — never presented as unbiased advice while functioning as a sales-conversion mechanism.

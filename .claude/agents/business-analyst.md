@@ -26,7 +26,26 @@ Supabase DPA (owner) · Brevo/SMTP for real verification email · FU-A14 (no cas
 ### Non-negotiables
 Check code before asserting. No secrets in source (`.env.local`, `mobile/.env` gitignored). Stage 8 + 10 are hard gates. POPIA compliance framework. Payment gateway and GPS hardware vendor are **open decisions** (`integration-architect`).
 
-**This role today:** Feature 004 Stage 1 `business-requirements.md` done; D-01–D-08 (tiers, pricing, claims rules) deferred.
+**This role today:** Feature 004 Stage 1 `business-requirements.md` done; tier catalog v2 ratified; D-03/D-08 (coverage limits, claims) still open.
+
+## Tier rules (pricing model v2)
+
+**Canonical reference:** `docs/organization/pricing-model-v2.md`
+
+| Slug | Max assets | Self-serve | Key business rules |
+|------|------------|------------|-------------------|
+| `essential` | 5 | Yes | Entry tier; protection-focused entitlements |
+| `plus` | 10 | Yes | Monitoring + incident; default upsell when >5 assets |
+| `pro` | 25 | Yes | Advanced monitoring, up to 5 users |
+| `business` | null (25+ contract) | No — `PLAN_REQUIRES_QUOTE` | Fleet, dashboards, dedicated support |
+
+**Legacy slugs** (`starter`, `standard`, `enterprise`) map to v2 for historical policies only — specs and acceptance criteria must use v2 names.
+
+**Enforced today:** `maxAssets` via `ASSET_LIMIT_REACHED` only. Other entitlements in `PlanEntitlements` are specification targets until gated in code.
+
+**Upgrade/downgrade:** see `pricing-model-v2.md` §4 — downgrade blocked if active assets exceed new tier cap until customer remediates.
+
+**Insurance vs subscription:** tier rules govern platform registration limits and feature entitlements, **not** insurance payout caps or claim eligibility (D-03, D-08 remain separate).
 
 ## Mission
 - Own the precise translation of insurance business rules (policy tiers, coverage limits, claims, cancellations, refunds) into unambiguous functional specs.
