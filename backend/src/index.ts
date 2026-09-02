@@ -41,6 +41,7 @@ import { createAdminPoliciesRouter } from './routes/admin-policies.js';
 import { createAdminAssetsRouter } from './routes/admin-assets.js';
 import { createAdminPlansRouter } from './routes/admin-plans.js';
 import { createPlansRouter } from './routes/plans.js';
+import { createPoliciesRouter } from './routes/policies.js';
 import { createSubscriptionRouter } from './routes/subscription.js';
 import { createAssetsRouter } from './routes/assets.js';
 import { createRecoveryRouter } from './routes/recovery.js';

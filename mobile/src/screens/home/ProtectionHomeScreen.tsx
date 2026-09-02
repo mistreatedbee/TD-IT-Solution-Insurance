@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { resendVerification } from '../../api/auth';
 import { useAccountQuery } from '../../auth/useAccountQuery';
+import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
 import {
   FEATURE_ALERTS_ENABLED,
   FEATURE_KYC_ENABLED,
@@ -89,6 +90,7 @@ export function ProtectionHomeScreen() {
   const router = useRouter();
   const { data: account } = useAccountQuery();
   const { data, isLoading, isError, error, isRefetching, refetchAll } = useProtectionDashboard();
+  const { hasIncidentManagement, changePlanHref } = usePlanEntitlements();
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [isResending, setIsResending] = useState(false);
 
@@ -192,7 +194,17 @@ export function ProtectionHomeScreen() {
         onAddAsset={() => router.push('/(app)/assets/register' as Href)}
       />
 
-      <HomeHeroActions showTheftReporting={FEATURE_THEFT_REPORTING_ENABLED} />
+      <HomeHeroActions
+        showTheftReporting={FEATURE_THEFT_REPORTING_ENABLED}
+        theftReportingLocked={FEATURE_THEFT_REPORTING_ENABLED && !hasIncidentManagement}
+        onReportTheft={() => {
+          if (!hasIncidentManagement && changePlanHref) {
+            router.push(changePlanHref as Href);
+            return;
+          }
+          router.push('/(app)/report-theft' as Href);
+        }}
+      />
 
       {FEATURE_ALERTS_ENABLED ? (
         <HomeAlertsPreview

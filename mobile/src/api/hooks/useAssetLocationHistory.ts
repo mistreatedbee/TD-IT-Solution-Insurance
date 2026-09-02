@@ -22,6 +22,9 @@ export function useAssetLocationHistoryQuery(assetId: string | undefined, limit 
       try {
         return await getAssetLocationHistory(assetId!, { limit });
       } catch (error) {
+        if (error instanceof ApiError && error.code === 'PLAN_FEATURE_NOT_INCLUDED') {
+          return EMPTY_HISTORY;
+        }
         if (error instanceof ApiError && (error.status === 404 || error.code === 'NOT_FOUND')) {
           return EMPTY_HISTORY;
         }

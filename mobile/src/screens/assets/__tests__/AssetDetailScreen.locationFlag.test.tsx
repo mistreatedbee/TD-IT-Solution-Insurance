@@ -45,6 +45,14 @@ jest.mock('../../../api/hooks/useAssetTrackingProfile', () => ({
   useAssetTrackingProfileQuery: () => ({ data: undefined }),
 }));
 
+jest.mock('../../../api/hooks/usePlanEntitlements', () => ({
+  usePlanEntitlements: () => ({
+    hasIncidentManagement: true,
+    changePlanHref: null,
+    isLoading: false,
+  }),
+}));
+
 jest.mock('../../../location', () => ({
   LocationConsentModal: () => null,
   formatRelativeTime: () => 'just now',

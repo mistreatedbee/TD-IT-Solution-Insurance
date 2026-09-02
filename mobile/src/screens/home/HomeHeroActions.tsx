@@ -5,8 +5,24 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, typography } from '../../theme/tokens';
 import { homeShadow } from './homeStyles';
 
-export function HomeHeroActions({ showTheftReporting = true }: { showTheftReporting?: boolean }) {
+export function HomeHeroActions({
+  showTheftReporting = true,
+  theftReportingLocked = false,
+  onReportTheft,
+}: {
+  showTheftReporting?: boolean;
+  theftReportingLocked?: boolean;
+  onReportTheft?: () => void;
+}) {
   const router = useRouter();
+
+  function handleReportTheft() {
+    if (onReportTheft) {
+      onReportTheft();
+      return;
+    }
+    router.push('/(app)/report-theft' as Href);
+  }
 
   return (
     <View style={styles.row}>
@@ -24,15 +40,25 @@ export function HomeHeroActions({ showTheftReporting = true }: { showTheftReport
 
       {showTheftReporting ? (
         <Pressable
-          style={[styles.card, styles.cardCool]}
+          style={[styles.card, theftReportingLocked ? styles.cardWarm : styles.cardCool]}
           accessibilityRole="button"
-          onPress={() => router.push('/(app)/report-theft' as Href)}
+          onPress={handleReportTheft}
         >
-          <View style={[styles.iconWrap, styles.iconCool]}>
-            <ShieldAlertIcon size={26} color={colors.textInverse} strokeWidth={2.2} />
+          <View style={[styles.iconWrap, theftReportingLocked ? styles.iconWarm : styles.iconCool]}>
+            <ShieldAlertIcon
+              size={26}
+              color={theftReportingLocked ? colors.accentGoldDeep : colors.textInverse}
+              strokeWidth={2.2}
+            />
           </View>
-          <Text style={[styles.title, styles.titleOnDark]}>Report theft</Text>
-          <Text style={[styles.body, styles.bodyOnDark]}>Start recovery immediately</Text>
+          <Text style={[styles.title, theftReportingLocked ? undefined : styles.titleOnDark]}>
+            {theftReportingLocked ? 'Upgrade for theft reporting' : 'Report theft'}
+          </Text>
+          <Text style={[styles.body, theftReportingLocked ? undefined : styles.bodyOnDark]}>
+            {theftReportingLocked
+              ? 'Included from the Plus plan'
+              : 'Start recovery immediately'}
+          </Text>
         </Pressable>
       ) : null}
     </View>

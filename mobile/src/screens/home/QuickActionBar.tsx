@@ -1,11 +1,21 @@
 import { useRouter, type Href } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
 import { Button } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
 
 export function QuickActionBar() {
   const router = useRouter();
+  const { hasIncidentManagement, changePlanHref } = usePlanEntitlements();
+
+  function handleReportTheft() {
+    if (!hasIncidentManagement && changePlanHref) {
+      router.push(changePlanHref as Href);
+      return;
+    }
+    router.push('/(app)/report-theft' as Href);
+  }
 
   return (
     <View style={styles.wrap}>
@@ -18,12 +28,8 @@ export function QuickActionBar() {
         >
           + Add asset
         </Button>
-        <Button
-          variant="primary"
-          onPress={() => router.push('/(app)/report-theft' as Href)}
-          style={styles.btn}
-        >
-          Report lost/stolen
+        <Button variant="primary" onPress={handleReportTheft} style={styles.btn}>
+          {hasIncidentManagement ? 'Report lost/stolen' : 'Upgrade for theft reporting'}
         </Button>
       </View>
       <View style={styles.row}>

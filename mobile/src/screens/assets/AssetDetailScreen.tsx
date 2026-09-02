@@ -9,6 +9,7 @@ import {
   useReportAssetLocationMutation,
 } from '../../api/hooks/useAssetLocation';
 import { useAssetQuery } from '../../api/hooks/useAssets';
+import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
 import { FEATURE_HARDWARE_TRACKING_ENABLED, FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
 import {
   assetStatusBadgeTone,
@@ -69,6 +70,7 @@ export function AssetDetailScreen() {
     refetch: refetchLocation,
   } = useAssetLocationQuery(isSmartphone ? id : undefined);
   const reportMutation = useReportAssetLocationMutation();
+  const { hasIncidentManagement, changePlanHref } = usePlanEntitlements();
 
   const [linkedAssetId, setLinkedAssetIdState] = useState<string | null>(null);
   const [consentGranted, setConsentGrantedState] = useState(false);
@@ -432,16 +434,27 @@ export function AssetDetailScreen() {
       </Card>
 
       {status === 'active' ? (
-        <Button
-          variant="secondary"
-          fullWidth
-          onPress={() =>
-            router.push(`/report-theft/confirm?assetId=${encodeURIComponent(id!)}` as Href)
-          }
-          style={styles.reportButton}
-        >
-          Report theft
-        </Button>
+        hasIncidentManagement ? (
+          <Button
+            variant="secondary"
+            fullWidth
+            onPress={() =>
+              router.push(`/report-theft/confirm?assetId=${encodeURIComponent(id!)}` as Href)
+            }
+            style={styles.reportButton}
+          >
+            Report theft
+          </Button>
+        ) : changePlanHref ? (
+          <Button
+            variant="secondary"
+            fullWidth
+            onPress={() => router.push(changePlanHref as Href)}
+            style={styles.reportButton}
+          >
+            Upgrade to report theft
+          </Button>
+        ) : null
       ) : null}
 
       <LocationConsentModal

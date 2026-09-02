@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Card, SectionHeading } from '../../components';
+import { PlanEntitlementsCard } from '../../components/PlanEntitlementsCard';
 import { ArrowLink } from '../../components/ArrowLink';
 import { AssetBadge, type AssetType as BadgeAssetType } from '../../components/AssetBadge';
 import { DataTable, InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
@@ -140,6 +141,13 @@ export function CustomerDashboardPage() {
           </p>
         </Card>
       </div>
+
+      {activePolicy && planSummary?.entitlements ? (
+        <PlanEntitlementsCard
+          planName={planDisplayName}
+          entitlements={planSummary.entitlements}
+        />
+      ) : null}
 
       <section>
         <SectionHeading as="h2" title="Your policy" size="md" className="mb-4" />
