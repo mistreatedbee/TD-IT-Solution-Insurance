@@ -1,6 +1,8 @@
 /**
  * `assertAssetRegistrationAllowed()` — ASSET_LIMIT_REACHED business rule.
  * qa-test-strategy.md §3.1 (Feature 006 Stage 10 gap).
+ *
+ * Pricing v2 asset limits: Essential 5, Plus 10, Pro 25 (allow at limit-1, reject at limit).
  */
 import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -8,13 +10,14 @@ import { assertAssetRegistrationAllowed } from './plan-enforcement.js';
 import type { AppContext } from '../context.js';
 import type { PolicyDocument } from '../repositories/policies.js';
 import type { PlanCatalogDocument } from '../repositories/plan-catalog.js';
+import { essentialPlanFixture, businessPlanFixture } from '../lib/plan-test-fixtures.js';
 
 function samplePolicy(accountId: string, overrides: Partial<PolicyDocument> = {}): PolicyDocument {
   const now = new Date('2026-08-01T12:00:00.000Z');
   return {
     id: '507f1f77bcf86cd799439011',
     accountId,
-    planTier: 'starter',
+    planTier: 'essential',
     planCatalogId: null,
     status: 'active',
     coverageLimits: [],
@@ -41,24 +44,7 @@ function samplePolicy(accountId: string, overrides: Partial<PolicyDocument> = {}
 }
 
 function samplePlan(overrides: Partial<PlanCatalogDocument> = {}): PlanCatalogDocument {
-  const now = new Date('2026-01-01T00:00:00.000Z');
-  return {
-    id: '507f1f77bcf86cd799439088',
-    slug: 'starter',
-    name: 'Starter',
-    tagline: 'Up to 5 devices',
-    maxAssets: 5,
-    monthlyAmountCents: 20_000,
-    currency: 'ZAR',
-    isCustomPricing: false,
-    isActive: true,
-    sortOrder: 1,
-    features: [],
-    accountTypes: ['both'],
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
+  return essentialPlanFixture('507f1f77bcf86cd799439088', overrides);
 }
 
 function createCtx(opts: {
@@ -103,12 +89,12 @@ describe('assertAssetRegistrationAllowed', () => {
     await expect(assertAssetRegistrationAllowed(ctx, accountId)).resolves.toBeUndefined();
   });
 
-  it('allows registration when maxAssets is null (enterprise/custom tier — unlimited)', async () => {
+  it('allows registration when maxAssets is null (business/custom tier — unlimited)', async () => {
     const accountId = randomUUID();
     const planId = '507f1f77bcf86cd799439087';
     const ctx = createCtx({
       policies: [samplePolicy(accountId, { planCatalogId: planId })],
-      plans: { [planId]: samplePlan({ id: planId, slug: 'enterprise', maxAssets: null }) },
+      plans: { [planId]: businessPlanFixture(planId, { maxAssets: null }) },
       activeCount: 1000,
     });
     await expect(assertAssetRegistrationAllowed(ctx, accountId)).resolves.toBeUndefined();
@@ -197,5 +183,40 @@ describe('assertAssetRegistrationAllowed', () => {
       code: 'ASSET_LIMIT_REACHED',
     });
     expect(received).toEqual({ limit: 1, cursor: null });
+  });
+
+  describe.each([
+    { tier: 'essential', maxAssets: 5 },
+    { tier: 'plus', maxAssets: 10 },
+    { tier: 'pro', maxAssets: 25 },
+  ] as const)('$tier plan (max $maxAssets assets)', ({ tier, maxAssets }) => {
+    it(`allows registration at limit-1 (${maxAssets - 1} active)`, async () => {
+      const accountId = randomUUID();
+      const planId = `507f1f77bcf86cd7994390${maxAssets}`;
+      const ctx = createCtx({
+        policies: [samplePolicy(accountId, { planCatalogId: planId })],
+        plans: {
+          [planId]: samplePlan({ id: planId, slug: tier, name: tier, maxAssets }),
+        },
+        activeCount: maxAssets - 1,
+      });
+      await expect(assertAssetRegistrationAllowed(ctx, accountId)).resolves.toBeUndefined();
+    });
+
+    it(`rejects at limit (${maxAssets} active)`, async () => {
+      const accountId = randomUUID();
+      const planId = `507f1f77bcf86cd7994391${maxAssets}`;
+      const ctx = createCtx({
+        policies: [samplePolicy(accountId, { planCatalogId: planId })],
+        plans: {
+          [planId]: samplePlan({ id: planId, slug: tier, name: tier, maxAssets }),
+        },
+        activeCount: maxAssets,
+      });
+      await expect(assertAssetRegistrationAllowed(ctx, accountId)).rejects.toMatchObject({
+        code: 'ASSET_LIMIT_REACHED',
+        extra: { maxAssets },
+      });
+    });
   });
 });

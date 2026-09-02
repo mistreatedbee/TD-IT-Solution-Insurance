@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { requireActiveAccount } from '../lib/account-gate.js';
 import { apiError } from '../lib/errors.js';
+import { assertPlanChangeAllowed } from '../lib/plan-change.js';
 import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js';
 import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { serializePolicy } from '../lib/policy-asset-serializers.js';
@@ -16,6 +17,10 @@ import { requireIdempotencyKey } from '../middleware/idempotency.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 
 const createPolicySchema = z.object({
+  planCatalogId: z.string().regex(/^[0-9a-f]{24}$/i),
+});
+
+const updatePolicyPlanSchema = z.object({
   planCatalogId: z.string().regex(/^[0-9a-f]{24}$/i),
 });
 
@@ -140,6 +145,57 @@ export function createPoliciesRouter(ctx: AppContext): Router {
         }
 
         res.status(200).json(serializePolicy(policy));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.patch(
+    '/policies/:policyId/plan',
+    authenticate,
+    createRateLimiter(
+      ctx.kv,
+      { attempts: DEFAULT_AUTHENTICATED_LIMIT.attempts, windowSeconds: DEFAULT_AUTHENTICATED_LIMIT.windowSeconds },
+      (req) => `policies-plan-change:${req.auth!.accountId}`,
+    ),
+    validateBody(updatePolicyPlanSchema),
+    async (req, res, next) => {
+      try {
+        const accountId = req.auth!.accountId;
+        await requireActiveAccount(ctx.accounts, accountId);
+
+        const parsed = policyIdParamsSchema.safeParse(req.params);
+        if (!parsed.success) {
+          return next(apiError('NOT_FOUND'));
+        }
+
+        const policy = await ctx.policies.findByIdForAccount(accountId, parsed.data.policyId);
+        if (!policy) {
+          return next(apiError('NOT_FOUND'));
+        }
+
+        const body = req.body as z.infer<typeof updatePolicyPlanSchema>;
+        const targetPlan = await ctx.planCatalog.findActiveById(body.planCatalogId);
+        if (!targetPlan) {
+          return next(apiError('NOT_FOUND'));
+        }
+        if (targetPlan.isCustomPricing) {
+          return next(apiError('PLAN_REQUIRES_QUOTE'));
+        }
+
+        await assertPlanChangeAllowed(ctx, accountId, targetPlan);
+
+        const updated = await ctx.policies.updatePlanForAccount(accountId, parsed.data.policyId, {
+          planTier: targetPlan.slug,
+          planCatalogId: body.planCatalogId,
+          monthlyAmountCents: targetPlan.monthlyAmountCents,
+        });
+        if (!updated) {
+          return next(apiError('NOT_FOUND'));
+        }
+
+        res.status(200).json(serializePolicy(updated));
       } catch (err) {
         next(err);
       }

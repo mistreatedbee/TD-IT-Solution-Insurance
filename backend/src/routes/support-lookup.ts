@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { apiError } from '../lib/errors.js';
+import { buildPlanSubscriptionSummary } from '../lib/plan-subscription-summary.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
@@ -107,11 +108,14 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
           throw apiError('NOT_FOUND');
         }
 
-        const [policyCount, assets, cases] = await Promise.all([
+        const [policyCount, assets, cases, primaryPolicy] = await Promise.all([
           ctx.policies.countByAccount(accountId),
           ctx.assets.listByAccount(accountId, 50, null),
           ctx.recoveryCases.listByAccount(accountId, 20, null),
+          ctx.policies.listByAccount(accountId, 1, null).then((rows) => rows[0] ?? null),
         ]);
+
+        const subscription = await buildPlanSubscriptionSummary(ctx, primaryPolicy ?? null);
 
         const openRecoveryCases = cases.filter((c) => OPEN_RECOVERY_STATUSES.has(c.status));
 
@@ -146,6 +150,16 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
               reportedAt: c.reportedAt.toISOString(),
               callCentreNotes: serializeCallCentreNotes(c.callCentreNotes),
             })),
+            subscription: subscription
+              ? {
+                  planName: subscription.planName,
+                  planSlug: subscription.planSlug,
+                  assetUsageLabel: subscription.assetUsageLabel,
+                  supportLevel: subscription.supportLevel,
+                  activeAssetCount: subscription.activeAssetCount,
+                  maxAssets: subscription.maxAssets,
+                }
+              : null,
           },
         });
       } catch (err) {

@@ -12,16 +12,44 @@ import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { validateBody } from '../lib/validation.js';
 
+const entitlementSchema = z.object({
+  basicAssetManagement: z.boolean(),
+  customerMobileApp: z.boolean(),
+  protectionServices: z.boolean(),
+  gpsAssistedRecovery: z.boolean(),
+  standardNotifications: z.boolean(),
+  enhancedGpsMonitoring: z.boolean(),
+  gpsAlerts: z.boolean(),
+  locationHistory: z.boolean(),
+  incidentManagement: z.boolean(),
+  callCentreAssistance: z.boolean(),
+  advancedGpsMonitoring: z.boolean(),
+  extendedLocationHistory: z.boolean(),
+  advancedAlerts: z.boolean(),
+  priorityIncidentHandling: z.boolean(),
+  advancedReporting: z.boolean(),
+  multipleUsers: z.boolean(),
+  adminDashboard: z.boolean(),
+  securityDashboard: z.boolean(),
+  callCentreDashboard: z.boolean(),
+  customIntegrations: z.boolean(),
+});
+
 const updatePlanSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   tagline: z.string().min(1).max(160).optional(),
+  positioning: z.string().min(1).max(200).optional(),
   maxAssets: z.number().int().positive().nullable().optional(),
+  maxUsers: z.number().int().positive().nullable().optional(),
   monthlyAmountCents: z.number().int().nonnegative().nullable().optional(),
   isCustomPricing: z.boolean().optional(),
+  isMostPopular: z.boolean().optional(),
   isActive: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
+  supportLevel: z.enum(['standard', 'priority', 'enhanced', 'dedicated']).optional(),
   features: z.array(z.string().min(1).max(200)).optional(),
   accountTypes: z.array(z.enum(['individual', 'business', 'both'])).optional(),
+  entitlements: entitlementSchema.optional(),
 });
 
 export function createAdminPlansRouter(ctx: AppContext): Router {

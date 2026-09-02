@@ -3,6 +3,7 @@
  */
 import { ObjectId, type Db, type Collection } from 'mongodb';
 import { mongoCursorFilter, type MongoDecodedCursor } from '../lib/mongo-pagination.js';
+import { normalizePlanSlug } from '../lib/plan-catalog-defaults.js';
 
 export type PolicyStatus =
   | 'pending_activation'
@@ -216,6 +217,50 @@ export function createPoliciesRepo(db: Db) {
         { returnDocument: 'after' },
       );
       return row ? toPolicy(row) : null;
+    },
+
+    async updatePlanForAccount(
+      accountId: string,
+      policyId: string,
+      input: { planTier: string; planCatalogId: string; monthlyAmountCents?: number | null },
+    ): Promise<PolicyDocument | null> {
+      if (!ObjectId.isValid(policyId)) return null;
+      const now = new Date();
+      const amount =
+        input.monthlyAmountCents != null && input.monthlyAmountCents > 0
+          ? input.monthlyAmountCents / 100
+          : null;
+
+      const row = await collection().findOneAndUpdate(
+        { _id: new ObjectId(policyId), accountId },
+        {
+          $set: {
+            planTier: input.planTier,
+            planCatalogId: input.planCatalogId,
+            'billing.amount': amount,
+            updatedAt: now,
+          },
+        },
+        { returnDocument: 'after' },
+      );
+      return row ? toPolicy(row) : null;
+    },
+
+    /** Idempotent migration: starter→essential, standard→plus, enterprise→business. */
+    async migrateLegacyPlanTiers(): Promise<number> {
+      const legacySlugs = ['starter', 'standard', 'enterprise'] as const;
+      let modified = 0;
+      const now = new Date();
+      for (const legacySlug of legacySlugs) {
+        const normalized = normalizePlanSlug(legacySlug);
+        if (normalized === legacySlug) continue;
+        const result = await collection().updateMany(
+          { planTier: legacySlug },
+          { $set: { planTier: normalized, updatedAt: now } },
+        );
+        modified += result.modifiedCount;
+      }
+      return modified;
     },
   };
 }

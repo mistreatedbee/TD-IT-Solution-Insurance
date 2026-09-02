@@ -109,11 +109,91 @@ function createHarness() {
       },
     },
     policies: {
+      async listByAccount(accountId: string) {
+        return accountId === customerId
+          ? [
+              {
+                id: policyId,
+                accountId,
+                planTier: 'plus',
+                planCatalogId: '507f1f77bcf86cd799439089',
+                status: 'active',
+                coverageLimits: [],
+                billing: {
+                  provider: null,
+                  externalCustomerId: null,
+                  externalSubscriptionId: null,
+                  billingStatus: 'not_configured',
+                  currency: 'ZAR',
+                  amount: 399,
+                  currentPeriodStart: null,
+                  currentPeriodEnd: null,
+                  nextBillingAt: null,
+                  cancelAt: null,
+                },
+                effectiveDate: new Date('2026-08-01T00:00:00.000Z'),
+                renewalDate: null,
+                cancelledAt: null,
+                legalHold: false,
+                createdAt: new Date('2026-08-01T00:00:00.000Z'),
+                updatedAt: new Date('2026-08-01T00:00:00.000Z'),
+              },
+            ]
+          : [];
+      },
       async findAccountIdByPolicyId(id: string) {
         return id === policyId ? customerId : null;
       },
       async countByAccount(accountId: string) {
         return accountId === customerId ? 1 : 0;
+      },
+    },
+    planCatalog: {
+      async findById(id: string) {
+        if (id !== '507f1f77bcf86cd799439089') return null;
+        return {
+          id,
+          slug: 'plus',
+          name: 'Plus',
+          tagline: 'Protection + Monitoring',
+          positioning: 'Protection + Monitoring',
+          maxAssets: 10,
+          maxUsers: 1,
+          monthlyAmountCents: 39_900,
+          currency: 'ZAR',
+          isCustomPricing: false,
+          isMostPopular: true,
+          isActive: true,
+          sortOrder: 2,
+          supportLevel: 'priority',
+          features: [],
+          accountTypes: ['both'],
+          entitlements: {
+            basicAssetManagement: true,
+            customerMobileApp: true,
+            protectionServices: true,
+            gpsAssistedRecovery: true,
+            standardNotifications: true,
+            enhancedGpsMonitoring: true,
+            gpsAlerts: true,
+            locationHistory: true,
+            incidentManagement: true,
+            callCentreAssistance: true,
+            advancedGpsMonitoring: false,
+            extendedLocationHistory: false,
+            advancedAlerts: false,
+            priorityIncidentHandling: false,
+            advancedReporting: false,
+            multipleUsers: false,
+            adminDashboard: false,
+            securityDashboard: false,
+            callCentreDashboard: false,
+            customIntegrations: false,
+          },
+          catalogVersion: 2,
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        };
       },
     },
     assets: {
@@ -128,6 +208,9 @@ function createHarness() {
               },
             ]
           : [];
+      },
+      async countActiveByAccount(accountId: string) {
+        return accountId === customerId ? 1 : 0;
       },
     },
     recoveryCases: {
@@ -222,11 +305,23 @@ describe('GET /support/customer-lookup', () => {
       );
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
-        data: { email: string; policyCount: number; openRecoveryCaseCount: number };
+        data: {
+          email: string;
+          policyCount: number;
+          openRecoveryCaseCount: number;
+          subscription: {
+            planName: string;
+            assetUsageLabel: string;
+            supportLevel: string;
+          } | null;
+        };
       };
       expect(body.data.email).toBe('customer@example.com');
       expect(body.data.policyCount).toBe(1);
       expect(body.data.openRecoveryCaseCount).toBe(1);
+      expect(body.data.subscription?.planName).toBe('Plus');
+      expect(body.data.subscription?.assetUsageLabel).toBe('1 / 10 assets');
+      expect(body.data.subscription?.supportLevel).toBe('Priority');
       expect(auditCalls.length).toBe(1);
     });
   });

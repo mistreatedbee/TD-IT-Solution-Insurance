@@ -15,6 +15,7 @@ import { signAccessToken } from '../lib/jwt.js';
 import type { AppContext } from '../context.js';
 import type { Env } from '../config/env.js';
 import type { PlanCatalogDocument } from '../repositories/plan-catalog.js';
+import { essentialPlanFixture } from '../lib/plan-test-fixtures.js';
 
 function fakeEnv(): Env {
   return {
@@ -69,24 +70,7 @@ function customerToken(env: Env, accountId: string, sessionId: string): string {
 }
 
 function samplePlan(id: string, overrides: Partial<PlanCatalogDocument> = {}): PlanCatalogDocument {
-  const now = new Date('2026-01-01T00:00:00.000Z');
-  return {
-    id,
-    slug: 'starter',
-    name: 'Starter',
-    tagline: 'Up to 5 devices',
-    maxAssets: 5,
-    monthlyAmountCents: 20_000,
-    currency: 'ZAR',
-    isCustomPricing: false,
-    isActive: true,
-    sortOrder: 1,
-    features: ['Up to 5 registered assets'],
-    accountTypes: ['both'],
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
+  return essentialPlanFixture(id, overrides);
 }
 
 function createHarness(opts: { plans?: PlanCatalogDocument[] } = {}) {
@@ -252,9 +236,9 @@ describe('routes/admin-plans', () => {
 
     it('applies a partial update without clobbering unspecified fields', async () => {
       const plan = samplePlan('507f1f77bcf86cd799439011', {
-        name: 'Starter',
+        name: 'Essential',
         maxAssets: 5,
-        monthlyAmountCents: 20_000,
+        monthlyAmountCents: 19_900,
         features: ['Up to 5 registered assets'],
       });
       const { app, adminBearer, stored } = createHarness({ plans: [plan] });
@@ -276,8 +260,8 @@ describe('routes/admin-plans', () => {
       };
       expect(body.maxAssets).toBe(8);
       // Unspecified fields survive the merge untouched.
-      expect(body.name).toBe('Starter');
-      expect(body.monthlyAmountCents).toBe(20_000);
+      expect(body.name).toBe('Essential');
+      expect(body.monthlyAmountCents).toBe(19_900);
       expect(body.features).toEqual(['Up to 5 registered assets']);
       expect(stored.get(plan.id)?.maxAssets).toBe(8);
     });
@@ -297,7 +281,7 @@ describe('routes/admin-plans', () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as { isActive: boolean; name: string; maxAssets: number };
       expect(body.isActive).toBe(false);
-      expect(body.name).toBe('Starter');
+      expect(body.name).toBe('Essential');
       expect(body.maxAssets).toBe(5);
     });
 

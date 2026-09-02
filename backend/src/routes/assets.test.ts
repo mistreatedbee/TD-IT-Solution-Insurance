@@ -19,6 +19,7 @@ import type { IdempotencyRepo } from '../repositories/idempotency.js';
 import type { CreateAssetBody } from '../lib/asset-validation.js';
 import type { PolicyDocument } from '../repositories/policies.js';
 import type { PlanCatalogDocument } from '../repositories/plan-catalog.js';
+import { essentialPlanFixture } from '../lib/plan-test-fixtures.js';
 
 function fakeEnv(): Env {
   return {
@@ -120,7 +121,7 @@ function samplePolicy(accountId: string, overrides: Partial<PolicyDocument> = {}
   return {
     id: '507f1f77bcf86cd799439011',
     accountId,
-    planTier: 'starter',
+    planTier: 'essential',
     planCatalogId: null,
     status: 'active',
     coverageLimits: [],
@@ -147,24 +148,7 @@ function samplePolicy(accountId: string, overrides: Partial<PolicyDocument> = {}
 }
 
 function samplePlan(id: string, overrides: Partial<PlanCatalogDocument> = {}): PlanCatalogDocument {
-  const now = new Date('2026-01-01T00:00:00.000Z');
-  return {
-    id,
-    slug: 'starter',
-    name: 'Starter',
-    tagline: 'Up to 5 devices',
-    maxAssets: 5,
-    monthlyAmountCents: 20_000,
-    currency: 'ZAR',
-    isCustomPricing: false,
-    isActive: true,
-    sortOrder: 1,
-    features: [],
-    accountTypes: ['both'],
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
+  return essentialPlanFixture(id, overrides);
 }
 
 function createHarness(opts: {

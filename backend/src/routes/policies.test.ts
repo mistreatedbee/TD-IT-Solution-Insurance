@@ -17,6 +17,7 @@ import type { AccountStatus } from '../repositories/accounts.js';
 import type { PolicyDocument } from '../repositories/policies.js';
 import type { Env } from '../config/env.js';
 import type { IdempotencyRepo } from '../repositories/idempotency.js';
+import { essentialPlanFixture, businessPlanFixture } from '../lib/plan-test-fixtures.js';
 
 function fakeEnv(): Env {
   return {
@@ -95,7 +96,7 @@ function samplePolicy(accountId: string, id = '507f1f77bcf86cd799439011'): Polic
   return {
     id,
     accountId,
-    planTier: 'starter',
+    planTier: 'essential',
     planCatalogId: null,
     status: 'pending_activation',
     coverageLimits: [],
@@ -169,6 +170,29 @@ function createHarness(opts: {
         const row = storedPolicies.get(policyId);
         return row && row.accountId === acctId ? row : null;
       },
+      async updatePlanForAccount(
+        acctId: string,
+        policyId: string,
+        input: { planTier: string; planCatalogId: string; monthlyAmountCents?: number | null },
+      ) {
+        const row = storedPolicies.get(policyId);
+        if (!row || row.accountId !== acctId) return null;
+        const updated = {
+          ...row,
+          planTier: input.planTier,
+          planCatalogId: input.planCatalogId,
+          billing: {
+            ...row.billing,
+            amount:
+              input.monthlyAmountCents != null && input.monthlyAmountCents > 0
+                ? input.monthlyAmountCents / 100
+                : null,
+          },
+          updatedAt: new Date(),
+        };
+        storedPolicies.set(policyId, updated);
+        return updated;
+      },
     },
     policyStatusHistory: {
       async recordInitial(input: { policyId: string; accountId: string; toStatus: string }) {
@@ -179,42 +203,20 @@ function createHarness(opts: {
     planCatalog: {
       async findActiveById(id: string) {
         if (id === '507f1f77bcf86cd799439088') {
-          return {
-            id,
-            slug: 'starter',
-            name: 'Starter',
-            tagline: 'Up to 5 devices',
-            maxAssets: 5,
-            monthlyAmountCents: 20_000,
-            currency: 'ZAR',
-            isCustomPricing: false,
-            isActive: true,
-            sortOrder: 1,
-            features: [],
-            accountTypes: ['both'],
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          };
+          return essentialPlanFixture(id);
         }
         if (id === '507f1f77bcf86cd799439087') {
-          return {
-            id,
-            slug: 'enterprise',
-            name: 'Enterprise',
-            tagline: 'Custom',
-            maxAssets: null,
-            monthlyAmountCents: null,
-            currency: 'ZAR',
-            isCustomPricing: true,
-            isActive: true,
-            sortOrder: 3,
-            features: [],
-            accountTypes: ['business'],
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          };
+          return businessPlanFixture(id);
+        }
+        if (id === '507f1f77bcf86cd799439090') {
+          return essentialPlanFixture(id, { maxAssets: 5 });
         }
         return null;
+      },
+    },
+    assets: {
+      async countActiveByAccount() {
+        return 0;
       },
     },
     customerNotifications: {
@@ -272,7 +274,7 @@ describe('POST /policies', () => {
 
     expect(response.status).toBe(201);
     const body = (await response.json()) as Record<string, unknown>;
-    expect(body.planTier).toBe('starter');
+    expect(body.planTier).toBe('essential');
     expect(body.status).toBe('pending_activation');
     expect((body.billing as { billingStatus: string }).billingStatus).toBe('not_configured');
     expect(body.coverageLimits).toEqual([]);
@@ -378,22 +380,12 @@ describe('POST /policies', () => {
       idempotency: createInMemoryIdempotencyRepo(),
       planCatalog: {
         async findActiveById(id: string) {
-          return {
-            id,
-            slug: 'starter',
-            name: 'Starter',
-            tagline: 'Up to 5 devices',
-            maxAssets: 5,
-            monthlyAmountCents: 20_000,
-            currency: 'ZAR',
-            isCustomPricing: false,
-            isActive: true,
-            sortOrder: 1,
-            features: [],
-            accountTypes: ['both'],
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          };
+          return essentialPlanFixture(id);
+        },
+      },
+      assets: {
+        async countActiveByAccount() {
+          return 0;
         },
       },
     } as unknown as AppContext;
@@ -494,5 +486,59 @@ describe('GET /policies/:policyId', () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { id: string };
     expect(body.id).toBe(policy.id);
+  });
+});
+
+describe('PATCH /policies/:policyId/plan', () => {
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    if (server) {
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+      server = undefined;
+    }
+  });
+
+  it('changes plan when downgrade is allowed', async () => {
+    const accountId = randomUUID();
+    const policy = samplePolicy(accountId);
+    policy.planCatalogId = '507f1f77bcf86cd799439088';
+    const { app, sessionId, env } = createHarness({ accountId, policies: [policy] });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/policies/${policy.id}/plan`, {
+      method: 'PATCH',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ planCatalogId: '507f1f77bcf86cd799439088' }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { planTier: string };
+    expect(body.planTier).toBe('essential');
+  });
+
+  it('returns PLAN_REQUIRES_QUOTE for business/custom plan', async () => {
+    const accountId = randomUUID();
+    const policy = samplePolicy(accountId);
+    const { app, sessionId, env } = createHarness({ accountId, policies: [policy] });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/policies/${policy.id}/plan`, {
+      method: 'PATCH',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ planCatalogId: '507f1f77bcf86cd799439087' }),
+    });
+
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('PLAN_REQUIRES_QUOTE');
   });
 });

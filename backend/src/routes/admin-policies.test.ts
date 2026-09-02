@@ -62,7 +62,7 @@ function samplePolicy(accountId: string, id = '507f1f77bcf86cd799439011'): Polic
   return {
     id,
     accountId,
-    planTier: 'starter',
+    planTier: 'essential',
     status: 'pending_activation',
     coverageLimits: [],
     billing: {
@@ -291,7 +291,7 @@ describe('routes/admin-policies', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: Array<Record<string, unknown>> };
     expect(body.data[0]).toMatchObject({
-      planTier: 'starter',
+      planTier: 'essential',
       billingStatus: 'not_configured',
     });
     expect(body.data[0]).not.toHaveProperty('coverageLimits');

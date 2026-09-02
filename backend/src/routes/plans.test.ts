@@ -13,6 +13,8 @@ import { signAccessToken } from '../lib/jwt.js';
 import type { AppContext } from '../context.js';
 import type { Env } from '../config/env.js';
 import type { PlanCatalogDocument } from '../repositories/plan-catalog.js';
+import { essentialPlanFixture, plusPlanFixture, proPlanFixture, businessPlanFixture } from '../lib/plan-test-fixtures.js';
+import { PLAN_CATALOG_DEFAULTS } from '../lib/plan-catalog-defaults.js';
 
 function fakeEnv(): Env {
   return {
@@ -37,22 +39,10 @@ function fakeEnv(): Env {
 }
 
 const samplePlans: PlanCatalogDocument[] = [
-  {
-    id: '507f1f77bcf86cd799439011',
-    slug: 'starter',
-    name: 'Starter',
-    tagline: 'Up to 5 devices',
-    maxAssets: 5,
-    monthlyAmountCents: 20_000,
-    currency: 'ZAR',
-    isCustomPricing: false,
-    isActive: true,
-    sortOrder: 1,
-    features: ['Up to 5 registered assets'],
-    accountTypes: ['both'],
-    createdAt: new Date('2026-01-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  },
+  essentialPlanFixture('507f1f77bcf86cd799439011'),
+  plusPlanFixture('507f1f77bcf86cd799439012'),
+  proPlanFixture('507f1f77bcf86cd799439013'),
+  businessPlanFixture('507f1f77bcf86cd799439014'),
 ];
 
 function buildApp(planCatalog: AppContext['planCatalog']): Express {
@@ -96,15 +86,26 @@ describe('plans routes', () => {
     /* no-op */
   });
 
-  it('GET /plans/catalog returns active plans without authentication', async () => {
+  it('GET /plans/catalog returns four active tiers with v2 pricing', async () => {
     const app = buildApp(planCatalog as AppContext['planCatalog']);
     await withServer(app, async (baseUrl) => {
       const res = await fetch(`${baseUrl}/plans/catalog`);
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { data: { slug: string; name: string }[] };
-      expect(body.data).toHaveLength(1);
-      expect(body.data[0]?.slug).toBe('starter');
-      expect(body.data[0]?.name).toBe('Starter');
+      const body = (await res.json()) as {
+        data: Array<{
+          slug: string;
+          name: string;
+          monthlyAmountCents: number | null;
+          isCustomPricing: boolean;
+          maxAssets: number | null;
+        }>;
+      };
+      expect(body.data).toHaveLength(4);
+      expect(body.data.map((p) => p.slug)).toEqual(['essential', 'plus', 'pro', 'business']);
+      expect(body.data.map((p) => p.monthlyAmountCents)).toEqual([19_900, 39_900, 69_900, null]);
+      expect(body.data[0]?.name).toBe('Essential');
+      expect(body.data[0]?.maxAssets).toBe(PLAN_CATALOG_DEFAULTS[0]!.maxAssets);
+      expect(body.data[3]?.isCustomPricing).toBe(true);
     });
   });
 
@@ -138,7 +139,7 @@ describe('plans routes', () => {
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { data: unknown[] };
-      expect(body.data).toHaveLength(1);
+      expect(body.data).toHaveLength(4);
     });
   });
 });

@@ -44,6 +44,15 @@ export const ERROR_CATALOG = {
     statusCode: 422,
     message: 'This plan requires a custom quote. Please contact us to continue.',
   },
+  PLAN_DOWNGRADE_NOT_ALLOWED: {
+    statusCode: 409,
+    message:
+      'This plan change is not allowed while you have more registered assets than the new plan allows. Remove assets or contact support.',
+  },
+  PLAN_FEATURE_NOT_INCLUDED: {
+    statusCode: 403,
+    message: 'This feature is not included in your current platform subscription plan.',
+  },
   NOT_FOUND: { statusCode: 404, message: 'The requested resource was not found.' },
   INVITATION_INVALID: { statusCode: 404, message: 'This invitation link is invalid or has expired.' },
   INVITATION_EXPIRED: { statusCode: 410, message: 'This invitation link has expired or was already used.' },

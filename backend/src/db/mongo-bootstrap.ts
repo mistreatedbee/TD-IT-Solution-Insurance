@@ -70,4 +70,21 @@ export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
   }
   const planCatalog = createPlanCatalogRepo(db);
   await planCatalog.ensureSeeded();
+  try {
+    await planCatalog.migrateCatalogToV2();
+  } catch (err) {
+    console.error(
+      '[startup] Plan catalog v2 migration failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+  const { createPoliciesRepo } = await import('../repositories/policies.js');
+    await createPoliciesRepo(db).migrateLegacyPlanTiers();
+  } catch (err) {
+    console.error(
+      '[startup] Policy planTier legacy slug migration failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
 }

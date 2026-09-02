@@ -272,6 +272,16 @@ function createHarness(opts: {
         return rows.slice(0, limit);
       },
     },
+    policies: {
+      async listByAccount() {
+        return [];
+      },
+    },
+    planCatalog: {
+      async findById() {
+        return null;
+      },
+    },
     idempotency: createInMemoryIdempotencyRepo(),
     customerNotifications: {
       async notifyAssetCreated() {
@@ -282,6 +292,16 @@ function createHarness(opts: {
       },
       async notifyAssetRemoved() {
         return undefined;
+      },
+    },
+    policies: {
+      async listByAccount(acctId: string) {
+        return [];
+      },
+    },
+    planCatalog: {
+      async findById() {
+        return null;
       },
     },
   } as unknown as AppContext;

@@ -8,6 +8,7 @@ import { apiError } from '../lib/errors.js';
 import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js';
 import { syncAccountAlerts } from '../lib/sync-account-alerts.js';
+import { resolveAccountPlanCatalog, accountHasEntitlement } from '../lib/plan-entitlements.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import type { AlertDocument } from '../repositories/alerts.js';
@@ -52,9 +53,15 @@ export function createAlertsRouter(ctx: AppContext): Router {
         const accountId = req.auth!.accountId;
         await syncAccountAlerts(ctx, accountId);
 
+        const plan = await resolveAccountPlanCatalog(ctx, accountId);
+        const gpsAlertsEnabled = accountHasEntitlement(plan, 'gpsAlerts');
+
         const { limit, cursor } = parseMongoPaginationQuery(req.query as Record<string, unknown>);
         const rows = await ctx.alerts.listActive(accountId, limit + 1, cursor);
-        const page = buildPage(rows, limit);
+        const filtered = gpsAlertsEnabled
+          ? rows
+          : rows.filter((alert) => alert.category !== 'tracking' && alert.category !== 'device');
+        const page = buildPage(filtered, limit);
 
         res.status(200).json({
           data: page.data.map(serializeAlert),
