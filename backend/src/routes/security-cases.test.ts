@@ -149,15 +149,13 @@ function createHarness(opts: { cases?: RecoveryCaseDocument[]; partnerOrgId?: st
         return cases[idx]!;
       },
       async updateStatusForPartnerOrg(orgId: string, caseId: string, status: RecoveryCaseStatus) {
-        const idx = cases.findIndex(
-          (c) =>
-            c.id === caseId &&
-            (c.partnerOrganizationId === orgId || (c.partnerOrganizationId === null && c.status === 'open')),
-        );
+        // Mirrors the fixed repository behavior: a case must already be claimed by this
+        // org before its status can change here. Unclaimed cases (partnerOrganizationId:
+        // null) must go through /claim first.
+        const idx = cases.findIndex((c) => c.id === caseId && c.partnerOrganizationId === orgId);
         if (idx < 0) return null;
         cases[idx] = {
           ...cases[idx]!,
-          partnerOrganizationId: orgId,
           status,
           updatedAt: new Date(),
         };
@@ -319,6 +317,37 @@ describe('routes/security-cases', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { status: string };
     expect(body.status).toBe('tracking');
+  });
+
+  it('rejects PATCH directly to a terminal status on an unclaimed case (not yet claimed via /claim)', async () => {
+    const caseId = '507f1f77bcf86cd799439011';
+    harness = createHarness({
+      cases: [
+        sampleCase({
+          id: caseId,
+          accountId: randomUUID(),
+          assetId: '507f1f77bcf86cd799439021',
+          partnerOrganizationId: null,
+          status: 'open',
+        }),
+      ],
+    });
+    await harness.start();
+
+    const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+      method: 'PATCH',
+      headers: {
+        authorization: `Bearer ${harness.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ status: 'recovered' }),
+    });
+    expect(res.status).toBe(404);
+
+    // Confirm the case was not silently claimed/closed as a side effect of the rejected PATCH.
+    const stored = harness.cases.find((c) => c.id === caseId);
+    expect(stored?.status).toBe('open');
+    expect(stored?.partnerOrganizationId).toBeNull();
   });
 
   it('returns 403 when operator has no partner organization', async () => {

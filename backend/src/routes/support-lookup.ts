@@ -56,11 +56,15 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
           accountId = account.id;
           email = account.email;
         } else if (parsed.data.policyId) {
-          const policy = await ctx.policies.findByIdForAdmin(parsed.data.policyId!);
-          if (!policy) {
+          // Uses the non-admin, projection-limited findAccountIdByPolicyId lookup rather than
+          // ctx.policies.findByIdForAdmin — this route only needs to resolve the owning
+          // accountId, and findByIdForAdmin is reserved for audited admin routes per
+          // SR-004-admin-12 (see admin-policies.ts / admin-assets.ts).
+          const resolvedAccountId = await ctx.policies.findAccountIdByPolicyId(parsed.data.policyId!);
+          if (!resolvedAccountId) {
             throw apiError('NOT_FOUND');
           }
-          const account = await ctx.accounts.findById(policy.accountId);
+          const account = await ctx.accounts.findById(resolvedAccountId);
           if (!account || account.userType !== 'customer') {
             throw apiError('NOT_FOUND');
           }

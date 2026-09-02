@@ -93,8 +93,8 @@ function createHarness() {
       },
     },
     policies: {
-      async findByIdForAdmin(id: string) {
-        return id === policyId ? { id: policyId, accountId: customerId } : null;
+      async findAccountIdByPolicyId(id: string) {
+        return id === policyId ? customerId : null;
       },
       async countByAccount(accountId: string) {
         return accountId === customerId ? 1 : 0;
@@ -191,6 +191,60 @@ describe('GET /support/customer-lookup', () => {
       expect(body.data.policyCount).toBe(1);
       expect(body.data.openRecoveryCaseCount).toBe(1);
       expect(auditCalls.length).toBe(1);
+    });
+  });
+
+  it('returns customer summary for support_agent by policyId', async () => {
+    const { app, env, auditCalls } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/customer-lookup?policyId=${policyId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { accountId: string; email: string; policyCount: number; openRecoveryCaseCount: number };
+      };
+      expect(body.data.accountId).toBe(customerId);
+      expect(body.data.email).toBe('customer@example.com');
+      expect(body.data.policyCount).toBe(1);
+      expect(body.data.openRecoveryCaseCount).toBe(1);
+      expect(auditCalls.length).toBe(1);
+    });
+  });
+
+  it('returns 404 for a policyId with no matching policy', async () => {
+    const { app, env } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/customer-lookup?policyId=${'f'.repeat(24)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(404);
     });
   });
 

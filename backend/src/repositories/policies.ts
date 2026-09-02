@@ -171,6 +171,22 @@ export function createPoliciesRepo(db: Db) {
       return row ? toPolicy(row) : null;
     },
 
+    /**
+     * Resolves only the owning accountId for a policyId, with no other admin-only fields
+     * (billing, coverage limits, legal hold, etc.) exposed. Intended for cross-role lookups
+     * (e.g. support-agent customer lookup) that need to pivot from a policyId to an accountId
+     * without requiring the SR-004-admin-12 admin-route contract that guards
+     * `findByIdForAdmin`.
+     */
+    async findAccountIdByPolicyId(policyId: string): Promise<string | null> {
+      if (!ObjectId.isValid(policyId)) return null;
+      const row = await collection().findOne(
+        { _id: new ObjectId(policyId) },
+        { projection: { accountId: 1 } },
+      );
+      return row?.accountId ?? null;
+    },
+
     async countByAccount(accountId: string): Promise<number> {
       return collection().countDocuments({ accountId });
     },

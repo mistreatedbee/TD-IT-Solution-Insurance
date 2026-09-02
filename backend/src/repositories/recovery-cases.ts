@@ -202,12 +202,18 @@ export function createRecoveryCasesRepo(db: Db) {
       status: RecoveryCaseStatus,
     ): Promise<RecoveryCaseDocument | null> {
       if (!ObjectId.isValid(caseId)) return null;
+      // SR-review fix: a case must already be claimed by this org (partnerOrganizationId
+      // must already equal the caller's org) before its status can be changed here. Claiming
+      // an unclaimed case (partnerOrganizationId: null) is only permitted via
+      // claimForPartnerOrg, which enforces the open -> investigating transition. Without this
+      // restriction an operator could claim AND close/resolve an unclaimed case in one PATCH,
+      // bypassing the investigation step entirely.
       const result = await collection().findOneAndUpdate(
         {
           _id: new ObjectId(caseId),
-          $or: [{ partnerOrganizationId }, { partnerOrganizationId: null }],
+          partnerOrganizationId,
         },
-        { $set: { status, partnerOrganizationId, updatedAt: new Date() } },
+        { $set: { status, updatedAt: new Date() } },
         { returnDocument: 'after' },
       );
       return result ? toCase(result) : null;
