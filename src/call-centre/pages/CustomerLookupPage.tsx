@@ -1,12 +1,17 @@
 import { FormEvent, useState } from 'react';
 import { Button, Card, Input, SectionHeading } from '../../components';
 import { DetailGrid, InlineAlert, LoadingState } from '../../dashboard/components/ui';
-import { lookupCustomerByEmail } from '../api/support-lookup';
+import { lookupCustomerByEmail, lookupCustomerByPolicyId } from '../api/support-lookup';
 import { ApiError } from '../../dashboard/api/errors';
 import type { SupportCustomerLookup } from '../api/support-lookup';
 
+type SearchMode = 'email' | 'policyId';
+
+const POLICY_ID_PATTERN = /^[a-f0-9]{24}$/i;
+
 export function CustomerLookupPage() {
-  const [email, setEmail] = useState('');
+  const [searchMode, setSearchMode] = useState<SearchMode>('email');
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SupportCustomerLookup | null>(null);
@@ -16,12 +21,27 @@ export function CustomerLookupPage() {
     setLoading(true);
     setError(null);
     setResult(null);
+
+    const trimmed = query.trim();
+    if (searchMode === 'policyId' && !POLICY_ID_PATTERN.test(trimmed)) {
+      setError('Policy ID must be a 24-character hex MongoDB ObjectId.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const data = await lookupCustomerByEmail(email.trim());
+      const data =
+        searchMode === 'email'
+          ? await lookupCustomerByEmail(trimmed)
+          : await lookupCustomerByPolicyId(trimmed);
       setResult(data);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
-        setError('No customer found for that email.');
+        setError(
+          searchMode === 'email'
+            ? 'No customer found for that email.'
+            : 'No customer found for that policy ID.',
+        );
       } else {
         setError('Lookup failed. Try again or contact engineering.');
       }
@@ -34,16 +54,45 @@ export function CustomerLookupPage() {
     <Card padding="lg">
       <SectionHeading as="h1" title="Customer lookup" size="md" className="mb-2" />
       <p className="mb-6 text-sm text-text-secondary">
-        Search by customer email. Purpose-limited read — every lookup is audit-logged.
+        Search by customer email or policy ID. Purpose-limited read — every lookup is audit-logged.
       </p>
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={searchMode === 'email' ? 'primary' : 'secondary'}
+          onClick={() => {
+            setSearchMode('email');
+            setQuery('');
+            setError(null);
+            setResult(null);
+          }}
+        >
+          Email
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={searchMode === 'policyId' ? 'primary' : 'secondary'}
+          onClick={() => {
+            setSearchMode('policyId');
+            setQuery('');
+            setError(null);
+            setResult(null);
+          }}
+        >
+          Policy ID
+        </Button>
+      </div>
 
       <form className="mb-6 flex max-w-xl flex-col gap-3 sm:flex-row" onSubmit={(e) => void onSubmit(e)}>
         <Input
-          label="Customer email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="customer@example.com"
+          label={searchMode === 'email' ? 'Customer email' : 'Policy ID'}
+          type={searchMode === 'email' ? 'email' : 'text'}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={searchMode === 'email' ? 'customer@example.com' : '507f1f77bcf86cd799439011'}
           required
           autoComplete="off"
         />
@@ -60,6 +109,7 @@ export function CustomerLookupPage() {
           <DetailGrid
             rows={[
               { label: 'Email', value: result.email },
+              { label: 'Account ID', value: result.accountId },
               { label: 'Account state', value: result.accountState },
               { label: 'Policies', value: String(result.policyCount) },
               { label: 'Assets', value: String(result.assetCount) },
