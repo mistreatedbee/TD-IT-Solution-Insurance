@@ -84,7 +84,7 @@ export function ReportTheftConfirmScreen() {
         onChangeText={setNotes}
         multiline
         numberOfLines={4}
-        hint="When and where did you last see the asset? Any police case number?"
+        hint="When and where did you last see the asset? Any police case number? Please don't include personal details about other people (e.g. names of suspects) — only describe what happened."
         style={styles.notesInput}
       />
 

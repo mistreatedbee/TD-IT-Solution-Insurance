@@ -90,6 +90,7 @@ function RecoveryCasePanel({
           value={noteText}
           onChange={(e) => setNoteText(e.target.value)}
           placeholder="Customer verified on call — …"
+          hint="Don't include personal details about other people (e.g. names of suspects) — only describe what happened."
           rows={3}
           required
         />
@@ -250,6 +251,10 @@ export function CustomerLookupPage() {
 
       {result ? (
         <div className="space-y-6">
+          <InlineAlert tone="warning">
+            Confirm the caller's identity (e.g. full name and registered phone number, or 2+
+            identifying account details) before disclosing any information below.
+          </InlineAlert>
           <DetailGrid
             rows={[
               { label: 'Email', value: result.email },
