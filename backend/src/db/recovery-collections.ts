@@ -109,11 +109,17 @@ export const recoveryCaseIndexes: IndexDescription[] = [
   {
     key: { status: 1, closedAt: 1 },
     name: 'recovery_cases_closed_at_retention',
+    // MongoDB partial index filter expressions do NOT support $ne (it's
+    // implemented internally via $not, which is explicitly unsupported —
+    // this broke production startup: "Expression not supported in partial
+    // index: $not"). $type gives the same "field is actually set" semantics
+    // (present AND non-null — a null value has BSON type "null", not
+    // "string"/"date") using only supported operators.
     partialFilterExpression: {
       $or: [
-        { sapsCaseNumber: { $ne: null } },
-        { reportingStation: { $ne: null } },
-        { reportedToPoliceAt: { $ne: null } },
+        { sapsCaseNumber: { $type: 'string' } },
+        { reportingStation: { $type: 'string' } },
+        { reportedToPoliceAt: { $type: 'date' } },
       ],
     },
   },
