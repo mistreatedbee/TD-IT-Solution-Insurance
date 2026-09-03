@@ -278,6 +278,15 @@ exposure, but worth `devops-engineer`/`database-architect` cleaning up separatel
 pin `MONGODB_DB_NAME` explicitly) so a future environment mix-up doesn't silently point at the
 wrong store. Filed here as a pointer only; not a new INC-001 condition.
 
+**2026-09-03 — remediation plan filed by `devops-engineer`:**
+[`docs/organization/mongo-database-naming-remediation.md`](../mongo-database-naming-remediation.md).
+Planning only, nothing executed. Recommendation: a copy-based (`mongodump`/`mongorestore` with
+`--nsFrom`/`--nsTo`) migration to `td_it_insurance_production` during a short, explicit
+maintenance window with a write freeze and backup — not an Atlas in-place rename (not supported
+by MongoDB/Atlas) and not a bare `MONGODB_DB_NAME` env-var flip on its own (would silently orphan
+the existing data into an unreferenced empty-vs-populated split). Needs owner sign-off and a
+scheduled window per that document's §5, not routine/ad hoc execution.
+
 ### 6.4 Downstream effect on the POPIA assessment's open gates
 
 Recorded here once, and appended to the POPIA assessment as a pointer rather than duplicated:
