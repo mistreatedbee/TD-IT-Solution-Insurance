@@ -11,6 +11,7 @@ import { buildPlanSubscriptionSummary } from '../lib/plan-subscription-summary.j
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
+import { serializeSupportCaseLookupSummary } from '../repositories/support-cases.js';
 
 const phoneQuerySchema = z
   .string()
@@ -108,11 +109,14 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
           throw apiError('NOT_FOUND');
         }
 
-        const [policyCount, assets, cases, primaryPolicy] = await Promise.all([
+        const [policyCount, assets, cases, primaryPolicy, openSupportCases] = await Promise.all([
           ctx.policies.countByAccount(accountId),
           ctx.assets.listByAccount(accountId, 50, null),
           ctx.recoveryCases.listByAccount(accountId, 20, null),
           ctx.policies.listByAccount(accountId, 1, null).then((rows) => rows[0] ?? null),
+          // FR-11 addendum (Feature 010 Phase 2, api-design.md §3) — additive field only;
+          // no change to this handler's existing auth/audit posture.
+          ctx.supportCases.listOpenByAccount(accountId, 20),
         ]);
 
         const subscription = await buildPlanSubscriptionSummary(ctx, primaryPolicy ?? null);
@@ -160,6 +164,12 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
                   maxAssets: subscription.maxAssets,
                 }
               : null,
+            // FR-11 addendum — `openSupportCaseCount` counts status IN ('open',
+            // 'in_progress') only; `escalated` is excluded (its "open-ness" has moved
+            // to the resulting recovery case, already counted by
+            // openRecoveryCaseCount) — api-design.md §3.
+            openSupportCaseCount: openSupportCases.length,
+            supportCases: openSupportCases.map(serializeSupportCaseLookupSummary),
           },
         });
       } catch (err) {

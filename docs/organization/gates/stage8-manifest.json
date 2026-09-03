@@ -466,6 +466,61 @@
       }
     },
     {
+      "id": "backend-support-cases-create",
+      "kind": "backend_route",
+      "pattern": "/support-cases",
+      "feature": "010",
+      "stage8": {
+        "doc": "docs/features/010-call-centre-dashboard/security-review.md",
+        "verdict": "conditional-sign-off",
+        "note": "FR-12. SR-010-1 (Trail A audit on every write, subject accountId) and SR-010-1a-c (accountId client-supplied exception controls) implemented in backend/src/routes/support-cases.ts. FR-18-21 escalation is NOT registered on this router and has no code footprint anywhere."
+      }
+    },
+    {
+      "id": "backend-support-cases-list",
+      "kind": "backend_route",
+      "pattern": "/support-cases",
+      "feature": "010",
+      "stage8": {
+        "doc": "docs/features/010-call-centre-dashboard/security-review.md",
+        "verdict": "conditional-sign-off-scope-mine-only",
+        "note": "FR-17. SR-010-2: scope is a required query parameter with no default; ONLY 'mine' is accepted — 'all' (and any other value) is rejected with 400 VALIDATION_ERROR before any repository call. There is no scope=all-shaped repository method (repositories/support-cases.ts has no listAll). Do not read this entry as covering scope=all — it does not exist and remains WITHHELD per the cited review §2."
+      }
+    },
+    {
+      "id": "backend-support-cases-detail",
+      "kind": "backend_route",
+      "pattern": "/support-cases/:caseId",
+      "feature": "010",
+      "stage8": {
+        "doc": "docs/features/010-call-centre-dashboard/security-review.md",
+        "verdict": "conditional-sign-off",
+        "note": "FR-17 detail view. SR-010-1a — audited (privileged_data_access, subject accountId) on every read. RR-010-1 accepted residual risk: no per-agent ownership check, any support_agent can read any case by id."
+      }
+    },
+    {
+      "id": "backend-support-cases-notes",
+      "kind": "backend_route",
+      "pattern": "/support-cases/:caseId/notes",
+      "feature": "010",
+      "stage8": {
+        "doc": "docs/features/010-call-centre-dashboard/security-review.md",
+        "verdict": "conditional-sign-off",
+        "note": "FR-14. SR-010-1a — audited on every write, subject accountId recorded."
+      }
+    },
+    {
+      "id": "backend-support-cases-status",
+      "kind": "backend_route",
+      "pattern": "/support-cases/:caseId/status",
+      "feature": "010",
+      "stage8": {
+        "doc": "docs/features/010-call-centre-dashboard/security-review.md",
+        "verdict": "conditional-sign-off",
+        "note": "FR-15/16. 'escalated' is rejected by the Zod schema (400) and is unreachable from repositories/support-cases.ts's updateStatus() transition table — the only path to that status remains the not-implemented escalate endpoint. resolutionSummary required on resolved/closed. SR-010-1a audit on every write."
+      }
+    },
+    {
       "id": "web-admin-data-surface",
       "kind": "web_route_group",
       "pattern": "/admin/{accounts,policies,assets}*",

@@ -84,6 +84,13 @@ export const recoveryCasesJsonSchemaValidator: Document = {
         },
       },
       policeReportReminderSentAt: { bsonType: ['date', 'null'] },
+      // Feature 010 Phase 2 (database-design.md §5) — set ONLY by the (not-yet-authorized)
+      // support-case escalation endpoint; null for every customer-self-reported case
+      // (the only case-creation path that exists today). Additive, backward-compatible.
+      // Not added to `serializeSecurityRecoveryCase` — a security-company operator has no
+      // recovery-mandate need to know a case originated by phone vs. self-report
+      // (database-design.md §5 / security-review.md §5, confirmed).
+      originatingSupportCaseId: { bsonType: ['string', 'null'] },
       createdAt: { bsonType: 'date' },
       updatedAt: { bsonType: 'date' },
     },

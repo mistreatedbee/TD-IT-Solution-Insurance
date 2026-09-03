@@ -86,6 +86,7 @@ import {
 } from './repositories/location-events.js';
 import { createAlertsRepo, type AlertsRepo } from './repositories/alerts.js';
 import { createProductEventsRepo, type ProductEventsRepo } from './repositories/product-events.js';
+import { createSupportCasesRepo, type SupportCasesRepo } from './repositories/support-cases.js';
 
 export interface AppContext {
   env: Env;
@@ -121,6 +122,7 @@ export interface AppContext {
   locationEvents: LocationEventsRepo;
   alerts: AlertsRepo;
   productEvents: ProductEventsRepo;
+  supportCases: SupportCasesRepo;
 }
 
 export function buildAppContext(env: Env): AppContext {
@@ -208,5 +210,6 @@ export function buildAppContext(env: Env): AppContext {
     locationEvents: createLocationEventsRepo(getDb()),
     alerts: createAlertsRepo(getDb()),
     productEvents: createProductEventsRepo(getDb()),
+    supportCases: createSupportCasesRepo(getDb()),
   };
 }

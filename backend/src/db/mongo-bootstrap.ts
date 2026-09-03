@@ -14,6 +14,7 @@ import { bootstrapTrackingDeviceCollections } from './tracking-device-collection
 import { bootstrapLocationEventsCollections } from './location-events-collections.js';
 import { bootstrapAlertsCollections } from './alerts-collections.js';
 import { bootstrapProductEventsCollections } from './product-events-collections.js';
+import { bootstrapSupportCaseCollections } from './support-case-collections.js';
 import { createPlanCatalogRepo } from '../repositories/plan-catalog.js';
 
 export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
@@ -65,6 +66,14 @@ export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
   } catch (err) {
     console.error(
       '[startup] Product events collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+    await bootstrapSupportCaseCollections(db);
+  } catch (err) {
+    console.error(
+      '[startup] Support case collection bootstrap failed:',
       err instanceof Error ? err.message : err,
     );
   }

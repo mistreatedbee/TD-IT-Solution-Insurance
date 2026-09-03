@@ -55,6 +55,7 @@ import { createAdminVerificationRouter } from './routes/admin-verification.js';
 import { createAnalyticsRouter } from './routes/analytics.js';
 import { createAdminAnalyticsRouter } from './routes/admin-analytics.js';
 import { createSupportLookupRouter } from './routes/support-lookup.js';
+import { createSupportCasesRouter } from './routes/support-cases.js';
 import { requestIdMiddleware, notFoundHandler, errorHandler } from './middleware/error-handler.js';
 
 async function main(): Promise<void> {
@@ -154,6 +155,9 @@ async function main(): Promise<void> {
   v1.use('/analytics', createAnalyticsRouter(ctx));
   v1.use('/admin/analytics', createAdminAnalyticsRouter(ctx));
   v1.use('/support', createSupportLookupRouter(ctx));
+  // Mounted at the v1 root (not under '/support') so its live path matches
+  // api-design.md's ratified contract (`POST /v1/support-cases`, etc.) verbatim.
+  v1.use(createSupportCasesRouter(ctx));
   // api-design.md §5's platform-wide default rate-limit row
   // (`DEFAULT_AUTHENTICATED_LIMIT`, lib/policy.ts) is NOT wired as a
   // blanket middleware here — deliberately, not by omission: every route

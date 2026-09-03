@@ -70,6 +70,11 @@ import {
   productEventsIndexes,
   productEventsJsonSchemaValidator,
 } from './product-events-collections.js';
+import {
+  SUPPORT_CASES_COLLECTION,
+  supportCaseIndexes,
+  supportCasesJsonSchemaValidator,
+} from './support-case-collections.js';
 
 /** One declared collection, as the source-of-truth modules describe it. */
 interface DeclaredCollectionSpec {
@@ -82,7 +87,8 @@ interface DeclaredCollectionSpec {
     | 'tracking-device'
     | 'location-events'
     | 'alerts'
-    | 'product-analytics';
+    | 'product-analytics'
+    | 'support-cases';
   collection: string;
   /**
    * Validator this module applies via createCollection/collMod. `undefined`
@@ -186,6 +192,12 @@ const DECLARED_CATALOG: DeclaredCollectionSpec[] = [
     collection: PRODUCT_EVENTS_COLLECTION,
     validator: productEventsJsonSchemaValidator,
     indexes: productEventsIndexes,
+  },
+  {
+    module: 'support-cases',
+    collection: SUPPORT_CASES_COLLECTION,
+    validator: supportCasesJsonSchemaValidator,
+    indexes: supportCaseIndexes,
   },
 ];
 

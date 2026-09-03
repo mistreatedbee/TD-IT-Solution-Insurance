@@ -267,6 +267,23 @@ function createHarness() {
         };
       },
     },
+    supportCases: {
+      async listOpenByAccount(accountId: string) {
+        return accountId === customerId
+          ? [
+              {
+                id: 'e'.repeat(24),
+                accountId: customerId,
+                referenceNumber: 'SC-20260901-A1B2',
+                status: 'open' as const,
+                category: 'billing',
+                createdAt: new Date('2026-09-01T10:00:00.000Z'),
+                callerVerified: false,
+              },
+            ]
+          : [];
+      },
+    },
     auditLog: {
       async record(event: unknown) {
         auditCalls.push(event);
@@ -382,6 +399,41 @@ describe('GET /support/customer-lookup', () => {
       for (const key of POLICE_REPORT_KEYS) {
         expect(Object.keys(body.data.recoveryCases[0]!)).not.toContain(key);
       }
+    });
+  });
+
+  // Feature 010 Phase 2 (FR-11 addendum) — api-design.md §3.
+  it('includes openSupportCaseCount and supportCases[] (FR-11 addendum)', async () => {
+    const { app, env } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(
+        `${baseUrl}/v1/support/customer-lookup?email=${encodeURIComponent('customer@example.com')}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: {
+          openSupportCaseCount: number;
+          supportCases: Array<{ id: string; referenceNumber: string; status: string; callerVerified: boolean }>;
+        };
+      };
+      expect(body.data.openSupportCaseCount).toBe(1);
+      expect(body.data.supportCases).toHaveLength(1);
+      expect(body.data.supportCases[0]!.referenceNumber).toBe('SC-20260901-A1B2');
+      expect(body.data.supportCases[0]!.callerVerified).toBe(false);
     });
   });
 
