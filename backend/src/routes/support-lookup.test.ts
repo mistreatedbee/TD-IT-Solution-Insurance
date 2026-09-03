@@ -223,6 +223,25 @@ function createHarness() {
                 status: 'open',
                 reportedAt: new Date('2026-08-28T10:00:00.000Z'),
                 callCentreNotes: [],
+                // Feature 011 (SAPS case-number capture) — populated here deliberately so
+                // the "GET /support/customer-lookup excludes police-report fields" golden
+                // test below actually proves something: `support-lookup.ts` builds its
+                // response with an explicit allowlist and calls no recovery_cases
+                // serializer, so these must never appear in the response even though the
+                // (stubbed) repository row carries them (SR-011-1 / SR-011-7).
+                sapsCaseNumber: '123/01/2026',
+                reportingStation: 'Sandton SAPS',
+                reportedToPoliceAt: new Date('2026-08-29T00:00:00.000Z'),
+                policeReportHistory: [
+                  {
+                    actorAccountId: customerId,
+                    field: 'sapsCaseNumber',
+                    previousValue: null,
+                    newValue: '123/01/2026',
+                    changedAt: new Date('2026-08-29T00:00:00.000Z'),
+                  },
+                ],
+                policeReportReminderSentAt: null,
               },
             ]
           : [];
@@ -323,6 +342,46 @@ describe('GET /support/customer-lookup', () => {
       expect(body.data.subscription?.assetUsageLabel).toBe('1 / 10 assets');
       expect(body.data.subscription?.supportLevel).toBe('Priority');
       expect(auditCalls.length).toBe(1);
+    });
+  });
+
+  // Feature 011 (SAPS case-number capture) — SR-011-1b / architecture-review.md §4.
+  // Merge-blocking regression: this must fail if a future edit ever adds a
+  // police-report field to this route's recoveryCases[] allowlist.
+  it('excludes police-report fields from recoveryCases[] (SR-011-1 / SR-011-7)', async () => {
+    const { app, env } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(
+        `${baseUrl}/v1/support/customer-lookup?email=${encodeURIComponent('customer@example.com')}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { recoveryCases: Array<Record<string, unknown>> } };
+      expect(body.data.recoveryCases).toHaveLength(1);
+      const POLICE_REPORT_KEYS = [
+        'sapsCaseNumber',
+        'reportingStation',
+        'reportedToPoliceAt',
+        'policeReport',
+        'policeReportHistory',
+        'policeReportReminderSentAt',
+      ];
+      for (const key of POLICE_REPORT_KEYS) {
+        expect(Object.keys(body.data.recoveryCases[0]!)).not.toContain(key);
+      }
     });
   });
 

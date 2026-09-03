@@ -149,6 +149,18 @@
       }
     },
     {
+      "id": "backend-recovery-police-report",
+      "kind": "backend_route",
+      "pattern": "/recovery/cases/:caseId/police-report",
+      "feature": "011",
+      "stage8": {
+        "doc": "docs/features/011-saps-case-reporting/security-review.md",
+        "verdict": "conditional-sign-off-joint-gate-incomplete",
+        "reason": "SR-011-1/-2/-3/-4/-6/-7 implemented at Stage 9 (repository-level projection, golden-response tests, import boundary, closedAt setter, maxItems cap + dedicated rate limit, retention-expiry rejection). No entry into any environment holding real customer data until SR-011-1, SR-011-4 and SR-011-6 are re-verified and security-engineer/compliance-specialist concurrence (SR-011-5) is recorded.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
       "id": "backend-tracking-devices",
       "kind": "backend_route_group",
       "pattern": "/tracking*",

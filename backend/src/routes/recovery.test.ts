@@ -133,6 +133,12 @@ function sampleCase(accountId: string, assetId: string, id = '507f1f77bcf86cd799
     lastLocationAt: null,
     lastLocation: null,
     legalHold: false,
+    closedAt: null,
+    sapsCaseNumber: null,
+    reportingStation: null,
+    reportedToPoliceAt: null,
+    policeReportHistory: [],
+    policeReportReminderSentAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -221,6 +227,77 @@ function createHarness(opts: {
       async getLocationForCase(acctId: string, caseId: string) {
         const doc = cases.find((c) => c.accountId === acctId && c.id === caseId);
         return doc?.lastLocation ?? null;
+      },
+      // Feature 011 — a faithful-enough fake of repositories/recovery-cases.ts's real
+      // setPoliceReportFields for route-level (validation/HTTP-shape) testing. The
+      // repository's own logic is exercised directly in repositories/recovery-cases.test.ts.
+      async setPoliceReportFields(
+        acctId: string,
+        caseId: string,
+        actorAccountId: string,
+        changes: Partial<{
+          sapsCaseNumber: string | null;
+          reportingStation: string | null;
+          reportedToPoliceAt: Date | null;
+        }>,
+      ) {
+        const idx = cases.findIndex((c) => c.accountId === acctId && c.id === caseId);
+        if (idx < 0) return { ok: false as const, reason: 'not_found' as const };
+        const current = cases[idx]!;
+
+        const cutoff = new Date();
+        cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 5);
+        if (
+          current.status === 'closed' &&
+          current.closedAt != null &&
+          !current.legalHold &&
+          current.closedAt <= cutoff
+        ) {
+          return { ok: false as const, reason: 'retention_expired' as const };
+        }
+
+        const toDateOnlyString = (d: Date | null): string | null => (d ? d.toISOString().slice(0, 10) : null);
+        const newEntries: RecoveryCaseDocument['policeReportHistory'] = [];
+        const setUpdate: Partial<RecoveryCaseDocument> = {};
+
+        if ('sapsCaseNumber' in changes) {
+          const previousValue = current.sapsCaseNumber ?? null;
+          const newValue = changes.sapsCaseNumber ?? null;
+          if (previousValue !== newValue) {
+            newEntries.push({ actorAccountId, field: 'sapsCaseNumber', previousValue, newValue, changedAt: new Date() });
+            setUpdate.sapsCaseNumber = newValue;
+          }
+        }
+        if ('reportingStation' in changes) {
+          const previousValue = current.reportingStation ?? null;
+          const newValue = changes.reportingStation ?? null;
+          if (previousValue !== newValue) {
+            newEntries.push({ actorAccountId, field: 'reportingStation', previousValue, newValue, changedAt: new Date() });
+            setUpdate.reportingStation = newValue;
+          }
+        }
+        if ('reportedToPoliceAt' in changes) {
+          const previousValue = toDateOnlyString(current.reportedToPoliceAt ?? null);
+          const newValue = toDateOnlyString(changes.reportedToPoliceAt ?? null);
+          if (previousValue !== newValue) {
+            newEntries.push({ actorAccountId, field: 'reportedToPoliceAt', previousValue, newValue, changedAt: new Date() });
+            setUpdate.reportedToPoliceAt = changes.reportedToPoliceAt ?? null;
+          }
+        }
+
+        if (newEntries.length === 0) return { ok: true as const, case: current };
+        if (current.policeReportHistory.length + newEntries.length > 50) {
+          return { ok: false as const, reason: 'history_limit_exceeded' as const };
+        }
+
+        const updated: RecoveryCaseDocument = {
+          ...current,
+          ...setUpdate,
+          policeReportHistory: [...current.policeReportHistory, ...newEntries],
+          updatedAt: new Date(),
+        };
+        cases[idx] = updated;
+        return { ok: true as const, case: updated };
       },
     },
     idempotency: createInMemoryIdempotencyRepo(),
@@ -423,5 +500,233 @@ describe('routes/recovery', () => {
     });
 
     expect(res.status).toBe(201);
+  });
+
+  it('GET /recovery/cases and GET /recovery/cases/:caseId include a policeReport sub-object', async () => {
+    const accountId = randomUUID();
+    const assetId = '507f1f77bcf86cd799439021';
+    const existing = sampleCase(accountId, assetId);
+    const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
+    const listened = await listen(app);
+    server = listened.server;
+    const token = customerToken(env, accountId, sessionId);
+
+    const listRes = await fetch(`${listened.baseUrl}/recovery/cases`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const listBody = (await listRes.json()) as { data: Array<{ policeReport: unknown }> };
+    expect(listBody.data[0]!.policeReport).toEqual({
+      sapsCaseNumber: null,
+      reportingStation: null,
+      reportedToPoliceAt: null,
+      history: [],
+    });
+
+    const detailRes = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const detailBody = (await detailRes.json()) as { policeReport: unknown };
+    expect(detailBody.policeReport).toEqual({
+      sapsCaseNumber: null,
+      reportingStation: null,
+      reportedToPoliceAt: null,
+      history: [],
+    });
+  });
+
+  describe('PATCH /recovery/cases/:caseId/police-report — Feature 011', () => {
+    it('sets fields and returns the full updated case, including history', async () => {
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = sampleCase(accountId, assetId);
+      const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sapsCaseNumber: '123/01/2026', reportingStation: 'Sandton SAPS' }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        policeReport: { sapsCaseNumber: string | null; reportingStation: string | null; history: unknown[] };
+      };
+      expect(body.policeReport.sapsCaseNumber).toBe('123/01/2026');
+      expect(body.policeReport.reportingStation).toBe('Sandton SAPS');
+      expect(body.policeReport.history).toHaveLength(2);
+    });
+
+    it('accepts a single field and independently editable fields across calls (BR-011-05)', async () => {
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = sampleCase(accountId, assetId);
+      const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const first = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reportingStation: 'Sandton SAPS' }),
+      });
+      expect(first.status).toBe(200);
+
+      const second = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sapsCaseNumber: '123/01/2026' }),
+      });
+      expect(second.status).toBe(200);
+      const body = (await second.json()) as {
+        policeReport: { sapsCaseNumber: string | null; reportingStation: string | null; history: unknown[] };
+      };
+      expect(body.policeReport.reportingStation).toBe('Sandton SAPS');
+      expect(body.policeReport.sapsCaseNumber).toBe('123/01/2026');
+      expect(body.policeReport.history).toHaveLength(2);
+    });
+
+    it('rejects a body with no recognized fields', async () => {
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = sampleCase(accountId, assetId);
+      const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects sapsCaseNumber shorter than 3 characters, accepts an unusual real-world format (BR-011-02)', async () => {
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = sampleCase(accountId, assetId);
+      const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const tooShort = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sapsCaseNumber: 'AB' }),
+      });
+      expect(tooShort.status).toBe(400);
+
+      const unusualFormat = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sapsCaseNumber: '  CAS 45/2/26  ' }),
+      });
+      expect(unusualFormat.status).toBe(200);
+      const body = (await unusualFormat.json()) as { policeReport: { sapsCaseNumber: string | null } };
+      expect(body.policeReport.sapsCaseNumber).toBe('CAS 45/2/26');
+    });
+
+    it('rejects a reportedToPoliceAt with a time component', async () => {
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = sampleCase(accountId, assetId);
+      const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reportedToPoliceAt: '2026-08-02T10:00:00.000Z' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 404 for a case owned by a different account (no enumeration)', async () => {
+      const accountId = randomUUID();
+      const otherAccountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = sampleCase(otherAccountId, assetId);
+      const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sapsCaseNumber: '123/01/2026' }),
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it('accepts an edit on a closed case (api-design.md §2.3 — no status gate)', async () => {
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = { ...sampleCase(accountId, assetId), status: 'closed' as const, closedAt: new Date() };
+      const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sapsCaseNumber: '123/01/2026' }),
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('rejects an edit on a case whose retention window has already expired (SR-011-2)', async () => {
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const longAgo = new Date();
+      longAgo.setUTCFullYear(longAgo.getUTCFullYear() - 6);
+      const existing = { ...sampleCase(accountId, assetId), status: 'closed' as const, closedAt: longAgo };
+      const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sapsCaseNumber: '123/01/2026' }),
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it('does not append a history entry when the resubmitted value is unchanged (api-design.md §2.5 no-op suppression)', async () => {
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = sampleCase(accountId, assetId);
+      const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const first = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sapsCaseNumber: '123/01/2026' }),
+      });
+      expect((await first.json() as { policeReport: { history: unknown[] } }).policeReport.history).toHaveLength(1);
+
+      const second = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sapsCaseNumber: '123/01/2026' }),
+      });
+      expect(second.status).toBe(200);
+      const body = (await second.json()) as { policeReport: { history: unknown[] } };
+      expect(body.policeReport.history).toHaveLength(1);
+    });
   });
 });

@@ -68,9 +68,16 @@ function sampleCase(
     referenceNumber: 'RC-20260801-TEST',
     reportedAt: now,
     notes: null,
+    callCentreNotes: [],
     lastLocationAt: null,
     lastLocation: null,
     legalHold: false,
+    closedAt: null,
+    sapsCaseNumber: null,
+    reportingStation: null,
+    reportedToPoliceAt: null,
+    policeReportHistory: [],
+    policeReportReminderSentAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -348,6 +355,152 @@ describe('routes/security-cases', () => {
     const stored = harness.cases.find((c) => c.id === caseId);
     expect(stored?.status).toBe('open');
     expect(stored?.partnerOrganizationId).toBeNull();
+  });
+
+  // Feature 011 (SAPS case-number capture) — SR-011-1b, security-review.md. Merge-blocking
+  // regression: if a future edit ever adds a police-report field to
+  // serializeSecurityRecoveryCase (or to any of these four route responses), this test
+  // fails. Covers a case document with every police-report field populated, including a
+  // non-empty policeReportHistory[].
+  describe('Feature 011 — police-report fields never reach a security-company operator', () => {
+    const POLICE_REPORT_KEYS = [
+      'sapsCaseNumber',
+      'reportingStation',
+      'reportedToPoliceAt',
+      'policeReport',
+      'policeReportHistory',
+      'policeReportReminderSentAt',
+    ];
+
+    function caseWithPoliceReportSet(overrides: Partial<RecoveryCaseDocument> & Pick<RecoveryCaseDocument, 'id' | 'accountId' | 'assetId'>) {
+      return sampleCase({
+        ...overrides,
+        sapsCaseNumber: '123/01/2026',
+        reportingStation: 'Sandton SAPS',
+        reportedToPoliceAt: new Date('2026-08-02T00:00:00.000Z'),
+        policeReportHistory: [
+          {
+            actorAccountId: overrides.accountId,
+            field: 'sapsCaseNumber',
+            previousValue: null,
+            newValue: '123/01/2026',
+            changedAt: new Date('2026-08-02T00:00:00.000Z'),
+          },
+        ],
+        policeReportReminderSentAt: new Date('2026-08-04T00:00:00.000Z'),
+      } as Partial<RecoveryCaseDocument> & Pick<RecoveryCaseDocument, 'id' | 'accountId' | 'assetId'>);
+    }
+
+    it('GET /security/cases (list) excludes police-report fields', async () => {
+      const accountId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: 'org-1',
+        cases: [
+          caseWithPoliceReportSet({
+            id: '507f1f77bcf86cd799439011',
+            accountId,
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: 'org-1',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: Array<Record<string, unknown>> };
+      expect(body.data).toHaveLength(1);
+      for (const key of POLICE_REPORT_KEYS) {
+        expect(Object.keys(body.data[0]!)).not.toContain(key);
+      }
+    });
+
+    it('GET /security/cases/:caseId (detail) excludes police-report fields', async () => {
+      const accountId = randomUUID();
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({
+        partnerOrgId: 'org-1',
+        cases: [
+          caseWithPoliceReportSet({
+            id: caseId,
+            accountId,
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: 'org-1',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Record<string, unknown>;
+      for (const key of POLICE_REPORT_KEYS) {
+        expect(Object.keys(body)).not.toContain(key);
+      }
+    });
+
+    it('POST /security/cases/:caseId/claim excludes police-report fields', async () => {
+      const accountId = randomUUID();
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({
+        cases: [
+          caseWithPoliceReportSet({
+            id: caseId,
+            accountId,
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: null,
+            status: 'open',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/claim`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Record<string, unknown>;
+      for (const key of POLICE_REPORT_KEYS) {
+        expect(Object.keys(body)).not.toContain(key);
+      }
+    });
+
+    it('PATCH /security/cases/:caseId excludes police-report fields', async () => {
+      const accountId = randomUUID();
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({
+        partnerOrgId: 'org-123',
+        cases: [
+          caseWithPoliceReportSet({
+            id: caseId,
+            accountId,
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: 'org-123',
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${harness.token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'tracking' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Record<string, unknown>;
+      for (const key of POLICE_REPORT_KEYS) {
+        expect(Object.keys(body)).not.toContain(key);
+      }
+    });
   });
 
   it('returns 403 when operator has no partner organization', async () => {
