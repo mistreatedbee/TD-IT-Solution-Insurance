@@ -79,7 +79,7 @@ TD IT Solution Insurance operates a customer support and recovery coordination f
 ## 6. Open questions for `product-manager` (OQ-010)
 
 1. **OQ-010-1:** Is call-centre note storage a new Mongo collection (`call_centre_notes`) or an extension of `recovery_cases` audit trail?
-2. **OQ-010-2:** What customer verification is required before agent-initiated theft report (voice match, OTP to registered phone, other)?
+2. **OQ-010-2:** ~~What customer verification is required before agent-initiated theft report (voice match, OTP to registered phone, other)?~~ — **RULED 2026-09-03, see [`compliance-review-agent-attributed-actions.md`](compliance-review-agent-attributed-actions.md).** No reusable mechanism exists; new design required (**C-010-4**). **Voice match is prohibited** (s26 biometric special personal information, **C-010-7**). **FR-9 is blocked at Stage 1** until a Tier 2 verification design is jointly reviewed — its "verification workflow TBD Stage 2" wording is superseded. **FR-7/FR-8 and the shipped `GET /v1/customer-lookup` surface carry C-010-1** (scripted caller-verification step + agent-UI disclosure reminder) before any real customer PII reaches a workstation.
 3. **OQ-010-3:** Should agents see notification delivery history (Feature 007) or stay policy/asset/case only?
 
 ---

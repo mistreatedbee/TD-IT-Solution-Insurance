@@ -246,7 +246,7 @@ Reasons this needs `compliance-specialist` review before Stage 2 design proceeds
 - **OQ-011-03 (`cybersecurity-architect`/`business-analyst`):** Should a claimed recovery case's SAPS case-number fields be visible to the assigned security-company operator (`serializeSecurityRecoveryCase`), or withheld as customer-only data?
 - **OQ-011-04 (`compliance-specialist`, secondarily `business-analyst`):** If a more authoritative SAPS CAS-number format specification is later found, should BR-011-02's "no format validation" ruling be revisited toward light format hints (not hard validation)?
 - **OQ-011-05 (`product-manager`):** Confirm or override this document's sequencing recommendation (§10) that Idea 1 is buildable independently and immediately, while Idea 2 is gated on OQ-011-02.
-- **OQ-011-06 (`compliance-specialist`):** Full ruling requested per §7 — is a SAPS case-number field, as specified, acceptable under POPIA without further controls, or does it require a specific lawful-basis/retention/access ruling before Stage 2 proceeds?
+- **OQ-011-06 (`compliance-specialist`):** ~~Full ruling requested per §7~~ — **RULED 2026-09-03. See §12 and [`compliance-review-saps-case-data.md`](compliance-review-saps-case-data.md).** Outcome: new personal-information category confirmed; Idea 1 cleared to enter Stage 2 subject to conditions C-011-1…C-011-10. **OQ-011-01 resolved as "yes, change history required" (C-011-8); OQ-011-03 resolved as "withheld from security-company operators" (C-011-9); OQ-011-04 closed (no format validation, agreeing with BR-011-02).**
 
 ---
 
@@ -271,4 +271,49 @@ Stated because the task creating this document asked whether these fit together 
 - [ ] QA has reviewed acceptance criteria and confirmed testability before development starts — **deferred to Stage 10 entry per standard lifecycle sequencing; not yet performed.**
 - [ ] Product-manager has signed off that the spec matches intended product scope — **pending.** OQ-011-02 and OQ-011-05 in particular need `product-manager` rulings before Stage 2 begins for either idea.
 
-**Net status:** Stage 1 draft complete for both ideas. **This does not authorize development.** Idea 1 (case-number capture) is closer to Stage-2-ready than Idea 2 (station locator) — it has one real dependency (`compliance-specialist` review, §7/OQ-011-06) rather than two (compliance review **and** an unresolved data-sourcing question, §4.2/OQ-011-02). Idea 2's report-assistant-summary component, once the location field is excluded per §4.3/D-011-01, shares Idea 1's dependency profile and no other. The location-inclusion variant of the report-assistant summary is blocked independently on INC-001 closing and a fresh Stage 8 review, and must not be built under this document's authority even if the rest of Idea 2 proceeds.
+**Net status (as drafted 2026-08-xx — superseded in part by §12):** Stage 1 draft complete for both ideas. **This does not authorize development.** Idea 1 (case-number capture) is closer to Stage-2-ready than Idea 2 (station locator) — it has one real dependency (`compliance-specialist` review, §7/OQ-011-06) rather than two (compliance review **and** an unresolved data-sourcing question, §4.2/OQ-011-02). Idea 2's report-assistant-summary component, once the location field is excluded per §4.3/D-011-01, shares Idea 1's dependency profile and no other. The location-inclusion variant of the report-assistant summary is blocked independently on INC-001 closing and a fresh Stage 8 review, and must not be built under this document's authority even if the rest of Idea 2 proceeds.
+
+---
+
+## 12. Compliance ruling — OQ-011-06 (appended by `compliance-specialist`, 2026-09-03)
+
+**Full ruling: [`compliance-review-saps-case-data.md`](compliance-review-saps-case-data.md).** Summary
+only here — the review document governs where the two differ.
+
+**§7 was right to flag this rather than wave it through.** Ruling:
+
+1. **Regulatory scope confirmed, not assumed.** POPIA applies. GDPR is **not** triggered by this field
+   set (no EU data subjects evidenced; EU *processing location* per `render.yaml` is not itself an Art. 3
+   trigger) — re-opens if an EU customer is ever onboarded (**C-011-7**). PCI-DSS not engaged. The
+   dominant constraint turns out to be **insurance-sector recordkeeping**, which imposes a retention
+   *floor* pulling against the s14 minimisation instinct.
+2. **Yes — new personal-information category and new processing activity.** The information is the
+   assertion ("this identified person reported a crime, at this station, on this date"), not the string.
+   Nuance: the customer's own triple is **ordinary** personal information, not s26 special personal
+   information, because s26(b) is scoped to offences allegedly committed **by** the data subject and our
+   customer is the complainant. **But** the adjacent free-text fields can capture *named suspects* —
+   s26(b) special personal information about a third party with no relationship to the platform
+   (**C-011-1**, applies to already-shipped `recovery_cases.notes` too).
+3. **Lawful basis: s11(1)(b) contract + s11(1)(c) legal obligation. NOT consent** — do not build a
+   consent toggle. The field being optional is a usability fact, not a lawful-basis fact, and a
+   withdrawable basis is incompatible with the retention floor.
+4. **Yes — the platform RoPA must be updated (C-011-4).** No RoPA exists at all; this is the fifth
+   feature to file that condition. **It is NOT a blocking precondition on Stage 2, Stage 6, or Stage 7.**
+   It is a hard precondition on the first processing of real customer SAPS data — the same M1 floor that
+   already blocks real customer PII on every surface. The entry lands inside **INC-001-C-10** (due
+   2026-09-15), not as a Feature-011 mini-register. It lands **in parallel**.
+5. **Retention set (binding on `database-architect`):** the longer of **5 years from case closure /
+   claim finalisation** (provisional on C-011-6 licence confirmation) or any longer Client instruction;
+   no indefinite retention; automated, evidenced deletion (**C-011-10**); erasure requests do not reach
+   these fields while the basis holds, and the s18 notice must say so (**C-011-5**).
+6. **OQ-011-01 → "yes."** Change history is **required** (append-only or last-write-with-actor-and-
+   timestamp) — evidentiary value plus s16. Mechanism is `database-architect`'s (**C-011-8**).
+7. **OQ-011-03 → "withheld."** Police-report fields must be excluded from `serializeSecurityRecoveryCase`
+   and every security-company surface — s10 minimality, plus C-008-8 (the sharing channel is itself
+   unauthorised) (**C-011-9**).
+8. **OQ-011-04 → closed.** No format validation; BR-011-02 stands and I concur.
+9. **D-011-01 unchanged — still blocked.** No new consumer of location data until INC-001 closes.
+
+**Disposition: Idea 1 is CLEARED to enter Stage 2, subject to C-011-1…C-011-10. OQ-011-06 is
+discharged.** Idea 2's remaining blocker (OQ-011-02, station-dataset sourcing) is not a compliance
+question and is unaffected. §11's unchecked compliance-review checkbox may now be marked complete.

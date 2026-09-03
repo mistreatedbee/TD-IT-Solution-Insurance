@@ -247,3 +247,62 @@ flagged, not designed, here.
 **Next lifecycle step:** `business-analyst` review/acceptance of this document → `product-manager` resolves or
 routes OQ-010-2/4/5 → Stage 2 (Product Planning, backlog slotting against Release Gate A capacity plan) →
 `ux-researcher` journey map for both "new support case" and "escalate to theft" flows.
+
+---
+
+## 8. Compliance ruling — OQ-010-2 and NFR-5 (appended by `compliance-specialist`, 2026-09-03)
+
+**Full ruling: [`compliance-review-agent-attributed-actions.md`](compliance-review-agent-attributed-actions.md).**
+Summary only here — the review document governs where the two differ.
+
+**Ruling 1 — no existing mechanism can be reused. OQ-010-2 requires new design work.**
+`backend/src/routes/admin-verification.ts` is **KYC record adjudication** (an *admin* approves a submitted
+`customer_profiles` record, setting `verificationStatus`). It answers "is this account's claimed identity
+genuine, once, at onboarding." OQ-010-2 asks "is the human on this call the account holder, right now."
+Different question, different actor (`requireUserType('admin')`, not `support_agent`), no challenge,
+no per-interaction outcome. Nothing else closes the gap either: **no SMS provider exists anywhere** (`sms`
+is a preference enum only — adding one is a new vendor requiring s21/s72 review, not reuse); **email OTP is
+unusable** while production email delivery is owner-blocked (INC-001-C-8); TOTP exists but only bound to a
+login flow, with no agent-initiated out-of-session challenge; push is the closest possession factor but
+requires a working app, which is often why the customer is phoning.
+
+**Ruling 2 — tiered verification floor, and one finding against already-shipped code.**
+
+- **Tier 0 (live today):** `GET /v1/customer-lookup` returns policies, the asset list, plan detail, open
+  recovery cases and notes with **no caller-verification step and no agent-UI disclosure guidance**.
+  Phase 1 NFR-2 governs bulk access correctly but nothing governs *disclosure to the caller*.
+  **C-010-1** — scripted verification step + agent-UI reminder required before real customer PII reaches
+  a workstation. Attaches to the shipped Phase 1 surface, not just Phase 2.
+- **Tier 1 (FR-12–FR-17):** an OTP per billing question is disproportionate under s10. **C-010-2** —
+  verified-or-flagged: a case may be created in an explicit `caller_unverified` state that is flagged,
+  auditable, and **blocks escalation and account-detail disclosure**. Never silently unverified.
+- **Tier 2 (FR-18–FR-21, and Phase 1 FR-9):** verified caller required, no unverified path — out-of-band
+  possession proof to a pre-registered channel; **the agent must not be able to self-approve** (an
+  agent-ticked "customer verified" box is a log of a claim, not a verification); persisted per-interaction
+  verification record; distinct audit event (proposed `caller_verification`, not `privileged_data_access`);
+  agent-created attribution on the record; out-of-band notification to the account holder (SDL-9
+  precedent — currently blocked on INC-001-C-8); rate-limit/lockout on failures; no bypass absent a
+  supervisory role that does not exist (ties to OQ-010-4).
+- **Prohibited at every tier:** **voice biometrics** — "voice match" is named first in OQ-010-2 and reads
+  as the cheap option; it is the most expensive, being s26 **special personal information** requiring a
+  s27/s33 authorisation and its own review (**C-010-7**). Also prohibited as authenticators:
+  `idNumberLast4`, full ID number, DOB, address — SA ID numbers are routinely disclosed and partly
+  derivable, and `idNumberLast4` is the platform's own KYC field, so exposing the KYC store would expose
+  the authenticator with it.
+
+**Ruling 3 — NFR-5 interim position (partial discharge).** Masking is the wrong control; input-time
+guidance and non-collection is the right one. **C-010-3 is the sharpest risk this feature carries:** the
+`billing` category makes it foreseeable that an agent types a card or full bank number into free text.
+**The platform's nil PCI-DSS scope is an asset and must not be destroyed by a text box.** C-011-1
+(third-party suspect data) applies here too. Retention: **24 months from closure** for support cases —
+**except** escalated cases, which inherit the recovery/claims retention floor.
+
+**Disposition: PART-CLEARANCE.**
+
+- **FR-11 – FR-17 — CLEARED to enter Stage 2**, subject to C-010-1, C-010-2, C-010-3.
+- **FR-18 – FR-21 (and Phase 1 FR-9) — NOT CLEARED. Blocked at Stage 1** pending a Tier 2 verification
+  design reviewed jointly by `compliance-specialist` + `cybersecurity-architect` (**C-010-4**). Phase 1
+  FR-9's "verification workflow TBD Stage 2" wording is superseded: the workflow is a **precondition to**
+  Stage 2 for that requirement, not an output of it.
+- OQ-010-2 is answered on the compliance limb; mechanism selection remains `cybersecurity-architect`'s and
+  any channel/vendor decision remains `product-manager`/`integration-architect`'s.
