@@ -37,6 +37,24 @@
         "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false"
       }
     },
+    "preview-simulator": {
+      "distribution": "internal",
+      "channel": "preview",
+      "environment": "preview",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://td-it-solution-insurance.onrender.com",
+        "EXPO_PUBLIC_FEATURE_CLAIMS": "false",
+        "EXPO_PUBLIC_FEATURE_LOCATION_TRACKING": "false",
+        "EXPO_PUBLIC_FEATURE_KYC": "false",
+        "EXPO_PUBLIC_FEATURE_ALERTS": "false",
+        "EXPO_PUBLIC_FEATURE_THEFT_REPORTING": "false",
+        "EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING": "false",
+        "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false"
+      }
+    },
     "production": {
       "channel": "production",
       "autoIncrement": true,
