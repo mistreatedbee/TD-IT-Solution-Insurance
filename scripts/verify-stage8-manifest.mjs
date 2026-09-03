@@ -2,9 +2,18 @@
 /**
  * CI-1 — Stage 8 manifest verification (INC-001 §6).
  *
- * Discovers backend API routes and mobile Expo Router screens, then fails if
- * any discovered surface is not covered by docs/organization/gates/stage8-manifest.json
- * with either a filed Stage 8 record or an explicit waived entry.
+ * Discovers backend API routes, mobile Expo Router screens, AND web
+ * dashboard routes (`src/*Routes.tsx` — Admin, Security Company, Call
+ * Centre), then fails if any discovered surface is not covered by
+ * docs/organization/gates/stage8-manifest.json with either a filed Stage 8
+ * record or an explicit waived entry.
+ *
+ * INC-001 §6's original CI-1 specification named "every route in
+ * `src/*Routes.tsx`" explicitly. That scan was dropped in the first
+ * implementation (SH-1a, filed in Feature 010's Stage 8 review,
+ * docs/features/010-call-centre-dashboard/security-review.md §7) — every
+ * privileged web operator dashboard shipped with zero CI-1 enforcement.
+ * This script restores that scan.
  *
  * Usage:
  *   node scripts/verify-stage8-manifest.mjs
@@ -22,6 +31,7 @@ const repoRoot = join(__dirname, '..');
 const manifestPath = join(repoRoot, 'docs/organization/gates/stage8-manifest.json');
 const backendRoutesDir = join(repoRoot, 'backend/src/routes');
 const mobileAppDir = join(repoRoot, 'mobile/app');
+const webSrcDir = join(repoRoot, 'src');
 
 const ROUTER_PATH_RE =
   /router\.(?:get|post|patch|put|delete)\(\s*(?:\/\*[\s\S]*?\*\/\s*)?['"](\/[^'"]+)['"]/g;
@@ -61,6 +71,61 @@ function discoverMobileScreens(dir = mobileAppDir, prefix = '') {
     screens.push(routePath);
   }
   return screens.sort();
+}
+
+// Discovers web dashboard routes under `src/<surface>/<Surface>Routes.tsx`
+// (Admin, Security Company, Call Centre — per INC-001 §6's CI-1 spec of
+// "every route in `src/*Routes.tsx`"). Each top-level `src/<dir>/` whose
+// directory contains a file matching `*Routes.tsx` is treated as a mounted
+// surface at URL prefix `/<dir>` — confirmed against `src/App.tsx`, which
+// mounts `AdminRoutes`/`SecurityRoutes`/`CallCentreRoutes` at
+// `/admin/*`/`/security/*`/`/call-centre/*` respectively (directory name
+// equals URL segment for every surface today).
+//
+// Route paths are extracted from `<Route ... path="...">` attributes found
+// anywhere in the file. This is a flat text scan, not a JSX/AST parser: it
+// assumes (as every current file does) that `path` values are already
+// fully-qualified relative to the surface root (e.g. `"accounts/:accountId"`,
+// not a nested `"accounts"` parent with a `":accountId"` child route). If a
+// future dashboard nests path segments across parent/child <Route> elements,
+// this scan will under-report — a limitation worth revisiting if that
+// pattern appears, not a silent gap today (verified against the three
+// existing files at review time).
+function discoverWebRoutes() {
+  const routes = new Set();
+  let topLevelDirs;
+  try {
+    topLevelDirs = readdirSync(webSrcDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  for (const dirEntry of topLevelDirs) {
+    if (!dirEntry.isDirectory()) continue;
+    const dirPath = join(webSrcDir, dirEntry.name);
+    let files;
+    try {
+      files = readdirSync(dirPath);
+    } catch {
+      continue;
+    }
+    const routesFile = files.find((f) => /Routes\.tsx?$/.test(f));
+    if (!routesFile) continue;
+
+    const mountPrefix = `/${dirEntry.name}`;
+    const content = readFileSync(join(dirPath, routesFile), 'utf8');
+
+    for (const routeTag of content.matchAll(/<Route\b([^>]*)>/g)) {
+      const attrs = routeTag[1];
+      const pathMatch = attrs.match(/\bpath=["']([^"']+)["']/);
+      if (!pathMatch) continue; // index/catch-all-less routes carry no distinct screen
+      const p = pathMatch[1];
+      if (p === '*') continue; // catch-all fallback redirect, not a reviewable screen
+      routes.add(`${mountPrefix}/${p}`);
+    }
+  }
+
+  return [...routes].sort();
 }
 
 function loadManifest() {
@@ -133,6 +198,10 @@ function surfaceCovers(surfaces, kind, discovered) {
       return patternCovers(pattern, discovered);
     }
 
+    if (surface.kind.startsWith('web') && kind === 'web_route') {
+      return patternCovers(pattern, discovered);
+    }
+
     return false;
   });
 }
@@ -141,6 +210,7 @@ function main() {
   const surfaces = loadManifest();
   const backendRoutes = discoverBackendRoutes();
   const mobileScreens = discoverMobileScreens();
+  const webRoutes = discoverWebRoutes();
 
   const missing = [];
 
@@ -156,9 +226,15 @@ function main() {
     }
   }
 
+  for (const route of webRoutes) {
+    if (!surfaceCovers(surfaces, 'web_route', route)) {
+      missing.push({ kind: 'web_route', path: route });
+    }
+  }
+
   // eslint-disable-next-line no-console
   console.log(
-    `[verify-stage8-manifest] Discovered ${backendRoutes.length} backend routes, ${mobileScreens.length} mobile screens; manifest has ${surfaces.length} entries.`,
+    `[verify-stage8-manifest] Discovered ${backendRoutes.length} backend routes, ${mobileScreens.length} mobile screens, ${webRoutes.length} web dashboard routes; manifest has ${surfaces.length} entries.`,
   );
 
   if (missing.length > 0) {

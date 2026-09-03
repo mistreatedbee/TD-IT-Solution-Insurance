@@ -223,7 +223,7 @@
     {
       "id": "mobile-policy-assets",
       "kind": "mobile_route_group",
-      "pattern": "(app)/{policy,assets}/*",
+      "pattern": "(app)/{policy,assets}*",
       "feature": "004",
       "stage8": {
         "doc": "docs/features/004-policy-asset-management/security-review.md",
@@ -243,7 +243,7 @@
     {
       "id": "mobile-claims",
       "kind": "mobile_route_group",
-      "pattern": "(app)/claims/*",
+      "pattern": "(app)/claims*",
       "feature": "005",
       "stage8": {
         "waived": true,
@@ -254,7 +254,7 @@
     {
       "id": "mobile-location",
       "kind": "mobile_route_group",
-      "pattern": "(app)/{map,device-locations,live-tracking}/*",
+      "pattern": "(app)/{map,device-locations,live-tracking}*",
       "feature": "008",
       "stage8": {
         "waived": true,
@@ -276,7 +276,7 @@
     {
       "id": "mobile-alerts",
       "kind": "mobile_route_group",
-      "pattern": "(app)/alerts/*",
+      "pattern": "(app)/alerts*",
       "feature": "009",
       "stage8": {
         "waived": true,
@@ -287,7 +287,7 @@
     {
       "id": "mobile-report-theft",
       "kind": "mobile_route_group",
-      "pattern": "(app)/report-theft/*",
+      "pattern": "(app)/report-theft*",
       "feature": "009",
       "stage8": {
         "waived": true,
@@ -329,12 +329,13 @@
     },
     {
       "id": "mobile-app-shell",
-      "kind": "mobile_route_group",
-      "pattern": "(app)*",
+      "kind": "mobile_route",
+      "pattern": "(app)",
       "feature": "004",
       "stage8": {
         "doc": "docs/features/004-policy-asset-management/security-review.md",
-        "verdict": "sign-off-granted-with-changes"
+        "verdict": "sign-off-granted-with-changes",
+        "note": "SH-1a/§7 fix (2026-09-03): was `(app)*`, an unbounded prefix wildcard that silently absorbed every current and future screen under (app)/ — including screens belonging to entirely different, often-unreviewed features (008/009/005) — under a single stale Feature 004 record. Narrowed to the exact home/dashboard screen this record actually covers. Every other (app)/-rooted screen now has its own dedicated manifest entry (see mobile-policy-assets, mobile-account-hub, mobile-mfa-enroll, mobile-profile-legacy, mobile-notification-preferences, and the waived 008/009 entries below) — none of them relies on this entry any longer."
       }
     },
     {
@@ -450,6 +451,105 @@
         "waived": true,
         "reason": "Feature 010 call-centre append-only case notes — Stage 8 with customer lookup surface",
         "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-data-surface",
+      "kind": "web_route_group",
+      "pattern": "/admin/{accounts,policies,assets}*",
+      "feature": "004",
+      "stage8": {
+        "waived": true,
+        "reason": "SH-1a backfill (2026-09-03) — the backend read API behind these pages (GET /admin/policies*, /admin/assets*) has a Stage 8 record (security-review-admin-surface.md), but that document explicitly withholds sign-off of the web UI itself ('nothing in this document is a sign-off of the Admin Dashboard UI — does not exist'; conditions stated in advance at SR-004-admin-10). The UI (src/admin/pages/AdminDataPages.tsx) has since shipped with no dedicated Stage 8 pass re-run against it — SR-004-admin-10's preconditions were never re-verified against the built client.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-plans",
+      "kind": "web_route_group",
+      "pattern": "/admin/plans*",
+      "feature": "006",
+      "stage8": {
+        "waived": true,
+        "reason": "SH-1a backfill (2026-09-03) — Admin plan editor UI (src/admin/pages/AdminPlansPages.tsx). No Stage 8 record found in Feature 006's security-review.md (backend /plans* only); Feature 006's qa-test-strategy.md §... independently flags zero test evidence for this component's admin/non-admin boundary.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-analytics",
+      "kind": "web_route",
+      "pattern": "/admin/analytics",
+      "feature": "011",
+      "stage8": {
+        "waived": true,
+        "reason": "SH-1a backfill (2026-09-03) — mirrors the existing backend-admin-analytics-dau waiver (M4 admin DAU read API); no dedicated web UI Stage 8 record exists either.",
+        "owner": "reporting-engineer"
+      }
+    },
+    {
+      "id": "web-admin-verification",
+      "kind": "web_route_group",
+      "pattern": "/admin/verification*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "SH-1a backfill (2026-09-03) — src/admin/pages/AdminVerificationPages.tsx. INC-001 §7 lists this surface as having no Stage 8 record (F009-1/F009-2); INC-001's chair verdict on Feature 009 is BLOCKED for real customer data. This waiver documents the gap, it does not clear it — real identity-verification data must not reach this surface until Feature 009's A-1 Stage 8 closes.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-login",
+      "kind": "web_route",
+      "pattern": "/admin/login",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes",
+        "note": "Shared PrivilegedLoginPage component against the reviewed Feature 001 auth API — same convention already applied to mobile-auth's (auth)* coverage of the mobile login/signup screens."
+      }
+    },
+    {
+      "id": "web-security-cases",
+      "kind": "web_route_group",
+      "pattern": "/security/cases*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "SH-1a backfill (2026-09-03) — src/security/pages/SecurityCasePages.tsx. INC-001 §7 lists this surface as having no Stage 8 record. Unlike the mobile (security-app) portal (gated behind FEATURE_SECURITY_OPERATOR), this web dashboard has no client-side feature flag of any kind — it is reachable today with no gate at all. Mirrors backend-security-cases.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-security-login",
+      "kind": "web_route",
+      "pattern": "/security/login",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes",
+        "note": "Shared PrivilegedLoginPage component against the reviewed Feature 001 auth API — same convention already applied to mobile-auth's (auth)* coverage of the mobile login/signup screens."
+      }
+    },
+    {
+      "id": "web-call-centre-lookup",
+      "kind": "web_route",
+      "pattern": "/call-centre/lookup",
+      "feature": "010",
+      "stage8": {
+        "doc": "docs/features/010-call-centre-dashboard/security-review.md",
+        "verdict": "conditional-sign-off-joint-gate-incomplete",
+        "note": "src/call-centre/pages/CustomerLookupPage.tsx is explicitly in scope of this review (§7 SR-010-6 names it directly, and required changes SR-010-3/SR-010-4 target it by file/line). Stage 9 work may proceed per the document's own verdict, but the joint gate is NOT discharged: security-engineer and compliance-specialist concurrence (SR-010-7) is not yet recorded in that document, and SR-010-4's verification-banner wording defect is a standing, required fix. Do not read this entry as a clean pass."
+      }
+    },
+    {
+      "id": "web-call-centre-login",
+      "kind": "web_route",
+      "pattern": "/call-centre/login",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review.md",
+        "verdict": "sign-off-granted-with-changes",
+        "note": "Shared PrivilegedLoginPage component against the reviewed Feature 001 auth API — same convention already applied to mobile-auth's (auth)* coverage of the mobile login/signup screens."
       }
     }
   ]
