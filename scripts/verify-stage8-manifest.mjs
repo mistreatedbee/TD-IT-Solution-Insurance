@@ -128,6 +128,45 @@ function discoverWebRoutes() {
   return [...routes].sort();
 }
 
+// Discovers routes declared directly in `src/App.tsx` — the top-level
+// customer web surface (`/`, `/login`, `/dashboard`, `/get-started`, etc.)
+// that `discoverWebRoutes()` structurally cannot see, because it only scans
+// `src/<dir>/<Surface>Routes.tsx` files. App.tsx is the shell router: it
+// mounts those lazy sub-routers at prefixes (`/admin/*`, `/security/*`,
+// `/call-centre/*`) and also declares a large set of ordinary top-level
+// `<Route path="...">` elements directly, inline, for the customer-facing
+// site. Those inline routes were previously invisible to this script and to
+// CI-1 — a passing manifest check attested nothing about them.
+//
+// Route paths are already fully-qualified here (App.tsx's `path` values all
+// start with `/`), so no mount-prefix reconstruction is needed, unlike
+// `discoverWebRoutes()`. Sub-router mount points (`path="/admin/*"` etc.) and
+// the bare `*` catch-all are excluded — those routers' own contents are
+// discovered separately via `discoverWebRoutes()`'s scan of their
+// `*Routes.tsx` files, so including the mount line itself here would either
+// be a duplicate or a meaningless partial-prefix entry.
+function discoverAppTsxRoutes() {
+  const appTsxPath = join(webSrcDir, 'App.tsx');
+  let content;
+  try {
+    content = readFileSync(appTsxPath, 'utf8');
+  } catch {
+    return [];
+  }
+
+  const routes = new Set();
+  for (const routeTag of content.matchAll(/<Route\b([^>]*)>/g)) {
+    const attrs = routeTag[1];
+    const pathMatch = attrs.match(/\bpath=["']([^"']+)["']/);
+    if (!pathMatch) continue; // layout/gate-only routes carry no distinct URL
+    const p = pathMatch[1];
+    if (p === '*' || p.endsWith('/*')) continue; // catch-all or lazy sub-router mount, not a reviewable screen itself
+    routes.add(p);
+  }
+
+  return [...routes].sort();
+}
+
 function loadManifest() {
   const raw = JSON.parse(readFileSync(manifestPath, 'utf8'));
   return raw.surfaces ?? [];
@@ -210,7 +249,7 @@ function main() {
   const surfaces = loadManifest();
   const backendRoutes = discoverBackendRoutes();
   const mobileScreens = discoverMobileScreens();
-  const webRoutes = discoverWebRoutes();
+  const webRoutes = [...new Set([...discoverWebRoutes(), ...discoverAppTsxRoutes()])].sort();
 
   const missing = [];
 

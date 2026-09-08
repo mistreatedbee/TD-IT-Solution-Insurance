@@ -719,6 +719,105 @@
       }
     },
     {
+      "id": "web-landing",
+      "kind": "web_route",
+      "pattern": "/",
+      "feature": "002",
+      "stage8": {
+        "waived": true,
+        "reason": "2026-09-07 scanner-extension backfill — CI-1's discoverWebRoutes() only scanned src/<dir>/<Surface>Routes.tsx and could not see routes declared directly in src/App.tsx (this session's fix). Public marketing landing page (src/pages/LandingPage.tsx), no auth, no PII collection, no Stage 8 record exists in docs/features/002-landing-page/ (business-requirements.md, ui-design.md/-v2.md, ux-research.md only).",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-legal-static",
+      "kind": "web_route_group",
+      "pattern": "/{terms,privacy}",
+      "feature": "006",
+      "stage8": {
+        "waived": true,
+        "reason": "2026-09-07 scanner-extension backfill — src/pages/TermsOfServicePage.tsx, PrivacyPolicyPage.tsx. Not a security-reviewed endpoint (static content, no auth surface), but flagged by Feature 006's compliance disposition, not cleared by it: security-review.md:320 records '/terms and /privacy are live static routes (src/App.tsx:61-62) with no version stamp' — the platform cannot produce evidence a given customer accepted a given version of either document. Consent-tracking gap, not a Stage 8 sign-off of these routes.",
+        "owner": "compliance-specialist"
+      }
+    },
+    {
+      "id": "web-customer-onboarding-auth",
+      "kind": "web_route_group",
+      "pattern": "/{get-started,signup,login}",
+      "feature": "006",
+      "stage8": {
+        "doc": "docs/features/006-customer-onboarding/security-review.md",
+        "verdict": "sign-off-granted-with-changes",
+        "note": "src/pages/onboarding/CustomerOnboardingPage.tsx (/get-started, /signup) and src/pages/CustomerLoginPage.tsx (/login) are in this review's directly-cited code scope (§7 code re-read list). Blocking findings SR-006-1 (web MFA bypass on /auth/supabase/exchange) and SR-006-2 (account-existence oracle) verified closed in code, security-engineer concurs (§8). compliance-specialist concurrence is GRANTED IN PART (§8-C/§9): continued development/testing concurred, but exposing this surface to real customer PII remains WITHHELD pending C-006-1 (Supabase DPA) and C-006-3 (Resend vendor review) — both pre-existing platform-level blockers, not defects in this feature. SR-006-3…SR-006-13 remain open non-blocking findings."
+      }
+    },
+    {
+      "id": "web-customer-auth-callback",
+      "kind": "web_route",
+      "pattern": "/auth/callback",
+      "feature": "006",
+      "stage8": {
+        "doc": "docs/features/006-customer-onboarding/security-review.md",
+        "verdict": "sign-off-granted-with-changes",
+        "note": "src/pages/CustomerAuthCallbackPage.tsx — named in this review's §7/§8.3 code re-read list (redirects an MFA-enrolled account to /login rather than failing open, per SR-006-13). Same conditional-concurrence caveat as web-customer-onboarding-auth (C-006-1/C-006-3 outstanding for real customer PII)."
+      }
+    },
+    {
+      "id": "web-customer-reset-password",
+      "kind": "web_route",
+      "pattern": "/reset-password",
+      "feature": "006",
+      "stage8": {
+        "doc": "docs/features/006-customer-onboarding/security-review.md",
+        "verdict": "sign-off-granted-with-changes",
+        "note": "src/pages/CustomerResetPasswordPage.tsx — named in this review's §7 code re-read list (handles the non-token MFA/enrollment response branches from the exchange endpoint per SR-006-1's remediation). Same conditional-concurrence caveat as web-customer-onboarding-auth."
+      }
+    },
+    {
+      "id": "web-customer-forgot-password",
+      "kind": "web_route",
+      "pattern": "/forgot-password",
+      "feature": "006",
+      "stage8": {
+        "waived": true,
+        "reason": "2026-09-07 scanner-extension backfill — src/pages/CustomerForgotPasswordPage.tsx is NOT named anywhere in docs/features/006-customer-onboarding/security-review.md (only CustomerResetPasswordPage.tsx, the confirm-token step, is in that review's cited scope). This is the request-a-reset entry point and has no dedicated Stage 8 record; do not read web-customer-reset-password as covering it.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-customer-email-verified",
+      "kind": "web_route",
+      "pattern": "/auth/email-verified",
+      "feature": "006",
+      "stage8": {
+        "waived": true,
+        "reason": "2026-09-07 scanner-extension backfill — src/pages/CustomerEmailVerifiedPage.tsx is NOT named anywhere in docs/features/006-customer-onboarding/security-review.md. No dedicated Stage 8 record exists.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-customer-account-legacy",
+      "kind": "web_route",
+      "pattern": "/account",
+      "feature": "006",
+      "stage8": {
+        "waived": true,
+        "reason": "2026-09-07 scanner-extension backfill — src/pages/CustomerAccountPage.tsx is NOT named in docs/features/006-customer-onboarding/security-review.md and is distinct from /dashboard/account (CustomerAccountSettingsPage, also uncovered — see web-customer-dashboard). No dedicated Stage 8 record exists for either.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-customer-dashboard",
+      "kind": "web_route_group",
+      "pattern": "/dashboard*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "2026-09-07 scanner-extension backfill — covers /dashboard, /dashboard/plan, /dashboard/map, /dashboard/account, /dashboard/profile, /dashboard/verification, /dashboard/alerts, /dashboard/notifications (src/pages/customer/Customer{Dashboard,ChangePlan,ProtectionMap,AccountSettings,Profile,VerificationCentre,Alerts,NotificationPreferences}Page.tsx). None of these is named in any docs/features/*/security-review.md found in this repo; docs/features/009-customer-experience-redesign/01-current-state-audit.md documents several of them as built (Dashboard, Account settings, Notifications) with no security-review cross-reference. Several of the backend routes these pages call are themselves already independently waived pending Feature 009 Stage 8 (backend-alerts, backend-customer-profile) or the KYC gate (web-admin-verification's customer-facing counterpart) — this entry does not imply those backend waivers are lifted.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
       "id": "web-call-centre-cases-new",
       "kind": "web_route",
       "pattern": "/call-centre/cases/new",

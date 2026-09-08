@@ -105,4 +105,55 @@ Bootstrap staging after first deploy:
 MONGODB_URI='…' MONGODB_DB_NAME=td_it_insurance_staging npx tsx backend/scripts/bootstrap-mongo-collections.ts
 ```
 
-**Signed:** `devops-engineer`, 2026-08-12 (updated for API + web blueprint).
+## Scheduled jobs
+
+**Status: no scheduling infrastructure exists in this repo today.** `render.yaml` provisions one `web`
+service only — no Render Cron Job resource has ever been provisioned here, and no other cron mechanism
+(GitHub Actions `schedule:` trigger, external scheduler, etc.) exists either (`.github/workflows/` has
+`ci.yml` only, push/PR-triggered).
+
+### `backend/scripts/police-report-retention-purge.ts` (Feature 011)
+
+Built and tested this session (dry-run capable, verified against production-shaped data) but is a
+**runnable script, not a scheduled job** — see the file's own header comment. Per
+[`docs/features/011-saps-case-reporting/database-design.md`](features/011-saps-case-reporting/database-design.md)
+§5.3, the designed cadence is **daily**, "via Render Cron Job or equivalent — infrastructure choice not made
+here," explicitly deferred to `devops-engineer`/`cto`.
+
+**This is a real, paid infrastructure decision — not provisioned as part of this work.** Render Cron Jobs are
+a distinct billable service type from the existing free-tier web service; adding one is a cost commitment
+this role does not have unilateral authority to make (same caution applied to the Mongo
+database-provisioning question — ADR-0008 is pending `cto` ratification for the same reason). Recorded here
+as the exact configuration needed once an owner approves it, so there is nothing left to design when that
+approval lands:
+
+**Recommended Render Cron Job configuration** (to be added as a new `cronJob` service in `render.yaml`
+alongside the existing `web` service — NOT currently present in the file):
+
+```yaml
+  - type: cron
+    name: police-report-retention-purge
+    runtime: node
+    region: frankfurt
+    plan: starter          # cheapest paid tier that supports Cron Jobs on Render — owner to confirm
+    rootDir: backend
+    schedule: "0 3 * * *"  # daily, 03:00 UTC — off customer-facing traffic hours; matches database-design.md §5.3's "daily"
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npx tsx scripts/police-report-retention-purge.ts
+    envVars:
+      - key: MONGODB_URI
+        sync: false          # same Atlas connection string as the web service — share the env group, do not duplicate the secret
+```
+
+Operational notes for whoever provisions this:
+
+- **Dry-run first, always**, per the script's own safety framing: `npx tsx backend/scripts/police-report-retention-purge.ts --dry-run` against production data before the first real (writing) run, and after any change to the retention query.
+- The script is idempotent (matches only documents that still have a police-report field set), so a missed day, a duplicate run, or an overlapping retry is safe — this relaxes the scheduling precision requirement; exact-time cron jitter is not a correctness concern.
+- Output is a structured JSON summary to stdout only — this repo has **no durable, queryable run-log** for any retention/purge job today (`database-design.md` §5.3, `security-review.md` SR-011-4.4). Render Cron Job run logs are retained per Render's own log-retention window, which is the only evidencing this job gets until a durable log store is built — flag this to `site-reliability-engineer` if SR-011-4.4's "evidenced" requirement needs to be closed more durably before this handles real customer data.
+- **Until this is scheduled, the retention obligation is not being met automatically** — the script must be run manually on the cadence above, or the 5-year clearance floor silently slips. This should be flagged to `technical-project-manager`/`cto` as an open operational gap, not a background task quietly covered.
+
+**Owner action required:** provision the `cronJob` service above in the Render dashboard (or add it to
+`render.yaml` and re-apply the blueprint) and confirm the `MONGODB_URI` env var is scoped correctly. Nothing
+has been provisioned by this session — this section is a specification, not a deployed resource.
+
+**Signed:** `devops-engineer`, 2026-08-12 (updated for API + web blueprint); 2026-09-08 (added Scheduled jobs — police-report retention-purge recommendation, no infra provisioned).
