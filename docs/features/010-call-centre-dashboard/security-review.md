@@ -9,16 +9,20 @@
 - **FR-18 – FR-21 — out of scope for this review and remain BLOCKED at Stage 1** (C-010-4). Nothing in this
   document lifts that. §6.
 
-**Date:** 2026-09-03 (chair). `security-engineer` concurrence added 2026-09-08, §10 — **partial**.
+**Date:** 2026-09-03 (chair). `compliance-specialist` concurrence added 2026-09-08, §10 — **withheld in part**.
+`security-engineer` concurrence added 2026-09-08, §11 — **partial**.
 **Lifecycle stage:** 8 — Security Review (hard gate). **Chair / decision owner (A):** `cybersecurity-architect`.
 **Joint gate status — STILL INCOMPLETE:** `security-engineer` (R) has now recorded hands-on concurrence
-(§10) on SR-010-1/1a/1b/1c and SR-010-2 (both verified against live code and passing tests, both closed),
+(§11) on SR-010-1/1a/1b/1c and SR-010-2 (both verified against live code and passing tests, both closed),
 but **withholds** concurrence on SR-010-3 and SR-010-4 (both re-verified as unimplemented in shipped code as
 of 2026-09-08) and flags SR-010-5 item 1 (CI-2 prohibition rule) as never built. `compliance-specialist` (C)
-has issued a part-clearance
+had issued a part-clearance
 ([`compliance-review-agent-attributed-actions.md`](./compliance-review-agent-attributed-actions.md)) which states
-at §8 that it **does not discharge Stage 8**. Full Stage 8 discharge (SR-010-7) is **not** achieved by this
-update — three named items remain open. See §10 for the full trace.
+at §8 that it **does not discharge Stage 8**, and has now recorded its Stage 8 position at **§10 — concurrence
+WITHHELD**, on two named blockers (C-010-3 input-time PCI guidance absent from the shipped free-text inputs;
+C-010-2/SR-010-3 unmet on two of three case-rendering surfaces), plus a new condition **C-010-8** (no
+`support_cases` retention-purge job exists). Full Stage 8 discharge (SR-010-7) is **not** achieved by this
+update — items remain open on both concurring roles. See §10 and §11 for the full traces.
 
 **Scope of this gate:**
 - `GET /v1/customer-lookup` FR-11 response addendum (`openSupportCaseCount`, `supportCases[]`)
@@ -555,7 +559,10 @@ both my limb and `security-engineer`'s) · Stage 10 · `business-analyst` accept
 
 ---
 
-## 10. `security-engineer` concurrence (SR-010-7, backend/frontend half) — 2026-09-08
+## 11. `security-engineer` concurrence (SR-010-7, backend/frontend half) — 2026-09-08
+
+*(Renumbered from §10 to §11 on 2026-09-08 by `compliance-specialist` — both concurrences were filed the
+same day and collided on the same section number. Content unaltered; only the heading numbers changed.)*
 
 **Verdict: PARTIAL CONCURRENCE. I concur on the backend implementation of FR-11/12/14/15/16/17
 (`scope=mine`) and on FR-18–21's zero code footprint. I withhold concurrence on SR-010-3 and SR-010-4 —
@@ -566,7 +573,7 @@ verification against the running code committed since this document was filed
 `verify-stage8-manifest.mjs`, `check-adr-prohibitions.mjs`), not a re-read of the design chain. Line/commit
 references below are as of this date; re-run before citing later.
 
-### 10.1 SR-010-2 (`scope=all` withheld) — CONFIRMED, still holds
+### 11.1 SR-010-2 (`scope=all` withheld) — CONFIRMED, still holds
 
 `backend/src/routes/support-cases.ts`'s `listQuerySchema` (line 79-86) declares `scope: z.literal('mine')`.
 The route handler additionally short-circuits before Zod ever runs: any `scope` value other than the
@@ -578,7 +585,7 @@ is nothing for a bypassed check to fall through to. `support-cases.test.ts` (`'s
 own cases. I ran this suite (`npx vitest run src/routes/support-cases.test.ts`): 22/22 pass. Confirmed live,
 not just documented.
 
-### 10.2 FR-18–21 escalation — CONFIRMED, zero code footprint, still true
+### 11.2 FR-18–21 escalation — CONFIRMED, zero code footprint, still true
 
 - No route, no schema, no repository method, and no `errors.ts` entry for `CALLER_NOT_VERIFIED` anywhere in
   `backend/src/`. `grep -rn escalate backend/src` returns only comments/docstrings in
@@ -607,7 +614,7 @@ not just documented.
   footprint today) but it is a real, outstanding item — recommend it stay open under SR-010-5's original ID
   rather than being closed by this concurrence.**
 
-### 10.3 SR-010-1/1a/1b (audit logging) — CONFIRMED, all five call sites verified against real code
+### 11.3 SR-010-1/1a/1b (audit logging) — CONFIRMED, all five call sites verified against real code
 
 Traced every write path and the detail/list reads in `support-cases.ts` against `repositories/audit-log.ts`
 (not assumed from the comments):
@@ -637,7 +644,7 @@ downstream audit-query capability, not a code control, and the subject-`accountI
 `support-lookup.ts` and `support-cases.ts` make that query possible. Not independently re-verified beyond
 confirming the subject-accountId field is present on both trails (it is).
 
-### 10.4 The three `accountId` mitigating controls — CONFIRMED, each independently re-verified
+### 11.4 The three `accountId` mitigating controls — CONFIRMED, each independently re-verified
 
 1. **`ctx.accounts.findById` resolution → 404.** `support-cases.ts:141-144`. Confirmed: `!account` throws
    `NOT_FOUND`.
@@ -657,7 +664,7 @@ I agree with the original document's own limit on these: they are integrity and 
 authorization controls, and RR-010-1's acceptance of "any agent can act on any customer, detectably" is
 unchanged by anything I found. No regression since 2026-09-03.
 
-### 10.5 SR-010-3 (`callerVerified` surfaced on every case-rendering surface) — **NOT MET. Withholding on this point.**
+### 11.5 SR-010-3 (`callerVerified` surfaced on every case-rendering surface) — **NOT MET. Withholding on this point.**
 
 The condition register requires `callerVerified: false` "surfaced prominently on every agent surface that
 shows a case, including the FR-11 lookup addendum." Checked all three surfaces that render case data:
@@ -683,7 +690,7 @@ two are not, and one of the two missing ones is the surface the condition explic
 Recommend this stay open, owner unchanged (`frontend-engineer` + `ui-designer`), scoped now to exactly the
 two remaining components/lines above.
 
-### 10.6 SR-010-4 (verification banner wording / self-attestation placeholder) — **NOT MET. Withholding on this point.**
+### 11.6 SR-010-4 (verification banner wording / self-attestation placeholder) — **NOT MET. Withholding on this point.**
 
 Checked `src/call-centre/pages/CustomerLookupPage.tsx` against the two defects the review named:
 
@@ -710,7 +717,7 @@ wording and the placeholder can be corrected today independent of the Tier-2 ver
 recommend `compliance-specialist` and `technical-writer` be asked to treat it as an immediate copy fix
 rather than bundled with the larger verification-mechanism work.
 
-### 10.7 SR-010-6 (manifest/CI-1 coverage of `src/**/*Routes.tsx`) — CONFIRMED, implemented and passing
+### 11.7 SR-010-6 (manifest/CI-1 coverage of `src/**/*Routes.tsx`) — CONFIRMED, implemented and passing
 
 `scripts/verify-stage8-manifest.mjs` now contains a `discoverWebRoutes()` function (confirmed present,
 lines ~76-138) that walks `src/<surface>/` directories for `*Routes.tsx` files, distinct from the
@@ -730,7 +737,7 @@ check itself will fail if SR-010-3/SR-010-4 remain open indefinitely — the man
 fields are prose, not enforced state. Consistent with SH-1c's already-filed observation that CI-1 is a
 route-existence check, not a data/copy-exposure check; not a new finding, just confirmed still true here.
 
-### 10.8 Summary verdict and what changes in the conditions register
+### 11.8 Summary verdict and what changes in the conditions register
 
 | ID | Status at re-verification | Disposition |
 |---|---|---|
