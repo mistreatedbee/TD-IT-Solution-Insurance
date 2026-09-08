@@ -5,12 +5,14 @@ Development (Stage 9) may begin. **No entry into any environment holding real cu
 SR-011-1, SR-011-4 and SR-011-6 are closed and re-verified.
 **Date:** 2026-09-03
 **Lifecycle stage:** 8 — Security Review (hard gate). **Chair / decision owner (A):** `cybersecurity-architect`.
-**Joint gate status — INCOMPLETE:** `security-engineer` (R) concurrence **not given** (not requested at time of
-writing) · `compliance-specialist` (C) has ruled on the data-class limb
-([`compliance-review-saps-case-data.md`](./compliance-review-saps-case-data.md)) but that document is explicit at
-§10 that it **does not discharge Stage 8**. Per `02-feature-lifecycle.md` and root `CLAUDE.md`, **Stage 8 is
-discharged only when all three roles sign.** This document is one of three signatures. It is not, on its own, a
-cleared gate.
+**Joint gate status — INCOMPLETE:** `security-engineer` (R) concurrence **CONCURRENCE WITHHELD IN PART** — see
+§10, 2026-09-08 (SR-011-1 confirmed satisfied in shipped code; SR-011-4/C-011-11 confirmed **not** implemented;
+SR-011-6 confirmed only half-done — backend manifest entry present, mobile entry missing) · `compliance-specialist`
+(C) **CONCURRENCE WITHHELD IN PART** on B-1/B-2/B-3 — see §9
+([`compliance-review-saps-case-data.md`](./compliance-review-saps-case-data.md)) which is explicit at §10 that it
+does **not** discharge Stage 8 on its own. Per `02-feature-lifecycle.md` and root `CLAUDE.md`, **Stage 8 is
+discharged only when all three roles sign.** Two of three signatures are now recorded, both withheld in part.
+**Stage 8 is not discharged.**
 
 **Scope of this gate — exactly what was reviewed:**
 - `PATCH /v1/recovery/cases/:caseId/police-report` (new, customer-only)
@@ -536,4 +538,287 @@ cycle. B-1 is mine to clear and is dated 2026-09-15.
 **Does not discharge:** Stage 8 (SR-011-5 remains open on my limb, and `security-engineer`'s concurrence
 is still not recorded anywhere in this document) · Stage 10 QA · C-011-1/-2/-3/-4/-5/-6/-7 ·
 C-011-11/-12 · CT-1 · CT-3 (breach runbook, 2026-09-12) · CT-4 · INC-001-C-10 ·
+C-008-1/-5/-6/-8/-12 · D-011-01, which this section releases nothing on.
+
+---
+
+## 10. `security-engineer` concurrence under SR-011-5 — **CONCURRENCE WITHHELD IN PART**
+
+**Date:** 2026-09-08. **Role:** `security-engineer` (R on this gate).
+
+**Scope of this section:** hands-on verification of SR-011-1 (C-011-9 enforcement), SR-011-4 / C-011-11
+(retention operability), and SR-011-6 (Stage 8 manifest coverage) against the code as it runs today —
+not the design chain, not `compliance-specialist`'s §9 (though I independently re-checked its citations
+where they overlap mine). I do not re-litigate compliance's B-1/B-2 (RoPA, CT-4, s18 copy) — those are
+her limb, not mine. Where our findings overlap (B-3/C-011-11) I confirm hers independently below.
+
+**Commands run and code read for this section (2026-09-08):** `cd backend && npm test` (full suite,
+345/345 passing, see below) · `npx eslint src/routes/security-cases.ts src/routes/support-lookup.ts`
+(clean pass) · a temporary planted import of `police-report-serializers.js` into
+`security-cases.ts` followed by `npx eslint`, confirmed to fail, then reverted and diffed clean against
+the original · `backend/src/repositories/recovery-cases.ts` (full file) ·
+`backend/src/lib/police-report-retention.ts` (full file) + `.test.ts` (relevant cases) ·
+`backend/src/routes/security-cases.test.ts:361-393` · `backend/src/routes/support-lookup.ts` (full
+file) · `backend/src/routes/recovery.ts:180-200` · `backend/.eslintrc.cjs` ·
+`docs/organization/gates/stage8-manifest.json` (full-text grep for "011", "recovery", "live-tracking",
+"claims") · `scripts/verify-stage8-manifest.mjs` (executed, not just read) ·
+`.github/workflows/ci.yml:1-115` · `mobile/src/screens/recovery/LiveTrackingScreen.tsx` ·
+`mobile/app/(app)/live-tracking/[caseId].tsx`.
+
+### 10.1 SR-011-1 (C-011-9 enforcement) — **SATISFIED, independently verified**
+
+I do not take `compliance-specialist`'s §9.1 characterisation on trust; I re-derived each claim.
+
+1. **Repository projection, all four partner-facing sites.** `POLICE_REPORT_FIELD_EXCLUSION_PROJECTION`
+   (`recovery-cases.ts:120-126`) is a literal `{ field: 0, ... }` exclusion of all five police-report
+   keys. I traced every exported partner-scoped method on the repo and confirmed the projection (or an
+   equivalent `.project()` call) is present at all four:
+   - `listForPartnerOrg` — `.find(query).project<RecoveryCaseDbRow>(POLICE_REPORT_FIELD_EXCLUSION_PROJECTION)` (`:257-259`)
+   - `findByIdForPartnerOrg` — `findOne(..., { projection: POLICE_REPORT_FIELD_EXCLUSION_PROJECTION })` (`:288-293`)
+   - `claimForPartnerOrg` — `findOneAndUpdate(..., { projection: POLICE_REPORT_FIELD_EXCLUSION_PROJECTION })` (`:274-278`)
+   - `updateStatusForPartnerOrg` — same, on the write-path read-back (`:323-329`)
+
+   There is no fifth partner-scoped read method in the file. This is genuinely structural: the fields
+   are absent from the row object (`RecoveryCaseDbRow`'s police-report fields are typed optional
+   specifically because the partner path never populates them, per the comment at `:104-105`), not
+   merely omitted from a serializer. I concur with compliance's §9.1 characterisation: this is "by
+   construction" in the literal sense the original chair review (§1) said was still missing.
+
+2. **Module boundary + lint enforcement — I did not just read this, I tried to break it.** I planted
+   `import { serializePoliceReport } from '../lib/police-report-serializers.js';` at the top of
+   `backend/src/routes/security-cases.ts` and ran `npx eslint src/routes/security-cases.ts`:
+
+   ```
+   1:1  error  '../lib/police-report-serializers.js' import is restricted from being used.
+   Police-report fields (sapsCaseNumber/reportingStation/reportedToPoliceAt/policeReportHistory)
+   are customer-only per C-011-9 / SR-011-1. Do not import police-report-serializers.ts into a
+   security-company or support-agent-facing route  no-restricted-imports
+   ✖ 14 problems (1 error, 13 warnings)
+   ```
+
+   Non-zero exit, `error` severity (not `warning`). I then reverted the plant and diffed the file
+   clean against the pre-plant copy — no residue. Confirmed the same rule is scoped to
+   `support-lookup.ts` in `backend/.eslintrc.cjs:19` (`files: ['src/routes/security-cases.ts',
+   'src/routes/support-lookup.ts']`), covering both the `.js`-suffixed and extensionless import
+   specifiers (`:29-30, :33-34`).
+
+   **I additionally verified this actually gates CI, which neither prior review confirmed by
+   execution.** `backend/package.json:14`: `"lint": "eslint . --ext .ts"`. `.github/workflows/ci.yml`
+   backend job (`working-directory: backend`, lines 42-72) runs `npm run lint` at line 62-63, before
+   `Test`/`Build`, with no `continue-on-error`. A regression of this import would fail the `backend`
+   CI job and block merge, not just fail a local lint someone forgets to run. This is a build error,
+   as SR-011-1c required, not a code-review catch.
+
+3. **Route-level golden-response tests — confirmed present and confirmed they cover the fields SR-011-1b
+   named.** `security-cases.test.ts:361-393` (`describe('Feature 011 — police-report fields never reach
+   a security-company operator'`) builds a case with **every** police-report field populated including a
+   non-empty `policeReportHistory[]`, and asserts a six-key absence set (`sapsCaseNumber`,
+   `reportingStation`, `reportedToPoliceAt`, `policeReport`, `policeReportHistory`,
+   `policeReportReminderSentAt`) against the actual JSON response body — not the serializer function in
+   isolation. I ran the suite: `cd backend && npm test` → **55 test files, 345 tests, all passing.** The
+   police-report exclusion tests are inside that run, not skipped or `.todo`.
+
+**`GET /v1/customer-lookup` (SR-011-7, standing):** re-verified against `support-lookup.ts:150-156` —
+a five-key object literal (`accountId`, `email`, `accountState`, `policyCount`, `assetCount`, plus the
+recovery-case sub-objects built from an explicit per-field map at `:148-153`, not a spread). No call to
+`serializeSecurityRecoveryCase`, `serializePoliceReport`, or any function that could carry the police-
+report triple. **Confirmed. SR-011-7 holds.**
+
+**One thing I checked that neither prior review stated explicitly:** the support-agent read path
+(`ctx.recoveryCases.listByAccount`, `support-lookup.ts:115`) uses the **unprojected** repository method
+— `listByAccount` has no `.project()` call and is not one of the four partner-scoped methods listed
+above. I confirm compliance's §9.3 observation: police-report fields *are* loaded into process memory
+on a support-agent request (`GET /v1/customer-lookup`), even though the five-key literal keeps them off
+the wire. I agree this is allowlist-by-convention on that one path, not projection-by-construction, and
+I agree with compliance's disposition — it is a permitted-reader path (`support_agent` is not
+`security-company`), the audit event is present (see §10.4 below), and nothing reaches the wire. I do
+not treat this as a SR-011-1 gap because SR-011-1's required scope was explicitly the **partner**
+(security-company) surface, not the support-agent surface — but I flag, as compliance did, that if a
+support-agent-facing read surface for these fields is ever built directly, it needs the same
+projection-level treatment as the partner path, not the allowlist-only treatment it has today by
+accident of scope.
+
+**Verdict on SR-011-1: fully satisfied. I concur with `compliance-specialist`'s §9.1 finding and add
+independent verification by execution (test run, adversarial lint plant, CI wiring check) rather than
+static reading.**
+
+### 10.2 SR-011-4 / C-011-11 (retention operability, `recovered` vs `closed`) — **NOT SATISFIED, confirmed by code and by test**
+
+The original chair review's SR-011-4 concern (nothing set `closedAt`, so the purge job matched nothing)
+**is fixed**: `updateStatusForPartnerOrg` sets `closedAt: new Date()` when `status === 'closed'`
+(`recovery-cases.ts:320-322`), and this is the sole status-transition write path in the codebase — I
+grepped for every write to `status` on `recovery_cases` and found no second path.
+
+**But `compliance-specialist`'s §9.2 ruling (C-011-11 — the retention clock must also start on entry to
+`'recovered'`, not just `'closed'`) is not implemented, and I traced this myself rather than trusting
+her line citations:**
+
+1. `updateStatusForPartnerOrg` (`recovery-cases.ts:316-322`): the `if (status === 'closed')` guard is
+   the *only* condition under which `closedAt` is set. A transition to `'recovered'` falls through with
+   no `closedAt` write.
+2. `buildRetentionPurgeFilter` (`police-report-retention.ts:51-62`): `status: 'closed'` is a literal
+   equality match, not `status: { $in: ['closed', 'recovered'] }`. A `recovered` document — even one
+   with `closedAt` somehow set — would never match this filter as written.
+3. **The regression test that was supposed to be inverted per compliance's §9.2 ruling has not been
+   touched.** `police-report-retention.test.ts:197-207` (`it('does not match a case that is not
+   "closed" (e.g. "recovered")'`) constructs a `status: 'recovered'` document with an eligible
+   `closedAt` and asserts `candidatesFound: 0` / `cleared: 0` — i.e. it still actively **locks in** the
+   behaviour compliance ruled must change. This is not a stale test that happens not to have been
+   deleted; it is a passing assertion that the current (wrong, per the ruling) behaviour is correct.
+
+**I confirm compliance's finding independently and add nothing softer: as shipped, a case that
+transitions to `recovered` and is never separately, administratively `closed` by an operator retains
+the police-report triple (`sapsCaseNumber`, `reportingStation`, `reportedToPoliceAt`,
+`policeReportHistory`) indefinitely.** There is no code path that ever clears it. This is not a
+theoretical edge case for this product — "recovered" is very plausibly the terminal state most real
+cases reach (the asset was found), and "closed" as a distinct, separately-triggered administrative
+action may never happen at all for a large share of cases. Compliance's B-3 characterisation — "the
+identical failure mode SR-011-4 was raised to prevent, arriving by the second route the chair predicted"
+— is accurate, and I verified it does not merely follow from a design-doc reading but from the literal
+`if` condition and literal Mongo filter shipped today.
+
+**I withhold my own concurrence on this point until:**
+- `updateStatusForPartnerOrg` sets `closedAt` on transition into `'closed'` **or** `'recovered'`
+- `buildRetentionPurgeFilter` widens to `status: { $in: ['closed', 'recovered'] }`
+- `police-report-retention.test.ts:197-207` is inverted (asserts a `recovered` case **is** matched and
+  cleared once past cutoff), not silently left in place or deleted without a replacement assertion —
+  deleting it without replacing it would remove the compensating control for a regression back to the
+  current bug
+- the full backend suite is re-run green after the change (I will re-verify this by execution, not by
+  reading the diff)
+
+This is `C-011-11`, already registered by `compliance-specialist` at §9.6, owner `backend-engineer` +
+`database-architect`. I add nothing new to the requirement; I add independent confirmation that it is
+real, exploitable-by-omission (not merely theoretical), and unfixed as of this review.
+
+**RR-011-3 (stdout-only retention evidencing):** I confirm compliance's read — still not accepted,
+still just named in a comment (`police-report-retention.ts:23-29`) as "the accepted interim control"
+without an actual `cto`/`security-engineer`/`devops-engineer` sign-off or a `retention_job_runs`
+collection. I do not block on this today (nothing has reached expiry yet — first candidates are ~5
+years out per `POLICE_REPORT_RETENTION_YEARS = 5`), consistent with §7's original framing, but I record
+that I have not accepted it either. It must be resolved before the first purge run, not discovered then.
+
+### 10.3 SR-011-6 (Stage 8 manifest coverage / CI-1) — **PARTIALLY SATISFIED — backend done, mobile not done**
+
+`node scripts/verify-stage8-manifest.mjs` (executed, not assumed): `PASS — all discovered surfaces are
+manifest-covered` (72 backend routes, 50 mobile screens, 39 web dashboard routes; 77 manifest entries).
+CI-1 is green. That green is only partially earned, and I traced why.
+
+**Backend — genuinely fixed, matches the SR-011-6 requirement exactly.**
+`docs/organization/gates/stage8-manifest.json:151-160` now carries a dedicated entry:
+```
+"id": "backend-recovery-police-report",
+"pattern": "/recovery/cases/:caseId/police-report",
+"feature": "011",
+"doc": "docs/features/011-saps-case-reporting/security-review.md",
+```
+This is a new, specific entry pointing at *this* document, not absorbed into the pre-existing
+`backend-recovery` (`/recovery/*`, waived, Feature 009 reason) entry the original review flagged as
+the problem. **Confirmed fixed.**
+
+**Mobile — not fixed. The exact failure mode the original review predicted is what happened.** I
+traced where the police-report capture UI actually lives:
+- `mobile/src/screens/recovery/PoliceReportSection.tsx` is the capture component, imported and rendered
+  by `mobile/src/screens/recovery/LiveTrackingScreen.tsx:13,90`.
+- That screen is mounted at `mobile/app/(app)/live-tracking/[caseId].tsx`.
+- The manifest entry covering that path is `mobile-location`
+  (`docs/organization/gates/stage8-manifest.json:267-275`): `"pattern":
+  "(app)/{map,device-locations,live-tracking}*"`, `"feature": "008"`, `"waived": true`, `"reason":
+  "INC-001 A-12 — gated via FEATURE_LOCATION_TRACKING"`, `"owner": "cybersecurity-architect"`.
+
+There is **no** `mobile_route` / `mobile_route_group` entry anywhere in the manifest tagged
+`"feature": "011"` (I grepped the full file for `"011"` and found only the backend route entry above
+plus the `/events`/`/dau` collision compliance and the original review already flagged as `SH-1d`). The
+police-report capture surface reached a shipping mobile build absorbed into a Feature 008 waiver written
+for an unrelated reason (a location-tracking feature flag, not SAPS-data governance), exactly as §6 of
+the original chair review predicted would happen if this were left undone: **CI-1 reports PASS with no
+record anywhere that this specific surface was reviewed.**
+
+I do not accept "it's inside an already-waived route group so it's covered" as satisfying SR-011-6.
+The manifest's own `doc`/`reason` fields exist precisely so a reader can tell *why* a surface is
+waived; today that reader is told the police-report screen is fine because location tracking is
+pending a flag, which is true but is not why this screen needs review, and does not point at this
+document at all.
+
+**Required to close SR-011-6 on my limb:** an explicit `mobile_route` or `mobile_route_group` entry
+(or a documented amendment to `mobile-location`'s reason/doc fields naming Feature 011 alongside
+Feature 008) for the `(app)/live-tracking/[caseId]` screen, pointing at this document, before or in the
+same commit as any further change to that screen. Owner `mobile-engineer` per the original register
+(§8, SR-011-6).
+
+**SH-1a/b/c/d (platform findings, not this feature's blocker):** re-confirmed as filed. `SH-1d`
+specifically re-verified: `docs/organization/gates/stage8-manifest.json` lines 505 and 516 still tag
+`/events` and `/dau` (Feature 004/analytics routes) with `"feature": "011"`, unrelated to and colliding
+with this feature's own numbering. Still unfixed, still not a blocker on this gate, still owned by
+`analytics-specialist`/`reporting-engineer`.
+
+### 10.4 Audit-logging cross-check (§9.3's `privileged_data_access` citation)
+
+I independently re-derived compliance's citation rather than trusting it. `support-lookup.ts` contains
+exactly two `await ctx.auditLog.record({...})` calls, at **line 126** (the `GET /v1/customer-lookup`
+handler, immediately before the `res.json(...)` that returns `recoveryCases` built from the
+unprojected `listByAccount` result) and **line 214** (the `appendCallCentreNote` handler, immediately
+before its `res.status(201).json(...)`). Both blocks set `eventType: 'privileged_data_access'` and
+populate `accountId`, `actorAccountId`, `actorSessionId`, `auditRequestId`, `ipAddress`, `userAgent`.
+Both run unconditionally on the success path (no branch skips the record call), and both run *before*
+the response is written, so an audit-log failure that throws would (per this codebase's existing
+`asyncHandler`/error-middleware convention, consistent with the rest of this route file) surface as a
+5xx rather than a silent gap. **Confirmed: compliance's §9.1/§9.3 citation is accurate — the line
+numbers, the event type, and the "recorded on both read paths" claim all check out against the running
+code.**
+
+### 10.5 What I confirm as satisfied vs what I withhold on
+
+**Confirmed satisfied (independently verified by reading, execution, and one adversarial test):**
+- SR-011-1a/b/c in full — repository projection at all four partner sites, merge-blocking golden-
+  response tests present and passing, ESLint import boundary present, CI-wired, and confirmed to
+  actually fail on a planted violation.
+- SR-011-7 (customer-lookup exclusion) — standing, reconfirmed.
+- SR-011-2 (accept-then-purge) — `retention_expired` rejection path present and exercised by tests
+  (I did not re-derive this from scratch since compliance's §9.1 citation matched the code on
+  inspection, and it is out of my three assigned scope items, but I did not find anything to contradict
+  it while reading the surrounding file).
+- SR-011-3's rate limiter — `POLICE_REPORT_PATCH_LIMIT` applied via `createRateLimiter` scoped per-
+  account, distinct from `DEFAULT_AUTHENTICATED_LIMIT` (`recovery.ts:189-193`), consistent with what
+  was required.
+- Audit logging on both support-agent read paths to this data (§10.4).
+- SR-011-6, backend half only.
+
+**Withheld — real, unfixed gaps as of 2026-09-08:**
+- **SR-011-4 / C-011-11 (retention clock on `recovered`)** — not implemented. Confirmed by code (the
+  `if (status === 'closed')` guard, the `status: 'closed'` literal filter) and by an existing test that
+  actively locks in the wrong behaviour. This is a real, unbounded-retention exposure on production
+  data, not a documentation gap. I independently corroborate `compliance-specialist`'s B-3.
+- **SR-011-6, mobile half** — no dedicated manifest entry for the police-report capture screen; it is
+  silently absorbed by an unrelated Feature 008 waiver. CI-1 passes without ever having reviewed this
+  specific surface, which is the exact governance gap this condition exists to close.
+- **RR-011-3 (stdout-only retention evidencing)** — still not formally accepted by anyone with the
+  authority the chair specified (`cto`) nor superseded by a `retention_job_runs` collection. Not
+  blocking today; must be resolved before first purge run.
+
+### 10.6 Verdict
+
+**CONCURRENCE WITHHELD IN PART (C-011-11 / SR-011-4 unfixed; SR-011-6 mobile-side unfixed).**
+
+SR-011-1 is fully and independently verified as satisfied, to a higher bar than a document read — I
+broke it on purpose and watched it fail correctly. That is not in dispute and does not need a re-review
+once the two items below close; I will re-confirm on a diff, as `compliance-specialist` proposed for
+her own withheld items, not require a fresh full review cycle.
+
+What is outstanding is narrow and concrete, not a design concern:
+1. `closedAt` set on `'closed'` **or** `'recovered'`; purge filter widened to
+   `status: { $in: ['closed', 'recovered'] }`; the locking test at
+   `police-report-retention.test.ts:197-207` inverted; full suite re-run green. (`C-011-11`)
+2. A `mobile_route`/`mobile_route_group` manifest entry (or an amended `mobile-location` entry naming
+   Feature 011 and this document) for `(app)/live-tracking/[caseId]`, the screen that actually hosts
+   `PoliceReportSection`. (`SR-011-6`, mobile limb)
+
+Both are small, mechanical, and independent of the RoPA/CT-4/s18-notice items `compliance-specialist`
+is separately carrying on her limb (B-1/B-2) — I take no position on those; they are not mine to rule
+on. My concurrence and hers are both required for Stage 8 discharge and both remain withheld today, on
+different grounds. **This gate is not discharged.**
+
+**Filed by:** `security-engineer`, 2026-09-08.
+**Does not discharge:** Stage 8 (SR-011-5 is now recorded but withheld on both the `compliance-specialist`
+and `security-engineer` limbs) · Stage 10 QA · C-011-1 through C-011-12 · CT-1/CT-3/CT-4 · INC-001-C-10 ·
 C-008-1/-5/-6/-8/-12 · D-011-01, which this section releases nothing on.
