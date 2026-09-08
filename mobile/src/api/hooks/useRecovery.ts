@@ -4,7 +4,9 @@ import {
   getRecoveryCase,
   getRecoveryCaseLocation,
   listRecoveryCases,
+  updateRecoveryCasePoliceReport,
   type CreateRecoveryCaseRequest,
+  type UpdatePoliceReportRequest,
 } from '../recovery';
 
 export function useRecoveryCasesQuery(limit = 20) {
@@ -37,6 +39,18 @@ export function useCreateRecoveryCaseMutation() {
     mutationFn: (body: CreateRecoveryCaseRequest) => createRecoveryCase(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recovery', 'cases'] });
+    },
+  });
+}
+
+export function useUpdatePoliceReportMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ caseId, body }: { caseId: string; body: UpdatePoliceReportRequest }) =>
+      updateRecoveryCasePoliceReport(caseId, body),
+    onSuccess: (updatedCase) => {
+      queryClient.invalidateQueries({ queryKey: ['recovery', 'cases'] });
+      queryClient.setQueryData(['recovery', 'cases', updatedCase.id], updatedCase);
     },
   });
 }

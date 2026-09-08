@@ -4,9 +4,13 @@
 import { useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { useRecoveryCaseQuery, useRecoveryLocationQuery } from '../../api/hooks/useRecovery';
+import {
+  useRecoveryCaseQuery,
+  useRecoveryLocationQuery,
+} from '../../api/hooks/useRecovery';
 import { ApiError } from '../../api/errors';
 import { MapPlaceholder } from './MapPlaceholder';
+import { PoliceReportSection } from './PoliceReportSection';
 import { Alert, Badge, Card, Screen } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
 
@@ -81,6 +85,10 @@ export function LiveTrackingScreen() {
         Map refreshes every 30 seconds when tracking is active. Precise coordinates are sensitive —
         do not share this screen with untrusted parties.
       </Alert>
+
+      {recoveryCase ? (
+        <PoliceReportSection caseId={recoveryCase.id} policeReport={recoveryCase.policeReport} />
+      ) : null}
     </Screen>
   );
 }
