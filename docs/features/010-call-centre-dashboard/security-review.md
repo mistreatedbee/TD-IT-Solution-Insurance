@@ -9,12 +9,16 @@
 - **FR-18 – FR-21 — out of scope for this review and remain BLOCKED at Stage 1** (C-010-4). Nothing in this
   document lifts that. §6.
 
-**Date:** 2026-09-03
+**Date:** 2026-09-03 (chair). `security-engineer` concurrence added 2026-09-08, §10 — **partial**.
 **Lifecycle stage:** 8 — Security Review (hard gate). **Chair / decision owner (A):** `cybersecurity-architect`.
-**Joint gate status — INCOMPLETE:** `security-engineer` (R) concurrence **not given** ·
-`compliance-specialist` (C) has issued a part-clearance
+**Joint gate status — STILL INCOMPLETE:** `security-engineer` (R) has now recorded hands-on concurrence
+(§10) on SR-010-1/1a/1b/1c and SR-010-2 (both verified against live code and passing tests, both closed),
+but **withholds** concurrence on SR-010-3 and SR-010-4 (both re-verified as unimplemented in shipped code as
+of 2026-09-08) and flags SR-010-5 item 1 (CI-2 prohibition rule) as never built. `compliance-specialist` (C)
+has issued a part-clearance
 ([`compliance-review-agent-attributed-actions.md`](./compliance-review-agent-attributed-actions.md)) which states
-at §8 that it **does not discharge Stage 8**. This document is one of three required signatures.
+at §8 that it **does not discharge Stage 8**. Full Stage 8 discharge (SR-010-7) is **not** achieved by this
+update — three named items remain open. See §10 for the full trace.
 
 **Scope of this gate:**
 - `GET /v1/customer-lookup` FR-11 response addendum (`openSupportCaseCount`, `supportCases[]`)
@@ -347,3 +351,404 @@ criterion 6 (unsigned) · `business-analyst` acceptance of the Phase 2 requireme
 Stage 10 QA.
 
 **Filed by:** `cybersecurity-architect` (chair), 2026-09-03.
+
+---
+
+## 10. `compliance-specialist` concurrence under SR-010-7 — **WITHHELD IN PART**
+
+**Date:** 2026-09-08. **Role:** `compliance-specialist` (C on this gate).
+**Status: CONCURRENCE WITHHELD.** Two of my own Feature 010 conditions that are expressly Stage-8-exit
+conditions are **not met in the shipped code**, and one is not met in a way the shipped comments and manifest
+notes describe as met. SR-010-7 is therefore **not discharged on my limb**, and Stage 8 remains incomplete
+independently of `security-engineer`'s concurrence.
+
+**Nothing in this section requires the shipped code to be reverted.** Feature 010 is running behind the M1 /
+Phase 1 NFR-3 floor (no production `support_agent` on real customer PII). What is withheld is the *gate*, and
+with it any representation that this surface is cleared for real customer data.
+
+**Code read for this section (2026-09-08, not the design docs):** `backend/src/routes/support-cases.ts` ·
+`backend/src/routes/support-cases.test.ts` · `backend/src/repositories/support-cases.ts` ·
+`backend/src/db/support-case-collections.ts` · `backend/src/repositories/audit-log.ts` ·
+`backend/src/lib/police-report-retention.ts` · `backend/scripts/` (full listing) ·
+`src/call-centre/pages/SupportCasesPages.tsx` · `src/call-centre/pages/CustomerLookupPage.tsx` ·
+`docs/organization/gates/stage8-manifest.json`.
+
+### 10.1 What I confirm as satisfied
+
+- **SR-010-1a/b — audit logging on the `accountId`-supplied-by-agent write path: SATISFIED, in code, not
+  only in documentation.** `recordCaseAudit()` (`support-cases.ts:107-117`) writes an ADR-0006 Trail A
+  `privileged_data_access` row whose `accountId` is the **subject** customer and whose `actorAccountId` is the
+  agent from the bearer token. It is called on create (`:158`), on detail read (`:252`), on note append
+  (`:295`) and on status change (`:342`). The list endpoint uses `ctx.auditLog.recordBulkDisclosure`
+  (`:215-222`) — N subject rows plus one `privileged_bulk_access` row carrying the result count, which is the
+  shape `repositories/audit-log.ts` enforces at runtime (it throws if `privileged_data_access` is recorded
+  without a subject `accountId`, `audit-log.ts:155-158`). All five paths are covered by assertions in
+  `support-cases.test.ts` (`:269-274`, `:487-489`, `:512-513`, `:549-550`, `:587`). This is the compensating
+  control my §1 concern rested on, and it is real. **SR-010-1a/b: concurred.**
+- **C-010-2, record limb — SATISFIED.** `callerVerified: false` is written unconditionally at create
+  (`repositories/support-cases.ts:191`), is in the collection validator's `required` array
+  (`support-case-collections.ts:45-57`), and **no repository method can set it `true`**. `callerVerificationMethod`
+  / `callerVerifiedAt` exist and are never written. Confirmed by reading every method, not by trusting the
+  header comment.
+- **SR-010-2 as implemented — SATISFIED and, on my limb, better than contracted.** `scope` is
+  `z.literal('mine')` (`support-cases.ts:79`), `all` is rejected with 400 before any repository call
+  (`:179-187`), and there is **no `listAll`-shaped method** in the repository for a future route to reach for.
+  The bulk-disclosure surface NFR-2 prohibits does not exist. I retain the §2 condition that `description` must
+  leave `SupportCaseSummary` (`repositories/support-cases.ts:128`) **before** any widening of `scope` is
+  reconsidered — under `scope=mine` it is an agent re-reading their own cases, which I accept; under any wider
+  scope it is the C-010-3 / C-011-1 field disclosed in bulk, and the fact that it is still in the summary
+  projection today means clearing `scope=all` is a **two**-change job, not one.
+- **FR-18–21 containment — SATISFIED.** No escalate route, no repository method, no UI affordance. The schema
+  fields exist and are inert. I verified this by search, not by reading the comments that assert it.
+
+### 10.2 Blocker 1 — **C-010-3 is not met. There is no PCI-scope-protection guidance anywhere in the shipped UI.**
+
+C-010-3 (compliance review §5, register row) is worded as an explicit **Stage 8 exit** condition and requires
+"explicit agent-facing UI guidance ('never record card numbers, CVV, PINs, or full bank account details')."
+
+The two free-text fields this feature introduces have **no such guidance**:
+
+- `SupportCasesPages.tsx:274-282` — the case **description** field. Placeholder: `"What the customer reported…"`.
+  No hint, no warning. This is the field attached to the `billing` category (`FR-13`), i.e. precisely the
+  foreseeable place a card number gets typed.
+- `SupportCasesPages.tsx:427-436` — the case **note** field. Placeholder:
+  `"Call summary, action taken, next steps…"`. No hint, no warning.
+
+A repository-wide search of `src/` for `card number`, `CVV`, `PIN` and `bank` returns **no agent-facing
+guidance copy at all**. The only comparable control that does exist is the *third-party* hint on the
+**recovery-case** note field (`CustomerLookupPage.tsx:95`, "Don't include personal details about other
+people…"), which addresses C-011-1 and is not the PCI limb — and it was not carried across to either of
+Feature 010's new fields.
+
+§5 of this document confirmed C-010-3's *storage* limbs (no `description` index, no export) and granted
+confirmation "conditional on SR-010-2." Those limbs still hold. **The input-time limb — the one I ruled was
+the actual control, because "masking is the wrong control" — was never built.** The platform's nil PCI-DSS
+scope is an asset; the thing standing between it and a text box is a sentence of copy that does not exist.
+
+**Required (C-010-3, restated as a Stage 9 defect, not a new condition):** a persistent, visible warning on
+both the description and the note inputs, wording to be: *"Never record card numbers, CVV/PIN, or full bank
+account details. If the customer starts reading them out, stop them."* Owner `ui-designer` +
+`frontend-engineer`; copy is mine and is hereby given, so this is not blocked on a further review cycle.
+
+### 10.3 Blocker 2 — **C-010-2's UI limb / SR-010-3 is only one-third delivered**
+
+C-010-2 limb (i) requires the unverified state be "visibly flagged on the record **and in the agent UI**."
+SR-010-3 restates it as "rendered prominently on every agent surface that shows a case." Three surfaces show a
+case; one shows the flag, and not prominently:
+
+| Surface | `callerVerified` rendered? |
+|---|---|
+| Case detail (`SupportCasesPages.tsx:479`) | Yes — as an undifferentiated `DetailGrid` row reading "Caller verified: No", visually identical to "Created"/"Updated". Not prominent, and no tone/badge |
+| My-cases list (`:154-176`) | **No.** The API returns `callerVerified` on every summary (`repositories/support-cases.ts:128`); the table simply has no column for it |
+| Customer-lookup addendum (`CustomerLookupPage.tsx:280-294`) | **No.** `serializeSupportCaseLookupSummary` deliberately carries `callerVerified` (`repositories/support-cases.ts:160`) — SR-010-3 names this exact field — and the UI drops it on the floor |
+
+The FR-11 addendum case is the sharpest: the payload field exists *because* SR-010-3 required it be surfaced,
+and it is not surfaced. A field carried and not rendered is worse than one never added — it reads as
+compliance-complete in the API contract while the operator sees nothing.
+
+**Required:** render `callerVerified` as a distinct badge (not a grid row) on the detail page, as a column on
+the list, and on each `supportCases[]` entry in the lookup result. Owner `frontend-engineer` + `ui-designer`.
+
+### 10.4 Retention — `legalHold` shipped, **no purge mechanism exists**, and it is not covered by analogy
+
+Confirmed in the shipped schema: `legalHold` is present on `SupportCaseDocument`
+(`repositories/support-cases.ts:40`), is written `false` at create (`:197`), defaults `false` on read (`:87`),
+and is in the validator as an optional `bool` (`support-case-collections.ts:99`) — deliberately not `required`,
+which `database-design.md` §6 names as an accepted inconsistency with `recovery_cases.legalHold`. I accept that
+inconsistency: it is documented, and the app-layer default closes it in practice. The retention index
+`support_cases_status_closed_at_retention` (`:119`) is present, and `closedAt` is set on the transition to
+`closed` (`repositories/support-cases.ts:286-288`), so the retention clock actually starts.
+
+**What does not exist: any job.** `backend/scripts/` contains exactly five scripts — `seed-test-accounts`,
+`verify-mongo-catalog`, `bootstrap-mongo-collections`, `inc-001-location-inventory`,
+`police-report-retention-purge`. There is no `support_cases` purge script, no `runSupportCaseRetentionPurge`,
+and no shared `retention-purge.ts` entrypoint of the kind `database-design.md` §6 recommends.
+
+**`backend/src/lib/police-report-retention.ts` does not cover this and must not be cited as if it did.** It
+runs `db.collection('recovery_cases')` (`:124`) and field-clears the three SAPS fields on a **five-year** floor
+(`POLICE_REPORT_RETENTION_YEARS`). Feature 010's rule is a **24-month whole-document delete** on a different
+collection. Nothing is shared but the shape of the problem. Recording this explicitly because the two conditions
+were written in the same week and the register makes them look symmetrical: **they are not — one shipped a job,
+the other shipped only an index.**
+
+**Disposition: this is an open gap, not a blocker on this gate.** My §5 retention position ("automated,
+evidenced deletion") attaches to real customer data, and the M1 floor means none exists yet. But it is now on
+the register as **C-010-8**, and it must land before the first production support case, not after — a 24-month
+clock is easy to defer past the point where the first cohort is already overdue. It should reuse
+`police-report-retention.ts`'s structure (exported filter builder, dry-run mode, structured stdout summary) and
+inherit the same unresolved run-log-durability caveat recorded at SR-011-4.4.
+
+### 10.5 The stopgap banner — answering the specific question put to me
+
+**It does not overclaim, and it is also not fixed.**
+
+- **No overclaim, confirmed.** I searched `src/` for any assertion that caller verification is satisfied.
+  There is none. No comment, no UI string, and no manifest note in `stage8-manifest.json` claims C-010-1 is met;
+  the manifest entries for `web-call-centre-lookup` and `web-call-centre-cases-list` both carry the explicit
+  "security-engineer/compliance-specialist concurrence (SR-010-7) not yet recorded. Do not read as a clean
+  pass" caveat. `SupportCasesPages.tsx` makes no verification claim anywhere. On the narrow question asked:
+  **the shipped code is honest about what the banner is.** I confirm that and I credit it.
+- **But SR-010-4's actual defect is unremediated.** `CustomerLookupPage.tsx:256-259` still reads, verbatim,
+  the text §4 flagged five days ago: *"Confirm the caller's identity (e.g. full name and **registered phone
+  number**, or 2+ identifying account details)…"*. `registered phone number` is one of the three query keys of
+  `GET /v1/customer-lookup`. It remains prohibited as an authenticator under my §2 table — anything an agent
+  can search by is something a caller can be expected to know — and the banner still instructs agents to do
+  exactly that. The note placeholder at `:94` (`"Customer verified on call — …"`) still invites the agent
+  self-attestation my §3 Tier 2 requirement 2 calls "a log of an agent's claim, not a verification."
+  **SR-010-4 stands, open, unchanged.** It is not a blocker on *this* gate (it is bound to C-010-1, which
+  independently blocks real PII), but it should not be described as "shipped this session" in a way that
+  implies movement — the wording is byte-identical to what was flagged.
+
+### 10.6 One copy defect that is mine to call, and is new
+
+`SupportCasesPages.tsx:244` — the Account ID field hint reads:
+
+> "Must belong to a customer account **you looked up** — the backend validates and rejects any other account type."
+
+**The backend does not validate that.** `support-cases.ts:141-144` validates that the UUID resolves and that
+`userType === 'customer'`. There is no lookup precondition — §1 of this document establishes that in terms, and
+SR-010-1c deliberately chose detection over prevention. The hint tells an operator that a control exists which
+does not. That is an accuracy defect in operator-facing copy, and operator-facing copy that misstates a control
+is how an insider-threat detection story turns into "the agent reasonably believed the system would have
+stopped them." The page body at `:229-236` is fine (it describes a workflow); the hint asserts enforcement.
+
+**Required:** amend to *"The customer's account ID, from customer lookup. The backend checks this is a customer
+account — it does not check that you looked it up first, and every case you open is recorded against that
+customer."* Owner `frontend-engineer`; copy given, no further review cycle needed.
+
+Related, minor: `:107-108` says the list shows cases "you created **or have interacted with**." `listMine`
+filters on `createdByAgentAccountId` only (`repositories/support-cases.ts:231`) — a case you added a note to
+but did not create will not appear. Correct the copy or the query; my interest is only that they agree.
+
+### 10.7 Verdict and register
+
+**Concurrence WITHHELD.** Named blockers, both of which are pre-existing conditions of mine that were carried
+as Stage-8-exit items and were not implemented:
+
+| # | Blocker | Lifts when |
+|---|---|---|
+| **B-1** | **C-010-3 input-time PCI guidance absent** from the description and note fields (§10.2) | Warning copy rendered on both inputs. Copy supplied in §10.2 — no further compliance cycle needed |
+| **B-2** | **C-010-2 UI limb / SR-010-3 unmet** on two of three case-rendering surfaces, including the FR-11 lookup addendum whose payload field exists solely for this (§10.3) | `callerVerified` rendered as a distinct badge on detail, a column on the list, and per-entry in the lookup result |
+
+Both are frontend copy/rendering changes with no backend or schema dependency. I will re-issue concurrence on a
+one-line diff confirmation; I am not requiring a fresh review cycle.
+
+**New condition (does not block this gate):**
+
+| ID | Condition | Owner | Blocks |
+|---|---|---|---|
+| **C-010-8** | **`support_cases` retention-purge job** — 24 months from `closedAt`, `legalHold: { $ne: true }`, escalated cases excluded, dry-run mode, structured evidenced output. Modelled on `police-report-retention.ts` but a separate mechanism against a separate collection with a different floor (§10.4). Inherits SR-011-4.4's open run-log-durability caveat | `backend-engineer`; scheduling `devops-engineer`; evidencing `security-engineer` | First production support case (not this gate) |
+
+**Not lifted by this section, and unchanged:** C-010-1 · C-010-4 (FR-18–21, Phase 1 FR-9) · C-010-5 (RoPA) ·
+C-010-6 (CT-4 documented Client instructions — an agent acting on a customer's behalf is still processing that
+no instruction authorises) · C-010-7 · SR-010-4 (§10.5) · SR-010-2's `scope=all` withholding, which now
+requires **two** changes not one (§10.1) · CT-1 (cross-border consent) · CT-3 (breach runbook, 2026-09-12).
+
+**Regime scope reconfirmed for this feature, 2026-09-08:** POPIA applies (SA data subjects, SA responsible
+party under TDIT-2026-09). GDPR not triggered — no EU data-subject footprint has been asserted by
+`product-manager` or `cto`, and I have found none in code; this is a determination, not a default, and it
+reverts to an open question the moment a market decision changes. PCI-DSS scope remains **nil**, and B-1 is
+the condition that keeps it nil.
+
+**Filed by:** `compliance-specialist`, 2026-09-08. **Does not discharge:** Stage 8 (SR-010-7 remains open on
+both my limb and `security-engineer`'s) · Stage 10 · `business-analyst` acceptance.
+
+---
+
+## 10. `security-engineer` concurrence (SR-010-7, backend/frontend half) — 2026-09-08
+
+**Verdict: PARTIAL CONCURRENCE. I concur on the backend implementation of FR-11/12/14/15/16/17
+(`scope=mine`) and on FR-18–21's zero code footprint. I withhold concurrence on SR-010-3 and SR-010-4 —
+both are still open in shipped, production code, not merely "not yet started."** This is a hands-on
+verification against the running code committed since this document was filed
+(`support-cases.ts`, `support-cases` repository/collection files, `support-cases.test.ts`,
+`SupportCasesPages.tsx`, `CustomerLookupPage.tsx`, `stage8-manifest.json`,
+`verify-stage8-manifest.mjs`, `check-adr-prohibitions.mjs`), not a re-read of the design chain. Line/commit
+references below are as of this date; re-run before citing later.
+
+### 10.1 SR-010-2 (`scope=all` withheld) — CONFIRMED, still holds
+
+`backend/src/routes/support-cases.ts`'s `listQuerySchema` (line 79-86) declares `scope: z.literal('mine')`.
+The route handler additionally short-circuits before Zod ever runs: any `scope` value other than the
+literal string `'mine'` (including `'all'` and a missing param) throws `VALIDATION_ERROR` (400) at lines
+175-187, before any repository call. `repositories/support-cases.ts` has no `listAll`-shaped method — there
+is nothing for a bypassed check to fall through to. `support-cases.test.ts` (`'scope=all is WITHHELD
+(SR-010-2)'` describe block, lines 422-465) exercises `scope=all`, a missing `scope`, and an arbitrary
+`scope=team` value, all asserting 400, plus a positive test that `scope=mine` returns only the caller's
+own cases. I ran this suite (`npx vitest run src/routes/support-cases.test.ts`): 22/22 pass. Confirmed live,
+not just documented.
+
+### 10.2 FR-18–21 escalation — CONFIRMED, zero code footprint, still true
+
+- No route, no schema, no repository method, and no `errors.ts` entry for `CALLER_NOT_VERIFIED` anywhere in
+  `backend/src/`. `grep -rn escalate backend/src` returns only comments/docstrings in
+  `support-cases.ts`, `repositories/support-cases.ts`, `db/support-case-collections.ts`, and one existing,
+  unrelated hit in `support-lookup.ts` (pre-existing recovery-case escalation, out of this feature's scope).
+- `VALID_STATUS_TRANSITIONS` in the repository has no entry pointing at `'escalated'`; the route's Zod
+  `updateStatusSchema` enum excludes `'escalated'` entirely (not merely unreachable — absent from the type).
+- `support-cases.test.ts` line 683-699 asserts `POST /v1/support-cases/:caseId/escalate` returns `404`
+  (route not registered) — SR-010-5 item 3, the executable negative assertion. I ran it: passes.
+- Frontend: `SupportCasesPages.tsx` has no escalation control anywhere. The detail page's status card
+  renders a static sentence ("Escalation to a recovery case is not yet available from this dashboard") and
+  `STATUS_TRANSITIONS['open'|'in_progress'|'resolved']` never includes `'escalated'` as a selectable option;
+  it renders as an inert read-only label only if a case somehow already carries that status. Confirmed by
+  reading the component, not assumed from the manifest note.
+- **SR-010-5, item 1 is NOT implemented and I am flagging it as a new gap, not carried over from the
+  original document.** The review required "a CI-2 prohibition rule… `forbid_route_pattern:
+  support-cases/:caseId/escalate` and `forbid_symbol: escalatedToRecoveryCaseId`" in
+  `docs/organization/gates/prohibitions.yaml`. That file does not exist in this repository at all.
+  `scripts/check-adr-prohibitions.mjs` (the actual CI-2 implementation, run at `ci.yml:84-85`) has exactly
+  three rules, all about `ADR-0009`/location-tracking; none references `support-cases`, `escalate`, or
+  `escalatedToRecoveryCaseId`. Today's protection against the escalate endpoint is entirely the executable
+  404 test (item 3) plus the missing-manifest-entry posture (item 2, confirmed absent — no `escalate` pattern
+  in `stage8-manifest.json`). Those two are real and effective on their own, but they are not what SR-010-5
+  contracted, and a reviewable-diff-required prohibition rule is qualitatively different from a test someone
+  could delete in the same PR that adds the route. **This does not change the FR-18–21 verdict (still zero
+  footprint today) but it is a real, outstanding item — recommend it stay open under SR-010-5's original ID
+  rather than being closed by this concurrence.**
+
+### 10.3 SR-010-1/1a/1b (audit logging) — CONFIRMED, all five call sites verified against real code
+
+Traced every write path and the detail/list reads in `support-cases.ts` against `repositories/audit-log.ts`
+(not assumed from the comments):
+
+| Route | Audit call | Event shape verified |
+|---|---|---|
+| `POST /support-cases` (create) | `recordCaseAudit(req, account.id)` → `record()`, `eventType: 'privileged_data_access'` | subject = resolved account id, not the actor. Line 158. |
+| `GET /support-cases/:caseId` (detail) | `recordCaseAudit(req, supportCase.accountId)` | subject = case's own accountId. Line 252. |
+| `POST /support-cases/:caseId/notes` | `recordCaseAudit(req, updated.accountId)` | subject = case's accountId post-update. Line 295. |
+| `PATCH /support-cases/:caseId/status` | `recordCaseAudit(req, result.case.accountId)` | subject = case's accountId post-transition. Line 342. |
+| `GET /support-cases` (list) | `ctx.auditLog.recordBulkDisclosure({ disclosedAccountIds: page.data.map(...) , ... })` | one `privileged_bulk_access` row with `resultCount`, plus one `privileged_data_access` row per distinct disclosed subject — `repositories/audit-log.ts` lines 203-230. Line 215. |
+
+`repositories/audit-log.ts`'s `assertInvariants()` makes three of the structural guarantees the review
+asked for *impossible to violate silently*, not just conventionally followed: a `privileged_data_access`
+row without a subject `accountId` throws (mirrors migration 033's
+`account_audit_log_privileged_access_has_subject` CHECK), and a privileged event without an actor
+(`actorAccountId`/`actorService`) throws. I confirmed migration
+`033_adr0006_audit_correlation_columns.sql` exists and adds these columns — this is not a comment
+describing an aspirational constraint. `support-cases.test.ts` asserts on the actual audit-call array for
+create (line 269-271), list (line 487-495, via a fake `auditLog.recordBulkDisclosure`), detail read (line
+512-513), and note-add (line 549-550) using a real harness double that records calls rather than a
+pass-through stub. **All five required audit points from SR-010-1/1a/1b are live and independently
+verified, both in the running route code and in tests that would fail if a call site were removed.**
+
+SR-010-1c (detection of creates unpreceded by a lookup) is satisfied exactly as originally scoped — it's a
+downstream audit-query capability, not a code control, and the subject-`accountId`-carrying rows on both
+`support-lookup.ts` and `support-cases.ts` make that query possible. Not independently re-verified beyond
+confirming the subject-accountId field is present on both trails (it is).
+
+### 10.4 The three `accountId` mitigating controls — CONFIRMED, each independently re-verified
+
+1. **`ctx.accounts.findById` resolution → 404.** `support-cases.ts:141-144`. Confirmed: `!account` throws
+   `NOT_FOUND`.
+2. **`userType !== 'customer'` → 404, same uniform code path.** Same lines, same `if` — `account.userType
+   !== 'customer'` is OR'd into the same throw, so the 404 is genuinely indistinguishable between "no such
+   account" and "not a customer" at the wire level. No separate error branch that would create an existence
+   oracle. Confirmed.
+3. **`createdByAgentAccountId`/note `agentAccountId` always from `req.auth!.accountId`, never the body.**
+   Confirmed at all three write sites (`support-cases.ts:153`, `:282`→passed into
+   `appendNote(caseId, req.auth!.accountId, text)`, and status update has no accountId field to begin with).
+   The Zod schemas (`createSupportCaseSchema`, `addNoteSchema`, `updateStatusSchema`) have no field that
+   could shadow this — grepped for any `accountId`/`agentAccountId` key in the three schemas; only
+   `createSupportCaseSchema.accountId` exists, and it is consumed only as the *subject*-resolution input
+   (control 1), never assigned to `createdByAgentAccountId`.
+
+I agree with the original document's own limit on these: they are integrity and attribution controls, not
+authorization controls, and RR-010-1's acceptance of "any agent can act on any customer, detectably" is
+unchanged by anything I found. No regression since 2026-09-03.
+
+### 10.5 SR-010-3 (`callerVerified` surfaced on every case-rendering surface) — **NOT MET. Withholding on this point.**
+
+The condition register requires `callerVerified: false` "surfaced prominently on every agent surface that
+shows a case, including the FR-11 lookup addendum." Checked all three surfaces that render case data:
+
+- `SupportCaseDetailPage` (`SupportCasesPages.tsx:475-484`) — **met.** `Caller verified: Yes/No` is a row
+  in the detail `DetailGrid`, sourced from `supportCase.callerVerified`.
+- `SupportCasesListPage` (`SupportCasesPages.tsx:154-176`) — **not met.** The `DataTable` columns are
+  `referenceNumber`, `category`, `status`, `accountId`, `createdAt`. There is no `callerVerified` column and
+  no other rendering of the field anywhere in this component, even though `SupportCaseSummary` (the type
+  this list consumes, `src/call-centre/api/support-cases.ts:40-52`) carries `callerVerified` on every row.
+  An agent scanning their own case list has no visual signal that every single row is, today, definitionally
+  unverified.
+- `CustomerLookupPage` FR-11 addendum (`CustomerLookupPage.tsx:280-296`) — **not met.** The
+  `result.supportCases[]` list renders `referenceNumber`, category, status, and created-at only. The backend
+  serializer this list is fed by, `serializeSupportCaseLookupSummary` (`repositories/support-cases.ts:153-162`),
+  explicitly includes `callerVerified` in its payload — the field reaches the browser and is silently
+  dropped by the component. This is the exact surface the condition names by ID ("the FR-11 lookup
+  addendum's `supportCases[].callerVerified` field… must be surfaced in the lookup UI, not just carried in
+  the payload," §3) and it is the one surface the original document was most specific about.
+
+**I am withholding concurrence on SR-010-3 as currently drafted.** One of three required surfaces is done;
+two are not, and one of the two missing ones is the surface the condition explicitly called out by name.
+Recommend this stay open, owner unchanged (`frontend-engineer` + `ui-designer`), scoped now to exactly the
+two remaining components/lines above.
+
+### 10.6 SR-010-4 (verification banner wording / self-attestation placeholder) — **NOT MET. Withholding on this point.**
+
+Checked `src/call-centre/pages/CustomerLookupPage.tsx` against the two defects the review named:
+
+- **Banner wording — unfixed.** Line 257 still reads: *"Confirm the caller's identity (e.g. full name and
+  registered phone number, or 2+ identifying account details) before disclosing any information below."*
+  This is the verbatim wording the review quoted and ruled against (§4): `registered phone` is one of the
+  three `lookupQuerySchema` search keys (`support-lookup.ts:22-30`, confirmed still true), so the copy
+  instructs agents to authenticate a caller using the identifier the compliance ruling calls a "lookup key,
+  not a secret." No commit since `d8f932e` (the security-review commit) has touched this file's banner text
+  — `git log` on `CustomerLookupPage.tsx` shows the last content change (`30ab8e6`) predates the review, and
+  the compliance-stopgap commit (`60cf340`) also predates it.
+- **Self-attestation placeholder — unfixed.** Line 94, `placeholder="Customer verified on call — …"`, is
+  unchanged.
+- Structural point about display-time-only placement (banner renders after data is already fetched,
+  audit-logged, and painted) is also still true — not a regression, just not addressed, consistent with the
+  original finding that this was never a control to begin with.
+
+**I am withholding concurrence on SR-010-4.** Both named defects are present verbatim in the currently
+deployed component. This is not a new finding — it is the original finding, unresolved, and since the code
+is described as "committed and deployed to production now," this means production is currently showing
+support agents copy that names a prohibited authenticator. Recommend escalating the priority of this item
+above its current "standing, blocks C-010-1" framing: it does not need C-010-1 to land to be fixed — the
+wording and the placeholder can be corrected today independent of the Tier-2 verification design, and I
+recommend `compliance-specialist` and `technical-writer` be asked to treat it as an immediate copy fix
+rather than bundled with the larger verification-mechanism work.
+
+### 10.7 SR-010-6 (manifest/CI-1 coverage of `src/**/*Routes.tsx`) — CONFIRMED, implemented and passing
+
+`scripts/verify-stage8-manifest.mjs` now contains a `discoverWebRoutes()` function (confirmed present,
+lines ~76-138) that walks `src/<surface>/` directories for `*Routes.tsx` files, distinct from the
+backend/mobile discovery that existed before this review. Ran it directly: `node
+scripts/verify-stage8-manifest.mjs` → `Discovered 72 backend routes, 50 mobile screens, 20 web dashboard
+routes; manifest has 68 entries. PASS.` The manifest has explicit entries for
+`web-call-centre-lookup`, `web-call-centre-cases-list`, `web-call-centre-cases-detail`,
+`web-call-centre-cases-new`, and pre-existing `web-admin-*`/security-dashboard groups — confirmed by
+reading the manifest, not just the pass/fail exit code. Each Feature 010 web entry's `note` field correctly
+states the joint-gate caveat and cites `scope=mine`-only. **This was the sharper structural problem the
+original document raised (§7) — it is fixed, verified running, and does not silently pass; it actually
+discovers the new pages.**
+
+One residual observation, not a blocker: the manifest entries for the three new Call Centre case pages carry
+`verdict: "conditional-sign-off-cleared-scope-only"`, which is accurate as of today, but nothing in the CI
+check itself will fail if SR-010-3/SR-010-4 remain open indefinitely — the manifest's `waived`/`verdict`
+fields are prose, not enforced state. Consistent with SH-1c's already-filed observation that CI-1 is a
+route-existence check, not a data/copy-exposure check; not a new finding, just confirmed still true here.
+
+### 10.8 Summary verdict and what changes in the conditions register
+
+| ID | Status at re-verification | Disposition |
+|---|---|---|
+| SR-010-1 / -1a / -1b / -1c | **Verified met, live code + passing tests** | Close |
+| SR-010-2 | **Verified met, live code + passing tests** | Close |
+| SR-010-3 | **Not met** — 1 of 3 required surfaces done | **Remains open**, scope narrowed to list page + lookup-addendum list |
+| SR-010-4 | **Not met** — both named defects present in production code | **Remains open**, recommend priority raised (does not require C-010-1) |
+| SR-010-5 | **Items 2 and 3 met; item 1 (CI-2 prohibition rule) not implemented** — no `prohibitions.yaml` exists, `check-adr-prohibitions.mjs` has no support-cases rule | **Remains open on item 1 only**, owner unchanged (`devops-engineer` + `backend-engineer`) |
+| SR-010-6 | **Verified met, live code, ran the script myself** | Close |
+| FR-18–21 zero footprint | **Reconfirmed, still true** | No action |
+
+**Net: I concur on the backend security posture of FR-11/12/14/15/16/17(`scope=mine`) — SR-010-1 and
+SR-010-2 are genuinely, verifiably closed, not just asserted. I do not concur on the frontend items
+SR-010-3 and SR-010-4, and I am additionally flagging that SR-010-5's mechanical-guardrail item 1 was
+never built.** Per the condition register, SR-010-7 requires both `security-engineer` and
+`compliance-specialist` concurrence to discharge Stage 8 jointly; this section supplies the
+`security-engineer` half, and it is a partial, not a clean, concurrence. Stage 8 remains **not fully
+discharged** — three items (SR-010-3, SR-010-4, SR-010-5 item 1) are open with named owners above, and
+`compliance-specialist`'s concurrence is still outstanding independent of this entry.
+
+**Filed by:** `security-engineer`, 2026-09-08.
