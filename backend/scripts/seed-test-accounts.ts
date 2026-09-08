@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * Idempotently creates three local/staging test accounts:
+ * Idempotently creates four local/staging test accounts:
  *   - customer (web /login + mobile)
  *   - admin (/admin/login)
  *   - security_company_operator (/security/login)
+ *   - support_agent (/call-centre/login)
  *
  * Privileged accounts get TOTP MFA enrolled; the script prints each TOTP
  * secret so you can add it to an authenticator app (or re-run and read
@@ -73,6 +74,14 @@ export const TEST_ACCOUNTS = {
     loginPath: '/security/login',
     mfaRequired: true,
     partnerOrganizationId: TEST_PARTNER_ORG_ID,
+  },
+  support: {
+    label: 'Call centre support agent',
+    email: 'test.support@tditsolutions.dev',
+    password: 'SupportTest1234567!',
+    userType: 'support_agent' as const,
+    loginPath: '/call-centre/login',
+    mfaRequired: true,
   },
 } as const;
 
@@ -256,9 +265,13 @@ async function main(): Promise<void> {
   const adminResult = await seedOne(TEST_ACCOUNTS.admin, force, null);
   const securityResult = await seedOne(TEST_ACCOUNTS.security, force, adminResult.userId);
   const customerResult = await seedOne(TEST_ACCOUNTS.customer, force, adminResult.userId);
+  const supportResult = await seedOne(TEST_ACCOUNTS.support, force, adminResult.userId);
 
   const webBase = process.env.TEST_WEB_BASE_URL?.trim() || 'http://localhost:5173';
-  printSummary([customerResult, adminResult, securityResult], webBase.replace(/\/+$/, ''));
+  printSummary(
+    [customerResult, adminResult, securityResult, supportResult],
+    webBase.replace(/\/+$/, ''),
+  );
 }
 
 main().catch((err) => {
