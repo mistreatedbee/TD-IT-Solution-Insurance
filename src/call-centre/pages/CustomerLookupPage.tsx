@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Card, Input, SectionHeading } from '../../components';
+import { Badge, Button, Card, Input, SectionHeading } from '../../components';
 import { DetailGrid, InlineAlert, LoadingState } from '../../dashboard/components/ui';
 import {
   addCallCentreCaseNote,
@@ -15,6 +15,13 @@ import { formatPlanTierLabel, formatSupportLevel } from '../../lib/plan-catalog-
 import { formatSupportCaseCategory } from '../api/support-cases';
 
 type SearchMode = 'email' | 'policyId' | 'phone';
+
+/** Renders `callerVerified` as a distinct, visible badge (SR-010-3) — every support case is
+ * definitionally unverified today (no code path can set this `true`), so this should read
+ * "Unverified" on every case until Tier 2 caller verification (C-010-1/C-010-4) ships. */
+function CallerVerifiedBadge({ verified }: { verified: boolean }) {
+  return <Badge tone={verified ? 'emerald' : 'gold'}>{verified ? 'Caller verified' : 'Unverified'}</Badge>;
+}
 
 const POLICY_ID_PATTERN = /^[a-f0-9]{24}$/i;
 const PHONE_PATTERN = /^\+?[0-9\s()-]{7,20}$/;
@@ -91,8 +98,8 @@ function RecoveryCasePanel({
           type="textarea"
           value={noteText}
           onChange={(e) => setNoteText(e.target.value)}
-          placeholder="Customer verified on call — …"
-          hint="Don't include personal details about other people (e.g. names of suspects) — only describe what happened."
+          placeholder="Call summary, action taken, next steps…"
+          hint="Don't include personal details about other people (e.g. names of suspects) — only describe what happened. This field is a record of the call, not a verification step."
           rows={3}
           required
         />
@@ -254,8 +261,11 @@ export function CustomerLookupPage() {
       {result ? (
         <div className="space-y-6">
           <InlineAlert tone="warning">
-            Confirm the caller's identity (e.g. full name and registered phone number, or 2+
-            identifying account details) before disclosing any information below.
+            No approved caller-identity verification procedure exists on this platform yet. Do not
+            treat anything you searched for on this page (email, phone number, or policy ID) as
+            proof of identity — those are lookup keys, not secrets, and a caller could reasonably be
+            expected to know them. Use your organisation's own verification standard if one exists
+            outside this system before disclosing any information below.
           </InlineAlert>
           <DetailGrid
             rows={[
@@ -290,7 +300,8 @@ export function CustomerLookupPage() {
                     <span className="text-text-secondary">
                       · {formatSupportCaseCategory(supportCase.category)} · {supportCase.status.replace(/_/g, ' ')} ·{' '}
                       {new Date(supportCase.createdAt).toLocaleString()}
-                    </span>
+                    </span>{' '}
+                    <CallerVerifiedBadge verified={supportCase.callerVerified} />
                   </li>
                 ))}
               </ul>

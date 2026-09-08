@@ -33,6 +33,13 @@ function SupportCaseStatusBadge({ status }: { status: string }) {
   return <Badge tone={supportCaseStatusTone(status)}>{status.replace(/_/g, ' ')}</Badge>;
 }
 
+/** Renders `callerVerified` as a distinct, visible badge (SR-010-3) — every support case is
+ * definitionally unverified today (no code path can set this `true`), so this should read
+ * "Unverified" on every case until Tier 2 caller verification (C-010-1/C-010-4) ships. */
+function CallerVerifiedBadge({ verified }: { verified: boolean }) {
+  return <Badge tone={verified ? 'emerald' : 'gold'}>{verified ? 'Caller verified' : 'Unverified'}</Badge>;
+}
+
 const selectClasses =
   'block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors hover:border-slate-400 focus:border-primary focus:ring-2 focus:ring-accent-gold-deep/30';
 
@@ -169,6 +176,11 @@ export function SupportCasesListPage() {
                 render: (row) => formatSupportCaseCategory(String(row.category)),
               },
               { key: 'status', header: 'Status', render: (row) => <SupportCaseStatusBadge status={String(row.status)} /> },
+              {
+                key: 'callerVerified',
+                header: 'Caller',
+                render: (row) => <CallerVerifiedBadge verified={Boolean(row.callerVerified)} />,
+              },
               { key: 'accountId', header: 'Account', render: (row) => `${String(row.accountId).slice(0, 8)}…` },
               { key: 'createdAt', header: 'Created', render: (row) => new Date(String(row.createdAt)).toLocaleString() },
             ]}
@@ -470,13 +482,15 @@ export function SupportCaseDetailPage({ caseId }: { caseId: string }) {
       <Card padding="lg">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <SectionHeading as="h1" title={`Case ${supportCase.referenceNumber}`} size="md" />
-          <SupportCaseStatusBadge status={supportCase.status} />
+          <div className="flex items-center gap-2">
+            <CallerVerifiedBadge verified={supportCase.callerVerified} />
+            <SupportCaseStatusBadge status={supportCase.status} />
+          </div>
         </div>
         <DetailGrid
           rows={[
             { label: 'Category', value: formatSupportCaseCategory(supportCase.category) },
             { label: 'Account', value: supportCase.accountId },
-            { label: 'Caller verified', value: supportCase.callerVerified ? 'Yes' : 'No' },
             { label: 'Created', value: new Date(supportCase.createdAt).toLocaleString() },
             { label: 'Updated', value: new Date(supportCase.updatedAt).toLocaleString() },
             { label: 'Resolution summary', value: supportCase.resolutionSummary ?? '—' },
