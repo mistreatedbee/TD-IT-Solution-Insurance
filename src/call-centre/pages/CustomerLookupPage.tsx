@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button, Card, Input, SectionHeading } from '../../components';
 import { DetailGrid, InlineAlert, LoadingState } from '../../dashboard/components/ui';
 import {
@@ -11,6 +12,7 @@ import {
 import { ApiError } from '../../dashboard/api/errors';
 import type { SupportCustomerLookup } from '../api/support-lookup';
 import { formatPlanTierLabel, formatSupportLevel } from '../../lib/plan-catalog-display';
+import { formatSupportCaseCategory } from '../api/support-cases';
 
 type SearchMode = 'email' | 'policyId' | 'phone';
 
@@ -263,8 +265,39 @@ export function CustomerLookupPage() {
               { label: 'Policies', value: String(result.policyCount) },
               { label: 'Assets', value: String(result.assetCount) },
               { label: 'Open recovery cases', value: String(result.openRecoveryCaseCount) },
+              { label: 'Open support cases', value: String(result.openSupportCaseCount) },
             ]}
           />
+          <div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-text-primary">Support cases</h2>
+              <Link to={`/call-centre/cases/new?accountId=${encodeURIComponent(result.accountId)}`}>
+                <Button type="button" size="sm" variant="secondary">
+                  Open a new case for this customer
+                </Button>
+              </Link>
+            </div>
+            {result.supportCases.length > 0 ? (
+              <ul className="space-y-2 text-sm">
+                {result.supportCases.map((supportCase) => (
+                  <li key={supportCase.id} className="rounded-lg border border-border bg-background p-3">
+                    <Link
+                      className="font-medium text-primary hover:underline"
+                      to={`/call-centre/cases/${supportCase.id}`}
+                    >
+                      {supportCase.referenceNumber}
+                    </Link>{' '}
+                    <span className="text-text-secondary">
+                      · {formatSupportCaseCategory(supportCase.category)} · {supportCase.status.replace(/_/g, ' ')} ·{' '}
+                      {new Date(supportCase.createdAt).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-text-secondary">No open support cases for this customer.</p>
+            )}
+          </div>
           {result.subscription ? (
             <div>
               <h2 className="mb-3 text-sm font-semibold text-text-primary">Subscription</h2>

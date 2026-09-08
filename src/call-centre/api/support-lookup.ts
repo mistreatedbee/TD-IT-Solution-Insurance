@@ -47,6 +47,16 @@ export interface SupportCustomerLookup {
       createdAt: string;
     }>;
   }>;
+  /** FR-11 addendum (api-design.md §3) — counts status IN ('open', 'in_progress') only. */
+  openSupportCaseCount: number;
+  supportCases: Array<{
+    id: string;
+    referenceNumber: string;
+    status: string;
+    category: string;
+    createdAt: string;
+    callerVerified: boolean;
+  }>;
 }
 
 export async function lookupCustomerByEmail(email: string): Promise<SupportCustomerLookup> {

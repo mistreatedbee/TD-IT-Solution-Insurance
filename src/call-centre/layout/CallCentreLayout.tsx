@@ -45,7 +45,10 @@ export function CallCentreLayout() {
   return (
     <DashboardShell
       brand="Call centre"
-      navItems={[{ to: '/call-centre/lookup', label: 'Customer lookup' }]}
+      navItems={[
+        { to: '/call-centre/lookup', label: 'Customer lookup' },
+        { to: '/call-centre/cases', label: 'My cases' },
+      ]}
       onSignOut={() => void signOut()}
     >
       {account ? <p className="mb-4 text-xs text-text-secondary">Signed in as {account.email}</p> : null}
