@@ -351,6 +351,83 @@
       }
     },
     {
+      "id": "mobile-tab-shell",
+      "kind": "mobile_route",
+      "pattern": "(app)/(tabs)",
+      "feature": "004",
+      "stage8": {
+        "doc": "docs/features/004-policy-asset-management/security-review.md",
+        "verdict": "sign-off-granted-with-changes",
+        "note": "Tab-bar navigation root introduced by an in-progress mobile navigation restructuring — relocates the existing reviewed home/dashboard screen (mobile-app-shell) under a new (tabs) route group. Same screen, same review coverage, new path only."
+      }
+    },
+    {
+      "id": "mobile-tab-account",
+      "kind": "mobile_route",
+      "pattern": "(app)/(tabs)/account",
+      "feature": "004",
+      "stage8": {
+        "doc": "docs/features/004-policy-asset-management/security-review.md",
+        "verdict": "sign-off-granted-with-changes",
+        "note": "Relocated from (app)/account (mobile-account-hub) by the (tabs) navigation restructuring — same screen, same review coverage, new path only."
+      }
+    },
+    {
+      "id": "mobile-tab-account-kyc",
+      "kind": "mobile_route_group",
+      "pattern": "(app)/(tabs)/account/{profile,verification}",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "F009-1 — gated via FEATURE_KYC (INC-001 A-12). Relocated from (app)/account/{profile,verification} (mobile-kyc) by the (tabs) navigation restructuring — same screens, same waiver, new path only.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "mobile-tab-alerts",
+      "kind": "mobile_route",
+      "pattern": "(app)/(tabs)/alerts",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "INC-001 A-12 — gated via FEATURE_ALERTS. Relocated from (app)/alerts* (mobile-alerts) by the (tabs) navigation restructuring — same screen, same waiver, new path only.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "mobile-tab-assets",
+      "kind": "mobile_route_group",
+      "pattern": "(app)/(tabs)/assets*",
+      "feature": "004",
+      "stage8": {
+        "doc": "docs/features/004-policy-asset-management/security-review.md",
+        "verdict": "sign-off-granted-with-changes",
+        "note": "Covers (tabs)/assets, (tabs)/assets/[id], and (tabs)/assets/register. Relocated from (app)/assets* (mobile-policy-assets) by the (tabs) navigation restructuring — same screens, same review coverage, new path only."
+      }
+    },
+    {
+      "id": "mobile-tab-hardware-tracking",
+      "kind": "mobile_route_group",
+      "pattern": "(app)/(tabs)/assets/[id]/{activate-tracker,installation-guide,device-health}",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "INC-001 A-12 — gated via FEATURE_HARDWARE_TRACKING. Relocated from (app)/assets/[id]/{activate-tracker,installation-guide,device-health} (mobile-hardware-tracking) by the (tabs) navigation restructuring — same screens, same waiver, new path only.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "mobile-tab-map",
+      "kind": "mobile_route",
+      "pattern": "(app)/(tabs)/map",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "reason": "INC-001 A-12 — gated via FEATURE_LOCATION_TRACKING. Relocated from (app)/map (part of mobile-location's {map,device-locations,live-tracking} group) by the (tabs) navigation restructuring — same screen, same waiver, new path only.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
       "id": "mobile-account-hub",
       "kind": "mobile_route",
       "pattern": "(app)/account",
