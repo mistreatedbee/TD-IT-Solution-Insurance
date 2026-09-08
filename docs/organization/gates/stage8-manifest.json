@@ -275,6 +275,18 @@
       }
     },
     {
+      "id": "mobile-live-tracking-police-report",
+      "kind": "mobile_route",
+      "pattern": "(app)/live-tracking/[caseId]",
+      "feature": "011",
+      "stage8": {
+        "doc": "docs/features/011-saps-case-reporting/security-review.md",
+        "verdict": "conditional-sign-off-joint-gate-incomplete",
+        "reason": "SR-011-6 (§6, §10.3) — this screen renders PoliceReportSection.tsx (the SAPS case-number capture UI) and was previously absorbed only incidentally by the unrelated, waived mobile-location entry (Feature 008 location-tracking flag reason, not SAPS-data governance). This dedicated entry closes the mobile half of SR-011-6. No entry into any environment holding real customer data until SR-011-1, SR-011-4 and SR-011-6 are re-verified and security-engineer/compliance-specialist concurrence (SR-011-5) is recorded.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
       "id": "mobile-kyc",
       "kind": "mobile_route_group",
       "pattern": "(app)/account/{profile,verification}",

@@ -247,8 +247,11 @@ function createHarness(opts: {
 
         const cutoff = new Date();
         cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 5);
+        // C-011-11 (security-review.md §9.2/§10.2): the retention clock starts on entry
+        // to any terminal state, so this must cover "recovered" as well as "closed",
+        // matching the real repository's setPoliceReportFields.
         if (
-          current.status === 'closed' &&
+          (current.status === 'closed' || current.status === 'recovered') &&
           current.closedAt != null &&
           !current.legalHold &&
           current.closedAt <= cutoff
@@ -690,6 +693,28 @@ describe('routes/recovery', () => {
       const longAgo = new Date();
       longAgo.setUTCFullYear(longAgo.getUTCFullYear() - 6);
       const existing = { ...sampleCase(accountId, assetId), status: 'closed' as const, closedAt: longAgo };
+      const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/police-report`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sapsCaseNumber: '123/01/2026' }),
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it('rejects an edit on a "recovered" case whose retention window has already expired (C-011-11)', async () => {
+      // security-review.md §9.2/§10.2 — the retention clock starts on entry to any
+      // terminal state, so the SR-011-2 accept-then-purge rejection must cover a
+      // "recovered" case past its retention floor too, not just "closed".
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const longAgo = new Date();
+      longAgo.setUTCFullYear(longAgo.getUTCFullYear() - 6);
+      const existing = { ...sampleCase(accountId, assetId), status: 'recovered' as const, closedAt: longAgo };
       const { app, sessionId, env } = createHarness({ accountId, cases: [existing] });
       const listened = await listen(app);
       server = listened.server;

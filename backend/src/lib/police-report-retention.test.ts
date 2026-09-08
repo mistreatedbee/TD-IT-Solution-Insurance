@@ -28,6 +28,8 @@ function matchesValue(actual: unknown, expected: unknown): boolean {
           return actual instanceof Date && val instanceof Date && actual.getTime() <= val.getTime();
         case '$ne':
           return actual !== val;
+        case '$in':
+          return Array.isArray(val) && val.includes(actual);
         case '$type': {
           if (val === 'string') return typeof actual === 'string';
           if (val === 'date') return actual instanceof Date;
@@ -121,7 +123,8 @@ describe('buildRetentionPurgeFilter — consistency with recovery_cases_closed_a
       { reportingStation: { $type: 'string' } },
       { reportedToPoliceAt: { $type: 'date' } },
     ]);
-    expect(filter.status).toBe('closed');
+    // C-011-11: widened from a literal 'closed' to cover both terminal statuses.
+    expect(filter.status).toEqual({ $in: ['closed', 'recovered'] });
     expect(filter.legalHold).toEqual({ $ne: true });
   });
 });
@@ -195,7 +198,12 @@ describe('runPoliceReportRetentionPurge', () => {
     expect(docs[0]!.sapsCaseNumber).toBe('CAS-1/1/2020');
   });
 
-  it('does not match a case that is not "closed" (e.g. "recovered")', async () => {
+  it('C-011-11: matches and clears a "recovered" case past the retention floor, not just "closed"', async () => {
+    // security-review.md §9.2/§9.6/§10.2 — the retention clock starts on entry to ANY
+    // terminal state. A case whose asset was recovered and never separately,
+    // administratively "closed" by an operator must still have its police-report
+    // triple purged 5 years after it became terminal, or the retention control never
+    // fires for what is plausibly the most common terminal state in this product.
     const id = new ObjectId();
     const longAgo = new Date('2019-01-01T00:00:00.000Z');
     const { db, docs } = createFakeDb([
@@ -204,7 +212,32 @@ describe('runPoliceReportRetentionPurge', () => {
 
     const summary = await runPoliceReportRetentionPurge(db, { dryRun: false, now: RUN_AT });
 
+    expect(summary.candidatesFound).toBe(1);
+    expect(summary.cleared).toBe(1);
+    const doc = docs[0]!;
+    expect(doc.sapsCaseNumber).toBeNull();
+    expect(doc.reportingStation).toBeNull();
+    expect(doc.reportedToPoliceAt).toBeNull();
+    expect(doc.policeReportHistory).toEqual([]);
+    expect(doc.policeReportReminderSentAt).toBeNull();
+  });
+
+  it('does not match a case in a genuinely non-terminal status (e.g. "tracking"), even with an eligible closedAt', async () => {
+    // Unrelated statuses must stay excluded — this property must not be lost when
+    // "closed" widens to "closed" | "recovered". A non-terminal status should never
+    // realistically carry a set closedAt in production (only updateStatusForPartnerOrg
+    // sets it, and only on the two terminal transitions), but the purge filter itself
+    // must still not match one if it somehow occurred.
+    const id = new ObjectId();
+    const longAgo = new Date('2019-01-01T00:00:00.000Z');
+    const { db, docs } = createFakeDb([
+      baseDoc({ _id: id, status: 'tracking', closedAt: longAgo }),
+    ]);
+
+    const summary = await runPoliceReportRetentionPurge(db, { dryRun: false, now: RUN_AT });
+
     expect(summary.candidatesFound).toBe(0);
+    expect(summary.cleared).toBe(0);
     expect(docs[0]!.sapsCaseNumber).toBe('CAS-1/1/2020');
   });
 

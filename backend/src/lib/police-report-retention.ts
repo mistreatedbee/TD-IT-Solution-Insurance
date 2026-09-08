@@ -5,7 +5,9 @@
  * §4 (the `recovery_cases_closed_at_retention` partial index this job's filter must
  * stay consistent with). Gate: docs/features/011-saps-case-reporting/security-review.md
  * SR-011-4 (this job is what makes C-011-10 operable — `closedAt` is now set by
- * `updateStatusForPartnerOrg` on the transition into `'closed'`, per that same review).
+ * `updateStatusForPartnerOrg` on the transition into `'closed'` OR `'recovered'`, per
+ * C-011-11 / §9.2 of that same review — the retention clock starts on entry to any
+ * terminal state, not administrative closure specifically).
  *
  * Field-level clearing, NOT a TTL index / whole-document delete — `recovery_cases`
  * documents must survive indefinitely; only the police-report fields have a 5-year
@@ -50,7 +52,14 @@ export interface PoliceReportRetentionPurgeSummary {
  */
 export function buildRetentionPurgeFilter(cutoff: Date): Document {
   return {
-    status: 'closed',
+    // C-011-11 (security-review.md §9.2/§9.6, confirmed §10.2): the retention clock
+    // starts on entry to ANY terminal state, not just an administrative `'closed'`.
+    // `recovered` is terminal too, and `updateStatusForPartnerOrg` now sets `closedAt`
+    // on entry to either. Widening this to `'closed'` only would leave a
+    // `recovered`-and-never-`closed` case's police-report triple retained indefinitely
+    // — the identical failure mode SR-011-4 was raised to prevent, arriving by a second
+    // route.
+    status: { $in: ['closed', 'recovered'] },
     closedAt: { $lte: cutoff },
     legalHold: { $ne: true },
     $or: [

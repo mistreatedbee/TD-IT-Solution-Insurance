@@ -308,17 +308,39 @@ export function createRecoveryCasesRepo(db: Db) {
       // restriction an operator could claim AND close/resolve an unclaimed case in one PATCH,
       // bypassing the investigation step entirely.
       //
-      // Feature 011 / SR-011-4: `closedAt` is set here, once, ONLY on the transition into
-      // `'closed'` — this is the sole status-transition write path for recovery_cases
-      // today (no customer-side or admin-side close path exists). Without this, the
-      // police-report retention-expiry job (database-design.md §5) would never match any
-      // document, and the police-report triple would be retained indefinitely.
+      // Feature 011 / SR-011-4 + C-011-11 (security-review.md §9.2/§9.6, §10.2): `closedAt`
+      // is set here, once, on FIRST entry into EITHER terminal status — `'closed'` OR
+      // `'recovered'` — this is the sole status-transition write path for recovery_cases
+      // today (no customer-side or admin-side close path exists). The retention clock
+      // starts on entry to any terminal state per compliance-specialist's ruling: a
+      // `recovered` case whose asset was found is finished, and there is no basis for
+      // treating it as perpetually live merely because no operator later pressed
+      // "closed". Without this, the police-report retention-expiry job
+      // (database-design.md §5) would never match a `recovered`-and-never-`closed` case,
+      // and the police-report triple would be retained indefinitely.
+      //
+      // "First entry" matters: a case can legitimately move `recovered` -> `closed`
+      // (operator administratively closes a case whose asset was already recovered).
+      // `closedAt` must NOT be overwritten on that second terminal transition —
+      // database-design.md §5.2 already ruled out resetting the retention clock on
+      // edit, and clobbering `closedAt` here would silently extend retention past what
+      // the ruling intends. So this only sets `closedAt` when it isn't already set.
       const setFields: { status: RecoveryCaseStatus; updatedAt: Date; closedAt?: Date } = {
         status,
         updatedAt: new Date(),
       };
-      if (status === 'closed') {
-        setFields.closedAt = new Date();
+      if (status === 'closed' || status === 'recovered') {
+        // Deliberately no projection here: this is an internal read used only to
+        // decide whether to set `closedAt`, never returned or serialised. The
+        // partner-facing exclusion projection is applied on the write-path read-back
+        // below, which is what actually reaches the caller.
+        const existing = await collection().findOne({
+          _id: new ObjectId(caseId),
+          partnerOrganizationId,
+        });
+        if (existing && (existing as unknown as { closedAt: Date | null }).closedAt == null) {
+          setFields.closedAt = new Date();
+        }
       }
       const result = await collection().findOneAndUpdate(
         {
@@ -393,8 +415,13 @@ export function createRecoveryCasesRepo(db: Db) {
       // SR-011-2: reject rather than accept-then-silently-purge on a case whose
       // police-report retention window has already expired (database-design.md §5.3's
       // purge job would clear this on its next run with no user-visible signal).
+      // C-011-11 (security-review.md §9.2/§10.2): `closedAt` is now set on entry to
+      // EITHER terminal status (`'closed'` or `'recovered'`), so this check must cover
+      // both — checking `status === 'closed'` only would let a PATCH succeed against an
+      // already-expired `recovered` case (accept-then-silently-purge), reintroducing the
+      // exact SR-011-2 failure mode via the second route.
       if (
-        current.status === 'closed' &&
+        (current.status === 'closed' || current.status === 'recovered') &&
         current.closedAt != null &&
         !current.legalHold &&
         current.closedAt <= retentionCutoff()

@@ -103,7 +103,8 @@ export const recoveryCaseIndexes: IndexDescription[] = [
   { key: { referenceNumber: 1 }, unique: true },
   { key: { assetId: 1, status: 1 } },
   // Feature 011 (database-design.md §4) — supports the (not-yet-scheduled) police-report
-  // retention-expiry job: find closed cases past the retention floor that still have at
+  // retention-expiry job: find terminal-state cases (`'closed'` or `'recovered'`, per
+  // C-011-11 — security-review.md §9.2/§9.6) past the retention floor that still have at
   // least one police-report field set. Partial so it costs nothing on the (currently:
   // all) documents that never had these fields populated.
   {
@@ -115,6 +116,16 @@ export const recoveryCaseIndexes: IndexDescription[] = [
     // index: $not"). $type gives the same "field is actually set" semantics
     // (present AND non-null — a null value has BSON type "null", not
     // "string"/"date") using only supported operators.
+    //
+    // C-011-11 note: this filter expression is intentionally NOT keyed on `status` at
+    // all — it only constrains on the police-report fields being set. Widening the
+    // purge job's query filter (`buildRetentionPurgeFilter`) from `status: 'closed'` to
+    // `status: { $in: ['closed', 'recovered'] }` does not change whether this index
+    // covers the query: Mongo can use a partial index whenever the query filter implies
+    // (is at least as restrictive as) the partialFilterExpression, and adding a `status`
+    // constraint to the query only makes it MORE restrictive, not less. No change to
+    // this partialFilterExpression is required for the widened purge filter to remain
+    // index-covered.
     partialFilterExpression: {
       $or: [
         { sapsCaseNumber: { $type: 'string' } },

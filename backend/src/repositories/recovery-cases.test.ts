@@ -239,8 +239,8 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
     });
   });
 
-  describe('SR-011-4: closedAt setter', () => {
-    it('sets closedAt only on the transition into "closed"', async () => {
+  describe('SR-011-4 + C-011-11: closedAt setter', () => {
+    it('sets closedAt on the transition into "closed"', async () => {
       const id = new ObjectId();
       const { db, docs } = createFakeDb([
         baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'investigating', closedAt: null }),
@@ -254,6 +254,38 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       const closed = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'closed');
       expect(closed).not.toBeNull();
       expect(docs[0]!.closedAt).toBeInstanceOf(Date);
+    });
+
+    it('C-011-11: also sets closedAt on the transition into "recovered", not just "closed"', async () => {
+      // security-review.md §9.2/§9.6 — the retention clock starts on entry to ANY
+      // terminal state. A case that reaches "recovered" and is never separately,
+      // administratively "closed" must still start its retention clock.
+      const id = new ObjectId();
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'tracking', closedAt: null }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const recovered = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'recovered');
+      expect(recovered).not.toBeNull();
+      expect(docs[0]!.closedAt).toBeInstanceOf(Date);
+    });
+
+    it('does not overwrite an already-set closedAt on a subsequent terminal-to-terminal transition', async () => {
+      // A case can legitimately move recovered -> closed (operator administratively
+      // closes a case whose asset was already recovered). closedAt must not be reset
+      // by that second terminal transition, or the retention clock would silently
+      // extend past what C-011-11's ruling intends (database-design.md §5.2 already
+      // ruled out resetting the retention clock on edit).
+      const id = new ObjectId();
+      const closedAt = new Date('2026-01-01T00:00:00.000Z');
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'recovered', closedAt }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'closed');
+      expect(docs[0]!.closedAt).toEqual(closedAt);
     });
 
     it('does not overwrite closedAt on a subsequent non-closing status change', async () => {
