@@ -14,6 +14,7 @@ export type UserFacingErrorContext =
   | 'recovery'
   | 'notification'
   | 'security-case'
+  | 'support-case'
   | 'admin'
   | 'invitation'
   | 'generic';
@@ -34,6 +35,7 @@ const CONTEXT_FALLBACK: Record<UserFacingErrorContext, string> = {
   recovery: 'We could not complete this recovery action. Please try again or contact support.',
   notification: 'We could not update your notification settings. Please try again.',
   'security-case': 'We could not load or update this case. Please try again.',
+  'support-case': 'We could not load or update this support case. Please try again.',
   admin: 'We could not complete that admin action. Please try again.',
   invitation: 'We could not accept this invitation. Request a new link from your administrator.',
   generic: GENERIC_FALLBACK,
@@ -77,7 +79,7 @@ function mapApiErrorByCode(code: string, status: number, message: string, contex
     case 'VALIDATION_ERROR':
       return 'Some details look incorrect. Review the form and try again.';
     case 'NOT_FOUND':
-      return context === 'security-case'
+      return context === 'security-case' || context === 'support-case'
         ? 'This case could not be found. It may have been closed or reassigned.'
         : 'We could not find what you were looking for. Go back and try again.';
     case 'FORBIDDEN':
@@ -105,6 +107,10 @@ function mapApiErrorByCode(code: string, status: number, message: string, contex
     case 'INTERNAL_ERROR':
       return GENERIC_FALLBACK;
     case 'CONFLICT':
+      if (context === 'support-case') {
+        return 'That status change is not allowed from this case’s current status. Refresh the page to see the latest state.';
+      }
+      return 'This action was already processed. Refresh the page to see the latest state.';
     case 'IDEMPOTENCY_KEY_REUSE':
       return 'This action was already processed. Refresh the page to see the latest state.';
     case 'DEVICE_MISMATCH':

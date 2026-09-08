@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { resendVerification } from '../src/api/auth';
 import { fetchLiveAccountForGating } from '../src/auth/useAccountQuery';
+import { SubpageHeader } from '../src/navigation/SubpageHeader';
 import { Button, Screen } from '../src/theme/primitives';
 import { colors, spacing, typography } from '../src/theme/tokens';
 
@@ -59,6 +60,7 @@ export default function VerificationGateScreen() {
 
   return (
     <Screen>
+      <SubpageHeader />
       <Text style={styles.title}>One more step before you can do that</Text>
       <Text style={styles.body}>
         Verify your email to unlock policy purchases and asset registration. We sent a link to{' '}

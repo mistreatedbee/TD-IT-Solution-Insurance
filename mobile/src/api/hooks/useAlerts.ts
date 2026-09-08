@@ -11,9 +11,9 @@ function mapMobileAlertHref(href?: string | null): string | undefined {
   if (!href) return undefined;
   if (href.startsWith('/(app)')) return href;
   if (href === '/verification-gate') return '/verification-gate';
-  if (href.startsWith('/account/')) return `/(app)${href}`;
-  if (href === '/assets/register') return '/(app)/assets/register';
-  if (href.startsWith('/assets/')) return `/(app)${href}`;
+  if (href.startsWith('/account/')) return href;
+  if (href === '/assets/register') return '/assets/register';
+  if (href.startsWith('/assets/')) return href;
   if (href === '/policies') return '/(app)/policy';
   if (href.startsWith('/policies/')) return href.replace('/policies/', '/policy/');
   if (href === '/recovery') return '/(app)/live-tracking';

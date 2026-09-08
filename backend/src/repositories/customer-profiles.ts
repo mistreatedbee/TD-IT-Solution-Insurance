@@ -40,6 +40,7 @@ export interface CustomerProfileDocument {
   verificationSubmittedAt: Date | null;
   verificationReviewedAt: Date | null;
   rejectionReasonCustomerSafe: string | null;
+  profilePictureUpdatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -59,6 +60,7 @@ interface CustomerProfileDbDoc {
   verificationSubmittedAt?: Date | null;
   verificationReviewedAt?: Date | null;
   rejectionReasonCustomerSafe?: string | null;
+  profilePictureUpdatedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -79,6 +81,7 @@ function toProfile(doc: CustomerProfileDbDoc): CustomerProfileDocument {
     verificationSubmittedAt: doc.verificationSubmittedAt ?? null,
     verificationReviewedAt: doc.verificationReviewedAt ?? null,
     rejectionReasonCustomerSafe: doc.rejectionReasonCustomerSafe ?? null,
+    profilePictureUpdatedAt: doc.profilePictureUpdatedAt ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -126,6 +129,7 @@ export interface CustomerProfilesRepo {
         | 'verificationStatus'
         | 'verificationSubmittedAt'
         | 'rejectionReasonCustomerSafe'
+        | 'profilePictureUpdatedAt'
       >
     >,
   ): Promise<CustomerProfileDocument>;
@@ -170,6 +174,7 @@ export function createCustomerProfilesRepo(db: Db): CustomerProfilesRepo {
         verificationSubmittedAt: null,
         verificationReviewedAt: null,
         rejectionReasonCustomerSafe: null,
+        profilePictureUpdatedAt: null,
         createdAt: now,
         updatedAt: now,
       } as CustomerProfileDbDoc);
@@ -181,18 +186,25 @@ export function createCustomerProfilesRepo(db: Db): CustomerProfilesRepo {
 
     async updateForAccount(accountId, patch) {
       const now = new Date();
+      // MongoDB rejects upserts when the same path appears in both $set and $setOnInsert.
+      const setOnInsert: Record<string, unknown> = {
+        accountId,
+        verificationStatus: 'not_started',
+        verificationSubmittedAt: null,
+        verificationReviewedAt: null,
+        rejectionReasonCustomerSafe: null,
+        profilePictureUpdatedAt: null,
+        createdAt: now,
+      };
+      for (const key of Object.keys(patch)) {
+        delete setOnInsert[key];
+      }
+
       const result = await col.findOneAndUpdate(
         { accountId },
         {
           $set: { ...patch, updatedAt: now },
-          $setOnInsert: {
-            accountId,
-            verificationStatus: 'not_started',
-            verificationSubmittedAt: null,
-            verificationReviewedAt: null,
-            rejectionReasonCustomerSafe: null,
-            createdAt: now,
-          },
+          $setOnInsert: setOnInsert,
         },
         { upsert: true, returnDocument: 'after' },
       );

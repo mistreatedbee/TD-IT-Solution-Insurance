@@ -11,11 +11,13 @@ import { BrandLogo } from '../../src/onboarding/marketing/components/BrandLogo';
 import { HeroDeviceAnimation } from '../../src/onboarding/marketing/components/HeroDeviceAnimation';
 import { useOnboardingLayout } from '../../src/onboarding/marketing/hooks/useOnboardingLayout';
 import { Button, Screen } from '../../src/theme/primitives';
-import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
+import { useColors } from '../../src/theme/ThemeProvider';
+import { minTouchTarget, spacing, typography } from '../../src/theme/tokens';
 
 export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colors = useColors();
   const fade = useSharedValue(0);
   const { headlineSize, subtitleSize, buttonSize, isCompact, isVeryCompact, heroHeight } =
     useOnboardingLayout();
@@ -29,7 +31,7 @@ export default function WelcomeScreen() {
   return (
     <Screen scroll padded contentContainerStyle={styles.screenContent}>
       <Animated.View style={[styles.header, headerStyle]}>
-        <BrandLogo size="hero" />
+        <BrandLogo size="hero" showPlate={false} />
       </Animated.View>
 
       <View style={styles.hero}>
@@ -38,7 +40,7 @@ export default function WelcomeScreen() {
           Insurance and intelligent asset protection in one simple app.
         </Text>
         {!isVeryCompact ? (
-          <Text style={[styles.supporting, { fontSize: subtitleSize }]}>
+          <Text style={[styles.supporting, { fontSize: subtitleSize, color: colors.textSecondary }]}>
             Protect your valuable assets, manage your insurance and stay connected to the things that
             matter most — all from your phone.
           </Text>
@@ -59,7 +61,7 @@ export default function WelcomeScreen() {
           onPress={() => router.push('/(auth)/intro')}
           style={styles.exploreBtn}
         >
-          <Text style={styles.exploreText}>Explore first</Text>
+          <Text style={[styles.exploreText, { color: colors.textSecondary }]}>Explore first</Text>
         </Pressable>
       </View>
     </Screen>
@@ -89,7 +91,6 @@ const styles = StyleSheet.create({
     color: BRAND.secondary,
   },
   supporting: {
-    color: colors.textSecondary,
     lineHeight: typography.sizes.base * 1.45,
   },
   actions: {
@@ -104,7 +105,6 @@ const styles = StyleSheet.create({
   exploreText: {
     fontSize: typography.sizes.sm,
     fontWeight: '600',
-    color: colors.textSecondary,
     textDecorationLine: 'underline',
   },
 });

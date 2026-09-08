@@ -5,6 +5,11 @@ import { Router } from 'express';
 import type { AppContext } from '../context.js';
 import { serializeCustomerProfile } from '../lib/customer-profile-serializer.js';
 import { updateCustomerProfileBodySchema } from '../lib/customer-profile-validation.js';
+import {
+  decodeProfilePictureBase64,
+  uploadProfilePictureBodySchema,
+  validateProfilePictureBuffer,
+} from '../lib/profile-picture-validation.js';
 import { apiError } from '../lib/errors.js';
 import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { validateBody } from '../lib/validation.js';
@@ -25,6 +30,23 @@ async function loadProfileExtras(ctx: AppContext, accountId: string, mfaEnrolled
     hasPolicy: policies.length > 0,
     hasAsset: assets.length > 0,
   };
+}
+
+async function resolveMfaEnrolled(ctx: AppContext, email: string): Promise<boolean> {
+  try {
+    const userAccessToken = await ctx.supabase.mintTransientUserAccessToken(email);
+    const verifiedFactor = await ctx.supabase.findVerifiedTotpFactor(userAccessToken);
+    return verifiedFactor !== null;
+  } catch {
+    return false;
+  }
+}
+
+async function serializeProfileForAccount(ctx: AppContext, accountId: string, email: string) {
+  const profile = await ctx.customerProfiles.getOrCreateForAccount(accountId);
+  const mfaEnrolled = await resolveMfaEnrolled(ctx, email);
+  const extras = await loadProfileExtras(ctx, accountId, mfaEnrolled);
+  return serializeCustomerProfile(profile, extras);
 }
 
 export function createCustomerProfileRouter(ctx: AppContext): Router {
@@ -50,15 +72,7 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
 
         const profile = await ctx.customerProfiles.getOrCreateForAccount(accountId);
 
-        let mfaEnrolled = false;
-        try {
-          const userAccessToken = await ctx.supabase.mintTransientUserAccessToken(account.email);
-          const verifiedFactor = await ctx.supabase.findVerifiedTotpFactor(userAccessToken);
-          mfaEnrolled = verifiedFactor !== null;
-        } catch {
-          /* best-effort */
-        }
-
+        const mfaEnrolled = await resolveMfaEnrolled(ctx, account.email);
         const extras = await loadProfileExtras(ctx, accountId, mfaEnrolled);
         res.status(200).json(serializeCustomerProfile(profile, extras));
       } catch (err) {
@@ -111,26 +125,14 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
           patch.emergencyContact = body.emergencyContact;
         }
 
-        const profile = await ctx.customerProfiles.updateForAccount(accountId, patch);
+        await ctx.customerProfiles.updateForAccount(accountId, patch);
         const refreshedAccount = await ctx.accounts.findById(accountId);
         if (!refreshedAccount) {
           next(apiError('UNAUTHORIZED'));
           return;
         }
 
-        let mfaEnrolled = false;
-        try {
-          const userAccessToken = await ctx.supabase.mintTransientUserAccessToken(
-            refreshedAccount.email,
-          );
-          const verifiedFactor = await ctx.supabase.findVerifiedTotpFactor(userAccessToken);
-          mfaEnrolled = verifiedFactor !== null;
-        } catch {
-          /* best-effort */
-        }
-
-        const extras = await loadProfileExtras(ctx, accountId, mfaEnrolled);
-        res.status(200).json(serializeCustomerProfile(profile, extras));
+        res.status(200).json(await serializeProfileForAccount(ctx, accountId, refreshedAccount.email));
       } catch (err) {
         next(err);
       }
@@ -155,27 +157,15 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
         }
 
         try {
-          const profile = await ctx.customerProfiles.submitVerification(accountId);
+          await ctx.customerProfiles.submitVerification(accountId);
           const refreshedAccount = await ctx.accounts.findById(accountId);
           if (!refreshedAccount) {
             next(apiError('UNAUTHORIZED'));
             return;
           }
 
-          let mfaEnrolled = false;
-          try {
-            const userAccessToken = await ctx.supabase.mintTransientUserAccessToken(
-              refreshedAccount.email,
-            );
-            const verifiedFactor = await ctx.supabase.findVerifiedTotpFactor(userAccessToken);
-            mfaEnrolled = verifiedFactor !== null;
-          } catch {
-            /* best-effort */
-          }
-
-          const extras = await loadProfileExtras(ctx, accountId, mfaEnrolled);
           await syncAccountAlerts(ctx, accountId);
-          res.status(200).json(serializeCustomerProfile(profile, extras));
+          res.status(200).json(await serializeProfileForAccount(ctx, accountId, refreshedAccount.email));
         } catch (err) {
           if (err instanceof Error && err.message === 'PROFILE_INCOMPLETE') {
             next(apiError('VALIDATION_ERROR'));
@@ -183,6 +173,118 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
           }
           throw err;
         }
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.put(
+    '/account/profile/picture',
+    authenticate,
+    createRateLimiter(
+      ctx.kv,
+      { attempts: 10, windowSeconds: 3600 },
+      (req) => `profile-picture-put:${req.auth!.accountId}`,
+    ),
+    validateBody(uploadProfilePictureBodySchema),
+    async (req, res, next) => {
+      try {
+        const accountId = req.auth!.accountId;
+        const account = await ctx.accounts.findById(accountId);
+        if (!account) {
+          next(apiError('UNAUTHORIZED'));
+          return;
+        }
+
+        const body = req.body as ReturnType<typeof uploadProfilePictureBodySchema.parse>;
+        let buffer: Buffer;
+        try {
+          buffer = decodeProfilePictureBase64(body.imageBase64);
+          validateProfilePictureBuffer(buffer, body.contentType);
+        } catch (err) {
+          if (err instanceof Error) {
+            if (err.message === 'PROFILE_PICTURE_TOO_LARGE') {
+              next(apiError('VALIDATION_ERROR', { message: 'Profile picture must be 512 KB or smaller.' }));
+              return;
+            }
+            if (
+              err.message === 'PROFILE_PICTURE_INVALID' ||
+              err.message === 'PROFILE_PICTURE_EMPTY'
+            ) {
+              next(apiError('VALIDATION_ERROR', { message: 'Upload a valid JPEG, PNG, or WebP image.' }));
+              return;
+            }
+          }
+          next(apiError('VALIDATION_ERROR'));
+          return;
+        }
+
+        const saved = await ctx.customerProfilePictures.upsertForAccount(
+          accountId,
+          body.contentType,
+          buffer,
+        );
+        await ctx.customerProfiles.updateForAccount(accountId, {
+          profilePictureUpdatedAt: saved.updatedAt,
+        });
+
+        res.status(200).json(await serializeProfileForAccount(ctx, accountId, account.email));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.get(
+    '/account/profile/picture',
+    authenticate,
+    createRateLimiter(
+      ctx.kv,
+      DEFAULT_AUTHENTICATED_LIMIT,
+      (req) => `profile-picture-get:${req.auth!.accountId}`,
+    ),
+    async (req, res, next) => {
+      try {
+        const accountId = req.auth!.accountId;
+        const picture = await ctx.customerProfilePictures.findByAccountId(accountId);
+        if (!picture) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        res.setHeader('Content-Type', picture.contentType);
+        res.setHeader('Cache-Control', 'private, max-age=300');
+        res.status(200).send(picture.data);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.delete(
+    '/account/profile/picture',
+    authenticate,
+    createRateLimiter(
+      ctx.kv,
+      { attempts: 10, windowSeconds: 3600 },
+      (req) => `profile-picture-delete:${req.auth!.accountId}`,
+    ),
+    async (req, res, next) => {
+      try {
+        const accountId = req.auth!.accountId;
+        const account = await ctx.accounts.findById(accountId);
+        if (!account) {
+          next(apiError('UNAUTHORIZED'));
+          return;
+        }
+
+        await ctx.customerProfilePictures.deleteForAccount(accountId);
+        await ctx.customerProfiles.updateForAccount(accountId, {
+          profilePictureUpdatedAt: null,
+        });
+
+        res.status(200).json(await serializeProfileForAccount(ctx, accountId, account.email));
       } catch (err) {
         next(err);
       }

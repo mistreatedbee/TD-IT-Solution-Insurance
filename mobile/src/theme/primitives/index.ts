@@ -15,3 +15,31 @@ export * from './Badge';
 export * from './FormField';
 export * from './SelectChip';
 export * from './Toggle';
+export {
+  canvasColor,
+  defaultDividerInset,
+  elevation,
+  elevationSoft,
+  surfaceStyles,
+  tabScreenStyle,
+} from '../surfaces';
+export {
+  ThemeProvider,
+  useColors,
+  useTheme,
+  type ColorSchemeName,
+  type ThemeContextValue,
+} from '../ThemeProvider';
+export { useSurfaceStyles, createSurfaceStyles } from '../useSurfaceStyles';
+export { lightColors, darkColors, type AppColors } from '../colorSchemes';
+export {
+  AppScreenSection,
+  InlineStatBar,
+  InsetDivider,
+  SurfaceGroup,
+  type AppScreenSectionProps,
+  type InlineStatBarProps,
+  type InlineStatItem,
+  type InsetDividerProps,
+  type SurfaceGroupProps,
+} from '../../components/SurfaceGroup';

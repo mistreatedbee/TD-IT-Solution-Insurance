@@ -8,9 +8,10 @@
  * not merely that some button or pin is hidden after the fact.
  */
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { screen } from '@testing-library/react-native';
 import DeviceLocationsLayout from '../_layout';
 import { listAssetLocationSummary } from '../../../../src/api/asset-location';
+import { renderWithProviders } from '../../../../src/test/renderWithProviders';
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
@@ -41,21 +42,25 @@ jest.mock('../../../../src/theme/primitives', () => {
   };
 });
 
+jest.mock('../../../../src/navigation/SubpageHeader', () => ({
+  SubpageHeader: () => null,
+}));
+
 jest.mock('../../../../src/config/features', () => ({ FEATURE_LOCATION_TRACKING_ENABLED: false }));
 
 describe('DeviceLocationsLayout — location tracking flag disabled (preview/production)', () => {
   it('renders the "coming soon" fallback instead of the device-locations screen', async () => {
-    await render(<DeviceLocationsLayout />);
+    await renderWithProviders(<DeviceLocationsLayout />);
     expect(screen.getByText('Live location tracking is coming soon.')).toBeTruthy();
   });
 
   it('never calls the location-summary read endpoint', async () => {
-    await render(<DeviceLocationsLayout />);
+    await renderWithProviders(<DeviceLocationsLayout />);
     expect(listAssetLocationSummary).not.toHaveBeenCalled();
   });
 
   it('renders no coordinate data anywhere on screen', async () => {
-    await render(<DeviceLocationsLayout />);
+    await renderWithProviders(<DeviceLocationsLayout />);
     // A latitude/longitude pair as rendered by DeviceLocationRow, e.g. "-26.2041, 28.0473".
     expect(screen.queryByText(/-?\d+\.\d{4},\s*-?\d+\.\d{4}/)).toBeNull();
     expect(screen.queryByText('Live map')).toBeNull();

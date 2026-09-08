@@ -135,9 +135,23 @@ export function DashboardAuthProvider({
   const signInWithTokens = useCallback(
     async (token: string, refreshToken: string) => {
       writeRefreshToken(config.storageKey, refreshToken);
-      await validateAccount(token);
+      setAccessToken(token);
+      setStatus('signed-in');
+      void (async () => {
+        try {
+          const me = await getAccountMe();
+          if (me.userType !== config.allowedUserType) {
+            setStatus('wrong-role');
+            setAccount(me);
+            return;
+          }
+          setAccount(me);
+        } catch {
+          /* signed-in; protected routes can retry account load */
+        }
+      })();
     },
-    [config.storageKey, validateAccount],
+    [config.storageKey, config.allowedUserType],
   );
 
   const loginWithPassword = useCallback(async (email: string, password: string) => {

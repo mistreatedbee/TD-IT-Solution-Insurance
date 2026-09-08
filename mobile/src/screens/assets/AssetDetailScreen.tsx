@@ -30,6 +30,7 @@ import { mergeAssetsWithLocations } from '../../tracking/buildAssetTrackingView'
 import { useAssetLocationSummaryQuery } from '../../api/hooks/useAssetLocation';
 import { useAssetTrackingProfileQuery } from '../../api/hooks/useAssetTrackingProfile';
 import { Alert, Badge, Button, Card, Screen } from '../../theme/primitives';
+import { canvasColor } from '../../theme/surfaces';
 import { colors, radius, spacing, typography } from '../../theme/tokens';
 import { resolveTrackingUiCapabilities } from '../../tracking/TrackingCapabilityService';
 import { AssetHeroImage } from '../home/assetVisuals';
@@ -345,7 +346,7 @@ export function AssetDetailScreen() {
               </Button>
             ) : null}
             {FEATURE_LOCATION_TRACKING_ENABLED ? (
-              <Button variant="secondary" fullWidth onPress={() => router.push('/(app)/map' as Href)}>
+              <Button variant="secondary" fullWidth onPress={() => router.push('/map' as Href)}>
                 View on protection map
               </Button>
             ) : null}
@@ -479,7 +480,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   screenBg: {
-    backgroundColor: colors.slate[50],
+    backgroundColor: canvasColor,
   },
   pageTitle: {
     fontSize: typography.sizes['2xl'],

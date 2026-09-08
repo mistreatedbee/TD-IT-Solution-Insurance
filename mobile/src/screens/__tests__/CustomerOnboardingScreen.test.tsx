@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react-native';
+import { screen, waitFor, fireEvent, act } from '@testing-library/react-native';
+import { renderWithProviders } from '../../test/renderWithProviders';
 import { CustomerOnboardingScreen } from '../onboarding/CustomerOnboardingScreen';
 import type { PlanCatalogItem } from '../../api/plans';
 import { ApiError } from '../../api/errors';
@@ -128,7 +129,7 @@ describe('CustomerOnboardingScreen — plan step', () => {
   it('renders the plan selection step with catalog cards after plans load', async () => {
     listPlans.mockResolvedValue({ data: [plusPlan] });
 
-    await render(<CustomerOnboardingScreen signedIn />);
+    await renderWithProviders(<CustomerOnboardingScreen signedIn />);
 
     await waitFor(() => {
       expect(screen.getByText('Choose an insurance plan')).toBeTruthy();
@@ -150,7 +151,7 @@ describe('CustomerOnboardingScreen — plan step', () => {
       }),
     );
 
-    await render(<CustomerOnboardingScreen signedIn />);
+    await renderWithProviders(<CustomerOnboardingScreen signedIn />);
 
     await waitFor(() => {
       expect(screen.getByText('Choose an insurance plan')).toBeTruthy();
@@ -170,7 +171,7 @@ describe('CustomerOnboardingScreen — plan step', () => {
   it('renders no plan cards when the catalog fetch fails', async () => {
     listPlans.mockRejectedValue(new Error('network down'));
 
-    await render(<CustomerOnboardingScreen signedIn />);
+    await renderWithProviders(<CustomerOnboardingScreen signedIn />);
 
     await waitFor(() => {
       expect(screen.getByText('Choose an insurance plan')).toBeTruthy();
@@ -192,7 +193,7 @@ describe('CustomerOnboardingScreen — plan step', () => {
       status: 'pending_activation',
     });
 
-    await render(<CustomerOnboardingScreen signedIn />);
+    await renderWithProviders(<CustomerOnboardingScreen signedIn />);
 
     await waitFor(() => {
       expect(screen.getByText('Choose this plan')).toBeTruthy();
@@ -226,7 +227,7 @@ describe('CustomerOnboardingScreen — plan step', () => {
       }),
     );
 
-    await render(<CustomerOnboardingScreen signedIn />);
+    await renderWithProviders(<CustomerOnboardingScreen signedIn />);
 
     await waitFor(() => {
       expect(screen.getByText('Choose this plan')).toBeTruthy();

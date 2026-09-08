@@ -49,7 +49,10 @@ export function useAppShellGate(): AppShellGateState {
 
     void (async () => {
       try {
-        const account = await getCurrentAccount();
+        const [account, customerGate] = await Promise.all([
+          getCurrentAccount(),
+          resolveCustomerOnboardingGate(),
+        ]);
         const shell = gateForUserType(account.userType);
 
         if (shell !== 'customer') {
@@ -57,7 +60,6 @@ export function useAppShellGate(): AppShellGateState {
           return;
         }
 
-        const customerGate = await resolveCustomerOnboardingGate();
         if (!cancelled) {
           setResolved({
             sessionId,

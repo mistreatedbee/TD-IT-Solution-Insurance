@@ -12,6 +12,7 @@ import {
 import React from 'react';
 import { Image, ImageSourcePropType, StyleSheet, View } from 'react-native';
 import type { AssetType } from '../../api/assets';
+import { useTheme } from '../../theme/ThemeProvider';
 import { colors, radius } from '../../theme/tokens';
 
 export interface AssetVisualSpec {
@@ -77,7 +78,7 @@ const ASSET_VISUALS: Record<AssetType, AssetVisualSpec> = {
   },
   other_electronics: {
     Icon: Package,
-    background: '#F5F1EA',
+    background: colors.slate[100],
     foreground: colors.primary,
     image: ASSET_IMAGES.other_electronics,
   },
@@ -94,6 +95,7 @@ export function AssetTypeImage({
   assetType: string;
   size?: 'sm' | 'md' | 'lg' | 'hero';
 }) {
+  const { colors: themeColors, isDark, elevationSoft } = useTheme();
   const visual = getAssetVisual(assetType);
   const dim =
     size === 'hero' ? 128 : size === 'lg' ? 92 : size === 'sm' ? 56 : 72;
@@ -105,11 +107,13 @@ export function AssetTypeImage({
     <View
       style={[
         styles.imageWrap,
+        isDark ? elevationSoft : styles.imageWrapLightShadow,
         {
           width: dim,
           height: dim,
           borderRadius,
-          backgroundColor: visual.background,
+          backgroundColor: isDark ? themeColors.card : visual.background,
+          borderColor: themeColors.hairline,
           padding,
         },
       ]}
@@ -146,7 +150,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(44,62,80,0.08)',
+  },
+  imageWrapLightShadow: {
     shadowColor: '#2C3E50',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,

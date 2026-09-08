@@ -6,6 +6,7 @@ import {
   type PlanEntitlementKey,
 } from '../../lib/plan-entitlements';
 import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
+import { SubpageHeader } from '../../navigation/SubpageHeader';
 import { Alert, Button, Screen } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
 
@@ -30,6 +31,7 @@ export function PlanFeatureGateScreen({ feature }: PlanFeatureGateScreenProps) {
 
   return (
     <Screen>
+      <SubpageHeader />
       <Alert tone="info">Upgrade required</Alert>
       <Text style={styles.title}>{copy.title}</Text>
       <Text style={styles.body}>{copy.description}</Text>

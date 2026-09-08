@@ -1,6 +1,7 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react-native';
+import { screen, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { renderWithProviders } from '../../test/renderWithProviders';
 import { AssetListScreen } from '../assets/AssetListScreen';
 
 jest.mock('../../theme/primitives', () => {
@@ -53,7 +54,7 @@ const { useAssetVault } = jest.requireMock('../../tracking/useAssetVault') as {
 
 async function renderWithClient(ui: React.ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  await renderWithProviders(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
 
 describe('AssetListScreen', () => {

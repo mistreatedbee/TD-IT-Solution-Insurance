@@ -3,7 +3,7 @@
  */
 import { useRouter, type Href } from 'expo-router';
 import { PlusIcon } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -16,15 +16,19 @@ import {
 } from 'react-native';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { gateWriteAction } from '../../auth/gateWriteAction';
+import { useTabBarContentInset } from '../../navigation/TabBarInsetContext';
 import { usePlanUsage } from '../../api/hooks/usePlanUsage';
 import { ASSET_CATEGORY_OPTIONS } from '../../onboarding/assetFormConfig';
 import { AssetTypeImage } from '../home/assetVisuals';
+import { InlineStatBar } from '../../components/SurfaceGroup';
 import { PlanUsageSummary } from '../policy/PlanUsageSummary';
 import { useAssetVault, type VaultFilter } from '../../tracking/useAssetVault';
 import { Alert, Button, Screen } from '../../theme/primitives';
-import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
+import { useColors, useTheme } from '../../theme/ThemeProvider';
+import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
+import { minTouchTarget, spacing, typography } from '../../theme/tokens';
 import { AssetVaultCard } from './AssetVaultCard';
-import { vaultStyles } from './assetVaultStyles';
+import { useVaultStyles } from './assetVaultStyles';
 
 const FILTERS: { id: VaultFilter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -34,6 +38,124 @@ const FILTERS: { id: VaultFilter; label: string }[] = [
 
 export function AssetListScreen() {
   const router = useRouter();
+  const colors = useColors();
+  const { isDark } = useTheme();
+  const surfaceStyles = useSurfaceStyles();
+  const vaultStyles = useVaultStyles();
+  const tabBarInset = useTabBarContentInset();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        titleRow: {
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          gap: spacing.md,
+        },
+        titleCopy: {
+          flex: 1,
+        },
+        addButton: {
+          width: minTouchTarget,
+          height: minTouchTarget,
+          borderRadius: minTouchTarget / 2,
+          backgroundColor: colors.accentBlue,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        addButtonDisabled: {
+          opacity: 0.7,
+        },
+        alertWrap: {
+          paddingHorizontal: spacing.xl,
+          marginBottom: spacing.md,
+          gap: spacing.sm,
+        },
+        planUsageWrap: {
+          paddingHorizontal: spacing.xl,
+          marginBottom: spacing.md,
+        },
+        upgradeButton: {
+          marginTop: spacing.sm,
+        },
+        padded: {
+          paddingHorizontal: spacing.xl,
+          paddingTop: spacing.md,
+        },
+        emptyTitle: {
+          fontSize: typography.sizes.lg,
+          fontWeight: '700',
+          color: colors.textPrimary,
+          marginBottom: spacing.xs,
+        },
+        emptyBody: {
+          fontSize: typography.sizes.sm,
+          color: colors.textSecondary,
+          lineHeight: typography.sizes.sm * 1.45,
+          marginBottom: spacing.lg,
+        },
+        emptyPickerLabel: {
+          fontSize: typography.sizes.sm,
+          fontWeight: '700',
+          color: colors.textPrimary,
+          marginBottom: spacing.sm,
+        },
+        emptyShowcaseRow: {
+          gap: spacing.sm,
+          paddingBottom: spacing.lg,
+        },
+        emptyShowcaseTile: {
+          width: 88,
+          alignItems: 'center',
+          gap: spacing.xs,
+        },
+        emptyShowcaseLabel: {
+          fontSize: 10,
+          fontWeight: '600',
+          color: colors.textSecondary,
+          textAlign: 'center',
+          lineHeight: 12,
+        },
+        emptyCta: {
+          alignSelf: 'flex-start',
+          backgroundColor: isDark ? colors.card : colors.accentBlueTint,
+          borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+          borderColor: colors.hairline,
+          borderRadius: 999,
+          paddingHorizontal: spacing.lg,
+          paddingVertical: spacing.sm,
+        },
+        emptyCtaText: {
+          fontSize: typography.sizes.sm,
+          fontWeight: '700',
+          color: isDark ? colors.accentBlue : colors.accentBlueDeep,
+        },
+        centered: {
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        retryLink: {
+          marginTop: spacing.md,
+        },
+        retryText: {
+          color: colors.accentBlueDeep,
+          fontWeight: '600',
+        },
+        listWrap: {
+          flex: 1,
+          paddingHorizontal: spacing.xl,
+          paddingBottom: spacing['2xl'],
+        },
+        listSurface: {
+          flex: 1,
+          overflow: 'hidden',
+        },
+        list: {
+          flex: 1,
+        },
+      }),
+    [colors, isDark],
+  );
   const [filter, setFilter] = useState<VaultFilter>('all');
   const { items, stats, isLoading, isError, error, isRefetching, refetch } = useAssetVault(filter);
   const { policy, plans, assetCount, atLimit } = usePlanUsage();
@@ -62,7 +184,7 @@ export function AssetListScreen() {
   }
 
   return (
-    <Screen scroll={false} padded={false} style={vaultStyles.screenBg}>
+    <Screen scroll={false} padded={false} safeAreaEdges={['top']}>
       <View style={vaultStyles.header}>
         <View style={styles.titleRow}>
           <View style={styles.titleCopy}>
@@ -89,20 +211,13 @@ export function AssetListScreen() {
         </View>
 
         {stats.total > 0 ? (
-          <View style={vaultStyles.statRow}>
-            <View style={vaultStyles.statChip}>
-              <Text style={vaultStyles.statValue}>{stats.total}</Text>
-              <Text style={vaultStyles.statLabel}>Assets</Text>
-            </View>
-            <View style={vaultStyles.statChip}>
-              <Text style={vaultStyles.statValue}>{stats.online}</Text>
-              <Text style={vaultStyles.statLabel}>Online</Text>
-            </View>
-            <View style={vaultStyles.statChip}>
-              <Text style={vaultStyles.statValue}>{stats.needsAttention}</Text>
-              <Text style={vaultStyles.statLabel}>Attention</Text>
-            </View>
-          </View>
+          <InlineStatBar
+            items={[
+              { label: 'Assets', value: String(stats.total) },
+              { label: 'Online', value: String(stats.online) },
+              { label: 'Needs attention', value: String(stats.needsAttention) },
+            ]}
+          />
         ) : null}
       </View>
 
@@ -209,117 +324,30 @@ export function AssetListScreen() {
           ) : null}
         </View>
       ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.assetId}
-          renderItem={({ item }) => (
-            <AssetVaultCard
-              item={item}
-              onPress={() => router.push(`/assets/${item.assetId}` as Href)}
+        <View style={styles.listWrap}>
+          <View style={[surfaceStyles.group, styles.listSurface]}>
+            <FlatList
+              data={items}
+              keyExtractor={(item) => item.assetId}
+              contentContainerStyle={tabBarInset > 0 ? { paddingBottom: tabBarInset } : undefined}
+              renderItem={({ item, index }) => (
+                <AssetVaultCard
+                  item={item}
+                  variant="inset"
+                  isLast={index === items.length - 1}
+                  onPress={() => router.push(`/assets/${item.assetId}` as Href)}
+                />
+              )}
+              style={styles.list}
+              scrollEnabled
+              refreshControl={
+                <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />
+              }
             />
-          )}
-          contentContainerStyle={vaultStyles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />
-          }
-        />
+          </View>
+        </View>
       )}
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  titleCopy: {
-    flex: 1,
-  },
-  addButton: {
-    width: minTouchTarget,
-    height: minTouchTarget,
-    borderRadius: minTouchTarget / 2,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButtonDisabled: {
-    opacity: 0.7,
-  },
-  alertWrap: {
-    paddingHorizontal: spacing.xl,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  planUsageWrap: {
-    paddingHorizontal: spacing.xl,
-    marginBottom: spacing.md,
-  },
-  upgradeButton: {
-    marginTop: spacing.sm,
-  },
-  padded: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-  },
-  emptyTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  emptyBody: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.45,
-    marginBottom: spacing.lg,
-  },
-  emptyPickerLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  emptyShowcaseRow: {
-    gap: spacing.sm,
-    paddingBottom: spacing.lg,
-  },
-  emptyShowcaseTile: {
-    width: 88,
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  emptyShowcaseLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 12,
-  },
-  emptyCta: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.accentGoldTint,
-    borderRadius: 999,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  emptyCtaText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '700',
-    color: colors.accentGoldDeep,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  retryLink: {
-    marginTop: spacing.md,
-  },
-  retryText: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
-});

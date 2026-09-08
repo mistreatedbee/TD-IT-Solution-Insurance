@@ -133,9 +133,25 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const signInWithTokens = useCallback(
     async (token: string, refreshToken: string) => {
       writeRefreshToken(refreshToken);
-      await validateAccount(token);
+      setAccessToken(token);
+      setStatus('signed-in');
+      // Exchange/login already enforced customer-only access — fetch profile in the
+      // background so navigation is not blocked on a second round trip.
+      void (async () => {
+        try {
+          const me = await getAccountMe();
+          if (me.userType !== 'customer') {
+            setStatus('wrong-role');
+            setAccount(me);
+            return;
+          }
+          setAccount(me);
+        } catch {
+          /* signed-in; dashboard can retry via refreshAccount */
+        }
+      })();
     },
-    [validateAccount],
+    [],
   );
 
   const loginWithPassword = useCallback(async (email: string, password: string) => {

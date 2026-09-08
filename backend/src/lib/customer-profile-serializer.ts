@@ -17,6 +17,12 @@ export interface SerializedCustomerProfile {
   rejectionReasonCustomerSafe: string | null;
   completionPercent: number;
   completionChecklist: { id: string; label: string; done: boolean }[];
+  profilePictureUrl: string | null;
+}
+
+export function buildProfilePictureUrl(updatedAt: Date | null): string | null {
+  if (!updatedAt) return null;
+  return `/account/profile/picture?v=${updatedAt.getTime()}`;
 }
 
 export function serializeCustomerProfile(
@@ -57,5 +63,6 @@ export function serializeCustomerProfile(
     rejectionReasonCustomerSafe: profile.rejectionReasonCustomerSafe,
     completionPercent: completion.percent,
     completionChecklist: completion.checklist,
+    profilePictureUrl: buildProfilePictureUrl(profile.profilePictureUpdatedAt),
   };
 }

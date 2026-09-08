@@ -2,6 +2,7 @@
  * Customer profile API client — Feature 009 Phase 2.
  */
 import { apiFetch } from './client';
+import { API_BASE_URL } from './config';
 
 export type VerificationStatus =
   | 'not_started'
@@ -47,6 +48,7 @@ export interface CustomerProfile {
   rejectionReasonCustomerSafe: string | null;
   completionPercent: number;
   completionChecklist: ProfileChecklistItem[];
+  profilePictureUrl: string | null;
 }
 
 export interface UpdateCustomerProfileRequest {
@@ -70,6 +72,27 @@ export function updateCustomerProfile(body: UpdateCustomerProfileRequest) {
 
 export function submitProfileVerification() {
   return apiFetch<CustomerProfile>('/account/profile/verification/submit', { method: 'POST' });
+}
+
+export interface UploadProfilePictureRequest {
+  contentType: 'image/jpeg' | 'image/png' | 'image/webp';
+  imageBase64: string;
+}
+
+export function uploadProfilePicture(body: UploadProfilePictureRequest) {
+  return apiFetch<CustomerProfile>('/account/profile/picture', { method: 'PUT', body });
+}
+
+export function deleteProfilePicture() {
+  return apiFetch<CustomerProfile>('/account/profile/picture', { method: 'DELETE' });
+}
+
+export function resolveProfilePictureUrl(relativeUrl: string | null | undefined): string | null {
+  if (!relativeUrl) return null;
+  if (relativeUrl.startsWith('http://') || relativeUrl.startsWith('https://')) {
+    return relativeUrl;
+  }
+  return `${API_BASE_URL}${relativeUrl}`;
 }
 
 export function verificationStatusLabel(status: VerificationStatus): string {

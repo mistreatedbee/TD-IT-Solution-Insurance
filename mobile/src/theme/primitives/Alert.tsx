@@ -27,6 +27,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { colors, minTouchTarget, radius, spacing, typography } from '../tokens';
+import { useColors } from '../ThemeProvider';
 
 export type AlertTone = 'info' | 'success' | 'warning' | 'danger';
 
@@ -67,6 +68,7 @@ export function Alert({
   announceAssertively = false,
   style,
 }: AlertProps) {
+  const colors = useColors();
   const palette = colors.tones[tone];
   const Icon = toneIcon[tone];
 

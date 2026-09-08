@@ -13,7 +13,6 @@ import { usePoliciesQuery } from '../../api/hooks/usePolicies';
 import { useAssetsQuery } from '../../api/hooks/useAssets';
 import { useAccountQuery } from '../../auth/useAccountQuery';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { FLOATING_TAB_BAR_CLEARANCE } from '../../navigation/tabBarMetrics';
 import {
   deriveVerificationCentreItems,
   partitionVerificationItems,
@@ -130,10 +129,7 @@ export function VerificationCentreScreen() {
   }
 
   return (
-    <Screen
-      safeAreaEdges={['bottom']}
-      contentContainerStyle={{ paddingBottom: FLOATING_TAB_BAR_CLEARANCE + spacing.lg }}
-    >
+    <Screen safeAreaEdges={['bottom']} contentContainerStyle={{ paddingBottom: spacing.lg }}>
       <Text style={styles.intro}>
         Track everything still pending for your account — email, profile, identity review,
         protection plans, and asset registration — in one place.
@@ -220,7 +216,7 @@ export function VerificationCentreScreen() {
           <Button
             variant="secondary"
             fullWidth
-            onPress={() => router.push('/(app)/account/profile')}
+            onPress={() => router.push('/account/profile')}
           >
             Edit profile details
           </Button>

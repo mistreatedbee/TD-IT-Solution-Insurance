@@ -1,5 +1,5 @@
 import { useRouter, type Href } from 'expo-router';
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Image,
   Pressable,
@@ -10,31 +10,26 @@ import {
 } from 'react-native';
 import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
 import { Button } from '../../theme/primitives';
-import { colors, minTouchTarget, radius, spacing, typography } from '../../theme/tokens';
+import { useColors } from '../../theme/ThemeProvider';
+import { minTouchTarget, radius, spacing, typography } from '../../theme/tokens';
 
 const ASSET_ICON = require('../../../assets/icons/asset-icon.png') as ImageSourcePropType;
 const REPORT_THEFT_ICON = require('../../../assets/icons/report-theft-icon.png') as ImageSourcePropType;
 
-/**
- * Icon + label action button, local to this screen. The shared `Button`
- * primitive (theme/primitives/Button.tsx) is a deliberate bridge mirroring
- * the web Button's variant contract and only accepts a string label — it
- * doesn't support an icon slot, and widening that shared contract is a
- * design-system-level change, not a home-screen one. This mirrors Button's
- * visual language (colors, radius, touch target) without touching it.
- */
 function IconActionButton({
   icon,
   label,
   variant,
   onPress,
   style,
+  styles,
 }: {
   icon: ImageSourcePropType;
   label: string;
   variant: 'primary' | 'secondary';
   onPress: () => void;
   style?: object;
+  styles: ReturnType<typeof useQuickActionStyles>;
 }) {
   return (
     <Pressable
@@ -66,8 +61,75 @@ function IconActionButton({
   );
 }
 
+function useQuickActionStyles() {
+  const colors = useColors();
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        wrap: {
+          marginBottom: spacing.xl,
+        },
+        heading: {
+          fontSize: typography.sizes.sm,
+          fontWeight: '700',
+          color: colors.textSecondary,
+          textTransform: 'uppercase',
+          letterSpacing: 0.6,
+          marginBottom: spacing.md,
+        },
+        row: {
+          flexDirection: 'row',
+          gap: spacing.sm,
+          marginBottom: spacing.sm,
+        },
+        btn: {
+          flex: 1,
+        },
+        iconBtn: {
+          flex: 1,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: spacing.sm,
+          minHeight: minTouchTarget,
+          paddingHorizontal: spacing.lg,
+          paddingVertical: spacing.md,
+          borderRadius: radius.full,
+        },
+        iconBtnPrimary: {
+          backgroundColor: colors.primary,
+        },
+        iconBtnSecondary: {
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderColor: colors.primary,
+        },
+        iconBtnPressed: {
+          opacity: 0.85,
+        },
+        btnIcon: {
+          width: 20,
+          height: 20,
+        },
+        btnLabel: {
+          fontSize: typography.sizes.sm,
+          fontWeight: '600',
+          flexShrink: 1,
+        },
+        btnLabelPrimary: {
+          color: colors.textInverse,
+        },
+        btnLabelSecondary: {
+          color: colors.primary,
+        },
+      }),
+    [colors],
+  );
+}
+
 export function QuickActionBar() {
   const router = useRouter();
+  const styles = useQuickActionStyles();
   const { hasIncidentManagement, changePlanHref } = usePlanEntitlements();
 
   function handleReportTheft() {
@@ -86,8 +148,9 @@ export function QuickActionBar() {
           icon={ASSET_ICON}
           label="Add asset"
           variant="secondary"
-          onPress={() => router.push('/(app)/assets/register' as Href)}
+          onPress={() => router.push('/assets/register' as Href)}
           style={styles.btn}
+          styles={styles}
         />
         <IconActionButton
           icon={REPORT_THEFT_ICON}
@@ -95,12 +158,13 @@ export function QuickActionBar() {
           variant="primary"
           onPress={handleReportTheft}
           style={styles.btn}
+          styles={styles}
         />
       </View>
       <View style={styles.row}>
         <Button
           variant="secondary"
-          onPress={() => router.push('/(app)/alerts' as Href)}
+          onPress={() => router.push('/alerts' as Href)}
           style={styles.btn}
         >
           View alerts
@@ -116,62 +180,3 @@ export function QuickActionBar() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    marginBottom: spacing.xl,
-  },
-  heading: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: spacing.md,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  btn: {
-    flex: 1,
-  },
-  iconBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    minHeight: minTouchTarget,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.full,
-  },
-  iconBtnPrimary: {
-    backgroundColor: colors.primary,
-  },
-  iconBtnSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  iconBtnPressed: {
-    opacity: 0.85,
-  },
-  btnIcon: {
-    width: 20,
-    height: 20,
-  },
-  btnLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '600',
-    flexShrink: 1,
-  },
-  btnLabelPrimary: {
-    color: colors.textInverse,
-  },
-  btnLabelSecondary: {
-    color: colors.primary,
-  },
-});

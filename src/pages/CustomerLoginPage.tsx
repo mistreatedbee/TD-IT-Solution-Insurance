@@ -41,7 +41,6 @@ export function CustomerLoginPage() {
 
   async function finishLogin(accessToken: string, refreshToken: string) {
     await auth.signInWithTokens(accessToken, refreshToken);
-    navigate(redirect, { replace: true });
   }
 
   async function onSubmitCredentials(e: FormEvent) {
@@ -61,7 +60,6 @@ export function CustomerLoginPage() {
       await finishLogin(result.accessToken, result.refreshToken);
     } catch (err) {
       setError(mapUserFacingError(err, { context: 'auth' }));
-    } finally {
       setLoading(false);
     }
   }

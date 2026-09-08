@@ -1,11 +1,12 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
 import React from 'react';
+import { renderWithProviders } from '../../../test/renderWithProviders';
 import { Button } from '../Button';
 
 describe('Button', () => {
   it('calls onPress when tapped', async () => {
     const onPress = jest.fn();
-    await render(<Button onPress={onPress}>Log in</Button>);
+    await renderWithProviders(<Button onPress={onPress}>Log in</Button>);
 
     fireEvent.press(screen.getByRole('button', { name: 'Log in' }));
 
@@ -14,7 +15,7 @@ describe('Button', () => {
 
   it('does not call onPress while loading', async () => {
     const onPress = jest.fn();
-    await render(
+    await renderWithProviders(
       <Button onPress={onPress} loading>
         Log in
       </Button>,
@@ -27,7 +28,7 @@ describe('Button', () => {
 
   it('does not call onPress while disabled', async () => {
     const onPress = jest.fn();
-    await render(
+    await renderWithProviders(
       <Button onPress={onPress} disabled>
         Log in
       </Button>,

@@ -1,18 +1,89 @@
 import { useRouter, type Href } from 'expo-router';
 import { ChevronRightIcon, UserCircle2Icon } from 'lucide-react-native';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing, typography } from '../../theme/tokens';
-import { homeShadow } from './homeStyles';
+import { useColors } from '../../theme/ThemeProvider';
+import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
+import { spacing, typography } from '../../theme/tokens';
 
 export interface ProfileCompletionCardProps {
   percent: number;
   checklist: { id: string; label: string; done: boolean }[];
   onPress?: () => void;
+  inset?: boolean;
 }
 
-export function ProfileCompletionCard({ percent, checklist, onPress }: ProfileCompletionCardProps) {
+export function ProfileCompletionCard({
+  percent,
+  checklist,
+  onPress,
+  inset = false,
+}: ProfileCompletionCardProps) {
   const router = useRouter();
+  const colors = useColors();
+  const surfaceStyles = useSurfaceStyles();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        card: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.md,
+          backgroundColor: colors.background,
+          borderRadius: 16,
+          padding: spacing.lg,
+          marginBottom: spacing.lg,
+        },
+        cardInset: {
+          borderRadius: 0,
+          borderWidth: 0,
+          marginBottom: 0,
+          ...surfaceStyles.insetRow,
+          paddingVertical: spacing.md,
+        },
+        iconWrap: {
+          width: 44,
+          height: 44,
+          borderRadius: 12,
+          backgroundColor: colors.accentGoldTint,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        copy: {
+          flex: 1,
+        },
+        title: {
+          fontSize: typography.sizes.base,
+          fontWeight: '700',
+          color: colors.textPrimary,
+          marginBottom: 2,
+        },
+        percent: {
+          fontSize: typography.sizes.sm,
+          fontWeight: '600',
+          color: colors.accentGoldDeep,
+          marginBottom: spacing.sm,
+        },
+        barTrack: {
+          height: 4,
+          backgroundColor: colors.accentGoldTint,
+          borderRadius: 2,
+          overflow: 'hidden',
+          marginBottom: spacing.sm,
+        },
+        barFill: {
+          height: '100%',
+          backgroundColor: colors.accentGold,
+        },
+        checkItem: {
+          fontSize: typography.sizes.xs,
+          color: colors.textSecondary,
+          marginBottom: 2,
+        },
+      }),
+    [colors, surfaceStyles],
+  );
+
   if (percent >= 100) return null;
 
   const pending = checklist.filter((item) => !item.done).slice(0, 2);
@@ -22,17 +93,17 @@ export function ProfileCompletionCard({ percent, checklist, onPress }: ProfileCo
       onPress();
       return;
     }
-    router.push('/(app)/account/profile' as Href);
+    router.push('/account/profile' as Href);
   }
 
   return (
     <Pressable
-      style={styles.card}
+      style={[styles.card, inset ? styles.cardInset : null]}
       accessibilityRole="button"
       onPress={handlePress}
     >
       <View style={styles.iconWrap}>
-        <UserCircle2Icon size={28} color={colors.accentGoldDeep} strokeWidth={2.2} />
+        <UserCircle2Icon size={24} color={colors.accentGoldDeep} strokeWidth={2.2} />
       </View>
 
       <View style={styles.copy}>
@@ -52,57 +123,3 @@ export function ProfileCompletionCard({ percent, checklist, onPress }: ProfileCo
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: '#FFFBEB',
-    borderRadius: radius.cardLg,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-    ...homeShadow,
-  },
-  iconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: colors.accentGoldTint,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  copy: {
-    flex: 1,
-  },
-  title: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 2,
-  },
-  percent: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '700',
-    color: colors.accentGoldDeep,
-    marginBottom: spacing.sm,
-  },
-  barTrack: {
-    height: 6,
-    backgroundColor: 'rgba(217,114,10,0.15)',
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginBottom: spacing.sm,
-  },
-  barFill: {
-    height: '100%',
-    backgroundColor: colors.accentGold,
-  },
-  checkItem: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginBottom: 2,
-  },
-});

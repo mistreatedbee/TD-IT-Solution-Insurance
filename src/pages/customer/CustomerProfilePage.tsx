@@ -1,7 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Card, Input, SectionHeading } from '../../components';
+import { Button, Input, SectionHeading } from '../../components';
 import { InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
+import {
+  CustomerInsetDivider,
+  CustomerScreenSection,
+  CustomerSurfaceGroup,
+} from '../../customer/components/CustomerSurfaceGroup';
+import { ProfilePictureControl } from '../../customer/components/ProfilePictureControl';
+import {
+  customerCanvas,
+  customerSurfacePadding,
+  customerSurfaceRow,
+} from '../../customer/styles/surfaces';
 import {
   getCustomerProfile,
   submitProfileVerification,
@@ -116,21 +127,25 @@ export function CustomerProfilePage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[200px] items-center justify-center">
-        <LoadingState />
+      <div className={customerCanvas}>
+        <div className="flex min-h-[200px] items-center justify-center">
+          <LoadingState />
+        </div>
       </div>
     );
   }
 
   if (loadError || !profile) {
     return (
-      <div className="mx-auto max-w-2xl space-y-4">
-        <InlineAlert tone="danger">{loadError ?? 'Could not load profile.'}</InlineAlert>
-        <Link to="/dashboard/account">
-          <Button variant="secondary" size="sm">
-            Back to account
-          </Button>
-        </Link>
+      <div className={customerCanvas}>
+        <div className="mx-auto max-w-2xl space-y-4">
+          <InlineAlert tone="danger">{loadError ?? 'Could not load profile.'}</InlineAlert>
+          <Link to="/dashboard/account">
+            <Button variant="secondary" size="sm">
+              Back to account
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -142,157 +157,205 @@ export function CustomerProfilePage() {
     profile.verificationStatus === 'action_required';
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <SectionHeading
-        as="h2"
-        title="Profile & verification"
-        size="md"
-        subtitle="Personal details, address, emergency contact, and identity verification."
-      />
+    <div className={customerCanvas}>
+      <div className="mx-auto max-w-2xl space-y-6">
+        <SectionHeading
+          as="h2"
+          title="Profile & verification"
+          size="md"
+          subtitle="Personal details, address, emergency contact, and identity verification."
+        />
 
-      <Card padding="lg" interactive={false}>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm text-text-secondary">Profile completion</p>
-            <p className="text-2xl font-semibold text-primary">{profile.completionPercent}%</p>
-          </div>
-          <StatusBadge value={verificationStatusLabel(profile.verificationStatus)} />
-        </div>
-        <ul className="space-y-1 text-sm text-text-secondary">
-          {profile.completionChecklist.map((item) => (
-            <li key={item.id}>
-              {item.done ? '✓' : '○'} {item.label}
-            </li>
-          ))}
-        </ul>
-      </Card>
+        <CustomerSurfaceGroup padded>
+          <ProfilePictureControl
+            profilePictureUrl={profile.profilePictureUrl}
+            firstName={profile.firstName}
+            lastName={profile.lastName}
+            onUpdated={(profilePictureUrl) =>
+              setProfile((current) => (current ? { ...current, profilePictureUrl } : current))
+            }
+          />
+        </CustomerSurfaceGroup>
 
-      {profile.rejectionReasonCustomerSafe ? (
-        <InlineAlert tone="warning">{profile.rejectionReasonCustomerSafe}</InlineAlert>
-      ) : null}
+        <CustomerScreenSection title="Completion">
+          <CustomerSurfaceGroup>
+            <div className={customerSurfaceRow}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-text-secondary">
+                    Profile completion
+                  </p>
+                  <p className="text-2xl font-semibold text-primary">{profile.completionPercent}%</p>
+                </div>
+                <StatusBadge value={verificationStatusLabel(profile.verificationStatus)} />
+              </div>
+              <ul className="mt-4 space-y-1.5 text-sm text-text-secondary">
+                {profile.completionChecklist.map((item) => (
+                  <li key={item.id} className="flex items-start gap-2">
+                    <span aria-hidden className="text-primary">
+                      {item.done ? '✓' : '○'}
+                    </span>
+                    <span>{item.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </CustomerSurfaceGroup>
+        </CustomerScreenSection>
 
-      <Card padding="lg" interactive={false} className="space-y-4">
-        <SectionHeading as="h3" title="Personal details" size="md" />
-
-        {profile.idNumberMasked ? (
-          <p className="text-sm text-text-secondary">ID on file: {profile.idNumberMasked}</p>
+        {profile.rejectionReasonCustomerSafe ? (
+          <InlineAlert tone="warning">{profile.rejectionReasonCustomerSafe}</InlineAlert>
         ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input label="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-          <Input
-            label="Middle name"
-            value={middleName}
-            onChange={(e) => setMiddleName(e.target.value)}
-          />
-          <Input
-            label="Last name"
-            className="sm:col-span-2"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-          />
-          <Input
-            label="Date of birth"
-            value={dateOfBirth}
-            onChange={(e) => setDateOfBirth(e.target.value)}
-            placeholder="YYYY-MM-DD"
-          />
-          <Input label="Phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <Input
-            label="South African ID number"
-            className="sm:col-span-2"
-            value={idNumber}
-            onChange={(e) => setIdNumber(e.target.value)}
-            placeholder={profile.idNumberMasked ? 'Enter new ID to update' : '13 digits'}
-            type="password"
-            autoComplete="off"
-            hint="Only the last four digits are shown after saving."
-          />
-        </div>
+        <CustomerScreenSection title="Details">
+          <CustomerSurfaceGroup className={customerSurfacePadding}>
+            <div className="space-y-4">
+              <SectionHeading as="h3" title="Personal details" size="md" />
+              {profile.idNumberMasked ? (
+                <p className="text-sm text-text-secondary">ID on file: {profile.idNumberMasked}</p>
+              ) : null}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label="First name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                />
+                <Input
+                  label="Middle name"
+                  value={middleName}
+                  onChange={(e) => setMiddleName(e.target.value)}
+                />
+                <Input
+                  label="Last name"
+                  className="sm:col-span-2"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+                <Input
+                  label="Date of birth"
+                  value={dateOfBirth}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  placeholder="YYYY-MM-DD"
+                />
+                <Input
+                  label="Phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                <Input
+                  label="South African ID number"
+                  className="sm:col-span-2"
+                  value={idNumber}
+                  onChange={(e) => setIdNumber(e.target.value)}
+                  placeholder={profile.idNumberMasked ? 'Enter new ID to update' : '13 digits'}
+                  type="password"
+                  autoComplete="off"
+                  hint="Only the last four digits are shown after saving."
+                />
+              </div>
+            </div>
 
-        <SectionHeading as="h3" title="Residential address" size="md" className="pt-2" />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            label="Street address"
-            className="sm:col-span-2"
-            value={line1}
-            onChange={(e) => setLine1(e.target.value)}
-          />
-          <Input
-            label="Apartment / unit"
-            className="sm:col-span-2"
-            value={line2}
-            onChange={(e) => setLine2(e.target.value)}
-          />
-          <Input label="City" value={city} onChange={(e) => setCity(e.target.value)} />
-          <Input label="Province" value={province} onChange={(e) => setProvince(e.target.value)} />
-          <Input
-            label="Postal code"
-            value={postalCode}
-            onChange={(e) => setPostalCode(e.target.value)}
-          />
-        </div>
+            <CustomerInsetDivider className="my-6" />
 
-        <SectionHeading as="h3" title="Emergency contact" size="md" className="pt-2" />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            label="Full name"
-            className="sm:col-span-2"
-            value={emergencyName}
-            onChange={(e) => setEmergencyName(e.target.value)}
-          />
-          <Input
-            label="Relationship"
-            value={emergencyRelationship}
-            onChange={(e) => setEmergencyRelationship(e.target.value)}
-          />
-          <Input
-            label="Phone"
-            type="tel"
-            value={emergencyPhone}
-            onChange={(e) => setEmergencyPhone(e.target.value)}
-          />
-        </div>
+            <div className="space-y-4">
+              <SectionHeading as="h3" title="Residential address" size="md" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label="Street address"
+                  className="sm:col-span-2"
+                  value={line1}
+                  onChange={(e) => setLine1(e.target.value)}
+                />
+                <Input
+                  label="Apartment / unit"
+                  className="sm:col-span-2"
+                  value={line2}
+                  onChange={(e) => setLine2(e.target.value)}
+                />
+                <Input label="City" value={city} onChange={(e) => setCity(e.target.value)} />
+                <Input
+                  label="Province"
+                  value={province}
+                  onChange={(e) => setProvince(e.target.value)}
+                />
+                <Input
+                  label="Postal code"
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                />
+              </div>
+            </div>
 
-        {saveError ? <InlineAlert tone="danger">{saveError}</InlineAlert> : null}
-        {saveSuccess ? (
-          <InlineAlert tone="info">Profile saved successfully.</InlineAlert>
-        ) : null}
+            <CustomerInsetDivider className="my-6" />
 
-        <Button onClick={() => void handleSave()} disabled={isSaving}>
-          {isSaving ? 'Saving…' : 'Save profile'}
-        </Button>
-      </Card>
+            <div className="space-y-4">
+              <SectionHeading as="h3" title="Emergency contact" size="md" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label="Full name"
+                  className="sm:col-span-2"
+                  value={emergencyName}
+                  onChange={(e) => setEmergencyName(e.target.value)}
+                />
+                <Input
+                  label="Relationship"
+                  value={emergencyRelationship}
+                  onChange={(e) => setEmergencyRelationship(e.target.value)}
+                />
+                <Input
+                  label="Phone"
+                  type="tel"
+                  value={emergencyPhone}
+                  onChange={(e) => setEmergencyPhone(e.target.value)}
+                />
+              </div>
+            </div>
 
-      <Card padding="lg" interactive={false} className="space-y-4">
-        <SectionHeading as="h3" title="Identity verification" size="md" />
-        <p className="text-sm text-text-secondary">
-          Submit your profile for review once all required fields are complete. Document upload is
-          not required at this stage.
-        </p>
+            {saveError ? <InlineAlert tone="danger">{saveError}</InlineAlert> : null}
+            {saveSuccess ? <InlineAlert tone="info">Profile saved successfully.</InlineAlert> : null}
 
-        {submitError ? <InlineAlert tone="danger">{submitError}</InlineAlert> : null}
+            <Button onClick={() => void handleSave()} disabled={isSaving}>
+              {isSaving ? 'Saving…' : 'Save profile'}
+            </Button>
+          </CustomerSurfaceGroup>
+        </CustomerScreenSection>
 
-        {profile.verificationStatus === 'verified' ? (
-          <InlineAlert tone="info">Your identity is verified.</InlineAlert>
-        ) : profile.verificationStatus === 'pending_review' ? (
-          <InlineAlert tone="info">
-            Your details are with our team. We will notify you when review is complete.
-          </InlineAlert>
-        ) : (
-          <Button
-            variant="secondary"
-            onClick={() => void handleSubmitVerification()}
-            disabled={!canSubmit || isSubmitting}
-          >
-            {isSubmitting ? 'Submitting…' : 'Submit for verification'}
-          </Button>
-        )}
-      </Card>
+        <CustomerScreenSection title="Verification">
+          <CustomerSurfaceGroup className={`${customerSurfacePadding} space-y-4`}>
+            <SectionHeading as="h3" title="Identity verification" size="md" />
+            <p className="text-sm text-text-secondary">
+              Submit your profile for review once all required fields are complete. Document upload
+              is not required at this stage.
+            </p>
 
-      <Link to="/dashboard/account" className="inline-block text-sm text-primary hover:underline">
-        Back to account settings
-      </Link>
+            {submitError ? <InlineAlert tone="danger">{submitError}</InlineAlert> : null}
+
+            {profile.verificationStatus === 'verified' ? (
+              <InlineAlert tone="info">Your identity is verified.</InlineAlert>
+            ) : profile.verificationStatus === 'pending_review' ? (
+              <InlineAlert tone="info">
+                Your details are with our team. We will notify you when review is complete.
+              </InlineAlert>
+            ) : (
+              <Button
+                variant="secondary"
+                onClick={() => void handleSubmitVerification()}
+                disabled={!canSubmit || isSubmitting}
+              >
+                {isSubmitting ? 'Submitting…' : 'Submit for verification'}
+              </Button>
+            )}
+          </CustomerSurfaceGroup>
+        </CustomerScreenSection>
+
+        <Link
+          to="/dashboard/account"
+          className="inline-block px-1 text-sm text-primary hover:underline"
+        >
+          Back to account settings
+        </Link>
+      </div>
     </div>
   );
 }

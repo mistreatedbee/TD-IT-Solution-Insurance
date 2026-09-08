@@ -19,6 +19,7 @@ import type {
   EmergencyContact,
   ResidentialAddress,
 } from '../repositories/customer-profiles.js';
+import type { CustomerProfilePicturesRepo } from '../repositories/customer-profile-pictures.js';
 import type { Env } from '../config/env.js';
 
 function fakeEnv(): Env {
@@ -78,6 +79,7 @@ function createInMemoryProfilesRepo(): CustomerProfilesRepo {
       verificationSubmittedAt: null,
       verificationReviewedAt: null,
       rejectionReasonCustomerSafe: null,
+      profilePictureUpdatedAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -166,6 +168,25 @@ function createInMemoryProfilesRepo(): CustomerProfilesRepo {
   };
 }
 
+function createInMemoryProfilePicturesRepo(): CustomerProfilePicturesRepo {
+  const pictures = new Map<string, { contentType: 'image/png'; data: Buffer; updatedAt: Date }>();
+
+  return {
+    async findByAccountId(accountId) {
+      return pictures.get(accountId) ?? null;
+    },
+    async upsertForAccount(accountId, contentType, data) {
+      const updatedAt = new Date();
+      const saved = { accountId, contentType, data, updatedAt };
+      pictures.set(accountId, saved as { contentType: 'image/png'; data: Buffer; updatedAt: Date });
+      return saved;
+    },
+    async deleteForAccount(accountId) {
+      return pictures.delete(accountId);
+    },
+  };
+}
+
 function createHarness(opts?: { accountState?: AccountStatus['accountState'] }) {
   const env = fakeEnv();
   const kv = new InMemoryKeyValueStore();
@@ -174,6 +195,7 @@ function createHarness(opts?: { accountState?: AccountStatus['accountState'] }) 
   const accountState = opts?.accountState ?? 'active';
   let phone: string | null = null;
   const customerProfiles = createInMemoryProfilesRepo();
+  const customerProfilePictures = createInMemoryProfilePicturesRepo();
 
   const account: AccountRow = {
     id: accountId,
@@ -210,6 +232,7 @@ function createHarness(opts?: { accountState?: AccountStatus['accountState'] }) 
       },
     },
     customerProfiles,
+    customerProfilePictures,
     policies: {
       async listByAccount() {
         return [];
@@ -430,5 +453,42 @@ describe('customer profile routes', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { verificationStatus: string };
     expect(body.verificationStatus).toBe('pending_review');
+  });
+
+  it('PUT /account/profile/picture stores image and returns profilePictureUrl', async () => {
+    harness = createHarness();
+    await harness.start();
+
+    const pngBase64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    const putRes = await fetch(harness.url('/account/profile/picture'), {
+      method: 'PUT',
+      headers: harness.authHeaders(),
+      body: JSON.stringify({
+        contentType: 'image/png',
+        imageBase64: pngBase64,
+      }),
+    });
+
+    expect(putRes.status).toBe(200);
+    const putBody = (await putRes.json()) as { profilePictureUrl: string | null };
+    expect(putBody.profilePictureUrl).toMatch(/^\/account\/profile\/picture\?v=\d+$/);
+
+    const getRes = await fetch(harness.url('/account/profile/picture'), {
+      headers: { Authorization: harness.authHeaders().Authorization },
+    });
+    expect(getRes.status).toBe(200);
+    expect(getRes.headers.get('content-type')).toBe('image/png');
+    const bytes = Buffer.from(await getRes.arrayBuffer());
+    expect(bytes.length).toBeGreaterThan(0);
+
+    const deleteRes = await fetch(harness.url('/account/profile/picture'), {
+      method: 'DELETE',
+      headers: harness.authHeaders(),
+    });
+    expect(deleteRes.status).toBe(200);
+    const deleteBody = (await deleteRes.json()) as { profilePictureUrl: string | null };
+    expect(deleteBody.profilePictureUrl).toBeNull();
   });
 });

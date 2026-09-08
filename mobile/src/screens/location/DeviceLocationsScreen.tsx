@@ -73,7 +73,6 @@ export function DeviceLocationsScreen() {
 
   return (
     <Screen>
-      <Text style={styles.title}>Live map</Text>
       <Text style={styles.subtitle}>
         All devices with a last-known location appear on the map. Smartphones report from this app;
         other asset types need a GPS tracker.

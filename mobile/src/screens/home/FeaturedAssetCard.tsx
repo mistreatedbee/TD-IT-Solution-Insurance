@@ -1,12 +1,13 @@
 import { useRouter, type Href } from 'expo-router';
 import { ChevronRightIcon } from 'lucide-react-native';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatAssetType } from '../../lib/asset-labels';
 import type { AssetTrackingView } from '../../tracking/types';
-import { colors, radius, spacing, typography } from '../../theme/tokens';
+import { useTheme } from '../../theme/ThemeProvider';
+import { radius, spacing, typography } from '../../theme/tokens';
 import { AssetHeroImage, AssetTypeImage } from './assetVisuals';
-import { homeShadow, homeStyles } from './homeStyles';
+import { useHomeStyles } from './homeStyles';
 
 function protectionSteps(item: AssetTrackingView): { label: string; done: boolean }[] {
   const tracked =
@@ -27,6 +28,140 @@ export interface FeaturedAssetCardProps {
 
 export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) {
   const router = useRouter();
+  const { colors } = useTheme();
+  const homeStyles = useHomeStyles();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        card: {
+          flexDirection: 'row',
+          backgroundColor: colors.background,
+          borderRadius: radius.cardLg,
+          overflow: 'hidden',
+          minHeight: 168,
+          ...homeStyles.homeShadow,
+        },
+        emptyCard: {
+          alignItems: 'center',
+          padding: spacing.lg,
+        },
+        content: {
+          flex: 1,
+          padding: spacing.lg,
+          paddingRight: spacing.sm,
+        },
+        emptyCopy: {
+          flex: 1,
+          paddingRight: spacing.md,
+        },
+        sectionLabel: {
+          fontSize: typography.sizes.xs,
+          fontWeight: '700',
+          color: colors.textSecondary,
+          textTransform: 'uppercase',
+          letterSpacing: 0.8,
+          marginBottom: spacing.sm,
+        },
+        emptyTitle: {
+          fontSize: typography.sizes.lg,
+          fontWeight: '700',
+          color: colors.textPrimary,
+        },
+        emptyBody: {
+          fontSize: typography.sizes.sm,
+          color: colors.textSecondary,
+          lineHeight: typography.sizes.sm * 1.45,
+          marginBottom: spacing.md,
+        },
+        ctaRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.xs,
+        },
+        ctaText: {
+          fontSize: typography.sizes.sm,
+          fontWeight: '700',
+          color: colors.accentBlueDeep,
+        },
+        titleRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.md,
+          marginBottom: spacing.sm,
+        },
+        titleCopy: {
+          flex: 1,
+        },
+        assetName: {
+          fontSize: typography.sizes.lg,
+          fontWeight: '700',
+          color: colors.textPrimary,
+        },
+        assetMeta: {
+          fontSize: typography.sizes.sm,
+          color: colors.textSecondary,
+          marginTop: 2,
+        },
+        statusPill: {
+          marginBottom: spacing.md,
+        },
+        steps: {
+          flexDirection: 'row',
+          gap: spacing.md,
+          marginBottom: spacing.sm,
+        },
+        stepItem: {
+          alignItems: 'center',
+          flex: 1,
+        },
+        stepTrack: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          width: '100%',
+          justifyContent: 'center',
+          marginBottom: spacing.xs,
+        },
+        stepDot: {
+          width: 10,
+          height: 10,
+          borderRadius: 5,
+          backgroundColor: colors.slate[300],
+        },
+        stepDotDone: {
+          backgroundColor: colors.accentBlue,
+        },
+        stepLine: {
+          position: 'absolute',
+          left: '55%',
+          right: '-45%',
+          height: 2,
+          backgroundColor: colors.slate[300],
+          top: 4,
+        },
+        stepLineDone: {
+          backgroundColor: colors.accentBlueDeep,
+        },
+        stepLabel: {
+          fontSize: 10,
+          color: colors.slate[500],
+          fontWeight: '600',
+          textAlign: 'center',
+        },
+        stepLabelDone: {
+          color: colors.textPrimary,
+        },
+        location: {
+          fontSize: typography.sizes.xs,
+          color: colors.textSecondary,
+        },
+        decorWrap: {
+          justifyContent: 'center',
+          paddingRight: spacing.sm,
+          overflow: 'hidden',
+        },
+      }),
+    [colors, homeStyles.homeShadow],
+  );
 
   if (!item) {
     return (
@@ -43,7 +178,7 @@ export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) 
           </Text>
           <View style={styles.ctaRow}>
             <Text style={styles.ctaText}>Add your first asset</Text>
-            <ChevronRightIcon size={18} color={colors.accentGoldDeep} />
+            <ChevronRightIcon size={18} color={colors.accentBlueDeep} />
           </View>
         </View>
         <AssetHeroImage assetType="other_electronics" />
@@ -115,136 +250,3 @@ export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) 
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    backgroundColor: colors.background,
-    borderRadius: radius.cardLg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.lg,
-    overflow: 'hidden',
-    minHeight: 168,
-    ...homeShadow,
-  },
-  emptyCard: {
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    padding: spacing.lg,
-  },
-  content: {
-    flex: 1,
-    padding: spacing.lg,
-    paddingRight: spacing.sm,
-  },
-  emptyCopy: {
-    flex: 1,
-    paddingRight: spacing.md,
-  },
-  sectionLabel: {
-    fontSize: typography.sizes.xs,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: spacing.sm,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  titleCopy: {
-    flex: 1,
-  },
-  assetName: {
-    fontSize: typography.sizes.lg,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  assetMeta: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  statusPill: {
-    marginBottom: spacing.md,
-  },
-  steps: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  stepItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  stepTrack: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    justifyContent: 'center',
-    marginBottom: spacing.xs,
-  },
-  stepDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.slate[300],
-  },
-  stepDotDone: {
-    backgroundColor: colors.accentGold,
-  },
-  stepLine: {
-    position: 'absolute',
-    left: '55%',
-    right: '-45%',
-    height: 2,
-    backgroundColor: colors.slate[300],
-    top: 4,
-  },
-  stepLineDone: {
-    backgroundColor: colors.accentGold,
-  },
-  stepLabel: {
-    fontSize: 10,
-    color: colors.slate[500],
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  stepLabelDone: {
-    color: colors.textPrimary,
-  },
-  location: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-  },
-  decorWrap: {
-    justifyContent: 'center',
-    paddingRight: spacing.sm,
-    overflow: 'hidden',
-  },
-  emptyTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  emptyBody: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.45,
-    marginBottom: spacing.md,
-  },
-  ctaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  ctaText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '700',
-    color: colors.accentGoldDeep,
-  },
-});

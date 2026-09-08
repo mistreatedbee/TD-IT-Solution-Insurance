@@ -8,7 +8,8 @@
  * `ReportTheftSuccessScreen.claimsDisabled.test.tsx`).
  */
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { screen } from '@testing-library/react-native';
+import { renderWithProviders } from '../../../test/renderWithProviders';
 import { AssetDetailScreen } from '../AssetDetailScreen';
 
 jest.mock('expo-router', () => ({
@@ -71,17 +72,17 @@ jest.mock('../../../config/features', () => ({ FEATURE_LOCATION_TRACKING_ENABLED
 
 describe('AssetDetailScreen — location tracking flag disabled (preview/production)', () => {
   it('hides "Enable location tracking on this phone"', async () => {
-    await render(<AssetDetailScreen />);
+    await renderWithProviders(<AssetDetailScreen />);
     expect(screen.queryByText('Enable location tracking on this phone')).toBeNull();
   });
 
   it('hides "Update location now"', async () => {
-    await render(<AssetDetailScreen />);
+    await renderWithProviders(<AssetDetailScreen />);
     expect(screen.queryByText('Update location now')).toBeNull();
   });
 
   it('shows a static not-available message instead', async () => {
-    await render(<AssetDetailScreen />);
+    await renderWithProviders(<AssetDetailScreen />);
     expect(
       screen.getByText('Phone-based location tracking is not available in this build.'),
     ).toBeTruthy();
@@ -89,7 +90,7 @@ describe('AssetDetailScreen — location tracking flag disabled (preview/product
 
   it('never calls requestForegroundLocation from this screen', async () => {
     const { requestForegroundLocation } = require('../../../location');
-    await render(<AssetDetailScreen />);
+    await renderWithProviders(<AssetDetailScreen />);
     expect(requestForegroundLocation).not.toHaveBeenCalled();
   });
 });

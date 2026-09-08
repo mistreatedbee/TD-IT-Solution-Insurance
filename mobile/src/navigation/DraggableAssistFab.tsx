@@ -14,7 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, minTouchTarget, spacing } from '../theme/tokens';
-import { FLOATING_TAB_BAR_CLEARANCE } from './tabBarMetrics';
+import { useFloatingTabBarOffset } from './tabBarMetrics';
 
 const FAB_SIZE = 56;
 const EDGE_MARGIN = spacing.lg;
@@ -34,6 +34,7 @@ function clamp(value: number, min: number, max: number) {
 
 export function DraggableAssistFab() {
   const insets = useSafeAreaInsets();
+  const tabBarOffset = useFloatingTabBarOffset();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   const minX = EDGE_MARGIN;
@@ -41,7 +42,7 @@ export function DraggableAssistFab() {
   const minY = insets.top + EDGE_MARGIN;
   const maxY = Math.max(
     minY,
-    screenHeight - insets.bottom - FLOATING_TAB_BAR_CLEARANCE - FAB_SIZE - EDGE_MARGIN,
+    screenHeight - tabBarOffset - FAB_SIZE - EDGE_MARGIN,
   );
 
   const translateX = useSharedValue(maxX);

@@ -8,7 +8,9 @@ export const PUSH_BRAND = {
   primary: '#0B2A4A',
   primaryMid: '#2C3E50',
   secondary: '#2780B8',
-  accent: '#F5A022',
+  accent: '#3B82F6',
+  /** @deprecated Legacy warm accent — maps to blue per 2026-09 mobile redesign. */
+  accentWarm: '#3B82F6',
   logoUrl: 'https://www.tditsolutionsinsurance.co.za/logo.png',
 } as const;
 

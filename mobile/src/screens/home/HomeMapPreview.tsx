@@ -4,9 +4,10 @@ import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatRelativeTime } from '../../location/formatRelativeTime';
 import { useProtectionMapAssets } from '../../tracking/useProtectionMapAssets';
-import { colors, radius, spacing, typography } from '../../theme/tokens';
+import { useTheme } from '../../theme/ThemeProvider';
+import { radius, spacing, typography } from '../../theme/tokens';
 import { ProtectionMapView } from './ProtectionMapView';
-import { homeShadow, homeStyles } from './homeStyles';
+import { useHomeStyles } from './homeStyles';
 
 export interface HomeMapPreviewProps {
   variant?: 'hero' | 'compact';
@@ -14,8 +15,162 @@ export interface HomeMapPreviewProps {
 
 export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
   const router = useRouter();
+  const { colors } = useTheme();
+  const homeStyles = useHomeStyles();
   const { mappableAssets, isLoading, locationUnavailable } = useProtectionMapAssets('on_map');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        wrap: {
+          marginBottom: spacing.lg,
+        },
+        titleRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.sm,
+          flex: 1,
+        },
+        titleCopy: {
+          flex: 1,
+        },
+        mapIcon: {
+          width: 36,
+          height: 36,
+          borderRadius: 12,
+          backgroundColor: colors.slate[100],
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        subtitle: {
+          fontSize: typography.sizes.xs,
+          color: colors.slate[500],
+          marginTop: 2,
+        },
+        mapShell: {
+          borderRadius: radius.cardLg,
+          overflow: 'hidden',
+          borderWidth: 1,
+          borderColor: colors.border,
+          ...homeStyles.homeShadow,
+        },
+        loadingShell: {
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.slate[100],
+        },
+        emptyOverlay: {
+          position: 'absolute',
+          left: spacing.md,
+          right: spacing.md,
+          top: '32%',
+          backgroundColor: colors.background,
+          opacity: 0.94,
+          borderRadius: radius.card,
+          borderWidth: 1,
+          borderColor: colors.border,
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm,
+        },
+        emptyOverlayText: {
+          fontSize: typography.sizes.xs,
+          color: colors.textSecondary,
+          textAlign: 'center',
+          lineHeight: 18,
+        },
+        locationHint: {
+          marginTop: spacing.sm,
+          fontSize: typography.sizes.xs,
+          color: colors.slate[500],
+          lineHeight: 18,
+        },
+        locationSheet: {
+          position: 'absolute',
+          left: spacing.md,
+          right: spacing.md,
+          bottom: spacing.md,
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          gap: spacing.sm,
+          backgroundColor: colors.background,
+          opacity: 0.96,
+          borderRadius: radius.card,
+          padding: spacing.md,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        sheetIcon: {
+          width: 32,
+          height: 32,
+          borderRadius: 10,
+          backgroundColor: colors.accentBlueTint,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        sheetCopy: {
+          flex: 1,
+          minWidth: 0,
+        },
+        sheetTitle: {
+          fontSize: typography.sizes.sm,
+          fontWeight: '700',
+          color: colors.textPrimary,
+          marginBottom: 2,
+        },
+        sheetCoords: {
+          fontSize: typography.sizes.xs,
+          fontFamily: 'monospace',
+          color: colors.textSecondary,
+          marginBottom: 2,
+        },
+        sheetMeta: {
+          fontSize: typography.sizes.xs,
+          color: colors.slate[500],
+        },
+        pinBadge: {
+          position: 'absolute',
+          top: spacing.md,
+          right: spacing.md,
+          backgroundColor: colors.slate[900],
+          borderRadius: 999,
+          paddingHorizontal: spacing.sm + 2,
+          paddingVertical: spacing.xs,
+        },
+        pinBadgeText: {
+          fontSize: typography.sizes.xs,
+          fontWeight: '700',
+          color: colors.textInverse,
+        },
+        chips: {
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: spacing.sm,
+          marginTop: spacing.sm,
+        },
+        chip: {
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.xs,
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.background,
+        },
+        chipActive: {
+          borderColor: colors.primary,
+          backgroundColor: colors.slate[100],
+        },
+        chipText: {
+          fontSize: typography.sizes.xs,
+          color: colors.textSecondary,
+          fontWeight: '600',
+        },
+        chipTextActive: {
+          color: colors.primary,
+        },
+      }),
+    [colors, homeStyles.homeShadow],
+  );
 
   const selected = useMemo(() => {
     if (selectedId) {
@@ -54,7 +209,7 @@ export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
             </Text>
           </View>
         </View>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/(app)/map' as Href)}>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/map' as Href)}>
           <Text style={homeStyles.sectionLink}>Full map</Text>
         </Pressable>
       </View>
@@ -87,7 +242,7 @@ export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
             {selected?.lastLocation ? (
               <View style={styles.locationSheet}>
                 <View style={styles.sheetIcon}>
-                  <MapPinIcon size={16} color={colors.accentGoldDeep} strokeWidth={2.4} />
+                  <MapPinIcon size={16} color={colors.accentBlueDeep} strokeWidth={2.4} />
                 </View>
                 <View style={styles.sheetCopy}>
                   <Text style={styles.sheetTitle} numberOfLines={1}>
@@ -141,148 +296,3 @@ export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    marginBottom: spacing.lg,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flex: 1,
-  },
-  titleCopy: {
-    flex: 1,
-  },
-  mapIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: colors.slate[100],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  subtitle: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    marginTop: 2,
-  },
-  mapShell: {
-    borderRadius: radius.cardLg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...homeShadow,
-  },
-  loadingShell: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.slate[100],
-  },
-  emptyOverlay: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-    top: '32%',
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderRadius: radius.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  emptyOverlayText: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  locationHint: {
-    marginTop: spacing.sm,
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    lineHeight: 18,
-  },
-  locationSheet: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-    bottom: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderRadius: radius.card,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  sheetIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: colors.accentGoldTint,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  sheetTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 2,
-  },
-  sheetCoords: {
-    fontSize: typography.sizes.xs,
-    fontFamily: 'monospace',
-    color: colors.textSecondary,
-    marginBottom: 2,
-  },
-  sheetMeta: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-  },
-  pinBadge: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-    backgroundColor: colors.slate[900],
-    borderRadius: 999,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs,
-  },
-  pinBadgeText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: '700',
-    color: colors.textInverse,
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  chipActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.slate[100],
-  },
-  chipText: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  chipTextActive: {
-    color: colors.primary,
-  },
-});

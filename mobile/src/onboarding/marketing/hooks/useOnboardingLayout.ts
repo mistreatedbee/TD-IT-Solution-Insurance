@@ -30,6 +30,10 @@ export function useOnboardingLayout() {
   const logoHeaderHeight = isVeryCompact ? 52 : isCompact ? 58 : 64;
   const logoHeaderMaxWidth = Math.min(width - 112, 260);
 
+  /** Auth form screens — wordmark scale close to welcome hero, without duplicating marketing layout. */
+  const logoAuthHeight = isVeryCompact ? 60 : isCompact ? 68 : 76;
+  const logoAuthMaxWidth = Math.min(width - 32, 300);
+
   const buttonSize: ButtonSize = isCompact ? 'md' : 'lg';
   const heroHeight = isVeryCompact ? 150 : isCompact ? 190 : 220;
   const mapHeight = isVeryCompact ? 150 : isCompact ? 175 : 200;
@@ -46,6 +50,8 @@ export function useOnboardingLayout() {
     logoHeroMaxWidth,
     logoHeaderHeight,
     logoHeaderMaxWidth,
+    logoAuthHeight,
+    logoAuthMaxWidth,
     buttonSize,
     heroHeight,
     mapHeight,

@@ -1,5 +1,5 @@
 import { useRouter, type Href } from 'expo-router';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   formatAssetUsage,
@@ -8,8 +8,11 @@ import {
   type PlanCatalogItem,
 } from '../../api/plans';
 import type { Policy } from '../../api/policies';
+import { SurfaceGroup } from '../../components/SurfaceGroup';
 import { Alert, Button, Card } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { useColors } from '../../theme/ThemeProvider';
+import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
+import { spacing, typography } from '../../theme/tokens';
 
 export interface PlanUsageSummaryProps {
   policy: Policy | null | undefined;
@@ -24,23 +27,21 @@ function changePlanHref(policyId: string): Href {
   return `/policy/${policyId}/change-plan` as Href;
 }
 
-export function PlanUsageSummary({
+function PlanUsageContent({
   policy,
   plans,
   assetCount,
-  showUpgradePrompt = false,
-  compact = false,
-}: PlanUsageSummaryProps) {
+  showUpgradePrompt,
+  styles,
+}: Omit<PlanUsageSummaryProps, 'compact'> & {
+  styles: ReturnType<typeof usePlanUsageStyles>;
+}) {
   const router = useRouter();
   const plan = resolvePlanForPolicy(plans, policy);
   const atLimit = plan.maxAssets != null && assetCount >= plan.maxAssets;
 
-  if (!policy && plans.length === 0) {
-    return null;
-  }
-
   return (
-    <Card style={compact ? styles.compactCard : styles.card}>
+    <>
       <Text style={styles.label}>Current plan</Text>
       <Text style={styles.planName}>{plan.name}</Text>
       <Text style={styles.meta}>{formatPlanPrice(plan as PlanCatalogItem)}</Text>
@@ -64,38 +65,86 @@ export function PlanUsageSummary({
           </Button>
         </View>
       ) : null}
-    </Card>
+    </>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.lg,
-  },
-  compactCard: {
-    marginBottom: spacing.md,
-  },
-  label: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  planName: {
-    fontSize: typography.sizes.lg,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  meta: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  upgradeBlock: {
-    marginTop: spacing.md,
-    gap: spacing.sm,
-  },
-  upgradeButton: {
-    marginTop: spacing.xs,
-  },
-});
+function usePlanUsageStyles() {
+  const colors = useColors();
+  const surfaceStyles = useSurfaceStyles();
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        card: {
+          marginBottom: spacing.lg,
+        },
+        compactSurface: {
+          marginBottom: spacing.md,
+        },
+        label: {
+          ...surfaceStyles.sectionTitle,
+          marginBottom: spacing.sm,
+          paddingHorizontal: 0,
+        },
+        planName: {
+          fontSize: typography.sizes.lg,
+          fontWeight: '700',
+          color: colors.textPrimary,
+          marginBottom: spacing.xs,
+        },
+        meta: {
+          fontSize: typography.sizes.sm,
+          color: colors.textSecondary,
+          marginBottom: spacing.xs,
+        },
+        upgradeBlock: {
+          marginTop: spacing.md,
+          gap: spacing.sm,
+        },
+        upgradeButton: {
+          marginTop: spacing.xs,
+        },
+      }),
+    [colors, surfaceStyles],
+  );
+}
+
+export function PlanUsageSummary({
+  policy,
+  plans,
+  assetCount,
+  showUpgradePrompt = false,
+  compact = false,
+}: PlanUsageSummaryProps) {
+  const styles = usePlanUsageStyles();
+
+  if (!policy && plans.length === 0) {
+    return null;
+  }
+
+  if (compact) {
+    return (
+      <SurfaceGroup padded style={styles.compactSurface}>
+        <PlanUsageContent
+          policy={policy}
+          plans={plans}
+          assetCount={assetCount}
+          showUpgradePrompt={showUpgradePrompt}
+          styles={styles}
+        />
+      </SurfaceGroup>
+    );
+  }
+
+  return (
+    <Card style={styles.card}>
+      <PlanUsageContent
+        policy={policy}
+        plans={plans}
+        assetCount={assetCount}
+        showUpgradePrompt={showUpgradePrompt}
+        styles={styles}
+      />
+    </Card>
+  );
+}

@@ -25,6 +25,10 @@ export function configureCustomerClient(config: CustomerClientConfig): void {
   clientConfig = config;
 }
 
+export function getConfiguredAccessToken(): string | null {
+  return clientConfig?.getAccessToken() ?? null;
+}
+
 async function rawRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, headers = {}, authenticated = true } = options;
   const finalHeaders: Record<string, string> = {

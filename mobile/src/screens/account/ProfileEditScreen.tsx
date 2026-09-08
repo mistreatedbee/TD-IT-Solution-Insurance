@@ -10,8 +10,9 @@ import {
   useCustomerProfileQuery,
   useUpdateCustomerProfileMutation,
 } from '../../api/hooks/useCustomerProfile';
+import { ProfileAvatar, ProfilePictureActions } from '../../components/ProfileAvatar';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { FLOATING_TAB_BAR_CLEARANCE } from '../../navigation/tabBarMetrics';
+import { useProfilePictureUpload } from './useProfilePictureUpload';
 import { Alert, Badge, Button, Card, Input, Screen } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
 
@@ -140,6 +141,13 @@ export function ProfileEditScreen() {
   const router = useRouter();
   const profileQuery = useCustomerProfileQuery();
   const updateMutation = useUpdateCustomerProfileMutation();
+  const {
+    choosePhoto,
+    takePhoto,
+    removePhoto,
+    isUploading,
+    isRemoving,
+  } = useProfilePictureUpload();
 
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
@@ -278,12 +286,34 @@ export function ProfileEditScreen() {
   }
 
   const profile = profileQuery.data;
+  const profileInitials = `${profile.firstName?.[0] ?? ''}${profile.lastName?.[0] ?? ''}`.toUpperCase() || 'TD';
 
   return (
-    <Screen
-      safeAreaEdges={['bottom']}
-      contentContainerStyle={{ paddingBottom: FLOATING_TAB_BAR_CLEARANCE + spacing.lg }}
-    >
+    <Screen safeAreaEdges={['bottom']} contentContainerStyle={{ paddingBottom: spacing.lg }}>
+      <Card style={styles.photoCard} padding="md">
+        <View style={styles.photoRow}>
+          <ProfileAvatar
+            initials={profileInitials}
+            profilePictureUrl={profile.profilePictureUrl}
+            size="lg"
+            loading={isUploading || isRemoving}
+          />
+          <View style={styles.photoCopy}>
+            <Text style={styles.photoTitle}>Profile picture</Text>
+            <Text style={styles.photoBody}>
+              Add a photo so support and your account screens are easier to recognise.
+            </Text>
+          </View>
+        </View>
+        <ProfilePictureActions
+          hasPhoto={Boolean(profile.profilePictureUrl)}
+          disabled={isUploading || isRemoving}
+          onChoosePhoto={() => void choosePhoto()}
+          onTakePhoto={() => void takePhoto()}
+          onRemovePhoto={() => void removePhoto()}
+        />
+      </Card>
+
       <Card style={styles.summaryCard} padding="md">
         <View style={styles.summaryRow}>
           <View>
@@ -420,7 +450,7 @@ export function ProfileEditScreen() {
       <Button
         variant="secondary"
         fullWidth
-        onPress={() => router.push('/(app)/account/verification')}
+        onPress={() => router.push('/account/verification')}
         style={styles.secondaryButton}
       >
         Go to verification centre
@@ -437,6 +467,28 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     marginBottom: spacing.lg,
+  },
+  photoCard: {
+    marginBottom: spacing.lg,
+  },
+  photoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  photoCopy: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  photoTitle: {
+    fontSize: typography.sizes.base,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  photoBody: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+    lineHeight: typography.sizes.sm * 1.4,
   },
   summaryRow: {
     flexDirection: 'row',

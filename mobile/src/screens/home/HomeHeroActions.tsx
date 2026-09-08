@@ -1,9 +1,84 @@
 import { useRouter, type Href } from 'expo-router';
 import { MapPinIcon, PackagePlusIcon, ShieldAlertIcon } from 'lucide-react-native';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing, typography } from '../../theme/tokens';
-import { homeShadow } from './homeStyles';
+import { SurfaceGroup } from '../../components/SurfaceGroup';
+import { useColors } from '../../theme/ThemeProvider';
+import { spacing, typography } from '../../theme/tokens';
+
+function useHeroActionStyles() {
+  const colors = useColors();
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        group: {
+          flexDirection: 'row',
+        },
+        cell: {
+          flex: 1,
+          padding: spacing.lg,
+          minHeight: 120,
+          alignItems: 'flex-start',
+        },
+        cellRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.md,
+        },
+        columnDivider: {
+          width: StyleSheet.hairlineWidth,
+          backgroundColor: colors.hairline,
+          marginVertical: spacing.md,
+        },
+        iconWrap: {
+          width: 48,
+          height: 48,
+          borderRadius: 16,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: spacing.sm,
+        },
+        iconAccent: {
+          backgroundColor: colors.accentGoldTint,
+        },
+        iconNeutral: {
+          backgroundColor: colors.slate[100],
+        },
+        iconWrapSmall: {
+          width: 40,
+          height: 40,
+          borderRadius: 12,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        title: {
+          fontSize: typography.sizes.base,
+          fontWeight: '700',
+          color: colors.textPrimary,
+          marginBottom: spacing.xs,
+        },
+        body: {
+          fontSize: typography.sizes.xs,
+          color: colors.textSecondary,
+          lineHeight: typography.sizes.xs * 1.45,
+        },
+        smallCopy: {
+          flex: 1,
+        },
+        smallTitle: {
+          fontSize: typography.sizes.sm,
+          fontWeight: '700',
+          color: colors.textPrimary,
+        },
+        smallBody: {
+          fontSize: typography.sizes.xs,
+          color: colors.textSecondary,
+          marginTop: 2,
+        },
+      }),
+    [colors],
+  );
+}
 
 export function HomeHeroActions({
   showTheftReporting = true,
@@ -15,6 +90,8 @@ export function HomeHeroActions({
   onReportTheft?: () => void;
 }) {
   const router = useRouter();
+  const colors = useColors();
+  const styles = useHeroActionStyles();
 
   function handleReportTheft() {
     if (onReportTheft) {
@@ -25,58 +102,68 @@ export function HomeHeroActions({
   }
 
   return (
-    <View style={styles.row}>
+    <SurfaceGroup style={styles.group}>
       <Pressable
-        style={[styles.card, styles.cardWarm]}
+        style={styles.cell}
         accessibilityRole="button"
-        onPress={() => router.push('/(app)/assets/register' as Href)}
+        onPress={() => router.push('/assets/register' as Href)}
       >
-        <View style={[styles.iconWrap, styles.iconWarm]}>
-          <PackagePlusIcon size={26} color={colors.accentGoldDeep} strokeWidth={2.2} />
+        <View style={[styles.iconWrap, styles.iconAccent]}>
+          <PackagePlusIcon size={24} color={colors.accentGoldDeep} strokeWidth={2.2} />
         </View>
         <Text style={styles.title}>Add asset</Text>
         <Text style={styles.body}>Register a device or vehicle</Text>
       </Pressable>
 
       {showTheftReporting ? (
-        <Pressable
-          style={[styles.card, theftReportingLocked ? styles.cardWarm : styles.cardCool]}
-          accessibilityRole="button"
-          onPress={handleReportTheft}
-        >
-          <View style={[styles.iconWrap, theftReportingLocked ? styles.iconWarm : styles.iconCool]}>
-            <ShieldAlertIcon
-              size={26}
-              color={theftReportingLocked ? colors.accentGoldDeep : colors.textInverse}
-              strokeWidth={2.2}
-            />
-          </View>
-          <Text style={[styles.title, theftReportingLocked ? undefined : styles.titleOnDark]}>
-            {theftReportingLocked ? 'Upgrade for theft reporting' : 'Report theft'}
-          </Text>
-          <Text style={[styles.body, theftReportingLocked ? undefined : styles.bodyOnDark]}>
-            {theftReportingLocked
-              ? 'Included from the Plus plan'
-              : 'Start recovery immediately'}
-          </Text>
-        </Pressable>
+        <>
+          <View style={styles.columnDivider} />
+          <Pressable
+            style={styles.cell}
+            accessibilityRole="button"
+            onPress={handleReportTheft}
+          >
+            <View
+              style={[
+                styles.iconWrap,
+                theftReportingLocked ? styles.iconAccent : styles.iconNeutral,
+              ]}
+            >
+              <ShieldAlertIcon
+                size={24}
+                color={theftReportingLocked ? colors.accentGoldDeep : colors.primary}
+                strokeWidth={2.2}
+              />
+            </View>
+            <Text style={styles.title}>
+              {theftReportingLocked ? 'Upgrade for theft' : 'Report theft'}
+            </Text>
+            <Text style={styles.body}>
+              {theftReportingLocked
+                ? 'Included from Plus plan'
+                : 'Start recovery immediately'}
+            </Text>
+          </Pressable>
+        </>
       ) : null}
-    </View>
+    </SurfaceGroup>
   );
 }
 
 /** Secondary pair — map + alerts shortcuts. */
 export function HomeSecondaryActions({ hasMapPins }: { hasMapPins: boolean }) {
   const router = useRouter();
+  const colors = useColors();
+  const styles = useHeroActionStyles();
 
   return (
-    <View style={styles.row}>
+    <SurfaceGroup style={styles.group}>
       <Pressable
-        style={[styles.cardSmall, styles.cardCool]}
+        style={[styles.cell, styles.cellRow]}
         accessibilityRole="button"
-        onPress={() => router.push('/(app)/map' as Href)}
+        onPress={() => router.push('/map' as Href)}
       >
-        <View style={[styles.iconWrapSmall, styles.iconCool]}>
+        <View style={[styles.iconWrapSmall, styles.iconNeutral]}>
           <MapPinIcon size={20} color={colors.primary} strokeWidth={2.2} />
         </View>
         <View style={styles.smallCopy}>
@@ -86,90 +173,6 @@ export function HomeSecondaryActions({ hasMapPins }: { hasMapPins: boolean }) {
           </Text>
         </View>
       </Pressable>
-    </View>
+    </SurfaceGroup>
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  card: {
-    flex: 1,
-    borderRadius: radius.cardLg,
-    padding: spacing.lg,
-    minHeight: 128,
-    ...homeShadow,
-  },
-  cardWarm: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-  },
-  cardCool: {
-    backgroundColor: colors.primary,
-    borderWidth: 0,
-  },
-  cardSmall: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    borderRadius: radius.card,
-    padding: spacing.md,
-    ...homeShadow,
-  },
-  iconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  iconWarm: {
-    backgroundColor: colors.accentGoldTint,
-  },
-  iconCool: {
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  iconWrapSmall: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  titleOnDark: {
-    color: colors.textInverse,
-  },
-  body: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.xs * 1.45,
-  },
-  bodyOnDark: {
-    color: 'rgba(255,255,255,0.78)',
-  },
-  smallCopy: {
-    flex: 1,
-  },
-  smallTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  smallBody: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-});

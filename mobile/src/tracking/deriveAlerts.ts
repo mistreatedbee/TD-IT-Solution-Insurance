@@ -36,7 +36,7 @@ export function deriveDashboardAlerts(input: DeriveAlertsInput): DashboardAlert[
       category: 'account',
       title: 'Complete your profile',
       body: 'Add a few details to strengthen your protection setup.',
-      href: '/(app)/account/profile',
+      href: '/account/profile',
     });
   }
 
@@ -50,7 +50,7 @@ export function deriveDashboardAlerts(input: DeriveAlertsInput): DashboardAlert[
       category: 'account',
       title: 'Identity verification needs attention',
       body: 'Review your details and resubmit for verification.',
-      href: '/(app)/account/verification',
+      href: '/account/verification',
     });
   } else if (
     input.profileLoaded &&
@@ -62,7 +62,7 @@ export function deriveDashboardAlerts(input: DeriveAlertsInput): DashboardAlert[
       category: 'account',
       title: 'Submit identity verification',
       body: 'Complete verification to unlock full recovery support.',
-      href: '/(app)/account/verification',
+      href: '/account/verification',
     });
   }
 
@@ -73,7 +73,7 @@ export function deriveDashboardAlerts(input: DeriveAlertsInput): DashboardAlert[
       category: 'insurance',
       title: 'Protect your first asset',
       body: 'Register a device or vehicle to start your coverage.',
-      href: '/(app)/assets/register',
+      href: '/assets/register',
     });
   } else if (!input.hasPolicy) {
     alerts.push({

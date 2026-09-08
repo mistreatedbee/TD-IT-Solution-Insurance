@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "tditinsurance",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "co.za.tditsolutions.insurance",
@@ -41,6 +41,13 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "TD IT Solution Insurance needs access to your photos so you can choose a profile picture.",
+          "cameraPermission": "TD IT Solution Insurance needs camera access so you can take a profile picture."
+        }
+      ],
       [
         "expo-location",
         {

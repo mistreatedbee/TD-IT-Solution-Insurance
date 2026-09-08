@@ -15,34 +15,41 @@
  * hidden behind a disabled button. See `src/config/features.ts` and
  * `docs/organization/incidents/INC-001-location-ingestion.md` §9.3.
  */
-import { useRouter } from 'expo-router';
-import React from 'react';
+import { useRouter, type Href } from 'expo-router';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text } from 'react-native';
+import { SubpageHeader } from '../../navigation/SubpageHeader';
 import { Alert, Button, Screen } from '../../theme/primitives';
-import { spacing, typography, colors } from '../../theme/tokens';
+import { useColors } from '../../theme/ThemeProvider';
+import { spacing, typography } from '../../theme/tokens';
 
 export function LocationTrackingUnavailableScreen() {
   const router = useRouter();
+  const colors = useColors();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        body: {
+          fontSize: typography.sizes.base,
+          color: colors.textSecondary,
+          lineHeight: typography.sizes.base * 1.4,
+          marginVertical: spacing.xl,
+        },
+      }),
+    [colors],
+  );
 
   return (
     <Screen>
+      <SubpageHeader />
       <Alert tone="info">Live location tracking is coming soon.</Alert>
       <Text style={styles.body}>
         Device location tracking is not available in this build yet. Your registered assets are
         still safe and visible from the Assets tab.
       </Text>
-      <Button variant="primary" fullWidth onPress={() => router.replace('/(app)')}>
+      <Button variant="primary" fullWidth onPress={() => router.replace('/(app)/(tabs)' as Href)}>
         Back to home
       </Button>
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  body: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-    marginVertical: spacing.xl,
-  },
-});

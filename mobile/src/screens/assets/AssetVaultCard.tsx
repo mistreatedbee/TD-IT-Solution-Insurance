@@ -1,19 +1,79 @@
 import { ChevronRightIcon } from 'lucide-react-native';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatAssetType } from '../../lib/asset-labels';
 import type { AssetTrackingView } from '../../tracking/types';
+import { useTheme } from '../../theme/ThemeProvider';
+import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
+import { radius, spacing, typography } from '../../theme/tokens';
 import { AssetTypeImage } from '../home/assetVisuals';
-import { colors, radius, spacing, typography } from '../../theme/tokens';
 import { TrackingStatusChip } from './TrackingStatusChip';
-import { vaultShadow } from './assetVaultStyles';
 
 export interface AssetVaultCardProps {
   item: AssetTrackingView;
   onPress: () => void;
+  variant?: 'standalone' | 'inset';
+  isLast?: boolean;
 }
 
-export function AssetVaultCard({ item, onPress }: AssetVaultCardProps) {
+export function AssetVaultCard({
+  item,
+  onPress,
+  variant = 'standalone',
+  isLast = false,
+}: AssetVaultCardProps) {
+  const { colors, elevation } = useTheme();
+  const surfaceStyles = useSurfaceStyles();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        card: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.md,
+          backgroundColor: colors.background,
+          borderRadius: radius.cardLg,
+          padding: spacing.md,
+          ...elevation,
+        },
+        cardInset: {
+          borderRadius: 0,
+          borderWidth: 0,
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          elevation: 0,
+          ...surfaceStyles.insetRow,
+          backgroundColor: 'transparent',
+          paddingVertical: spacing.md,
+        },
+        cardInsetDivider: {
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: colors.hairline,
+        },
+        body: {
+          flex: 1,
+          minWidth: 0,
+        },
+        name: {
+          fontSize: typography.sizes.base,
+          fontWeight: '700',
+          color: colors.textPrimary,
+          marginBottom: 2,
+        },
+        type: {
+          fontSize: typography.sizes.xs,
+          color: colors.textSecondary,
+          marginBottom: spacing.xs,
+        },
+        meta: {
+          fontSize: typography.sizes.xs,
+          color: colors.textSecondary,
+          marginTop: spacing.xs,
+        },
+      }),
+    [colors, elevation, surfaceStyles],
+  );
+
   const subtitle =
     item.locationLabel != null
       ? `Updated ${item.locationLabel}`
@@ -23,12 +83,18 @@ export function AssetVaultCard({ item, onPress }: AssetVaultCardProps) {
           ? 'Enable tracking on this phone'
           : 'No location yet';
 
+  const inset = variant === 'inset';
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${item.displayName}, ${item.trackingLabel}`}
       onPress={onPress}
-      style={styles.card}
+      style={[
+        styles.card,
+        inset ? styles.cardInset : null,
+        inset && !isLast ? styles.cardInsetDivider : null,
+      ]}
     >
       <AssetTypeImage assetType={item.assetType} size="md" />
 
@@ -47,37 +113,3 @@ export function AssetVaultCard({ item, onPress }: AssetVaultCardProps) {
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.background,
-    borderRadius: radius.cardLg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    ...vaultShadow,
-  },
-  body: {
-    flex: 1,
-    minWidth: 0,
-    gap: spacing.xs,
-  },
-  name: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  type: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  meta: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    marginTop: 2,
-  },
-});

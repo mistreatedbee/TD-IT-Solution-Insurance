@@ -1,13 +1,7 @@
 /**
  * TEMPORARY BRIDGE component — see mobile/src/theme/tokens.ts header.
- * Do not extend this ad hoc; replace once design-system-manager ships the
- * RN component port (architecture.md §1.5).
- *
- * Full-bleed mobile screen surface — no Card wrapper, per ui-design.md §1:
- * "Mobile app screens do not wrap the form in a Card — the screen
- * background *is* the surface."
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -19,17 +13,15 @@ import {
 } from 'react-native';
 import type { RefreshControlProps } from 'react-native';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
-import { colors, spacing } from '../tokens';
+import { useTabBarContentInset } from '../../navigation/TabBarInsetContext';
+import { useColors } from '../ThemeProvider';
+import { spacing } from '../tokens';
 
 export interface ScreenProps {
   children: React.ReactNode;
-  /** Wrap content in a ScrollView (default true — most auth forms benefit
-   * from this on small devices / with the keyboard open). */
   scroll?: boolean;
-  /** Horizontal+vertical padding around content. Default true. */
   padded?: boolean;
   refreshControl?: React.ReactElement<RefreshControlProps>;
-  /** Safe-area edges to respect. Defaults to top + bottom. */
   safeAreaEdges?: Edge[];
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -44,6 +36,16 @@ export function Screen({
   style,
   contentContainerStyle,
 }: ScreenProps) {
+  const colors = useColors();
+  const tabBarInset = useTabBarContentInset();
+
+  const scrollBottomInset = useMemo(
+    () => ({
+      paddingBottom: tabBarInset > 0 ? tabBarInset : spacing.xl,
+    }),
+    [tabBarInset],
+  );
+
   const content = (
     <View
       style={[
@@ -57,7 +59,10 @@ export function Screen({
   );
 
   return (
-    <SafeAreaView style={[styles.safeArea, style]} edges={safeAreaEdges}>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: colors.canvas }, style]}
+      edges={safeAreaEdges}
+    >
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -65,7 +70,7 @@ export function Screen({
         {scroll ? (
           <ScrollView
             style={styles.flex}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.scrollContent, scrollBottomInset]}
             keyboardShouldPersistTaps="handled"
             refreshControl={refreshControl}
           >
@@ -82,7 +87,6 @@ export function Screen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   flex: {
     flex: 1,

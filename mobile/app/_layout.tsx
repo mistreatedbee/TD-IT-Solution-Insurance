@@ -10,17 +10,28 @@ import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { registerForcedLogoutHandler, refreshAccessToken } from '../src/api/client';
+import { getOrCreateDeviceId } from '../src/auth/device';
 import { useSessionStore } from '../src/auth/session-store';
 import { useAppShellGate } from '../src/onboarding/useAppShellGate';
 import { NetworkProvider, OfflineBanner } from '../src/network/NetworkProvider';
 import { asyncStoragePersister, queryClient, shouldPersistQuery } from '../src/query/queryClient';
 import { AnalyticsBootstrap } from '../src/analytics/AnalyticsBootstrap';
+import { ThemeProvider, useColors } from '../src/theme/ThemeProvider';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // no-op — if this races with an already-hidden splash screen, that's fine.
 });
 
-export default function RootLayout() {
+function BootstrapLoading() {
+  const colors = useColors();
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas }}>
+      <ActivityIndicator size="large" color={colors.primary} />
+    </View>
+  );
+}
+
+function RootLayoutInner() {
   const status = useSessionStore((s) => s.status);
   const appShellGate = useAppShellGate();
   const router = useRouter();
@@ -37,15 +48,10 @@ export default function RootLayout() {
   }, [router]);
 
   const bootstrap = useCallback(async () => {
-    // architecture.md §2.3: "always refresh on launch" — the app never
-    // trusts an access token it hasn't confirmed is still valid at cold
-    // start. A missing/invalid/expired refresh token resolves to
-    // 'signed-out' via performForcedLogout inside refreshAccessToken.
     try {
-      await refreshAccessToken();
+      // Warm device id + silent refresh in parallel — login should not wait on SecureStore.
+      await Promise.all([getOrCreateDeviceId(), refreshAccessToken()]);
     } catch {
-      // Invalid/revoked tokens are cleared in client.ts. Network failures during
-      // cold start leave status stuck on 'hydrating' unless we exit here.
       if (useSessionStore.getState().status === 'hydrating') {
         useSessionStore.getState().setSignedOut();
       }
@@ -66,60 +72,66 @@ export default function RootLayout() {
     status === 'signed-in' && appShellGate === 'loading';
 
   if (isWaitingForBootstrap) {
-    // Splash screen still visible — avoid rendering underneath it.
     return null;
   }
 
   if (isWaitingForShell) {
     return (
-      <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color="#1e3a5f" />
-        </View>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <BootstrapLoading />
       </GestureHandlerRootView>
     );
   }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister: asyncStoragePersister,
+          buster: 'asset-visuals-v3',
+          dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+        }}
+      >
+        <NetworkProvider>
+          <AnalyticsBootstrap />
+          <OfflineBanner />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Protected guard={status === 'signed-out'}>
+              <Stack.Screen name="(auth)" />
+            </Stack.Protected>
+            <Stack.Protected guard={status === 'signed-in' && appShellGate === 'onboarding'}>
+              <Stack.Screen name="(onboarding)" />
+            </Stack.Protected>
+            <Stack.Protected guard={status === 'signed-in' && appShellGate === 'app'}>
+              <Stack.Screen name="(app)" />
+              <Stack.Screen
+                name="verification-gate"
+                options={{ presentation: 'modal' }}
+              />
+            </Stack.Protected>
+            <Stack.Protected guard={status === 'signed-in' && appShellGate === 'security-app'}>
+              <Stack.Screen name="(security-app)" />
+            </Stack.Protected>
+            <Stack.Protected guard={status === 'signed-in' && appShellGate === 'web-portal'}>
+              <Stack.Screen name="web-portal-required" />
+            </Stack.Protected>
+            <Stack.Screen name="verify-email" />
+            <Stack.Screen name="invitations/accept" />
+          </Stack>
+        </NetworkProvider>
+      </PersistQueryClientProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <PersistQueryClientProvider
-          client={queryClient}
-          persistOptions={{
-            persister: asyncStoragePersister,
-            // Bust stale persisted caches that can crash hydration after query-shape changes.
-            buster: 'asset-visuals-v3',
-            dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
-          }}
-        >
-            <NetworkProvider>
-              <AnalyticsBootstrap />
-              <OfflineBanner />
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Protected guard={status === 'signed-out'}>
-                  <Stack.Screen name="(auth)" />
-                </Stack.Protected>
-                <Stack.Protected guard={status === 'signed-in' && appShellGate === 'onboarding'}>
-                  <Stack.Screen name="(onboarding)" />
-                </Stack.Protected>
-                <Stack.Protected guard={status === 'signed-in' && appShellGate === 'app'}>
-                  <Stack.Screen name="(app)" />
-                  <Stack.Screen
-                    name="verification-gate"
-                    options={{ presentation: 'modal' }}
-                  />
-                </Stack.Protected>
-                <Stack.Protected guard={status === 'signed-in' && appShellGate === 'security-app'}>
-                  <Stack.Screen name="(security-app)" />
-                </Stack.Protected>
-                <Stack.Protected guard={status === 'signed-in' && appShellGate === 'web-portal'}>
-                  <Stack.Screen name="web-portal-required" />
-                </Stack.Protected>
-                <Stack.Screen name="verify-email" />
-                <Stack.Screen name="invitations/accept" />
-              </Stack>
-            </NetworkProvider>
-        </PersistQueryClientProvider>
+        <ThemeProvider>
+          <RootLayoutInner />
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -1,11 +1,7 @@
 /**
  * TEMPORARY BRIDGE component — see mobile/src/theme/tokens.ts header.
- * RN port of src/components/Button/index.tsx's variant contract (primary /
- * secondary / ghost / tertiary), not a reinvented API. `ghost` is mirrored
- * for contract parity but has no current mobile consumer (it's a
- * dark-surface treatment used on privileged web dashboards only).
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -16,7 +12,8 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { colors, minTouchTarget, radius, spacing, typography } from '../tokens';
+import { useColors } from '../ThemeProvider';
+import { minTouchTarget, radius, spacing, typography } from '../tokens';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'tertiary';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -50,8 +47,71 @@ export function Button({
   accessibilityLabel,
   style,
 }: ButtonProps) {
+  const colors = useColors();
   const isDisabled = disabled || loading;
   const sizeStyle = sizeStyles[size];
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        base: {
+          minHeight: minTouchTarget,
+          paddingHorizontal: spacing.xl,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: radius.full,
+        },
+        fullWidth: { width: '100%' },
+        tertiaryPadding: {
+          paddingHorizontal: spacing.xs,
+          minHeight: undefined,
+        },
+        disabled: { opacity: 0.5 },
+        pressed: { opacity: 0.85 },
+        content: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.sm,
+        },
+        label: { fontWeight: '600' },
+        primary: { backgroundColor: colors.primary },
+        secondary: {
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderColor: colors.primary,
+          borderRadius: radius.input,
+        },
+        ghost: {
+          backgroundColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.7)',
+          borderRadius: radius.input,
+        },
+        tertiary: {
+          backgroundColor: 'transparent',
+          borderRadius: 0,
+        },
+        primaryText: { color: colors.textInverse },
+        secondaryText: { color: colors.primary },
+        ghostText: { color: colors.textInverse },
+        tertiaryText: { color: colors.accentBlueDeep, textDecorationLine: 'underline' },
+      }),
+    [colors],
+  );
+
+  const variantViewStyle: Record<ButtonVariant, StyleProp<ViewStyle>> = {
+    primary: styles.primary,
+    secondary: styles.secondary,
+    ghost: styles.ghost,
+    tertiary: styles.tertiary,
+  };
+
+  const variantTextStyle: Record<ButtonVariant, TextStyle> = {
+    primary: styles.primaryText,
+    secondary: styles.secondaryText,
+    ghost: styles.ghostText,
+    tertiary: styles.tertiaryText,
+  };
 
   return (
     <Pressable
@@ -63,7 +123,7 @@ export function Button({
       style={({ pressed }) => [
         styles.base,
         { paddingVertical: sizeStyle.paddingVertical },
-        variantStyles[variant],
+        variantViewStyle[variant],
         fullWidth ? styles.fullWidth : undefined,
         variant === 'tertiary' ? styles.tertiaryPadding : undefined,
         isDisabled ? styles.disabled : undefined,
@@ -78,74 +138,10 @@ export function Button({
             color={variant === 'secondary' || variant === 'tertiary' ? colors.primary : colors.textInverse}
           />
         ) : null}
-        <Text
-          style={[
-            styles.label,
-            { fontSize: sizeStyle.fontSize },
-            variantTextStyles[variant],
-          ]}
-        >
+        <Text style={[styles.label, { fontSize: sizeStyle.fontSize }, variantTextStyle[variant]]}>
           {children}
         </Text>
       </View>
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  base: {
-    minHeight: minTouchTarget,
-    paddingHorizontal: spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.full,
-  },
-  fullWidth: {
-    width: '100%',
-  },
-  tertiaryPadding: {
-    paddingHorizontal: spacing.xs,
-    minHeight: undefined,
-  },
-  disabled: {
-    opacity: 0.5,
-  },
-  pressed: {
-    opacity: 0.85,
-  },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  label: {
-    fontWeight: '600',
-  },
-});
-
-const variantStyles: Record<ButtonVariant, StyleProp<ViewStyle>> = {
-  primary: { backgroundColor: colors.primary },
-  secondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: radius.input,
-  },
-  ghost: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
-    borderRadius: radius.input,
-  },
-  tertiary: {
-    backgroundColor: 'transparent',
-    borderRadius: 0,
-  },
-};
-
-const variantTextStyles: Record<ButtonVariant, TextStyle> = {
-  primary: { color: colors.textInverse },
-  secondary: { color: colors.primary },
-  ghost: { color: colors.textInverse },
-  tertiary: { color: colors.accentGoldDeep, textDecorationLine: 'underline' },
-};

@@ -90,6 +90,46 @@ jest.mock('react-native-maps', () => {
   };
 });
 
+jest.mock('expo-blur', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    BlurView: ({ children, style }: { children?: React.ReactNode; style?: object }) =>
+      React.createElement(View, { style }, children),
+  };
+});
+
+jest.mock('expo-glass-effect', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    GlassView: ({ children, style }: { children?: React.ReactNode; style?: object }) =>
+      React.createElement(View, { style }, children),
+    isGlassEffectAPIAvailable: jest.fn(() => false),
+    isLiquidGlassAvailable: jest.fn(() => false),
+  };
+});
+
+jest.mock('expo-image-picker', () => ({
+  requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  requestCameraPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
+  launchCameraAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
+  UIImagePickerPreferredAssetRepresentationMode: {
+    Compatible: 'compatible',
+  },
+}));
+
+jest.mock('expo-image-manipulator', () => ({
+  SaveFormat: { JPEG: 'jpeg' },
+  manipulateAsync: jest.fn(async () => ({
+    uri: 'file:///tmp/profile.jpg',
+    base64: 'aGVsbG8=',
+    width: 512,
+    height: 512,
+  })),
+}));
+
 // --- lucide-react-native -----------------------------------------------
 // Icon components are SVG-native; mock as empty Views for unit tests.
 jest.mock('lucide-react-native', () => {

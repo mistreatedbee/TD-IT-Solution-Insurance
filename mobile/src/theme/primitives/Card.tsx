@@ -1,14 +1,7 @@
-/**
- * TEMPORARY BRIDGE component — see mobile/src/theme/tokens.ts header.
- * RN port of src/components/Card/index.tsx's static (non-interactive)
- * surface. Per ui-design.md §1, auth screens do NOT use this (mobile
- * screens are full-bleed, see Screen.tsx) — kept for non-auth, future
- * screens (e.g. the placeholder home cards in app/(app)/index.tsx) that
- * do benefit from a bounded surface.
- */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { colors, radius, spacing } from '../tokens';
+import { useTheme } from '../ThemeProvider';
+import { radius, spacing } from '../tokens';
 
 export type CardPadding = 'none' | 'sm' | 'md' | 'lg';
 
@@ -16,6 +9,7 @@ export interface CardProps {
   children: React.ReactNode;
   padding?: CardPadding;
   style?: StyleProp<ViewStyle>;
+  bordered?: boolean;
 }
 
 const paddingValues: Record<CardPadding, number> = {
@@ -25,11 +19,31 @@ const paddingValues: Record<CardPadding, number> = {
   lg: spacing['2xl'],
 };
 
-export function Card({ children, padding = 'md', style }: CardProps) {
+export function Card({ children, padding = 'md', style, bordered = false }: CardProps) {
+  const { colors, elevation } = useTheme();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        elevated: {
+          backgroundColor: colors.background,
+          borderRadius: radius.cardLg,
+          overflow: 'hidden',
+          ...elevation,
+        },
+        bordered: {
+          backgroundColor: colors.background,
+          borderRadius: radius.card,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+      }),
+    [colors.background, colors.border, elevation],
+  );
+
   return (
     <View
       style={[
-        styles.base,
+        bordered ? styles.bordered : styles.elevated,
         { padding: paddingValues[padding] },
         style,
       ]}
@@ -38,12 +52,3 @@ export function Card({ children, padding = 'md', style }: CardProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  base: {
-    backgroundColor: colors.background,
-    borderRadius: radius.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-});

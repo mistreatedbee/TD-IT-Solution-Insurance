@@ -27,87 +27,10 @@
  *     Tailwind class runtime to resolve them from).
  */
 
-export const colors = {
-  // Brand / action
-  primary: '#2C3E50',
-  primaryHover: '#24333F',
-  accentGold: '#F5A022',
-  accentGoldDeep: '#D9720A',
-  accentGoldTint: '#FDECD2',
+import { lightColors } from './colorSchemes';
 
-  // Privileged-surface backgrounds (web dashboards use these; the mobile
-  // app's Phase 1 scope is customer-only, so these are mirrored for
-  // completeness/parity but not currently used by any customer screen).
-  surfaceNavy: '#0F1A2C',
-  surfaceNavyDeep: '#0A1628',
-
-  // Mobile app surfaces (full-bleed, no Card wrapper — ui-design.md §1)
-  background: '#FFFFFF',
-  card: '#F5F1EA',
-
-  // Status
-  success: '#059669',
-  successLight: '#10B981',
-
-  // Text
-  textPrimary: '#1C1917',
-  textSecondary: '#6B6156',
-  textInverse: '#FFFFFF',
-
-  // Structure
-  border: '#E4DDD1',
-  hairline: 'rgba(44,62,80,0.08)',
-
-  // Field error state (Input's existing red-500/600 treatment, reused
-  // verbatim per ui-design.md §1's instruction to use Input's built-in
-  // error tokens for field-level errors pending the Alert component).
-  fieldError: '#EF4444',
-  fieldErrorText: '#DC2626',
-
-  // Alert/Badge tone palette — mirrors design-system-additions.md §2/§3's
-  // Tailwind color mapping (bg-*-50 / text-*-800 / ring-*-200 / icon *-600
-  // families), reused as flat hex values since RN has no Tailwind runtime.
-  tones: {
-    info: {
-      background: '#EFF6FF', // blue-50
-      text: '#1E40AF', // blue-800
-      border: '#BFDBFE', // blue-200
-      icon: '#2563EB', // blue-600
-    },
-    success: {
-      background: '#ECFDF5', // emerald-50
-      text: '#065F46', // emerald-800
-      border: '#A7F3D0', // emerald-200
-      icon: '#059669', // emerald-600
-    },
-    warning: {
-      background: '#FFFBEB', // amber-50
-      text: '#92400E', // amber-800
-      border: '#FDE68A', // amber-200
-      icon: '#D97706', // amber-600
-    },
-    danger: {
-      background: '#FEF2F2', // red-50
-      text: '#991B1B', // red-800
-      border: '#FECACA', // red-200
-      icon: '#DC2626', // red-600
-    },
-  },
-
-  // Neutral scale (Input placeholder/disabled/border states — Tailwind
-  // slate family, matching src/components/Input/index.tsx's own usage).
-  slate: {
-    50: '#F8FAFC',
-    100: '#F1F5F9',
-    300: '#CBD5E1',
-    400: '#94A3B8',
-    500: '#64748B',
-    600: '#475569',
-    700: '#334155',
-    800: '#1E293B',
-    900: '#0F172A',
-  },
-} as const;
+/** Static light palette — tests and non-React modules. Prefer `useColors()` in UI. */
+export const colors = lightColors;
 
 export const radius = {
   input: 8,

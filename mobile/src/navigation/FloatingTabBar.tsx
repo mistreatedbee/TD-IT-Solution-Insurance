@@ -1,18 +1,23 @@
 import {
   BellIcon,
+  ClipboardListIcon,
   HomeIcon,
   MapPinIcon,
   PackageIcon,
   UserIcon,
 } from 'lucide-react-native';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   FEATURE_ALERTS_ENABLED,
   FEATURE_LOCATION_TRACKING_ENABLED,
 } from '../config/features';
-import { colors, minTouchTarget, spacing } from '../theme/tokens';
+import { useProtectionDashboard } from '../tracking/useProtectionDashboard';
+import { useTheme } from '../theme/ThemeProvider';
+import { minTouchTarget, spacing } from '../theme/tokens';
+import { GlassSurface } from './GlassSurface';
+import { useLiquidGlassChrome } from './useLiquidGlassChrome';
 
 interface TabRoute {
   key: string;
@@ -34,9 +39,10 @@ interface FloatingTabBarProps {
     routes: TabRoute[];
   };
   navigation: FloatingTabBarNavigation;
+  variant?: 'customer' | 'security';
 }
 
-const TAB_CONFIG: Record<
+const CUSTOMER_TAB_CONFIG: Record<
   string,
   { Icon: React.ComponentType<{ color: string; size: number }>; label: string }
 > = {
@@ -47,9 +53,18 @@ const TAB_CONFIG: Record<
   account: { Icon: UserIcon, label: 'Account' },
 };
 
-const VISIBLE_TAB_ORDER = ['index', 'assets', 'map', 'alerts', 'account'] as const;
+const SECURITY_TAB_CONFIG: Record<
+  string,
+  { Icon: React.ComponentType<{ color: string; size: number }>; label: string }
+> = {
+  index: { Icon: ClipboardListIcon, label: 'Cases' },
+  profile: { Icon: UserIcon, label: 'Profile' },
+};
 
-const TAB_ENABLED: Record<(typeof VISIBLE_TAB_ORDER)[number], boolean> = {
+const CUSTOMER_TAB_ORDER = ['index', 'assets', 'map', 'alerts', 'account'] as const;
+const SECURITY_TAB_ORDER = ['index', 'profile'] as const;
+
+const CUSTOMER_TAB_ENABLED: Record<(typeof CUSTOMER_TAB_ORDER)[number], boolean> = {
   index: true,
   assets: true,
   map: FEATURE_LOCATION_TRACKING_ENABLED,
@@ -62,31 +77,144 @@ function TabButton({
   label,
   Icon,
   onPress,
+  badgeCount = 0,
+  colors,
+  isDark,
+  styles,
 }: {
   focused: boolean;
   label: string;
   Icon: React.ComponentType<{ color: string; size: number }>;
   onPress: () => void;
+  badgeCount?: number;
+  colors: ReturnType<typeof useTheme>['colors'];
+  isDark: boolean;
+  styles: ReturnType<typeof createTabBarStyles>['styles'];
 }) {
+  const accessibilityLabel =
+    badgeCount > 0 ? `${label}, ${badgeCount} open alert${badgeCount === 1 ? '' : 's'}` : label;
+
+  const iconColor = focused
+    ? colors.accentBlue
+    : isDark
+      ? colors.slate[400]
+      : colors.textSecondary;
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={focused ? { selected: true } : {}}
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       style={styles.tab}
     >
-      <Icon size={22} color={focused ? colors.textInverse : colors.slate[400]} />
+      <View style={styles.iconWrap}>
+        <Icon size={22} color={iconColor} />
+        {badgeCount > 0 ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{badgeCount > 9 ? '9+' : badgeCount}</Text>
+          </View>
+        ) : null}
+      </View>
       <Text style={[styles.tabLabel, focused ? styles.tabLabelActive : null]}>{label}</Text>
     </Pressable>
   );
 }
 
-export function FloatingTabBar({ state, navigation }: FloatingTabBarProps) {
-  const insets = useSafeAreaInsets();
-  const activeRouteName = state.routes[state.index]?.name;
+function createTabBarStyles(
+  colors: ReturnType<typeof useTheme>['colors'],
+  isDark: boolean,
+  glassBorder: string,
+) {
+  return {
+    styles: StyleSheet.create({
+      wrap: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        paddingHorizontal: spacing.lg,
+        zIndex: 50,
+      },
+      bar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderRadius: 28,
+        minHeight: 72,
+        paddingHorizontal: spacing.xs,
+        paddingVertical: spacing.sm,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: glassBorder,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: isDark ? 0.18 : 0.05,
+        shadowRadius: 16,
+        elevation: 6,
+      },
+      tab: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: minTouchTarget,
+        gap: 3,
+        paddingHorizontal: 2,
+      },
+      iconWrap: {
+        position: 'relative',
+        width: 28,
+        height: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+      badge: {
+        position: 'absolute',
+        top: -2,
+        right: -6,
+        minWidth: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: colors.accentBlue,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 3,
+      },
+      badgeText: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: colors.textInverse,
+      },
+      tabLabel: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: isDark ? colors.slate[400] : colors.textSecondary,
+      },
+      tabLabelActive: {
+        color: colors.accentBlue,
+      },
+    }),
+  };
+}
 
-  const visibleRoutes = VISIBLE_TAB_ORDER.filter((name) => TAB_ENABLED[name])
+export function FloatingTabBar({ state, navigation, variant = 'customer' }: FloatingTabBarProps) {
+  const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const glass = useLiquidGlassChrome();
+  const { styles } = useMemo(
+    () => createTabBarStyles(colors, isDark, glass.border),
+    [colors, glass.border, isDark],
+  );
+  const activeRouteName = state.routes[state.index]?.name;
+  const { data: dashboard } = useProtectionDashboard();
+  const alertCount = FEATURE_ALERTS_ENABLED ? dashboard?.alertCount ?? 0 : 0;
+
+  const tabConfig = variant === 'security' ? SECURITY_TAB_CONFIG : CUSTOMER_TAB_CONFIG;
+  const tabOrder = variant === 'security' ? SECURITY_TAB_ORDER : CUSTOMER_TAB_ORDER;
+  const visibleRoutes = tabOrder
+    .filter((name) => {
+      if (variant === 'security') return true;
+      return CUSTOMER_TAB_ENABLED[name as (typeof CUSTOMER_TAB_ORDER)[number]];
+    })
     .map((name) => state.routes.find((route) => route.name === name))
     .filter((route): route is TabRoute => route != null);
 
@@ -104,9 +232,15 @@ export function FloatingTabBar({ state, navigation }: FloatingTabBarProps) {
 
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-      <View style={styles.bar}>
+      <GlassSurface
+        style={styles.bar}
+        colorScheme={glass.colorScheme}
+        tintColor={glass.tint}
+        glassEffectStyle={glass.glassEffectStyle}
+        blurIntensity={glass.blurIntensity}
+      >
         {visibleRoutes.map((route) => {
-          const config = TAB_CONFIG[route.name];
+          const config = tabConfig[route.name];
           if (!config) return null;
           return (
             <TabButton
@@ -114,52 +248,15 @@ export function FloatingTabBar({ state, navigation }: FloatingTabBarProps) {
               focused={activeRouteName === route.name}
               label={config.label}
               Icon={config.Icon}
+              badgeCount={variant === 'customer' && route.name === 'alerts' ? alertCount : 0}
               onPress={() => onTabPress(route)}
+              colors={colors}
+              isDark={isDark}
+              styles={styles}
             />
           );
         })}
-      </View>
+      </GlassSurface>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: spacing.lg,
-  },
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.slate[900],
-    borderRadius: 24,
-    minHeight: 72,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 10,
-  },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: minTouchTarget,
-    gap: 3,
-    paddingHorizontal: 2,
-  },
-  tabLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.slate[400],
-  },
-  tabLabelActive: {
-    color: colors.accentGold,
-  },
-});

@@ -73,6 +73,10 @@ import {
   type RecoveryNotificationService,
 } from './lib/recovery-notification-service.js';
 import {
+  createCustomerProfilePicturesRepo,
+  type CustomerProfilePicturesRepo,
+} from './repositories/customer-profile-pictures.js';
+import {
   createCustomerProfilesRepo,
   type CustomerProfilesRepo,
 } from './repositories/customer-profiles.js';
@@ -118,6 +122,7 @@ export interface AppContext {
   policyActivation: PolicyActivationService;
   recoveryNotifications: RecoveryNotificationService;
   customerProfiles: CustomerProfilesRepo;
+  customerProfilePictures: CustomerProfilePicturesRepo;
   trackingDevices: TrackingDevicesRepo;
   locationEvents: LocationEventsRepo;
   alerts: AlertsRepo;
@@ -206,6 +211,7 @@ export function buildAppContext(env: Env): AppContext {
     policyActivation,
     recoveryNotifications,
     customerProfiles: createCustomerProfilesRepo(getDb()),
+    customerProfilePictures: createCustomerProfilePicturesRepo(getDb()),
     trackingDevices: createTrackingDevicesRepo(getDb()),
     locationEvents: createLocationEventsRepo(getDb()),
     alerts: createAlertsRepo(getDb()),

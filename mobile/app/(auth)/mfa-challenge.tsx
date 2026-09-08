@@ -8,8 +8,10 @@ import { mfaChallenge } from '../../src/api/auth';
 import { setRefreshToken } from '../../src/auth/secure-storage';
 import { useSessionStore } from '../../src/auth/session-store';
 import { mapUserFacingError } from '../../src/lib/user-facing-errors';
+import { SubpageHeader } from '../../src/navigation/SubpageHeader';
+import { AuthMasthead } from '../../src/navigation/AuthMasthead';
 import { Alert, OtpInput, Screen } from '../../src/theme/primitives';
-import { colors, spacing, typography } from '../../src/theme/tokens';
+import { spacing } from '../../src/theme/tokens';
 
 export default function MfaChallengeScreen() {
   const { mfaChallengeToken } = useLocalSearchParams<{ mfaChallengeToken: string }>();
@@ -36,10 +38,11 @@ export default function MfaChallengeScreen() {
 
   return (
     <Screen>
-      <Text style={styles.title}>Enter your verification code</Text>
-      <Text style={styles.subtitle}>
-        Open your authenticator app and enter the 6-digit code.
-      </Text>
+      <SubpageHeader compact />
+      <AuthMasthead
+        title="Enter your verification code"
+        subtitle="Open your authenticator app and enter the 6-digit code."
+      />
 
       {errorMessage ? (
         <View style={styles.alertSpacing}>
@@ -63,17 +66,6 @@ export default function MfaChallengeScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-  },
   alertSpacing: {
     marginBottom: spacing.lg,
   },

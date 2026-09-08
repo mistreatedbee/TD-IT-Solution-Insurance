@@ -364,7 +364,7 @@ export function CustomerOnboardingScreen({
 
   async function handleGoToApp() {
     await markOnboardingComplete();
-    router.replace('/(app)');
+    router.replace('/(app)/(tabs)' as Href);
   }
 
   return (

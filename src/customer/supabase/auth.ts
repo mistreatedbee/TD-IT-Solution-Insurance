@@ -45,7 +45,7 @@ export async function exchangeSupabaseSession(
     } catch (err) {
       if (err instanceof ApiError && err.status === 503 && attempt < maxAttempts) {
         lastError = err;
-        await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
         continue;
       }
       throw err;

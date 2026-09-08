@@ -139,7 +139,7 @@ export function deriveVerificationCentreItems(input: {
         ? undefined
         : step.id === 'mfa'
           ? '/(app)/mfa-enroll'
-          : '/(app)/account/profile';
+          : '/account/profile';
     items.push({
       id: `profile-${step.id}`,
       category: step.id === 'mfa' ? 'security' : 'profile',
@@ -186,7 +186,7 @@ export function deriveVerificationCentreItems(input: {
     href:
       identity === 'complete' || identity === 'in_review'
         ? undefined
-        : '/(app)/account/profile',
+        : '/account/profile',
     meta: input.verificationSubmittedAt
       ? `Submitted ${new Date(input.verificationSubmittedAt).toLocaleDateString()}`
       : undefined,
@@ -241,7 +241,7 @@ export function deriveVerificationCentreItems(input: {
         : 'Register a device or vehicle to activate protection.',
     state: assetState,
     tone: toneForState(assetState),
-    href: assetState === 'complete' ? '/(app)/assets' : '/(app)/assets/register',
+    href: assetState === 'complete' ? '/assets' : '/assets/register',
   });
 
   return items;

@@ -2,7 +2,7 @@
  * Staff invitation acceptance — ui-design.md §4.4 (privileged first login).
  * Reached via `tditinsurance://invitations/accept?token=...` deep link.
  */
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { mfaEnroll, mfaEnrollVerify } from '../../api/auth';
@@ -133,7 +133,7 @@ export function AcceptInvitationScreen() {
           enabled.
         </Alert>
         <View style={styles.actions}>
-          <Button variant="primary" fullWidth onPress={() => router.replace('/(app)')}>
+          <Button variant="primary" fullWidth onPress={() => router.replace('/(app)/(tabs)' as Href)}>
             Continue
           </Button>
         </View>

@@ -18,7 +18,7 @@ import {
   UserIcon,
 } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { Linking, Text, View } from 'react-native';
 import { logout, logoutAll } from '../../api/auth';
 import { sendTestPushNotification } from '../../api/notifications';
 import { revokePushTokenFromBackend } from '../../notifications/push';
@@ -34,16 +34,19 @@ import {
 } from '../../config/features';
 import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
 import { COMPANY_CONTACT } from '../../lib/companyContact';
-import { FLOATING_TAB_BAR_CLEARANCE } from '../../navigation/tabBarMetrics';
+import { ProfileAvatar } from '../../components/ProfileAvatar';
+import { AppScreenSection, InsetDivider, SurfaceGroup } from '../../components/SurfaceGroup';
+import { useProfileSummaryQuery } from '../../api/hooks/useCustomerProfile';
 import { ProfileCompletionCard } from '../home/ProfileCompletionCard';
 import { PlanUsageSummary } from '../policy/PlanUsageSummary';
 import { useProtectionDashboard } from '../../tracking/useProtectionDashboard';
 import { queryClient } from '../../query/queryClient';
-import { Badge, Card, Screen } from '../../theme/primitives';
-import { colors } from '../../theme/tokens';
+import { Badge, Screen } from '../../theme/primitives';
+import { useColors } from '../../theme/ThemeProvider';
 import { AccountMenuRow } from './AccountMenuRow';
 import { AccountQuickStats } from './AccountQuickStats';
-import { accountStyles } from './accountStyles';
+import { useAccountStyles } from './accountStyles';
+import { useProfilePictureUpload } from './useProfilePictureUpload';
 
 function initialsFromName(name: string, email?: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -69,16 +72,19 @@ function AccountSection({
   children: React.ReactNode;
 }) {
   return (
-    <View>
-      <Text style={accountStyles.sectionTitle}>{title}</Text>
+    <AppScreenSection title={title}>
       {children}
-    </View>
+    </AppScreenSection>
   );
 }
 
 export function AccountHubScreen() {
   const router = useRouter();
+  const colors = useColors();
+  const accountStyles = useAccountStyles();
   const { data: account, isLoading } = useAccountQuery();
+  const profileSummaryQuery = useProfileSummaryQuery();
+  const { showPicker, isUploading } = useProfilePictureUpload();
   const { data: dashboard } = useProtectionDashboard();
   const {
     policy,
@@ -153,11 +159,7 @@ export function AccountHubScreen() {
   ];
 
   return (
-    <Screen
-      padded={false}
-      style={accountStyles.screenBg}
-      contentContainerStyle={styles.scrollContent}
-    >
+    <Screen padded={false} safeAreaEdges={['top']}>
       <View style={accountStyles.header}>
         <Text style={accountStyles.title}>Account</Text>
         <Text style={accountStyles.subtitle}>
@@ -166,13 +168,16 @@ export function AccountHubScreen() {
       </View>
 
       <View style={accountStyles.body}>
-        <Card padding="lg" style={accountStyles.heroCard}>
+        <SurfaceGroup padded>
           <View style={accountStyles.heroRow}>
-            <View style={accountStyles.avatar}>
-              <Text style={accountStyles.avatarText}>
-                {initialsFromName(displayName ?? '', account?.email)}
-              </Text>
-            </View>
+            <ProfileAvatar
+              initials={initialsFromName(displayName ?? '', account?.email)}
+              profilePictureUrl={profileSummaryQuery.data?.profilePictureUrl}
+              size="lg"
+              editable
+              loading={isUploading}
+              onPress={showPicker}
+            />
             <View style={accountStyles.heroCopy}>
               {displayName ? (
                 <Text style={accountStyles.heroEmail} numberOfLines={1}>
@@ -195,40 +200,43 @@ export function AccountHubScreen() {
               ) : null}
             </View>
           </View>
-        </Card>
-
-        <AccountQuickStats items={quickStats} />
+          <InsetDivider inset={0} />
+          <AccountQuickStats items={quickStats} inline />
+        </SurfaceGroup>
 
         {FEATURE_KYC_ENABLED && dashboard ? (
-          <ProfileCompletionCard
-            percent={dashboard.profilePercent}
-            checklist={dashboard.profileChecklist}
-            onPress={() => router.push('/(app)/account/profile')}
-          />
+          <SurfaceGroup>
+            <ProfileCompletionCard
+              percent={dashboard.profilePercent}
+              checklist={dashboard.profileChecklist}
+              inset
+              onPress={() => router.push('/account/profile')}
+            />
+          </SurfaceGroup>
         ) : null}
 
         {FEATURE_KYC_ENABLED ? (
           <AccountSection title="Your profile">
-            <Card padding="none" style={accountStyles.menuCard}>
+            <SurfaceGroup>
               <AccountMenuRow
                 icon={UserIcon}
                 title="Profile & identity"
                 subtitle="Personal details, address, and ID verification"
-                onPress={() => router.push('/(app)/account/profile')}
+                onPress={() => router.push('/account/profile')}
               />
               <AccountMenuRow
                 icon={ShieldCheckIcon}
                 title="Verification centre"
                 subtitle="Submit identity details for review"
                 isLast
-                onPress={() => router.push('/(app)/account/verification')}
+                onPress={() => router.push('/account/verification')}
               />
-            </Card>
+            </SurfaceGroup>
           </AccountSection>
         ) : null}
 
         <AccountSection title="Your protection">
-          <Card padding="none" style={accountStyles.menuCard}>
+          <SurfaceGroup>
             <AccountMenuRow
               icon={LayersIcon}
               title="Protection vault"
@@ -237,13 +245,13 @@ export function AccountHubScreen() {
                   ? 'Register your first asset'
                   : `${assetCount} registered asset${assetCount === 1 ? '' : 's'}`
               }
-              onPress={() => router.push('/(app)/assets' as Href)}
+              onPress={() => router.push('/assets' as Href)}
             />
             <AccountMenuRow
               icon={PlusIcon}
               title="Register asset"
               subtitle="Add a vehicle, device, or equipment"
-              onPress={() => router.push('/(app)/assets/register' as Href)}
+              onPress={() => router.push('/assets/register' as Href)}
             />
             {FEATURE_ALERTS_ENABLED ? (
               <AccountMenuRow
@@ -254,7 +262,7 @@ export function AccountHubScreen() {
                     ? 'No alerts need attention'
                     : `${alertCount} alert${alertCount === 1 ? '' : 's'} in your inbox`
                 }
-                onPress={() => router.push('/(app)/alerts' as Href)}
+                onPress={() => router.push('/alerts' as Href)}
               />
             ) : null}
             {FEATURE_THEFT_REPORTING_ENABLED ? (
@@ -274,7 +282,7 @@ export function AccountHubScreen() {
                 icon={MapPinIcon}
                 title="Map & locations"
                 subtitle="View protected assets on the map"
-                onPress={() => router.push('/(app)/map' as Href)}
+                onPress={() => router.push('/map' as Href)}
               />
             ) : null}
             <AccountMenuRow
@@ -288,7 +296,7 @@ export function AccountHubScreen() {
               isLast
               onPress={() => router.push('/(app)/claims' as Href)}
             />
-          </Card>
+          </SurfaceGroup>
         </AccountSection>
 
         <AccountSection title="Plan & billing">
@@ -301,7 +309,7 @@ export function AccountHubScreen() {
               compact
             />
           ) : null}
-          <Card padding="none" style={accountStyles.menuCard}>
+          <SurfaceGroup>
             <AccountMenuRow
               icon={ShieldIcon}
               title="Protection plan"
@@ -331,11 +339,11 @@ export function AccountHubScreen() {
                 onPress={() => router.push('/(app)/policy/create' as Href)}
               />
             ) : null}
-          </Card>
+          </SurfaceGroup>
         </AccountSection>
 
         <AccountSection title="Preferences">
-          <Card padding="none" style={accountStyles.menuCard}>
+          <SurfaceGroup>
             <AccountMenuRow
               icon={BellIcon}
               title="Notification preferences"
@@ -351,11 +359,11 @@ export function AccountHubScreen() {
               disabled={isSendingTestPush}
               onPress={handleTestPush}
             />
-          </Card>
+          </SurfaceGroup>
         </AccountSection>
 
         <AccountSection title="Security">
-          <Card padding="none" style={accountStyles.menuCard}>
+          <SurfaceGroup>
             <AccountMenuRow
               icon={ShieldCheckIcon}
               title="Two-factor authentication"
@@ -363,11 +371,11 @@ export function AccountHubScreen() {
               isLast
               onPress={() => router.push('/(app)/mfa-enroll' as Href)}
             />
-          </Card>
+          </SurfaceGroup>
         </AccountSection>
 
         <AccountSection title="Help & support">
-          <Card padding="none" style={accountStyles.menuCard}>
+          <SurfaceGroup>
             <AccountMenuRow
               icon={MailIcon}
               title="Contact support"
@@ -387,11 +395,11 @@ export function AccountHubScreen() {
               isLast
               onPress={() => router.push('/(auth)/terms' as Href)}
             />
-          </Card>
+          </SurfaceGroup>
         </AccountSection>
 
         <AccountSection title="Session">
-          <Card padding="none" style={accountStyles.menuCard}>
+          <SurfaceGroup>
             <AccountMenuRow
               icon={LogOutIcon}
               title="Log out"
@@ -411,15 +419,9 @@ export function AccountHubScreen() {
               disabled={isLoggingOutAll}
               onPress={handleLogoutAll}
             />
-          </Card>
+          </SurfaceGroup>
         </AccountSection>
       </View>
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  scrollContent: {
-    paddingBottom: FLOATING_TAB_BAR_CLEARANCE,
-  },
-});

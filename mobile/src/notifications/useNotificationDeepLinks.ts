@@ -12,7 +12,7 @@ function routeFromDeepLink(deepLink: string): string | null {
   }
   const path = deepLink.replace('tditinsurance://', '').replace(/^\//, '');
   if (!path || path === '/') {
-    return '/(app)';
+    return '/(app)/(tabs)';
   }
 
   if (path.startsWith('security/cases/')) {
@@ -25,6 +25,12 @@ function routeFromDeepLink(deepLink: string): string | null {
 
   if (path === 'security' || path.startsWith('security/')) {
     return '/(security-app)';
+  }
+
+  const tabRoots = new Set(['alerts', 'assets', 'account', 'map']);
+  const root = path.split('/')[0] ?? '';
+  if (tabRoots.has(root)) {
+    return `/${path}`;
   }
 
   return `/(app)/${path}`;

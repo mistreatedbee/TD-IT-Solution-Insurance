@@ -35,7 +35,7 @@ export function ReportTheftSuccessScreen() {
             View live tracking
           </Button>
         ) : null}
-        <Button variant="secondary" fullWidth onPress={() => router.replace('/(app)')}>
+        <Button variant="secondary" fullWidth onPress={() => router.replace('/(app)/(tabs)' as Href)}>
           Back to home
         </Button>
         {FEATURE_CLAIMS_ENABLED ? (

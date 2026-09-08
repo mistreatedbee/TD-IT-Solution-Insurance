@@ -1,16 +1,12 @@
 import { Stack } from 'expo-router';
-import { colors } from '../../../../src/theme/tokens';
+import React from 'react';
+import { useAppStackScreenOptions } from '../../../../src/navigation/useAppStackScreenOptions';
 
 export default function PolicyDetailLayout() {
+  const screenOptions = useAppStackScreenOptions();
+
   return (
-    <Stack
-      screenOptions={{
-        headerShown: true,
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.primary,
-        headerShadowVisible: false,
-      }}
-    >
+    <Stack screenOptions={screenOptions}>
       <Stack.Screen name="index" options={{ title: 'Policy details' }} />
       <Stack.Screen name="change-plan" options={{ title: 'Change plan' }} />
     </Stack>

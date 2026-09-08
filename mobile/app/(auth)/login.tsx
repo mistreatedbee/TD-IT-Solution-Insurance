@@ -10,6 +10,8 @@ import { getDeviceName, getOrCreateDeviceId } from '../../src/auth/device';
 import { useSessionStore } from '../../src/auth/session-store';
 import { ApiError } from '../../src/api/errors';
 import { mapUserFacingError } from '../../src/lib/user-facing-errors';
+import { SubpageHeader } from '../../src/navigation/SubpageHeader';
+import { AuthMasthead } from '../../src/navigation/AuthMasthead';
 import { Alert, Button, Input, Screen } from '../../src/theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
 import type { ForcedLogoutReason } from '../../src/api/client';
@@ -73,7 +75,8 @@ export default function LoginScreen() {
 
   return (
     <Screen>
-      <Text style={styles.title}>Log in</Text>
+      <SubpageHeader compact />
+      <AuthMasthead title="Log in" />
       <Text style={styles.partnerHint}>
         Security partners: sign in with your operator account.
       </Text>
@@ -165,12 +168,6 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
   partnerHint: {
     fontSize: typography.sizes.sm,
     color: colors.textSecondary,

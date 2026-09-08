@@ -15,6 +15,8 @@ import { signup } from '../../src/api/auth';
 import { mapUserFacingError } from '../../src/lib/user-facing-errors';
 import { clearSignupDraft, loadSignupDraft, saveSignupDraft } from '../../src/forms/signupDraft';
 import { savePendingSignupAuth } from '../../src/forms/pendingSignupAuth';
+import { SubpageHeader } from '../../src/navigation/SubpageHeader';
+import { AuthMasthead } from '../../src/navigation/AuthMasthead';
 import { Alert, Button, Input, Screen } from '../../src/theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
 
@@ -100,8 +102,8 @@ export default function SignupScreen() {
 
   return (
     <Screen>
-      <Text style={styles.title}>Create your account</Text>
-      <Text style={styles.subtitle}>Takes about a minute.</Text>
+      <SubpageHeader compact />
+      <AuthMasthead title="Create your account" subtitle="Takes about a minute." />
 
       {formError ? (
         <View style={styles.alertSpacing}>
@@ -206,17 +208,6 @@ export default function SignupScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-  },
   alertSpacing: {
     marginBottom: spacing.lg,
   },

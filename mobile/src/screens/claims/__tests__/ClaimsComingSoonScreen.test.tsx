@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react-native';
 import { ClaimsComingSoonScreen } from '../ClaimsComingSoonScreen';
+import { renderWithProviders } from '../../../test/renderWithProviders';
 
 const mockReplace = jest.fn();
 
@@ -28,13 +29,13 @@ describe('ClaimsComingSoonScreen', () => {
   });
 
   it('renders the gated messaging instead of any claims content', async () => {
-    await render(<ClaimsComingSoonScreen />);
+    await renderWithProviders(<ClaimsComingSoonScreen />);
     expect(screen.getByText('Claims filing is coming soon.')).toBeTruthy();
   });
 
   it('routes back to the home tab', async () => {
-    await render(<ClaimsComingSoonScreen />);
+    await renderWithProviders(<ClaimsComingSoonScreen />);
     fireEvent.press(screen.getByText('Back to home'));
-    expect(mockReplace).toHaveBeenCalledWith('/(app)');
+    expect(mockReplace).toHaveBeenCalledWith('/(app)/(tabs)');
   });
 });

@@ -150,7 +150,6 @@ export function NotificationPreferencesScreen() {
 
   return (
     <Screen>
-      <Text style={styles.title}>Notification preferences</Text>
       <Text style={styles.subtitle}>
         Choose how you want to hear from us, by category and channel.
       </Text>
