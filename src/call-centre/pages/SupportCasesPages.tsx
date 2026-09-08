@@ -111,7 +111,7 @@ export function SupportCasesListPage() {
         </Link>
       </div>
       <p className="mb-6 text-sm text-text-secondary">
-        Support cases you created or have interacted with. Only your own cases are shown here.
+        Support cases you created. Only cases you personally created are shown here.
       </p>
 
       <div className="mb-4 flex flex-wrap gap-3">
@@ -253,7 +253,7 @@ export function CreateSupportCasePage() {
           value={accountId}
           onChange={(e) => setAccountId(e.target.value)}
           placeholder="Customer account UUID from lookup"
-          hint="Must belong to a customer account you looked up — the backend validates and rejects any other account type."
+          hint="Must be an existing customer account. All case creation is audit-logged and attributed to your agent account."
           required
           autoComplete="off"
         />
@@ -290,6 +290,7 @@ export function CreateSupportCasePage() {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="What the customer reported…"
+          hint="Don't include card numbers, bank details, or other payment information — describe the issue only."
           required
         />
 
@@ -444,6 +445,7 @@ function AddNoteForm({
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="Call summary, action taken, next steps…"
+        hint="Don't include card numbers, bank details, or other payment information — describe the issue only."
         required
       />
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
