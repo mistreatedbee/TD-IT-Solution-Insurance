@@ -13,8 +13,10 @@ import { ApiError } from '../api/errors';
 import { getOrCreateWebDeviceId } from './deviceId';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { signInWithSupabase } from '../supabase/auth';
+import { clearOtherRoleSessions } from '../../dashboard/auth/roleRouting';
+import { CUSTOMER_REFRESH_STORAGE_KEY } from './sessionStorageKey';
 
-const REFRESH_STORAGE_KEY = 'td-customer-web-refresh';
+const REFRESH_STORAGE_KEY = CUSTOMER_REFRESH_STORAGE_KEY;
 
 export type CustomerSessionStatus = 'hydrating' | 'signed-out' | 'signed-in' | 'wrong-role';
 
@@ -132,6 +134,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithTokens = useCallback(
     async (token: string, refreshToken: string) => {
+      // SR-LU-4 (docs/features/001-authentication/security-review-login-unification.md)
+      // / C-LU-3: establishing the customer session must first terminate any
+      // privileged-role session already held by this browser (e.g. an admin
+      // signing in as a customer in the same tab without logging out first).
+      clearOtherRoleSessions(REFRESH_STORAGE_KEY);
       writeRefreshToken(refreshToken);
       setAccessToken(token);
       setStatus('signed-in');

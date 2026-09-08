@@ -8,7 +8,11 @@ import { login as loginRequest, verifyMfaChallenge } from '../customer/api/auth'
 import { mapUserFacingError } from '../lib/user-facing-errors';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { decodeJwtPayload } from '../lib/jwt';
-import { PRIVILEGED_DASHBOARD_CONFIG, isPrivilegedUserType } from '../dashboard/auth/roleRouting';
+import {
+  PRIVILEGED_DASHBOARD_CONFIG,
+  isPrivilegedUserType,
+  clearOtherRoleSessions,
+} from '../dashboard/auth/roleRouting';
 
 /**
  * This is the single, role-agnostic login page for every account type —
@@ -79,6 +83,11 @@ export function CustomerLoginPage() {
 
     if (userType && isPrivilegedUserType(userType)) {
       const target = PRIVILEGED_DASHBOARD_CONFIG[userType];
+      // SR-LU-4 (docs/features/001-authentication/security-review-login-unification.md)
+      // / C-LU-3: this seeds a privileged sessionStorage slot directly, bypassing
+      // DashboardAuthProvider.signInWithTokens (and its own clearOtherRoleSessions
+      // call) entirely — so this path needs its own call before writing.
+      clearOtherRoleSessions(target.storageKey);
       try {
         sessionStorage.setItem(target.storageKey, refreshToken);
       } catch {

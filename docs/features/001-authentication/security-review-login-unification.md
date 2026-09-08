@@ -292,3 +292,219 @@ Nothing found here is an active, remotely exploitable path to customer PII, asse
 
 **Chair:** `cybersecurity-architect` · 2026-09-08
 **Joint gate:** `security-engineer` — *not filed* · `compliance-specialist` — *not filed*
+
+---
+
+## 8. Remediation record — SR-LU-3 and SR-LU-4 fixed, `authentication-engineer` · 2026-09-08
+
+This section documents the fix for the two findings this document left open after SR-LU-1 and
+SR-LU-2 were already closed (see git history: SR-LU-1's `finally` fix is present at
+`src/pages/CustomerLoginPage.tsx:122-130`; SR-LU-2's manifest entries are not re-verified here —
+out of scope for this record, still owned by `cybersecurity-architect`). SR-LU-5 (timing oracle)
+and SR-LU-6 (test coverage on the routing-decision functions specifically) remain open and are
+not addressed below except where SR-LU-3/4's own required tests happen to cover
+`isPrivilegedUserType`.
+
+### 8.1 SR-LU-3 fixed — `signInWithTokens` now awaits the role check and fails closed
+
+**Root cause, confirmed exactly as diagnosed at §3 SR-LU-3:** `DashboardAuthProvider.tsx`'s
+`signInWithTokens` set `status: 'signed-in'` synchronously (old line 139) before `GET
+/account/me` had been called at all, then ran the check as a detached `void` promise whose
+failure was swallowed by an empty `catch` (old lines 149-151).
+
+**Fix — `src/dashboard/auth/DashboardAuthProvider.tsx:140-175`.** `signInWithTokens` now:
+
+1. Writes the refresh token and sets the access token (needed so `getAccountMe()`, called via
+   `validateAccount`, can authenticate itself) — `:157-158`.
+2. **`await`s `validateAccount(token)`** (`:163`) instead of firing it detached. `validateAccount`
+   itself (`:93-111`) is the single place that ever sets `'signed-in'`, and only after
+   `GET /account/me` has resolved and confirmed `me.userType === config.allowedUserType`. There is
+   no code path left that sets `'signed-in'` before that check resolves.
+3. **Fails closed on a role mismatch** — `validateAccount`'s mismatch branch (`:97-105`) now also
+   calls `clearRefreshToken(config.storageKey)` (`:101`, new — this is the SR-LU-3(c) sub-finding:
+   "a non-admin's refresh token is now sitting in `td-admin-refresh-token`... and is not cleared
+   when the role check eventually says `wrong-role`"), in addition to the pre-existing
+   `setStatus('wrong-role')`.
+4. **Fails closed on an error** — if `validateAccount` itself throws (network failure, dropped
+   request, non-2xx from `/account/me`), the `catch` at `:164-172` clears the refresh token,
+   clears the access token and account, sets `status: 'signed-out'` (never leaves `'signed-in'`
+   or any stale status), and **re-throws** so the caller (`PrivilegedLoginPage.onSubmitCredentials`
+   / `onSubmitMfa`, `src/dashboard/components/PrivilegedLoginPage.tsx:44-76`) surfaces an error to
+   the user via its existing `try/catch` instead of silently navigating into a half-authenticated
+   state. Previously an error here was swallowed entirely and status stayed `'signed-in'`
+   indefinitely — that state is now structurally unreachable.
+
+This satisfies standing constraint **C-LU-2** ("Optimistic `signed-in` followed by a detached
+verification is prohibited on privileged surfaces... from now on") as written.
+
+**`finishLogin`'s unconditional `navigate(redirect)` after `signInWithTokens` was deliberately
+left as-is** (`PrivilegedLoginPage.tsx:36-39`) rather than adding a status check there, because
+`AdminAuthGate` / `SecurityAuthGate` / `CallCentreAuthGate` (e.g. `src/admin/layout/
+AdminLayout.tsx:8-37`) independently re-read `status` on render and already show the
+`'wrong-role'` Unauthorized card or redirect back to `/login` on `'signed-out'` — navigating to
+the target path first and letting the gate re-check is the same pattern the working hydration
+flow (`DashboardAuthProvider.tsx:113-138`) already uses, and duplicating the check in
+`finishLogin` would be a second, divergent source of truth for the same decision.
+
+**Verified:** `src/dashboard/auth/DashboardAuthProvider.test.tsx` (new, 3 tests, all passing) —
+see §8.3.
+
+### 8.2 SR-LU-4 fixed — every other role's session is cleared, locally and server-side, before a new one is established
+
+**Root cause, confirmed exactly as diagnosed at §3 SR-LU-4:** neither `routeTokensByRole`
+(`src/pages/CustomerLoginPage.tsx`, old lines 76-97) nor `DashboardAuthProvider.signInWithTokens`
+nor `CustomerAuthProvider.signInWithTokens` cleared any storage slot other than the one being
+written, and none called `/session/logout` on a session being superseded.
+
+**Fix — new shared helper, `clearOtherRoleSessions`, at
+`src/dashboard/auth/roleRouting.ts:136-145`**, next to `PRIVILEGED_DASHBOARD_CONFIG` exactly where
+§3 SR-LU-3's own recommendation and the task brief suggested it belongs, so the logic exists once
+rather than being duplicated at each call site:
+
+- `allRoleSessionSlots()` (`roleRouting.ts:63-71`) enumerates all four session slots: the customer
+  `localStorage` slot (`CUSTOMER_REFRESH_STORAGE_KEY`, `'td-customer-web-refresh'` — see below)
+  and the three privileged `sessionStorage` slots already defined in `PRIVILEGED_DASHBOARD_CONFIG`.
+- `clearOtherRoleSessions(exceptStorageKey)` (`:136-145`) iterates every slot **except** the one
+  the caller is about to write, reads any token present, clears the slot **unconditionally and
+  synchronously** (`:139-140` — this is not best-effort; the local clear always happens), and, if
+  a token was present, fires `revokeStaleRefreshToken(token)` (`:103-127`) **without awaiting it**
+  (`void`, `:142`) so a slow or failed revocation network call can never delay or block the new
+  login — matching the task's explicit requirement ("Failure of the logout call must not block
+  login, but the local clear must be unconditional").
+- `revokeStaleRefreshToken` (`:103-127`) revokes the stale session server-side using **only
+  endpoints that already exist** — no new endpoint was added, per the task instruction. This
+  required checking how they compose, since neither existing endpoint alone accepts a bare stale
+  refresh token from a role the current tab isn't configured for:
+  - `POST /session/logout` (`backend/src/routes/session.ts:33`) requires a Bearer **access**
+    token — it authenticates via `authenticate` middleware and revokes `req.auth.sessionId`; it
+    does not read a refresh token from the body at all despite accepting one in the existing web
+    client wrappers (`src/customer/api/auth.ts:77-83`, `src/dashboard/api/auth.ts:51-57` — both
+    already had this shape and are unchanged by this fix).
+  - `POST /session/refresh` (`session.ts:79-157`) is unauthenticated and takes exactly a refresh
+    token, returning a fresh access token.
+  - So `revokeStaleRefreshToken` calls `/session/refresh` with the stale token to obtain a
+    short-lived access token, then calls `/session/logout` once with that access token as the
+    Bearer credential (`roleRouting.ts:105-119`). Both calls are wrapped in a single `try/catch`
+    that swallows any failure (`:120-126`) — the local clear has already happened by the time
+    this runs, so a failure here just means the stale session expires on its own TTL instead of
+    being revoked immediately, which the task text explicitly accepts as the fallback.
+
+**Wired into every place a new role's session gets established**, per the task's requirement not
+to duplicate the logic and its identification of "at least two" call sites (there turned out to
+be three, once `CustomerLoginPage`'s privileged branch — which bypasses `DashboardAuthProvider`
+entirely — was accounted for):
+
+1. **`DashboardAuthProvider.signInWithTokens`** — `src/dashboard/auth/DashboardAuthProvider.tsx:156`,
+   `clearOtherRoleSessions(config.storageKey)` runs before `writeRefreshToken`. Covers
+   `PrivilegedLoginPage`'s own login and MFA-completion flow for all three privileged roles
+   (`/admin/login`, `/security/login`, `/call-centre/login`).
+2. **`CustomerAuthProvider.signInWithTokens`** — `src/customer/auth/CustomerAuthProvider.tsx:139`
+   (new call), same pattern, `exceptStorageKey = REFRESH_STORAGE_KEY` (the customer's own slot).
+   Covers the unified `/login` page's customer branch and any other caller of
+   `CustomerAuthProvider.signInWithTokens`.
+3. **`CustomerLoginPage.routeTokensByRole`'s privileged branch** —
+   `src/pages/CustomerLoginPage.tsx:90`, `clearOtherRoleSessions(target.storageKey)` runs before
+   the direct `sessionStorage.setItem(target.storageKey, refreshToken)` at `:92`. This call site
+   exists specifically because this branch writes storage directly and never calls
+   `DashboardAuthProvider.signInWithTokens` at all (the target dashboard's own provider instead
+   picks the seeded token up on its next mount via its hydration effect) — so it needed its own
+   explicit call, exactly as the task anticipated ("`CustomerLoginPage.tsx`'s `routeTokensByRole`
+   and `PrivilegedLoginPage`'s own submit handler both need this" — the third site,
+   `CustomerAuthProvider`, was the one not named but required by the same logic for the reverse
+   direction, privileged → customer, which the task's own scenario (a) describes).
+
+**A small refactor was required to wire in call site 2 without a circular import:**
+`roleRouting.ts` needs the customer's storage-key constant to enumerate all four slots, and
+`CustomerAuthProvider.tsx` needs `clearOtherRoleSessions` from `roleRouting.ts` — importing
+directly from each other would cycle. The constant was extracted to a new leaf module,
+`src/customer/auth/sessionStorageKey.ts` (`CUSTOMER_REFRESH_STORAGE_KEY = 'td-customer-web-refresh'`,
+no imports of its own), which both files import from; `CustomerAuthProvider.tsx`'s local
+`REFRESH_STORAGE_KEY` constant (`:19`, previously the sole definition) now re-exports it
+(`const REFRESH_STORAGE_KEY = CUSTOMER_REFRESH_STORAGE_KEY;`) so no other reference in that file
+had to change.
+
+**What was deliberately not done, and why.** The task's SR-LU-4 excerpt also names two
+UX/hardening items from §3's "Also required" and §4 R-LU-1 that are **not** part of this fix and
+remain open: (a) a visible "not you? sign out" affordance on `/login` when already signed in
+(§3 SR-LU-4 "Also required", `CustomerLoginPage.tsx:58-62` still redirects silently); (b) R-LU-1's
+`redirect` query-parameter allowlist. Neither was in the two findings this task named as in scope
+(SR-LU-3, SR-LU-4's core defect), and adding them here would be scope creep against a document
+that already lists them as separately tracked, owned items. Flagging explicitly rather than
+silently leaving them for whoever reads this section next.
+
+### 8.3 Tests added and run
+
+**No test runner existed for the web app before this fix** (`package.json` had no `test` script,
+no `vitest`/`jest`/`@testing-library` dependency — this is the concrete evidence behind SR-LU-6's
+"zero test coverage" finding, confirmed rather than assumed). Added, scoped strictly to making
+SR-LU-3 and SR-LU-4 regression-tested:
+
+- **`vitest.config.ts`** (new, repo root) + **`src/test/setup.ts`** (new) — jsdom environment,
+  `@testing-library/jest-dom` matchers. `package.json`: added `"test": "vitest run"` script and
+  `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`,
+  `@testing-library/user-event` as devDependencies.
+- **`src/dashboard/auth/roleRouting.test.ts`** (new, 7 tests) — `isPrivilegedUserType` accepts the
+  three privileged types and rejects `customer`, `__proto__`, `constructor`, `toString`, and
+  unknown strings (closes part of SR-LU-6's named minimum set for this function, as a byproduct of
+  testing the module `clearOtherRoleSessions` now lives in). `clearOtherRoleSessions`: clears every
+  other slot but leaves the excepted one untouched; the exact role-A-then-role-B scenario from the
+  task brief (log in as admin, then as customer — admin slot is gone, customer slot is intact);
+  fires `/session/refresh` then `/session/logout` with the correct body/Authorization header for
+  each cleared slot that held a token; does not throw and still clears local state when the
+  revocation network calls fail; makes no network call and clears nothing when no other role has a
+  stored session.
+- **`src/dashboard/auth/DashboardAuthProvider.test.tsx`** (new, 3 tests) — `signInWithTokens`
+  never shows `'signed-in'` while `GET /account/me` is still in flight (the literal SR-LU-3
+  regression assertion — asserts status immediately after the call starts, before the mocked
+  `getAccountMe` promise resolves); fails closed to `'wrong-role'` with the storage slot cleared on
+  a role mismatch; fails closed to `'signed-out'` with the storage slot cleared (and the promise
+  rejecting) on a network error, and never gets stuck `'signed-in'`.
+- **`src/customer/auth/CustomerAuthProvider.test.tsx`** (new, 1 test) — reproduces SR-LU-4's
+  scenario (a) directly: a stale admin refresh token already sitting in `sessionStorage` (as if the
+  browser had signed in as admin and never logged out) is cleared as a side effect of a customer
+  `signInWithTokens` call, while the new customer session is established correctly.
+
+**Run output (`npm test`, i.e. `vitest run`, from repo root, 2026-09-08):**
+
+```
+ RUN  v2.1.9 /Users/paaqoffice/Downloads/TD IT Solutions
+
+ ✓ src/dashboard/auth/roleRouting.test.ts (7 tests) 4ms
+ ✓ src/dashboard/auth/DashboardAuthProvider.test.tsx (3 tests) 29ms
+ ✓ src/customer/auth/CustomerAuthProvider.test.tsx (1 test) 20ms
+
+ Test Files  3 passed (3)
+      Tests  11 passed (11)
+```
+
+**`npx tsc --noEmit` (repo root, 2026-09-08):** no output, exit clean. `npm run typecheck`
+(`tsc -p tsconfig.json --noEmit`): also clean.
+
+**`npx eslint` on every changed/added file:** 0 errors, 6 pre-existing-pattern warnings (two
+`react-refresh/only-export-components` warnings on files that were already exporting both a
+component and a hook before this change, `DashboardAuthProvider.tsx` and
+`CustomerAuthProvider.tsx`; four `@typescript-eslint/no-non-null-assertion` warnings inside the new
+test files' own harness helpers). No new lint errors introduced.
+
+**Not run in this session:** the backend suite (`cd backend && npm test`) — untouched by this fix
+(no `backend/` files were changed) and out of scope for a web-only remediation; `mobile`'s suite —
+likewise untouched, no `mobile/` files were changed. `git status --short` at the end of this work
+confirms the changed/added file set is scoped to `package.json`, `package-lock.json`,
+`vitest.config.ts`, `src/test/setup.ts`, `src/dashboard/auth/roleRouting.ts`,
+`src/dashboard/auth/DashboardAuthProvider.tsx`, `src/customer/auth/CustomerAuthProvider.tsx`,
+`src/customer/auth/sessionStorageKey.ts`, `src/pages/CustomerLoginPage.tsx`, and the three new
+`*.test.ts(x)` files — nothing in `backend/` or `mobile/` was touched.
+
+### 8.4 Status of this document after this remediation
+
+SR-LU-1 and SR-LU-2: fixed prior to this session (per task framing), not re-verified here.
+**SR-LU-3: fixed, verified above.** **SR-LU-4: fixed, verified above.** SR-LU-5 (account-existence
+timing oracle) and SR-LU-6 (broader test-coverage gap beyond what SR-LU-3/4 now cover) remain
+**open**, unchanged by this session, still owned by `authentication-engineer` per §3's original
+assignment. R-LU-1 through R-LU-7 (§4) are unchanged, still residual and tracked with their
+original owners. **This document's overall gate status remains NOT SATISFIED** — `security-engineer`
+must independently verify this remediation in code and run the backend suite, and
+`compliance-specialist` still has not filed; nothing in this section constitutes either of those
+signatures.
+
+**Remediation author:** `authentication-engineer` · 2026-09-08

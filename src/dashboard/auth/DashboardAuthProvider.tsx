@@ -10,6 +10,7 @@ import {
 import { configureDashboardClient } from '../api/client';
 import { getAccountMe, login, logout, verifyMfaChallenge } from '../api/auth';
 import { ApiError } from '../api/errors';
+import { clearOtherRoleSessions } from './roleRouting';
 
 export type DashboardSessionStatus = 'hydrating' | 'signed-out' | 'signed-in' | 'wrong-role';
 
@@ -94,6 +95,10 @@ export function DashboardAuthProvider({
       setAccessToken(token);
       const me = await getAccountMe();
       if (me.userType !== config.allowedUserType) {
+        // SR-LU-3(c) (docs/features/001-authentication/security-review-login-unification.md):
+        // a role mismatch must not leave the wrong account's refresh token sitting in
+        // this role's storage slot — clear it here so it cannot be resumed on reload.
+        clearRefreshToken(config.storageKey);
         setStatus('wrong-role');
         setAccount(me);
         return false;
@@ -102,7 +107,7 @@ export function DashboardAuthProvider({
       setStatus('signed-in');
       return true;
     },
-    [config.allowedUserType],
+    [config.allowedUserType, config.storageKey],
   );
 
   useEffect(() => {
@@ -134,24 +139,39 @@ export function DashboardAuthProvider({
 
   const signInWithTokens = useCallback(
     async (token: string, refreshToken: string) => {
+      // SR-LU-3 (docs/features/001-authentication/security-review-login-unification.md):
+      // this used to set `status: 'signed-in'` synchronously, BEFORE the server-side
+      // role check (`GET /account/me`, via `validateAccount`) resolved, and ran that
+      // check as a detached `void` promise whose failure was swallowed by an empty
+      // catch — so a wrong-role sign-in (or a dropped/failed /account/me call) could
+      // render the privileged dashboard shell, indefinitely if the request never
+      // resolved. Per standing constraint C-LU-2, a transition to 'signed-in' for a
+      // privileged role must be awaited on the server response and must fail CLOSED
+      // (never leave 'signed-in' set) on either a role mismatch or a request error.
+      //
+      // SR-LU-4 / C-LU-3: establishing THIS role's session must first terminate
+      // every OTHER role's session already held by this browser, locally and
+      // server-side — otherwise logging in as a different role leaves the prior
+      // role's session live and reachable with no credentials re-entered.
+      clearOtherRoleSessions(config.storageKey);
       writeRefreshToken(config.storageKey, refreshToken);
       setAccessToken(token);
-      setStatus('signed-in');
-      void (async () => {
-        try {
-          const me = await getAccountMe();
-          if (me.userType !== config.allowedUserType) {
-            setStatus('wrong-role');
-            setAccount(me);
-            return;
-          }
-          setAccount(me);
-        } catch {
-          /* signed-in; protected routes can retry account load */
-        }
-      })();
+      try {
+        // validateAccount itself sets 'signed-in' on success, or 'wrong-role' (and,
+        // per the SR-LU-3(c) fix above, clears the refresh token) on a mismatch — it
+        // never leaves status in an optimistic/undetermined state.
+        await validateAccount(token);
+      } catch (err) {
+        // The /account/me call itself failed (network error, dropped request, etc.).
+        // Fail closed: never leave 'signed-in' set on an unverified account.
+        clearRefreshToken(config.storageKey);
+        setAccessToken(null);
+        setAccount(null);
+        setStatus('signed-out');
+        throw err;
+      }
     },
-    [config.storageKey, config.allowedUserType],
+    [config.storageKey, validateAccount],
   );
 
   const loginWithPassword = useCallback(async (email: string, password: string) => {
