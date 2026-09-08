@@ -4,10 +4,44 @@ import { Button, Input, SectionHeading } from '../components';
 import { ArrowLink } from '../components/ArrowLink';
 import { InlineAlert } from '../dashboard/components/ui';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
+import { login as loginRequest, verifyMfaChallenge } from '../customer/api/auth';
 import { mapUserFacingError } from '../lib/user-facing-errors';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
-import { SupabaseAuthConfigNotice } from '../customer/components/SupabaseAuthConfigNotice';
+import { decodeJwtPayload } from '../lib/jwt';
+import { PRIVILEGED_DASHBOARD_CONFIG, isPrivilegedUserType } from '../dashboard/auth/roleRouting';
 
+/**
+ * This is the single, role-agnostic login page for every account type —
+ * customer, admin, security_company_operator, support_agent. It talks to
+ * the generic `POST /auth/login` (via `../customer/api/auth`'s `login`),
+ * the SAME endpoint `PrivilegedLoginPage` already uses through
+ * `DashboardAuthProvider` — NOT `CustomerAuthProvider.loginWithPassword`'s
+ * Supabase-client-SDK exchange (`/auth/supabase/exchange`), which
+ * explicitly rejects any non-customer account
+ * (`account.userType !== 'customer'` -> `INVALID_CREDENTIALS`) and so
+ * cannot serve every role. `CustomerAuthProvider` is still used for
+ * *session storage and status* once we know the account is a customer —
+ * just not for the login call itself.
+ *
+ * After tokens are obtained (directly, or after an MFA challenge), the
+ * access token's `user_type` claim decides where the session goes:
+ *   - customer -> handed to this page's own `CustomerAuthProvider`
+ *     (localStorage-backed), which is already wrapping this route in
+ *     `App.tsx` and drives the `redirect` navigation below.
+ *   - admin / security_company_operator / support_agent -> the refresh
+ *     token is written directly into that role's own dashboard's
+ *     sessionStorage slot (`PRIVILEGED_DASHBOARD_CONFIG`), then the
+ *     browser is navigated into that dashboard's route tree. Its own
+ *     `DashboardAuthProvider` hydrates from that slot on mount and
+ *     independently re-verifies the role server-side via
+ *     `GET /account/me` before rendering anything privileged — this page
+ *     never grants access itself, it only seeds the handoff.
+ *
+ * The dedicated `/admin/login`, `/security/login`, `/call-centre/login`
+ * pages (`PrivilegedLoginPage`) are left in place as harmless redundant
+ * entry points into the exact same `DashboardAuthProvider` flow — nothing
+ * about their behavior changes.
+ */
 export function CustomerLoginPage() {
   const auth = useCustomerAuth();
   const navigate = useNavigate();
@@ -39,7 +73,26 @@ export function CustomerLoginPage() {
     return <Navigate to={redirect} replace />;
   }
 
-  async function finishLogin(accessToken: string, refreshToken: string) {
+  async function routeTokensByRole(accessToken: string, refreshToken: string) {
+    const claims = decodeJwtPayload<{ user_type?: string }>(accessToken);
+    const userType = claims?.user_type;
+
+    if (userType && isPrivilegedUserType(userType)) {
+      const target = PRIVILEGED_DASHBOARD_CONFIG[userType];
+      try {
+        sessionStorage.setItem(target.storageKey, refreshToken);
+      } catch {
+        // Best effort — the dashboard's own dedicated login page still
+        // works as a fallback if sessionStorage is unavailable.
+      }
+      navigate(target.homePath, { replace: true });
+      return;
+    }
+
+    // Customer (or an unrecognized/future user_type — fail toward the
+    // account-scoped path, which independently re-verifies via
+    // GET /account/me and surfaces a 'wrong-role' state rather than
+    // granting anything if it turns out not to be a customer account).
     await auth.signInWithTokens(accessToken, refreshToken);
   }
 
@@ -48,16 +101,22 @@ export function CustomerLoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const result = await auth.loginWithPassword(email, password);
-      if (result.kind === 'mfa') {
+      const result = await loginRequest(email, password);
+      if (result.mfaRequired && result.mfaChallengeToken) {
         setMfaToken(result.mfaChallengeToken);
         return;
       }
-      if (result.kind === 'enrollment') {
-        setError('Additional security setup is required. Please use the mobile app to complete sign-in.');
+      if (result.mfaEnrollmentRequired) {
+        setError(
+          'Additional security setup (MFA enrollment) is required before you can sign in. Follow the instructions in your enrollment invitation, or contact support.',
+        );
         return;
       }
-      await finishLogin(result.accessToken, result.refreshToken);
+      if (!result.accessToken || !result.refreshToken) {
+        setError('Unexpected sign-in response. Please try again.');
+        return;
+      }
+      await routeTokensByRole(result.accessToken, result.refreshToken);
     } catch (err) {
       setError(mapUserFacingError(err, { context: 'auth' }));
       setLoading(false);
@@ -70,8 +129,8 @@ export function CustomerLoginPage() {
     setError(null);
     setLoading(true);
     try {
-      await auth.completeMfa(mfaToken, mfaCode.trim());
-      navigate(redirect, { replace: true });
+      const tokens = await verifyMfaChallenge(mfaToken, mfaCode.trim());
+      await routeTokensByRole(tokens.accessToken, tokens.refreshToken);
     } catch (err) {
       setError(mapUserFacingError(err, { context: 'mfa' }));
     } finally {
@@ -87,7 +146,6 @@ export function CustomerLoginPage() {
       </p>
 
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
-      <SupabaseAuthConfigNotice />
 
       {mfaToken ? (
         <form className="mt-4 space-y-4" onSubmit={onSubmitMfa}>

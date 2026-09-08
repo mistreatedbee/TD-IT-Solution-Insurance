@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { DashboardAuthProvider } from '../dashboard/auth/DashboardAuthProvider';
+import { PRIVILEGED_DASHBOARD_CONFIG } from '../dashboard/auth/roleRouting';
 import { PrivilegedLoginPage } from '../dashboard/components/PrivilegedLoginPage';
 import { CallCentreAuthGate, CallCentreLayout } from './layout/CallCentreLayout';
 import { CustomerLookupPage } from './pages/CustomerLookupPage';
@@ -15,7 +16,7 @@ export default function CallCentreRoutes() {
   return (
     <DashboardAuthProvider
       config={{
-        storageKey: 'td-call-centre-refresh-token',
+        storageKey: PRIVILEGED_DASHBOARD_CONFIG.support_agent.storageKey,
         allowedUserType: 'support_agent',
       }}
     >

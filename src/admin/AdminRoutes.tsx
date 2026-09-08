@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { DashboardAuthProvider } from '../dashboard/auth/DashboardAuthProvider';
+import { PRIVILEGED_DASHBOARD_CONFIG } from '../dashboard/auth/roleRouting';
 import { PrivilegedLoginPage } from '../dashboard/components/PrivilegedLoginPage';
 import { AdminAuthGate, AdminLayout } from './layout/AdminLayout';
 import {
@@ -34,7 +35,9 @@ function AssetDetailRoute() {
 
 export default function AdminRoutes() {
   return (
-    <DashboardAuthProvider config={{ storageKey: 'td-admin-refresh-token', allowedUserType: 'admin' }}>
+    <DashboardAuthProvider
+      config={{ storageKey: PRIVILEGED_DASHBOARD_CONFIG.admin.storageKey, allowedUserType: 'admin' }}
+    >
       <Routes>
         <Route
           path="login"

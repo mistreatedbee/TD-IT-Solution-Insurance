@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { DashboardAuthProvider } from '../dashboard/auth/DashboardAuthProvider';
+import { PRIVILEGED_DASHBOARD_CONFIG } from '../dashboard/auth/roleRouting';
 import { PrivilegedLoginPage } from '../dashboard/components/PrivilegedLoginPage';
 import { SecurityAuthGate, SecurityLayout } from './layout/SecurityLayout';
 import { CaseDetailPage, CasesListPage } from './pages/SecurityCasePages';
@@ -8,7 +9,7 @@ export default function SecurityRoutes() {
   return (
     <DashboardAuthProvider
       config={{
-        storageKey: 'td-security-refresh-token',
+        storageKey: PRIVILEGED_DASHBOARD_CONFIG.security_company_operator.storageKey,
         allowedUserType: 'security_company_operator',
       }}
     >
