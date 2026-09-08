@@ -119,6 +119,13 @@ export function CustomerLoginPage() {
       await routeTokensByRole(result.accessToken, result.refreshToken);
     } catch (err) {
       setError(mapUserFacingError(err, { context: 'auth' }));
+    } finally {
+      // SR-LU-1 (docs/features/001-authentication/security-review-login-unification.md):
+      // must run on every exit path, including the mfaRequired early-return above —
+      // otherwise `loading` stays true forever and the MFA form's Verify button (bound
+      // to this same `loading` state) renders permanently disabled. This is every
+      // admin/security_company_operator/support_agent login, plus any MFA-enrolled
+      // customer.
       setLoading(false);
     }
   }

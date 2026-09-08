@@ -755,12 +755,23 @@
     {
       "id": "web-customer-onboarding-auth",
       "kind": "web_route_group",
-      "pattern": "/{get-started,signup,login}",
+      "pattern": "/{get-started,signup}",
       "feature": "006",
       "stage8": {
         "doc": "docs/features/006-customer-onboarding/security-review.md",
         "verdict": "sign-off-granted-with-changes",
-        "note": "src/pages/onboarding/CustomerOnboardingPage.tsx (/get-started, /signup) and src/pages/CustomerLoginPage.tsx (/login) are in this review's directly-cited code scope (§7 code re-read list). Blocking findings SR-006-1 (web MFA bypass on /auth/supabase/exchange) and SR-006-2 (account-existence oracle) verified closed in code, security-engineer concurs (§8). compliance-specialist concurrence is GRANTED IN PART (§8-C/§9): continued development/testing concurred, but exposing this surface to real customer PII remains WITHHELD pending C-006-1 (Supabase DPA) and C-006-3 (Resend vendor review) — both pre-existing platform-level blockers, not defects in this feature. SR-006-3…SR-006-13 remain open non-blocking findings."
+        "note": "src/pages/onboarding/CustomerOnboardingPage.tsx (/get-started, /signup) are in this review's directly-cited code scope (§7 code re-read list). Blocking findings SR-006-1 (web MFA bypass on /auth/supabase/exchange) and SR-006-2 (account-existence oracle) verified closed in code, security-engineer concurs (§8). compliance-specialist concurrence is GRANTED IN PART (§8-C/§9): continued development/testing concurred, but exposing this surface to real customer PII remains WITHHELD pending C-006-1 (Supabase DPA) and C-006-3 (Resend vendor review) — both pre-existing platform-level blockers, not defects in this feature. SR-006-3…SR-006-13 remain open non-blocking findings. /login was split out of this group into web-unified-login (feature 001) — it stopped being a customer-only route when login unification shipped."
+      }
+    },
+    {
+      "id": "web-unified-login",
+      "kind": "web_route",
+      "pattern": "/login",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/features/001-authentication/security-review-login-unification.md",
+        "verdict": "conditional-sign-off",
+        "note": "2026-09-08 first-ever Stage 8 review of the login-unification change (commit 7422b5d), done after the fact — it shipped with no review. src/pages/CustomerLoginPage.tsx now serves all four user types (customer, admin, security_company_operator, support_agent), not just customer, via the shared POST /auth/login. cybersecurity-architect found and this session fixed SR-LU-1 (MFA Verify button permanently disabled — no finally on onSubmitCredentials, loading never reset on the mfaRequired early return) same-day. SR-LU-3 (signInWithTokens race can render a privileged shell before the server-side role check resolves) and SR-LU-4 (no previous-role logout on re-login as a different role) remain OPEN, not yet fixed. SR-LU-5 (account-enumeration timing oracle at auth.ts:524, pre-existing but now centralized on this single route) and SR-LU-6 (no tests) are non-blocking follow-ups. R-LU-3 (marketing-origin/privileged-origin separation, SR-12(a) of the original Feature 001 review, never implemented) escalated to cto for explicit risk acceptance."
       }
     },
     {
