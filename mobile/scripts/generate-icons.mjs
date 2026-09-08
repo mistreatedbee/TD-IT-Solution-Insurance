@@ -23,6 +23,7 @@
  * lockup — they aren't subject to adaptive-icon masking and have room to
  * show the name.
  */
+import { Buffer } from 'node:buffer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

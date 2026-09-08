@@ -618,6 +618,39 @@
         "verdict": "sign-off-granted-with-changes",
         "note": "Shared PrivilegedLoginPage component against the reviewed Feature 001 auth API — same convention already applied to mobile-auth's (auth)* coverage of the mobile login/signup screens."
       }
+    },
+    {
+      "id": "web-call-centre-cases-list",
+      "kind": "web_route",
+      "pattern": "/call-centre/cases",
+      "feature": "010",
+      "stage8": {
+        "doc": "docs/features/010-call-centre-dashboard/security-review.md",
+        "verdict": "conditional-sign-off-cleared-scope-only",
+        "note": "src/call-centre/pages/SupportCasesPages.tsx (list view). Implements FR-17 scope=mine only — scope=all is WITHHELD per this review (structurally unreachable: the API's list-query schema is z.literal('mine'), no UI control exists to request 'all'). Same joint-gate caveat as web-call-centre-lookup: security-engineer/compliance-specialist concurrence (SR-010-7) not yet recorded. Do not read as a clean pass."
+      }
+    },
+    {
+      "id": "web-call-centre-cases-detail",
+      "kind": "web_route",
+      "pattern": "/call-centre/cases/:caseId",
+      "feature": "010",
+      "stage8": {
+        "doc": "docs/features/010-call-centre-dashboard/security-review.md",
+        "verdict": "conditional-sign-off-cleared-scope-only",
+        "note": "src/call-centre/pages/SupportCasesPages.tsx (detail view). Implements FR-14/15/16 (detail, notes, status update — open/in_progress/resolved/closed only). No escalation affordance: 'escalated' renders as an inert read-only label with an explicit not-available message, no button or write path — verified by grep before this entry was added, not asserted from the design doc alone. FR-18-21 (escalation) remains NOT AUTHORIZED FOR IMPLEMENTATION and has zero UI footprint here. Same joint-gate caveat as web-call-centre-lookup."
+      }
+    },
+    {
+      "id": "web-call-centre-cases-new",
+      "kind": "web_route",
+      "pattern": "/call-centre/cases/new",
+      "feature": "010",
+      "stage8": {
+        "doc": "docs/features/010-call-centre-dashboard/security-review.md",
+        "verdict": "conditional-sign-off-cleared-scope-only",
+        "note": "src/call-centre/pages/SupportCasesPages.tsx (create flow). Implements FR-12 — the accountId-supplied-by-agent path, reachable standalone or from an existing customer lookup. Same joint-gate caveat as web-call-centre-lookup."
+      }
     }
   ]
 }

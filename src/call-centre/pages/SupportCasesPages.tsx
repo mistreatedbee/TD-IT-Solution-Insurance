@@ -66,7 +66,7 @@ export function SupportCasesListPage() {
         setCursor(page.pagination.nextCursor);
         setHasMore(page.pagination.hasMore);
       })
-      .catch((err) => setError(mapUserFacingError(err, { context: 'support-case' })))
+      .catch((err) => setError(mapUserFacingError(err, { context: 'generic' })))
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -217,7 +217,7 @@ export function CreateSupportCasePage() {
       });
       navigate(`/call-centre/cases/${created.id}`, { replace: true });
     } catch (err) {
-      setError(mapUserFacingError(err, { context: 'support-case' }));
+      setError(mapUserFacingError(err, { context: 'generic' }));
     } finally {
       setSaving(false);
     }
@@ -345,7 +345,7 @@ function StatusUpdateControl({
       setNextStatus('');
       setResolutionSummary('');
     } catch (err) {
-      setError(mapUserFacingError(err, { context: 'support-case' }));
+      setError(mapUserFacingError(err, { context: 'generic' }));
     } finally {
       setSaving(false);
     }
@@ -417,7 +417,7 @@ function AddNoteForm({
       onNoteAdded(result.note);
       setText('');
     } catch (err) {
-      setError(mapUserFacingError(err, { context: 'support-case' }));
+      setError(mapUserFacingError(err, { context: 'generic' }));
     } finally {
       setSaving(false);
     }
@@ -455,7 +455,7 @@ export function SupportCaseDetailPage({ caseId }: { caseId: string }) {
         if (!cancelled) setSupportCase(data);
       })
       .catch((err) => {
-        if (!cancelled) setError(mapUserFacingError(err, { context: 'support-case' }));
+        if (!cancelled) setError(mapUserFacingError(err, { context: 'generic' }));
       });
     return () => {
       cancelled = true;
