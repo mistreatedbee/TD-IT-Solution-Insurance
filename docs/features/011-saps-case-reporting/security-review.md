@@ -311,3 +311,229 @@ criterion 6 (unsigned — §9.4 of INC-001) · C-011-3/-4/-5/-6 (CT-4, RoPA, s18
 independently gate first processing of real customer SAPS data · Stage 10 QA.
 
 **Filed by:** `cybersecurity-architect` (chair), 2026-09-03.
+
+---
+
+## 9. `compliance-specialist` concurrence under SR-011-5 — **WITHHELD IN PART**
+
+**Date:** 2026-09-08. **Role:** `compliance-specialist` (C on this gate).
+**Status: CONCURRENCE WITHHELD.** The engineering work on this feature is the best retention and
+data-segregation implementation this platform has produced, and §9.1 says so field by field. But the
+feature is **live in production, processing a real customer's real SAPS case number**, and three of my
+own conditions — C-011-3 (CT-4 documented Client instruction), C-011-4 (RoPA entry) and C-011-5 (s18
+notice) — were written as **hard preconditions on exactly that event** and are all unmet. A fourth
+(SR-011-4.3, the `recovered`-vs-`closed` retention trigger) was expressly reserved to me *before* Stage 9
+and Stage 9 shipped the narrower reading without it. SR-011-5 is therefore **not discharged on my limb**,
+and Stage 8 remains incomplete.
+
+**I am not asking for a revert, and I am not asking for the capture UI to be pulled.** The data already
+captured is lawfully held — my §4 basis (s11(1)(b) contract + s11(1)(c) legal obligation) does not depend
+on any of the blockers below, and the §5 retention floor means deleting it would be the wrong remedy. What
+is withheld is the **gate**, and with it any representation that this surface was cleared before it began
+processing. The blockers in §9.4 are, with one exception, copy and register artefacts — not code.
+
+**Code read for this section (2026-09-08, running code, not the design chain):**
+`backend/src/repositories/recovery-cases.ts` · `backend/src/lib/police-report-serializers.ts` ·
+`backend/src/lib/police-report-retention.ts` + `.test.ts` ·
+`backend/scripts/police-report-retention-purge.ts` · `backend/src/db/recovery-collections.ts` ·
+`backend/src/routes/recovery.ts` · `backend/src/routes/security-cases.ts` + `.test.ts` ·
+`backend/src/routes/support-lookup.ts` · `backend/.eslintrc.cjs` ·
+`mobile/src/screens/recovery/PoliceReportSection.tsx` · `mobile/app/(auth)/privacy.tsx` ·
+`src/pages/PrivacyPolicyPage.tsx` · `docs/organization/gates/stage8-manifest.json` · full `docs/` search
+for any RoPA artefact.
+
+### 9.1 What I confirm as satisfied — verified in shipped code
+
+**C-011-9 / SR-011-1 (exclusion from every security-company surface): SATISFIED, and it exceeds what I
+required.** Three independent layers, all present:
+
+1. **Query-level projection.** `POLICE_REPORT_FIELD_EXCLUSION_PROJECTION`
+   (`recovery-cases.ts:120-126`) excludes all five police-report keys and is applied to **four** partner
+   paths — `listForPartnerOrg`, `findByIdForPartnerOrg`, `claimForPartnerOrg` **and**
+   `updateStatusForPartnerOrg`. SR-011-1a named only the first two; the write-path read-backs were caught
+   as well. The fields are never fetched into the row object on any partner path, which is what makes
+   "by construction" literally true rather than a naming convention.
+2. **Module boundary + lint enforcement.** `police-report-serializers.ts` holds the only two functions
+   that put these fields on a wire, and `backend/.eslintrc.cjs:14-41` carries a
+   `no-restricted-imports` override on `src/routes/security-cases.ts` and `src/routes/support-lookup.ts`
+   covering both the `.js` and extensionless specifiers. A wrong import is a build failure.
+3. **Route-level golden-response regression tests.** `security-cases.test.ts:365-393` asserts a
+   six-key absence set against a document with **every** police-report field populated including a
+   non-empty history array, across the partner routes. This is the merge-blocking test SR-011-1b required.
+
+On the wire, I confirm: `serializeSecurityRecoveryCase` (`recovery-cases.ts:175-182`) emits seven keys,
+none of them police-report; `GET /v1/customer-lookup` (`support-lookup.ts:150-156`) builds a five-key
+literal and calls no recovery-case serializer. **SR-011-7 holds. C-011-9 is met.**
+
+**Retention job (C-011-10 / SR-011-4 mechanism): CORRECT on all three limbs I ruled.** Verified against
+`police-report-retention.ts`, not the design doc:
+
+| My ruling (§5) | Shipped |
+|---|---|
+| 5-year floor from case closure | `POLICE_REPORT_RETENTION_YEARS = 5` (`recovery-cases.ts:59`), `computeRetentionCutoff` subtracts it from an injectable `now`; test asserts `2026-09-07 → 2021-09-07` |
+| Field-level clearing, **not** whole-document deletion | `buildClearUpdate` is a `$set` of five fields to `null`/`[]` (`:88-95`). There is **no `deleteOne`/`deleteMany`/TTL index anywhere in this feature** — I checked. `updatedAt` is bumped, which is itself evidentiary and is the right call |
+| Legal-hold exclusion | `legalHold: { $ne: true }` in `buildRetentionPurgeFilter` (`:58`), with a dedicated test asserting an otherwise-eligible held case is not matched (`police-report-retention.test.ts:186-196`) |
+
+Also confirmed and creditable: the filter is idempotent (matches only documents that still *have* a field
+set, via `$type` — the `$ne`-in-partial-index defect that broke production startup is fixed consistently in
+**both** the index and the job filter, `recovery-collections.ts:109-125`); `--dry-run` is a true no-write
+path with a test proving it; the script prints the resolved database name to stderr before any query so a
+run against the wrong database can never be mistaken for "nothing to clear."
+
+**SR-011-2 (accept-then-silently-purge): SATISFIED.** `setPoliceReportFields` returns
+`retention_expired` (`recovery-cases.ts:396-403`) and `recovery.ts:232-240` maps it to a `CONFLICT` with
+plain-language customer copy. The API no longer acknowledges a write it is going to discard. This is the
+s16 information-quality point and it was implemented as ruled.
+
+**C-011-8 (change history): SATISFIED.** Append-only, one entry per field that *actually* changed,
+actor from the token, no-op resubmission suppressed (`:412-459`). `actorAccountId` is correctly held back
+from the wire shape in `serializePoliceReport`.
+
+**C-011-1 (third-party suspect data): mitigation still live** at
+`mobile/src/screens/recovery/ReportTheftConfirmScreen.tsx`. Unchanged, still advisory-only, still open.
+
+**PCI-DSS scope: nil, unchanged.** This feature introduces no payment flow and no cardholder data. The
+one PCI-adjacent risk on this data model is the free-text `notes` field, which is Feature 010's C-010-3
+and is tracked there.
+
+### 9.2 Ruling now issued — SR-011-4.3, `recovered` vs `closed`
+
+SR-011-4.3 reserved this to me and required it be closed **before Stage 9 implemented the job**. It was
+not, and Stage 9 shipped the narrower reading: `updateStatusForPartnerOrg` sets `closedAt` **only** on the
+transition into `'closed'` (`recovery-cases.ts:320-322`), the purge filter requires `status: 'closed'`
+(`police-report-retention.ts:53`), and `police-report-retention.test.ts:198-209` now *locks that in* with
+a test asserting a `recovered` case is deliberately not matched.
+
+**Ruling: the retention clock starts on entry to any terminal state, and `recovered` is a terminal
+state.** A case whose asset has been recovered is finished; there is no basis in POPIA s14(1) or in the
+insurance-recordkeeping floor for treating it as perpetually live merely because no operator later
+pressed "closed." As shipped, a `recovered`-and-never-`closed` case retains the police-report triple
+**indefinitely** — the identical failure mode SR-011-4 was raised to prevent, arriving by the second route
+the chair predicted. The `$in: ['closed', 'recovered']` reading the chair supported is correct and I adopt
+it.
+
+**Required:** `closedAt` set on transition into `'closed'` **or** `'recovered'`; purge filter
+`status: { $in: ['closed', 'recovered'] }`; the retention floor runs from that timestamp; and the test at
+`:198-209` inverted rather than deleted, so the intent stays visible. Owner `backend-engineer` +
+`database-architect`. This is **C-011-11**.
+
+**SR-011-4.2 (backfill of pre-migration closed rows): ruled satisfied by analysis, no work required.**
+Those rows have `closedAt: null` and therefore never match the filter — but they also have no
+police-report field set, so the `$or` limb never matches them either. There is nothing to purge and no
+retention exposure. The gap is real but empty. If any close path is ever added that does not set
+`closedAt`, this reverts to a live gap.
+
+### 9.3 Drift between what I ruled and what shipped — stated explicitly
+
+Four items. Two are blockers (§9.4), two are noted-and-accepted.
+
+| # | Ruled | Shipped | Disposition |
+|---|---|---|---|
+| D-1 | C-011-3/-4/-5 are **hard preconditions on the first processing of real customer SAPS data** (§3, §10 of my ruling) | Real customer SAPS data is in production; none of the three exists | **Blocker B-1.** The gate was crossed in the wrong order |
+| D-2 | C-011-5 s18 notice must state five specific things **before first capture** (§4) | `PoliceReportSection.tsx:138-141` says only "add the case number here so it's on record." `mobile/app/(auth)/privacy.tsx` and `src/pages/PrivacyPolicyPage.tsx` contain **no occurrence** of "police", "SAPS" or "case number" | **Blocker B-2** |
+| D-3 | SR-011-4.3 ruling reserved to me before Stage 9 | Shipped without it, narrower reading locked in by a test | **Blocker B-3**, ruled in §9.2 as C-011-11 |
+| D-4 | SR-011-3(c) — bounded history exposure in the **list** response (cap the array, or return history only on detail) | `GET /v1/recovery/cases` maps every row through `serializeRecoveryCaseForCustomer`, which emits the full history array per item (`recovery.ts:144`) | **Noted, not a blocker on my limb.** This is a data subject reading their own record — no disclosure to a third party, so no POPIA limb is engaged. It remains an unmet *engineering* condition (payload weight, list/detail asymmetry) and I hand it back to `cybersecurity-architect` / `database-architect` rather than clearing it |
+
+**One further observation, accepted, not a condition.** The support-agent paths
+`ctx.recoveryCases.listByAccount` (`support-lookup.ts:115`) and `appendCallCentreNote` (`:200`) use the
+**unprojected** repository methods, so police-report fields *are* loaded into process memory on an agent
+request even though the handler's five-key literal keeps them off the wire. That is allowlist-by-
+convention, which is the exact posture SR-011-1 rejected for the partner path. I accept it here because
+(a) my C-011-9 read-access ruling permits internal `support_agent` access to these fields under the
+`privileged_data_access` audit event, which is recorded on both paths (`:126-134`, `:214-222`), so this
+is a permitted-reader path, not a prohibited one; and (b) nothing is exposed. If a support-agent *read*
+surface for these fields is ever built, it needs its own review — it is not authorised by silence here.
+
+### 9.4 Blockers — what is withheld and what lifts it
+
+| # | Blocker | Lifts when |
+|---|---|---|
+| **B-1** | **The feature is processing real customer SAPS data with C-011-3 (CT-4 documented Client instruction), C-011-4 (RoPA entry) and C-011-5 (s18 notice) all unmet.** All three were written as preconditions on this precise event. C-011-4 is mine to produce and is addressed in §9.5. C-011-3 is mine jointly with `cto`. As an Operator we are processing a new information category for a new purpose with no documented instruction authorising it (POPIA s20/s21, TDIT-2026-09 §19(a)) | RoPA entry + CT-4 entry naming police-report capture exist (both due 2026-09-15 — see §9.5), **and** B-2 is closed |
+| **B-2** | **No s18 notice content anywhere.** Neither privacy surface mentions this data at all, and the in-app helper copy is capture-encouraging and silent on every limb §4 required: who sees it, that it is **not** shared with security-company partners, that the platform files nothing with SAPS, the retention period stated as a period, and the erasure limit | Copy below rendered on the capture screen **and** added to both privacy notices. Copy is supplied — this is not blocked on a further compliance cycle |
+| **B-3** | **C-011-11** (§9.2) — `recovered` cases never start the retention clock; indefinite retention of the triple by a second route | `closedAt` set on `closed` **or** `recovered`; purge filter widened; test inverted |
+
+**s18 copy, given now, for the capture screen (replaces the `PoliceReportSection.tsx:138-141` helper):**
+
+> Optional. If you've opened a case with SAPS, add the case number, the station and the date here so it's
+> on record to support a future claim and to help us coordinate recovery.
+>
+> **We don't send this to SAPS.** Adding it here does not report anything to the police, and does not
+> update your police case — you still deal with SAPS directly.
+>
+> **Who sees it:** only you and TD IT Solution staff handling your policy or claim. It is **not** shared
+> with the security company that responds to your recovery.
+>
+> **How long we keep it:** five years after your case is closed, because we're required to keep
+> claim-supporting records for that long. During that period this specific information can't be deleted on
+> request, even if you ask us to delete other data.
+
+The same content, in the platform's own voice, must appear in `mobile/app/(auth)/privacy.tsx` and
+`src/pages/PrivacyPolicyPage.tsx`. Owner `technical-writer` + `ui-designer` + `mobile-engineer` /
+`frontend-engineer`; copy above is mine and is approved as written.
+
+### 9.5 RoPA — the time-sensitive item, stated plainly
+
+**INC-001-C-10 (platform RoPA, `compliance-specialist`, deadline 2026-09-15) has NOT passed. Seven days
+remain as of today, 2026-09-08.** I re-verified today: **no RoPA artefact of any kind exists anywhere in
+this repository** — a full `docs/` search for `ropa` returns zero files; the term appears only as a forward
+obligation in C-006-4, C-007-4, C-008-12, C-010-5, C-011-4 and INC-001-C-10. **CT-4 (documented Client
+instructions) carries the same 2026-09-15 date** and doc 10 §195 directs that the two be produced together
+off the same evidence base. Both are mine.
+
+**Does the feature going live change my posture? Yes, in one specific and material way.** My §3 ruling
+deliberately declined to block Stage 2/6/7 on the RoPA, on the reasoning that design work processes
+nobody's information and that blocking a low-risk feature behind four-features-old platform debt would be
+enforcement theatre. I stand by that reasoning for the design stages. **But the same paragraph made the
+RoPA a hard precondition on the first processing of real customer SAPS data, and that event has now
+happened.** So the deadline is not "still comfortably pending" — it is **now retrospectively late relative
+to the event it was gating**. The 2026-09-15 date has not expired on the calendar; it expired in substance
+the moment a real case number was written to production. That is the honest characterisation and I will
+not soften it: this is a condition of mine that was overtaken, and the platform cannot today answer an
+Information Regulator enquiry about what it holds on that customer, on what basis, for how long.
+
+**My commitment, on the record:** the Feature 011 processing activity — categories (SAPS case number,
+reporting station, date reported), purpose (claim substantiation and recovery coordination), basis
+(s11(1)(b) + s11(1)(c), §4), recipients (internal only; **explicitly not** security-company partners,
+§6), retention (5 years from terminal state per §5 as amended by C-011-11), transborder position
+(Render Frankfurt / EU Supabase region per doc 10 §2) — is drafted **inside** the INC-001-C-10 register by
+2026-09-15, together with the CT-4 entry. Not as a Feature-011 mini-register. If 2026-09-15 slips, that
+slip is escalated to `cto` on the day, not discovered later.
+
+**C-011-6 (insurance licence status) remains unreturned by `cto`.** The 5-year floor in §5 and in
+`POLICE_REPORT_RETENTION_YEARS` is therefore still **provisional**. It is very unlikely to move down; it
+may move up. `POLICE_REPORT_RETENTION_YEARS` is a single exported constant, which is the right shape for
+that uncertainty, and I credit that.
+
+### 9.6 Register additions
+
+| ID | Condition | Owner | Blocks |
+|---|---|---|---|
+| **C-011-11** | **Retention clock starts on entry to any terminal state.** `closedAt` set on transition into `'closed'` **or** `'recovered'`; purge filter `status: { $in: ['closed','recovered'] }`; the `recovered`-is-not-matched test inverted, not deleted (§9.2). Discharges the SR-011-4.3 ruling reserved to me | `backend-engineer` + `database-architect` | My SR-011-5 concurrence (B-3) |
+| **C-011-12** | **The purge job is a manual script, not a scheduled job.** C-011-10 requires "automated, evidenced," and `backend/scripts/police-report-retention-purge.ts` says in terms that scheduling is a separate unmade `devops-engineer`/`cto` decision. The first expiry is ~5 years out so this is not urgent, but "we'll schedule it later" is precisely how `location_events`' missing TTL happened (INC-001 §2.2). Schedule it, or `cto` records a dated acceptance with a review date | `devops-engineer` + `cto` | Not this gate. Before the first case reaches its expiry, and re-checked at every quarterly review |
+
+**RR-011-3 (stdout-only retention evidencing) is still NOT accepted.** The chair recorded it as requiring
+a `cto` signature or the `retention_job_runs` collection. Neither exists. The shipped source comments
+describe stdout-only as "the accepted interim control" — it is *named*, which is far better than silence,
+but it is not *accepted*, and the comment should not be read as the acceptance. On my limb this does not
+block: with no data yet at expiry there is nothing to evidence. It must be resolved before it does.
+
+### 9.7 Regime scope — reconfirmed for this feature, 2026-09-08
+
+**POPIA applies** (SA data subjects; SA responsible party under TDIT-2026-09; a SAPS docket reference is
+SA-domestic by definition). **GDPR is not triggered** — I have again found no EU data-subject footprint in
+code or in any product artefact; the Frankfurt/EU processing location is not an Art. 3(1) establishment
+trigger for a non-EU controller serving only SA subjects. This is a determination, not a default, and
+**C-011-7 stands**: it reverts to an open question the moment an EU-resident customer is onboarded, and
+the §5 retention position re-opens with it. **PCI-DSS scope: nil**, unchanged by this feature.
+**Insurance-sector recordkeeping remains the dominant retention driver and remains provisional on
+C-011-6.**
+
+**Verdict: CONCURRENCE WITHHELD IN PART (B-1, B-2, B-3).** B-2 and B-3 are a copy change and a
+two-line filter/setter change; I will re-issue concurrence on a diff confirmation without a fresh review
+cycle. B-1 is mine to clear and is dated 2026-09-15.
+
+**Filed by:** `compliance-specialist`, 2026-09-08.
+**Does not discharge:** Stage 8 (SR-011-5 remains open on my limb, and `security-engineer`'s concurrence
+is still not recorded anywhere in this document) · Stage 10 QA · C-011-1/-2/-3/-4/-5/-6/-7 ·
+C-011-11/-12 · CT-1 · CT-3 (breach runbook, 2026-09-12) · CT-4 · INC-001-C-10 ·
+C-008-1/-5/-6/-8/-12 · D-011-01, which this section releases nothing on.
