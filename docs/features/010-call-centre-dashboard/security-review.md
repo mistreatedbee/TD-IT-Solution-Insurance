@@ -759,3 +759,36 @@ discharged** — three items (SR-010-3, SR-010-4, SR-010-5 item 1) are open with
 `compliance-specialist`'s concurrence is still outstanding independent of this entry.
 
 **Filed by:** `security-engineer`, 2026-09-08.
+
+---
+
+## 12. Post-review fix verification — `cto`, 2026-09-08
+
+Three of the four items §10.8 and §11.8 both left open have been fixed and independently re-verified
+against the actual committed diff (not the fix agents' own summaries) before recording this section:
+
+| ID | Fix | Commit | Independently confirmed |
+|---|---|---|---|
+| SR-010-3 | `callerVerified` now rendered as a distinct badge on case detail, a new column on the list page, and per-entry on the FR-11 lookup addendum | `e8158b4` | `grep` confirmed the badge component and all three render sites present in the working tree; `tsc --noEmit` and `npm run build` both clean |
+| SR-010-4 | Verification banner rewritten to state plainly that no approved caller-identity procedure exists on this platform, and explicitly disclaims email/phone/policy-ID as proof of identity rather than inventing a "per your team's procedure" phrase implying a control that isn't real; note-field placeholder no longer invites self-attestation | `e8158b4` | Exact new banner text confirmed present in `CustomerLookupPage.tsx` via direct read, not taken from the fix agent's report alone |
+| B-1 / C-010-3 | PCI-scope hint ("Don't include card numbers, bank details...") added to both the create-case description field and the note field | `752f9a5` | `grep` confirmed identical hint text on both fields |
+| (unlabeled) misleading-copy finding | "the backend validates and rejects any other account type" (falsely implying a lookup precondition) replaced with the control that's actually real (audit logging/attribution); list-page copy corrected from "created or have interacted with" to "created" only, matching what `listMine` actually filters on | `752f9a5` | Confirmed via direct read |
+
+All four fixes are frontend-copy/render only — no backend logic, verification enforcement, or schema
+changes were introduced, consistent with what both `security-engineer` and `compliance-specialist`
+scoped as sufficient to close these specific items.
+
+**Not fixed, still genuinely open:** SR-010-5 item 1 — no `prohibitions.yaml`/CI-2 rule exists yet for
+the escalate endpoint. This needs actual CI/tooling work (`devops-engineer` + `backend-engineer`), not a
+copy change, and was out of scope for this pass. The manifest-omission and the executable 404 test remain
+the only protection against that surface being accidentally built.
+
+**Net effect on SR-010-7:** SR-010-3, SR-010-4, and B-1 are closed with evidence, not assertion. Stage 8
+for Feature 010's cleared scope (FR-11/12/14/15/16/17-scope=mine) can be treated as **substantially
+discharged** — both `security-engineer` and `compliance-specialist` concurred on the backend/data-model
+posture outright, and their only named frontend blockers are now fixed and verified. The one item still
+genuinely open (SR-010-5 item 1, the CI-2 mechanical guardrail) does not block real customer use of the
+already-cleared scope — it protects against a *future* engineer accidentally building the escalation
+endpoint without noticing it's unauthorized, which the manifest omission and the 404 test already guard
+against today, just not as robustly as a dedicated CI rule would. Recommend it as queued work, not a
+blocker on current operation.
