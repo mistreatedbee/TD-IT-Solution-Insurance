@@ -5,7 +5,8 @@
 request — `business-analyst` should countersign/amend before Stage 2 per RACI; this is a
 product-manager-authored Stage 1 pass, same working pattern already used for 010/011)
 **Contributors:** `product-manager`, `compliance-specialist`, `ux-researcher`
-**Status:** Draft — new platform-owner request (2026-09-08). Not yet scoped into a milestone;
+**Status:** Draft — new platform-owner request (2026-09-08). **Countersigned with amendments by
+`business-analyst` 2026-09-09 (§8) — Stage 1 complete.** Not yet scoped into a milestone;
 sequencing against Release Gate A / M6a (Call Centre Dashboard, Feature 010) is a Stage 2 call.
 **Related system areas (RACI):** touches three existing owned surfaces — Admin Dashboard (A:
 `frontend-architect`), Security Company Dashboard (A: `frontend-architect`), Customer Support
@@ -104,6 +105,11 @@ within each existing dashboard, not a screen that precedes them.**
   Operator / Call Centre Agent), reusing data already returned by each role's existing
   `useDashboardAuth().account` (already rendered in a smaller form on `AdminLayout`/
   `SecurityLayout`/`CallCentreLayout` today — this formalizes it into a proper Home screen).
+  **[business-analyst amendment]** The three label strings above (`Admin`, `Security Partner
+  Operator`, `Call Centre Agent`) are hereby the canonical mapping from `PrivilegedUserType` →
+  display label for this feature — `frontend-architect`/QA should treat these exact strings as
+  the spec, not re-derive their own wording per surface, to avoid the terminology-drift pattern
+  called out in this role's best practices.
 - **FR-2 — Quick links into that role's own key actions.** A small set of cards/links pointing at
   that role's *already-built* nav destinations (e.g. admin: "Review verification queue," "View
   DAU analytics"; security: "Open case queue"; support agent: "Look up a customer," "My cases").
@@ -118,6 +124,14 @@ within each existing dashboard, not a screen that precedes them.**
   blocked" discipline (`innovation-backlog.md`'s pattern). A backend-authored notices feature
   (who can post, targeting by role, read receipts) is **explicitly deferred** — file it as its own
   future Stage 1 item if usage demonstrates need, not built speculatively here.
+  **[business-analyst amendment]** "Editable via PR" is a build mechanism, not a content-governance
+  answer — it does not by itself establish who is *allowed* to approve wording every admin,
+  security-partner operator, and support agent will see. v1 should require a `product-manager` (or
+  delegate) review on any PR touching the notices config, same bar as customer-facing copy, even
+  though the mechanism is a static file — this avoids an unreviewed string turning into a de facto
+  policy or compliance statement (see this session's Feature 010/011 pattern of small-looking
+  surfaces carrying real compliance weight). Not a blocker to Stage 2, just a governance note to
+  carry into the FR-3 implementation ticket.
 - **FR-4 — Per-role operational glance, sourced only from that role's own already-authorized
   data.** E.g. admin: count of pending verifications, count of active policies (if cheaply
   derivable from existing list endpoints without a new aggregate query); security: count of open/
@@ -237,6 +251,14 @@ These are testable criteria for the net-new shared-hub piece (§3.1). Per-role f
 8. **AC-8:** Home screen renders correctly at the existing dashboard breakpoints (desktop-first
    per NFR-1 in Feature 010's own requirements; mobile-drawer nav pattern already shared via
    `DashboardShell` must continue to work unchanged).
+9. **AC-9 [business-analyst addition]:** If the request(s) backing an FR-4 operational count
+   fail, time out, or the underlying list endpoint returns an error, the Home screen degrades
+   gracefully — the affected count shows a neutral placeholder (e.g. "—" or a skeleton state) and
+   an optional inline retry, and the rest of the Home screen (FR-1 identity, FR-2 quick links,
+   FR-3 notices) continues to render normally. A single failed count must never blank the whole
+   Home screen or block navigation via FR-2's quick links. (This was unaddressed in the original
+   AC-1–AC-8 set; FR-4 is the only FR in this feature that depends on a live network call, so it's
+   the only one with a meaningful failure mode requiring its own criterion.)
 
 ---
 
@@ -274,6 +296,12 @@ Per this role's pre-approval checklist and the same discipline applied to Featur
   when something doesn't map) — it is a retention/usability improvement for **staff**, not
   customer-facing DAU. It should be sequenced against current sprint capacity alongside, not ahead
   of, Release Gate A and Feature 010/011 work already in flight.
+  **[business-analyst amendment — see §8]** "Not mapped to north-star DAU" is correctly stated as
+  a *non*-mapping to the customer-facing metric, but should not be read as "this feature has no
+  success metric." `product-manager` should define a small staff-facing success measure at Stage 2
+  (e.g. a qualitative check-in with each role 2–4 weeks post-launch, or a simple usage signal like
+  quick-link click-through) so this feature has *some* way to be judged as having worked, distinct
+  from — and not gated on — the 2,000-DAU customer metric.
 
 ---
 
@@ -288,8 +316,95 @@ Per this role's pre-approval checklist and the same discipline applied to Featur
 
 ---
 
-**Next lifecycle step:** `business-analyst` review/countersign of this draft → `product-manager`
-Stage 2 scoping (confirm Option B, assign milestone/sprint) → `ux-researcher` light validation of
-FR-2 quick-link sets → Stage 4 UI design → Stage 5 Architecture Review (confirm zero new auth
-surface) → Stage 6/7 only if FR-4's per-role counts need new backend aggregate endpoints rather
-than reusing existing list responses.
+## 8. Business-analyst countersign
+
+**Reviewer:** `business-analyst` (RACI-accountable owner, Stage 1 — Business Requirements)
+**Verdict: Countersigned with amendments.** This is a well-scoped, correctly-disciplined draft —
+the Option A/B placement analysis in §2 is the right way to have made that call, §3.2's explicit
+"evaluated and rejected" list is exactly the standard this role expects, and the per-role backlog
+in §4 stays honest about buildable-now vs. blocked. It did not need to be sent back. The amendments
+below are small, targeted additions, not a rewrite of the draft's substance.
+
+### 8.1 On scope (FR-1–FR-4 vs. what a "shared landing hub" should mean)
+
+Option B's four FRs are the right size for a v1 landing hub: identity, navigation, static comms,
+own-role glance data. Nothing reviewed here is over-scoped — if anything, §3.2's discipline in
+*excluding* cross-role visibility and a unified activity feed is the harder and more important call
+in this document, and it is the correct one; those features carry real compliance/security surface
+that this feature's "small UI win" framing does not justify taking on. I don't find anything
+business-critical missing from the FR set itself. The two gaps I did find were not missing FRs but
+missing *specification precision* within the existing FRs, both now closed by amendment:
+
+1. FR-1 left the role→label mapping as an implied convention rather than a canonical spec — closed
+   by the amendment inline at FR-1 (§3.1), which fixes the exact three display strings so
+   `frontend-architect` and QA build/test against the same wording instead of each inferring it.
+2. FR-3's "static content, editable via PR" description specified the delivery *mechanism* but not
+   *who approves what gets said to all staff* — closed by the amendment inline at FR-3 (§3.1),
+   requiring the same review bar as customer-facing copy even though the artifact is a static file.
+
+### 8.2 On acceptance criteria (§5)
+
+AC-1 through AC-8 are each independently testable with a clear pass/fail condition, correctly
+traced to a specific FR, and AC-6's explicit negative/network-level test for cross-role data is a
+genuinely good catch by the original draft — most specs would have stopped at "UI doesn't show it."
+One gap: FR-4 is the only FR in this feature with a live network dependency (FR-1/FR-2/FR-3 are all
+already-hydrated client state or static config), and the original AC set had no criterion for what
+happens when that call fails. **Added AC-9** (§5) to close this — a failed or slow operational
+count must degrade to a neutral placeholder, not blank the screen or block the rest of the Home
+screen's already-safe content. Without AC-9, "per-role operational count" could ship with an
+undefined error state and no QA criterion to catch it before release.
+
+### 8.3 On §4's per-role backlog ideas
+
+Sanity-checked, not approved for building (correctly out of scope for this feature). A-1/A-2/A-3,
+S-1, and C-1/C-2 are all reasonable, grounded candidates that reuse existing entities and data —
+none of them invent a new business capability out of nothing. S-2 is correctly self-flagged as
+blocked on real case volume and INC-001 posture; C-3 is correctly *not* re-proposed given it's
+already an open item under Feature 010's OQ-010-2. One soft note for whoever later Stage-1's C-2
+("recent lookups" shortcut): it is customer-identifying data (name/policy/phone used in a lookup)
+held in `sessionStorage`, and while "session-only, cleared on sign-out, no new persistence" is a
+reasonable v1 answer, it should still get a one-line `cybersecurity-architect` confirmation when it
+becomes its own ticket — not because this document is wrong to call it low-risk, but because this
+session's pattern (Feature 010/011) has been that "small and obviously fine" surfaces are exactly
+the ones worth a five-minute confirmation rather than an assumption. This is a note for that future
+ticket, not a blocker on Feature 012 today.
+
+### 8.4 On the north-star DAU framing (§6)
+
+"Not mapped to the north-star DAU metric" is the *correct* factual statement — this is a staff tool,
+not a customer acquisition/retention surface, and forcing a DAU mapping onto it would be worse than
+having none. But stated alone it reads as "this feature has no success measure at all," which isn't
+the same claim and shouldn't be allowed to stand as this document's final word on the feature's
+value. **Amended §6** to require `product-manager` name a small, proportionate staff-facing success
+signal at Stage 2 (a qualitative post-launch check-in with each role is enough — this does not need
+its own analytics pipeline). A feature that touches three staff surfaces should have *some* way to
+be judged as having worked or not, even if that measure is lightweight and qualitative rather than
+a north-star-grade metric.
+
+### 8.5 Flags carried forward to `product-manager`'s Stage 2 pass
+
+- Confirm the FR-1 canonical role-label strings (§3.1 amendment) get built as literal spec, not
+  reinterpreted per surface.
+- Assign an owner (likely `product-manager` or `technical-writer`) for FR-3 content-review
+  gatekeeping before the notices config ships, per the §3.1 amendment — this is a one-line process
+  decision, not new engineering scope.
+- Confirm AC-9's degrade-gracefully behavior gets carried into whatever Stage 4/6 design and
+  implementation ticket covers FR-4, since it wasn't in the original AC set product-manager and
+  ux-researcher may have already been designing against.
+- Name a lightweight staff-facing success signal for this feature per §8.4, distinct from and not
+  gated on the 2,000-DAU customer metric, so Stage 2 doesn't inherit an undefined "how do we know
+  this worked" question.
+- All four `compliance-specialist` / `cybersecurity-architect` / `solution-architect` /
+  `ux-researcher` flags already listed in §6 stand as originally drafted — this countersign found no
+  reason to add to or remove from that list, only to sharpen FR-1/FR-3/FR-4/§6 as above.
+
+No changes were made to §1, §2, §4, or §7 — the current-state audit, placement analysis, per-role
+backlog, and out-of-scope list were all found accurate and complete as drafted.
+
+---
+
+**Next lifecycle step:** Stage 1 business-requirements review is now complete (this countersign) →
+`product-manager` Stage 2 scoping (confirm Option B, assign milestone/sprint, pick up the §8.5
+flags) → `ux-researcher` light validation of FR-2 quick-link sets → Stage 4 UI design → Stage 5
+Architecture Review (confirm zero new auth surface) → Stage 6/7 only if FR-4's per-role counts need
+new backend aggregate endpoints rather than reusing existing list responses.
