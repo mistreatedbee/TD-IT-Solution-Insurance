@@ -403,8 +403,189 @@ backlog, and out-of-scope list were all found accurate and complete as drafted.
 
 ---
 
+## 9. Solution-architect Stage 5 confirmation — Option A vs. Option B
+
+**Reviewer:** `solution-architect` (Stage 5 — Architecture Review) · **Date:** 2026-09-09
+**Verdict: Option B confirmed. Option A is correctly not pursued, and is not silently foreclosed —
+§7 already keeps it open as a future ADR-level decision, which is the right disposition.**
+
+This is the short confirmation §6 asked for, not a new architecture-review document. Three findings.
+
+### 9.1 The roadmap check — multi-role accounts / staff SSO are not planned (verified, not assumed)
+
+Searched `docs/organization/roadmap-release-gate-a.md`, `north-star-2000-dau.md`,
+`innovation-backlog.md`, and all seven ADRs (0001, 0002, 0003, 0006, 0008, 0009, 0010) for any
+account-model plan involving multi-role staff accounts, role switching, or staff SSO across roles.
+**Nothing.** The only hits anywhere in `docs/` are this feature's own §2/§7 and `product-plan.md`.
+The only prior statement on the subject is Feature 005's architecture doc §6.1 —
+*"No role switcher, no shared 'staff portal' shell in Phase 1"* — i.e. the existing direction of
+travel agrees with Option B rather than being neutral about it.
+
+The account model is **structurally single-role per account today** — confirmed in code, not
+inferred: `app.accounts.user_type` is one column of enum `app.user_type`
+(`backend/src/repositories/accounts.ts:15`, `backend/migrations/030_*.sql`), denormalized as one
+value onto `app.account_status_cache`; `requireUserType(...allowed)` matches the single
+`req.auth.userType` claim (`backend/src/middleware/require-role.ts:18-24`); and the frontend's
+`PRIVILEGED_DASHBOARD_CONFIG` is a `Record<PrivilegedUserType, …>` keyed one-role-to-one-tree
+(`src/dashboard/auth/roleRouting.ts:28-37`). There is no join table, no array column, no
+"roles" concept to grow into. Multi-role would be a schema change plus a token-claim change, not a
+UI change.
+
+**The stronger point, which §2 didn't have:** Option A isn't merely unbuilt — it is *actively
+contradicted by an accepted security constraint*. **C-LU-2 / SR-LU-4** (login-unification security
+review) requires that "establishing a session for role X must first terminate any session for role
+Y held by the same browser — locally *and* server-side," implemented in
+`clearOtherRoleSessions()` (`src/dashboard/auth/roleRouting.ts:136-145`), which clears every other
+role's storage slot and fires server-side revocation. Concurrent multi-role sessions are therefore
+a deliberately closed door, not an open one. Building Option A would require reopening a
+`cybersecurity-architect` decision, which raises its true cost well above the "fourth auth context"
+figure §2 already used — and further confirms Option B.
+
+### 9.2 Architectural soundness of Option B — holds, with one structuring condition
+
+Mounting a role-parameterized Home as the index route inside each existing tree, reusing each
+`DashboardShell` and `DashboardAuthProvider` unchanged, is sound: it adds **zero** new service
+boundaries, contracts, session surfaces, or storage slots; it consumes only already-hydrated
+client state (FR-1/FR-2/FR-3) plus each role's own existing list endpoints (FR-4); and every
+existing `AuthGate` continues to sit above it unmodified (AC-7 is then true by construction rather
+than by test). Three mounts of one component is duplication of *routing*, not of logic — an
+acceptable and reversible cost.
+
+One condition, which I'd like carried into the Stage 6/9 implementation ticket:
+
+- **C-012-A1 — role-specific data must be injected per tree, not branched inside the shared
+  component.** The shared presentational Home belongs under `src/dashboard/` (consistent with
+  `ui-design.md`'s `src/dashboard/content/homeAnnouncements.ts`), but its quick-link set and FR-4
+  count source must be passed in as props by each role's own route file in `src/admin`,
+  `src/security`, `src/call-centre` — **not** resolved by a `switch (role)` inside the shared
+  component that imports all three roles' API clients. Reason: with injection, no role's Home code
+  can even reference another role's API client, so **AC-6 (no cross-role fetches) becomes a
+  structural property enforced by the import graph** rather than a runtime conditional that a
+  future edit could regress past a test. This costs nothing extra to build now and is materially
+  harder to retrofit later. It also keeps the three surfaces independently evolvable, which is the
+  actual reason Option B is cheap in the first place.
+
+### 9.3 On not rubber-stamping
+
+Stages 2 and 4 both proceeded on Option B; I re-derived the placement question from the account
+model and the login-unification constraints independently before reading their conclusions, and
+would have said so had I disagreed. I did not, and the cost-of-unwinding question is therefore
+moot — but for the record: unwinding at this point would have cost only the Stage 4 UI design's
+mounting assumptions (§2/§4.3), not the FR set or acceptance criteria, since FR-1–FR-4 are
+placement-independent. The expensive part of Option A was never the Home screen; it was the auth
+model, which is precisely why doing it *this* way leaves that decision fully available later.
+
+**No new ADR required.** This confirmation is not architecture-significant on its own — it
+declines to change the architecture. If multi-role staff accounts are ever genuinely requested,
+*that* is the ADR (account model + C-LU-2 revisit + a fourth auth context), and this section is the
+record of why it was not taken speculatively in 2026-09.
+
+**Stage 5 architecture gate: PASS** (subject to C-012-A1 above, which is a structuring note for
+implementation, not a blocker). `cybersecurity-architect`'s separate §6 light-touch confirmation
+that Option B introduces no new auth surface still stands as its own item — my finding that it
+introduces none is an architectural read, not a security sign-off.
+
+---
+
 **Next lifecycle step:** Stage 1 business-requirements review is now complete (this countersign) →
 `product-manager` Stage 2 scoping (confirm Option B, assign milestone/sprint, pick up the §8.5
 flags) → `ux-researcher` light validation of FR-2 quick-link sets → Stage 4 UI design → Stage 5
 Architecture Review (confirm zero new auth surface) → Stage 6/7 only if FR-4's per-role counts need
 new backend aggregate endpoints rather than reusing existing list responses.
+
+---
+
+## 10. `cybersecurity-architect` — Stage 5 light-touch auth-surface confirmation
+
+**Reviewer:** `cybersecurity-architect`, 2026-09-09. **Scope:** only the §6 flag — "does Option B
+introduce a new auth surface." This is **not** a Stage 8 Security Review; the hard Stage 8 gate
+(threat-model delta, `security-engineer` + `compliance-specialist` concurrence) still runs before
+Stage 9 dev work ships. §9 is left free for `solution-architect`'s Option A/B confirmation.
+
+**Verdict: CONFIRMED — no new auth surface — with two non-blocking flags for Stage 8.**
+
+### 10.1 What was verified in code (not taken from the doc's assertion)
+
+- **Zero new session/token handling.** `DashboardAuthProvider` (`src/dashboard/auth/
+  DashboardAuthProvider.tsx`) takes `{storageKey, allowedUserType}` and is the sole owner of
+  hydration (`:113–138`), server-side role re-verification via `GET /account/me` (`:93–111`), and
+  fail-closed sign-in (`:159–172`). A Home screen mounted as an `index` route consumes
+  `useDashboardAuth()` read-only; nothing in FR-1/FR-3/FR-4 writes a token, reads `sessionStorage`,
+  or adds a provider. Option A's "fourth auth context" concern does not materialise.
+- **Home sits behind the same gate as every other page (AC-7 satisfied structurally).** In all
+  three trees the `index` route is nested inside `<AuthGate>` → `<Layout>`:
+  `src/admin/AdminRoutes.tsx:52–54`, `src/security/SecurityRoutes.tsx:27–29`,
+  `src/call-centre/CallCentreRoutes.tsx:34–36`. `AdminAuthGate` (`src/admin/layout/
+  AdminLayout.tsx:8–37`) renders `<Outlet />` **only** on `status === 'signed-in'`, i.e. only after
+  the server-side `/account/me` role check resolves — so Home's FR-4 fetches cannot fire before role
+  verification. Replacing `<Navigate to="accounts" replace />` with `<HomePage />` changes the
+  gate's *child*, not the gate.
+- **FR-1 identity data is already-hydrated client state, no new call.** `account` is the same
+  `AccountMe` object each layout already renders (`AdminLayout.tsx:56–58`). AC-2 holds.
+- **FR-3 announcements are a static frontend constant** (`ui-design.md` §3.2) — no endpoint, no
+  authored content, no new input trust boundary. Plain-text-only, no markdown/HTML/links, which
+  keeps injection surface at zero rather than relying on sanitisation. Good structural choice.
+- **FR-4 reuses existing endpoints whose role scoping is enforced server-side, not by the caller.**
+  Confirmed the count-source endpoints authorize identically regardless of which page calls them:
+  - `GET /admin/verification-requests` — `requireUserType('admin')`
+    (`backend/src/routes/admin-verification.ts:27–35`).
+  - `GET /security/cases` — `requireUserType('security_company_operator')` **plus**
+    `requirePartnerOrg`, and the query is scoped by `req.auth.partnerOrganizationId` taken from the
+    token, never from a request param (`backend/src/routes/security-cases.ts:32–39`, `:41–62`).
+  - `GET /support-cases` — `requireUserType('support_agent')`, `scope` is **required with no
+    default**, `scope=all` is rejected outright and has no repository implementation, and results
+    come from `listMine(req.auth.accountId, …)` (`backend/src/routes/support-cases.ts:167–210`).
+  - `requireUserType` reads `req.auth.userType` from the **verified access-token claim**
+    (`backend/src/middleware/require-role.ts:18–30`) — the frontend cannot influence it.
+  Because authorization is derived from the token and the partner-org / agent-account scope is
+  server-derived, a Home-screen count-fetch **cannot** leak cross-role data even by accident: there
+  is no parameter the Home screen could pass to widen scope. A wrong-role token yields 403, not a
+  wider result set.
+- **No shared-client cross-role bleed.** `configureDashboardClient` is a module singleton
+  (`src/dashboard/api/client.ts:21–26`) but only one role tree mounts per URL path
+  (`src/App.tsx:107/115/123`), so it is bound to the mounted role's provider. Home introduces no new
+  pattern here — it fetches on mount exactly as `VerificationQueuePage`/`CasesListPage` already do.
+- **§3.2's cross-role exclusion is honoured in the Stage 4 design.** Re-read `ui-design.md` §3.3 and
+  §5: each role's card set points only at that role's own routes (`/admin/verification`,
+  `/admin/analytics`; `/security/cases`; `/call-centre/lookup`, `/call-centre/cases`), each count is
+  sourced from that role's own endpoint, admin's dropped "active policies" count is honoured by
+  omission, and cross-role visibility / unified activity feed are explicitly not designed in any
+  form (§5). Nothing reintroduces cross-role data. **AC-6 remains a valid, testable negative test as
+  written.**
+
+### 10.2 Flags to carry into Stage 8 (not blockers to Stage 5)
+
+- **F-012-1 — FR-4 counts cause PII disclosure + audit-log writes on every dashboard landing.**
+  Neither list endpoint returns a total; they return `CursorPage` rows. So "count of pending
+  verifications" means **fetching real customer records** — `admin-verification.ts:46–60` returns
+  email, first/last name, phone and masked ID per row, and `:62–69` writes a
+  `recordBulkDisclosure()` audit event (ADR-0006 AUD-3(b)) per subject. `support-cases.ts:213–222`
+  does the same. Today those disclosures correspond to an operator *deliberately opening a queue*;
+  after Feature 012 they would fire automatically on every landing/refresh, attaching disclosure
+  records to a user who never looked at anyone's data. That is a data-minimisation and
+  audit-semantics change, not an authZ change — but it degrades the audit trail's evidential value.
+  **Preferred resolution:** if Stage 6/7 adds a count mechanism, make it a genuine count/aggregate
+  that returns a number and no subject rows (and therefore no per-subject disclosure event), rather
+  than a `limit=N` row fetch the UI throws away. The `security-cases` count is the cheap case —
+  `?status=open` filtering already exists (`security-cases.ts:16–18`) and that route emits no
+  bulk-disclosure event. `security-engineer` and `compliance-specialist` should own the final call
+  at Stage 8; I am flagging it, not deciding it here.
+- **F-012-2 — a page-derived count is not the same number as a true total (AC-5 accuracy).**
+  Deriving a count from a page of results silently caps at the page limit (admin's queue page
+  already requests `limit: 50` — `src/admin/pages/AdminVerificationPages.tsx:21`), so a 60-item
+  queue would render "50". Not a security issue, but it would make AC-5 unsatisfiable and could
+  understate a backlog an operator relies on. Same resolution as F-012-1.
+
+Rate limits were checked and are **not** a concern: 60/min for the admin verification list, 100/min
+default elsewhere (`backend/src/lib/policy.ts:93–96`, `:117–120`) — one extra call per landing does
+not meaningfully consume either budget.
+
+### 10.3 Conditions on this confirmation
+
+This confirmation covers Option B **as designed in `ui-design.md`**. It is void if any of the
+following change, each of which would require a fresh review rather than this light-touch pass: (a)
+any Home content sourced from a role other than the signed-in one; (b) any new endpoint created for
+FR-4 (a new aggregate route is a new API surface needing its own authZ review at Stage 7/8, even
+though the *data* is already-authorized); (c) FR-3 becoming backend-authored or accepting anything
+other than plain text; (d) Home being hoisted out of the per-role tree to a shared `/staff` route
+(Option A), which reopens the auth-context question in full.
