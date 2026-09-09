@@ -283,7 +283,230 @@ check says otherwise.
   recent-lookups/C-2) — those are each their own future Stage 1 items per `business-requirements.md` §4's own
   framing, not folded into this sizing just because S-1 happens to reuse the same route family as §3 above.
 
-**Next lifecycle step:** this document → `compliance-specialist` resolves §4.1 → Stage 8
+**Next lifecycle step:** this document → `compliance-specialist` resolves §4.1 (**resolved — see §9**) → Stage 8
 (`cybersecurity-architect`/`security-engineer`) reviews all three new routes as new API surface (per Stage 5
 confirmation's own condition (b): "any new endpoint created for FR-4 ... needs its own authZ review at Stage
 7/8, even though the data is already-authorized") → Stage 9 implementation, gated on both.
+
+---
+
+## 9. `compliance-specialist` ruling on §4.1 — the count-only audit-event question
+
+**Author:** `compliance-specialist` · **Date:** 2026-09-09 · **Scope:** §4.1 only — whether
+`GET /v1/admin/verification-requests/count` needs an audit event, and if so what shape. This section
+does not reopen anything else in this document or in Feature 012, and is not a Stage 8 sign-off.
+
+### 9.0 Ruling, stated up front
+
+**An audit event is required — but not `recordBulkDisclosure()`'s per-subject disclosure rows.**
+
+> `GET /v1/admin/verification-requests/count` writes **exactly one** call-scoped
+> `privileged_bulk_access` row with `resultCount: 0` and **zero** `privileged_data_access` rows.
+
+Emitting a `privileged_data_access` row for this endpoint is **prohibited**, for the same reason
+backend-architect suspected: it is a disclosure record, and nothing is disclosed. Emitting *nothing*
+is also wrong, for a reason that is not about disclosure at all. Both halves are grounded below.
+
+The lighter-weight shape §4.1 asked about **already exists and is already tested** — no new event
+type, no new writer, no schema change. See §9.4.
+
+### 9.1 Regulatory regime — confirmed, not inherited
+
+**POPIA is the operative regime for this endpoint**, per the standing platform determination
+(`compliance-review-supabase.md` §"Governing framework"; ADR-0006 §14.1, which ratified POPIA for
+both audit trails rather than letting it stand as an assumption). **GDPR: not applicable today**
+(forward hedge unchanged). **PCI-DSS: out of scope** — no payment data is touched by this endpoint or
+by `app.account_audit_log`. **Insurance-regulatory (FAIS / Insurance Act):** no recordkeeping floor
+attaches to privileged-access telemetry — ADR-0006 §14.2.2 already ruled a *read* is not a record of a
+financial service rendered, and that ruling covers this row too. Nothing about a count changes any of
+those four determinations, so no re-scoping is triggered.
+
+### 9.2 Half one — no disclosure event, because nothing is disclosed
+
+POPIA's operative concept is *personal information*: information relating to an **identifiable**
+person. A bare integer with no subject identifiers relates to no identifiable person. It follows
+that:
+
+- **s23 (subject access, "who has had access to my information")** has nothing to answer for here.
+  There is no customer X about whom a truthful answer would include this request. Writing a
+  `privileged_data_access` row anyway would put a *false positive* into the one query s23 and
+  incident response depend on.
+- **s22 (breach notification)** is unaffected. ADR-0006 §14.4.1 rates the bulk-no-subject gap as a
+  live s22 *incapacity* — "we cannot determine who was affected, so we cannot notify them." That
+  incapacity arises when a call **discloses** subjects and records none. This call discloses none, so
+  there is no affected-subject set that the trail fails to capture. F-012-1 is therefore genuinely
+  resolved by the count endpoint, not merely relocated.
+- **The trail-pollution argument is not cosmetic.** ADR-0006 AUD-8 already documents one live
+  false-positive class (`POST /v1/invitations` emitting `privileged_data_access` for a
+  privilege-*granting* action) and treats it as a defect serious enough to route to
+  `backend-architect` — R-2 subsequently gave it its own `privilege_granted` event type
+  (`backend/src/repositories/audit-log.ts:54`, migrations/032). Manufacturing a second false-positive
+  class immediately after the platform paid to remove the first would be a regression, not caution.
+  **A disclosure record that records no disclosure makes the trail less evidential, not more.**
+
+`recordBulkDisclosure({ disclosedAccountIds: [...] })` with real ids is therefore **not** to be used
+here under any circumstances, and no per-subject row may be synthesised.
+
+### 9.3 Half two — a call-scoped event *is* required, and the basis is s19/s8, not disclosure
+
+`06-security-standards.md` line 30 ("audit logging required for … access to another user's data by an
+admin/support/security-company operator") does **not**, on its face, reach a count: no user's data is
+returned. If disclosure were the only test, "no audit event" would be the answer. It is not the only
+test, and ADR-0006 has already ruled on the closest analogue:
+
+> **ADR-0006 §14.5.5** (my own ruling, concurring on AUD-3): *"A filtered list or detail call that
+> returns nothing discloses nothing, so it carries no s22 weight and I am not asking for it to be
+> treated as a disclosure. But it should still produce a row … with a `resultCount` of zero, so that
+> the **attempt** is reconstructible. Naming it so the implementer does not 'optimise away' audit
+> rows for empty results."*
+
+A zero-result list call and a count call are the same object under that rule: a privileged request
+against the customer base that returns no subject's data. §14.5.5 already ruled that such a call
+records the *call* while recording no *disclosure*. **This endpoint inherits that ruling directly.**
+I am applying an existing rule, not writing a new one.
+
+Three reinforcing reasons, in descending weight:
+
+1. **AUD-8's actor-keyed query is the one that breaks.** ADR-0006 AUD-8 mandates two reconstruction
+   queries: subject-keyed ("every access to customer X") and actor-keyed ("everything admin Y looked
+   at"). The subject-keyed query is correctly silent about this endpoint. The actor-keyed query is
+   not: with no row at all, `GET .../count` becomes **the only admin-authenticated read path on the
+   platform that leaves no trace in either trail**. An investigator reconstructing a suspect admin's
+   sitting would see gaps that are indistinguishable from idle time. §14.5.5 declined to blind that
+   signal for empty list calls; I decline to blind it here for the same reason.
+2. **A count endpoint is a low-cost oracle over the customer base.** It returns real-time aggregate
+   information derived from customer records, callable at 100/min, with no page-size ceiling by
+   design (§6). Polled over time it yields queue dynamics; differenced against a list call it yields
+   more. That is not a disclosure and I am not treating it as one — but "not a disclosure" and "not
+   worth a line in the trail" are different claims, and POPIA s19 (security safeguards) plus s8
+   (accountability) support recording *that a privileged principal exercised a capability over
+   personal information*, independently of whether any personal information came back.
+3. **Cost is one row per call.** ADR-0006's repeated cost test — "there is almost nothing to accept a
+   risk *about*" — cuts the same way here. Declining a control this cheap would require the exposure
+   to be zero, and it is not zero.
+
+### 9.4 The shape — it already exists; do not invent one
+
+`privileged_bulk_access` is exactly the "lighter-weight aggregate access event distinct from
+`recordBulkDisclosure`" that §4.1 hypothesised, and it is already live: enum value
+(`backend/src/repositories/audit-log.ts:53`, migrations/032), `account_id` nullable for this type,
+`account_audit_log_privileged_has_actor` requiring an attributable actor, and
+`account_audit_log_result_count_only_on_bulk` requiring `result_count` on this type and only this
+type (migrations/033, mirrored as guards at `audit-log.ts:140-168`).
+
+**Mandated call — use the existing writer with an empty subject list:**
+
+```ts
+await ctx.auditLog.recordBulkDisclosure({
+  disclosedAccountIds: [],            // structurally zero — see 9.4(a)
+  actorAccountId: req.auth!.accountId,
+  actorSessionId: req.auth!.sessionId,
+  auditRequestId: req.auditRequestId ?? null,
+  ipAddress: clientIp(req),
+  userAgent: req.header('user-agent') ?? null,
+});
+```
+
+(a) `recordBulkDisclosure([])` emits **one** `privileged_bulk_access` row with `resultCount: 0` and
+**no** subject rows — `audit-log.ts:214-221`, already unit-tested at
+`backend/src/repositories/audit-log.test.ts:233`. Reusing it rather than hand-writing
+`record({ eventType: 'privileged_bulk_access', … })` is preferred precisely because the array
+literal `[]` is the same structural guarantee §2's reasoning likes: a handler that passes an empty
+literal cannot emit a subject row. The name reads oddly for a call that discloses nothing; that
+mismatch is §14.5.5's, not this endpoint's, and consistency with the zero-result list case is worth
+more than a better verb.
+
+(b) **`resultCount` is 0 and means "distinct subjects disclosed" — it is NOT the returned count `N`.**
+Binding. `result_count` carries one meaning across the whole trail (`audit-log.ts:215`); writing the
+aggregate value into it would silently corrupt every actor-keyed query that asks "which sittings
+disclosed more than *n* subjects." The value `N` is not to be written into the audit trail at all.
+
+(c) **Losing "which endpoint" is accepted, and it is already handled.** Trail A carries no `endpoint`
+column, so this row is indistinguishable from a zero-result list call. That is fine for the
+subject-keyed question (both mean "no subject data disclosed") and is recoverable for the actor-keyed
+one via `audit_request_id` → the application log line for that request, which is precisely AUD-5's
+stated purpose. **No new column is warranted for this.**
+
+(d) **AUD-10 fail-closed applies unchanged.** The audit write precedes response serialisation; if it
+throws, the request fails 5xx and the number is not returned. There is no "it's only a count"
+exception, and no reason to want one — there is no expensive work to lose.
+
+(e) **C-17 stands.** No query or filter *value* may be written to the trail. §4 specifies no query
+params for v1, so this is inert today; if a `status` param is added later it may be recorded as a
+*field used*, never as a value, and an `accountId`-style filter may not be recorded at all without my
+review.
+
+### 9.5 Precedent correction — `countByAccount` is not the precedent §4.1 cites
+
+§4.1 and §7's table rest partly on the claim that `policies.ts:191` `countByAccount` "has never itself
+been wrapped in an audit call anywhere it's used today." I checked both call sites and that reading is
+**backwards**:
+
+- **`backend/src/routes/support-lookup.ts:113`** calls `countByAccount(accountId)` — and that handler
+  **does** write an audit event, `privileged_data_access` at `:126-134`. It is scoped to one
+  *identified* subject and returns that subject's PII alongside the count. So the one privileged call
+  site of `countByAccount` **is a precedent that a subject-keyed count is a disclosure about that
+  subject**, not a precedent for count-only access going unlogged.
+- **`backend/src/lib/customer-lifecycle-notifications.ts:23`** is a system path with no human actor
+  and no privileged principal — no precedent either way (`account_audit_log_privileged_has_actor`
+  could not even be satisfied there without an `actorService`).
+- `plan-catalog.ts:157` counts non-personal catalogue rows — out of scope entirely.
+
+**Conclusion: this platform has no existing count-only privileged endpoint, and therefore no
+precedent for not logging one.** §4.1's design assumption was not wrong to flag itself; it was resting
+on a precedent that does not exist. This section is the first ruling in the class.
+
+**Durable rule, so this is not misapplied later:**
+
+| Shape | Event |
+|---|---|
+| Count with **no** subject identifier, over a whole collection or a status filter (this endpoint) | one `privileged_bulk_access`, `resultCount: 0`, no subject rows |
+| Count **keyed to an identified subject** (`countByAccount(accountId)`, "how many assets does customer X have") | a **disclosure** about X → `privileged_data_access` with `accountId: X`, as `support-lookup.ts` already does |
+| List returning subject rows | `recordBulkDisclosure()` with the real ids, unchanged |
+
+A count is not exempt because it is a count. It is exempt from the *disclosure* record because it
+names nobody — and the moment a filter names somebody, it is a disclosure again.
+
+### 9.6 Consequential correction to §5.1 (`GET /v1/support-cases/count`)
+
+§5.1 concludes "no compliance check needed" for the support-agent count. Its *disclosure* reasoning is
+correct and I endorse it — no `privileged_data_access` row, for exactly the §9.2 reasons. But its
+conclusion that the endpoint therefore emits **nothing** does not follow, and §9.3 applies to it
+identically: same trail, same writer, same actor-keyed reconstruction gap, same one-row cost.
+
+**Ruling: `GET /v1/support-cases/count` writes the same single `privileged_bulk_access`,
+`resultCount: 0` row, on the same terms as §9.4.** §7's summary table should read "one
+`privileged_bulk_access` (`resultCount: 0`); no disclosure rows" for both the `admin` and
+`support_agent` rows.
+
+### 9.7 `GET /v1/security/cases/count` (§3) — out of this ruling's reach, and why
+
+I am **not** extending §9.4 to the security-cases count in this ruling. Not because it deserves less,
+but because `recovery_cases` reads have **no audit trail at all** today (§3 is correct that the list
+route emits nothing), and `admin_access_log`'s validator constrains `resourceType` to `policy | asset`
+(`backend/src/db/feature004-collections.ts`), so there is no existing row shape for this access class
+to write into. Manufacturing one for a count endpoint would be building the trail backwards, starting
+with its least significant caller.
+
+**Flagged, not fixed here, and not created by this endpoint:** partner-organisation operator access to
+recovery cases is unlogged, and partner-org access is the class ADR-0006 §14.4.3 identifies as the one
+where **POPIA s23 reaches directly** (a partner is a separate legal entity / third party) and §14.7
+mandates a **purpose/case reference**. That is a pre-existing gap belonging to the Security Company
+Dashboard trigger (ADR-0006 §12, conditions C-15/C-16(b)) and to Stage 8, not to FR-4's sizing. §3's
+"introduces nothing new to decide here" is accurate **for the count endpoint** and I concur with it on
+that scope only; it should not be read as a finding that the underlying access class is adequately
+audited, because it is not.
+
+### 9.8 What this ruling is and is not
+
+- **Is:** a binding determination on §4.1, plus the §5.1 correction and the §9.5 durable rule.
+- **Is not:** a Stage 8 compliance sign-off for Feature 012. Stage 8 remains outstanding for all three
+  routes as new privileged API surface, and this section is an input to it, not a substitute.
+- **Blocks nothing.** The endpoint contract in §4 is unchanged — this adds one `await` to the handler.
+- **Test requirement for Stage 10** (`automation-qa-engineer`): assert the count handler emits exactly
+  one audit row, that its `event_type` is `privileged_bulk_access`, that its `result_count` is `0`
+  **and not the returned count**, and that **no** `privileged_data_access` row is written — the last
+  being the negative test that keeps §9.2's prohibition from regressing.
+
+---
+
