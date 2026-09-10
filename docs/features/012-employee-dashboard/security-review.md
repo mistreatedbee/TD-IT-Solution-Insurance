@@ -7,8 +7,9 @@
 **Joint gate status — ALL THREE SIGNATURES RECORDED; Stage 8 DISCHARGED on a conditional basis:**
 `security-engineer` (R) **CONCURRENCE GIVEN**, 2026-09-10 — §12. `compliance-specialist` (C)
 **CONCURRENCE GIVEN (conditional)**, 2026-09-10 — §13, adding **C-012-1** (the security-cases count must
-emit a `privileged_bulk_access` row — this **supersedes §10.6's "no audit call"** and needs the chair's
-SR-012-7 acknowledgement), **C-012-2**, and standing **C-012-3 / C-012-4**. §13.2 also corrects a factual
+emit a `privileged_bulk_access` row — this **supersedes §10.6's "no audit call"**; **acknowledged and accepted
+by the chair under SR-012-7 in §14**, and §10.6/§6.3 amended accordingly), **C-012-2**, and standing
+**C-012-3 / C-012-4**. §13.2 also corrects a factual
 premise in `compliance-specialist`'s own `api-design.md` §9.7 that §12.6 inherited.
 **Stage 9 (Development) may begin. Stage 9 exit is bounded by SR-012-1 … SR-012-6 + C-012-1 + C-012-2;
 SR-012-7 and C-012-3/-4 are standing.** `compliance-specialist`'s ruling at `api-design.md` §9 is an
@@ -351,8 +352,8 @@ mean different things, and neither document noticed because they were written fi
    mirror where the query is one field per §4/§5).*
 2. Stage 10 tests AC-5 with **more rows than one page's `limit`** for at least one role, per `api-design.md` §6's
    own test note. A test seeded with ≤ `limit` rows cannot distinguish the correct implementation from the bug.
-3. Stage 10 also asserts `compliance-specialist` §9.8's audit tests on both the admin and support-agent count
-   handlers: exactly one audit row; `event_type` = `privileged_bulk_access`; `result_count` = `0`
+3. Stage 10 also asserts `compliance-specialist` §9.8's audit tests on **all three** count handlers — admin,
+   support-agent, and (per C-012-1, §14) security: exactly one audit row; `event_type` = `privileged_bulk_access`; `result_count` = `0`
    **and not the returned count**; and **zero** `privileged_data_access` rows — the last being the negative test
    that keeps §9.2's prohibition from regressing.
 
@@ -454,10 +455,19 @@ fresh pass by this role is required — not a note in a PR description.
 5. **Repository methods return a number** from `countDocuments()` against the same filter the sibling list
    builds — via the shared `buildPartnerOrgQuery` helper for security-cases (§3), via a faithful one-field
    mirror for the other two. **No `limit`, no cursor, no `buildPage`, anywhere in a count path.**
-6. **Audit, final:** admin and support handlers call `recordBulkDisclosure({ disclosedAccountIds: [] })` —
-   the empty array literal, never a variable — before serialising the response, and let a throw become a 5xx.
-   Security handler: no audit call (RR-012-1/RR-012-2). The returned count is **never** written to
-   `result_count`.
+6. **Audit, final (amended 2026-09-10 by C-012-1 — see §14):** **all three** handlers call
+   `recordBulkDisclosure({ disclosedAccountIds: [] })` — the empty array literal, never a variable — emitting
+   exactly one `privileged_bulk_access` row with `resultCount: 0` and zero `privileged_data_access` rows.
+   Handler ordering is **`count → audit → respond`** (`security-engineer` §12.5): the audit write must precede
+   *serialisation*, not the query, and a throw must become a 5xx (AUD-10, fail-closed). Actor fields are copied
+   verbatim from the sibling routes' pattern — `actorAccountId: req.auth!.accountId`,
+   `actorSessionId: req.auth!.sessionId`, `auditRequestId: req.auditRequestId ?? null`, `ipAddress`,
+   `userAgent` — including on the security handler, whose actor is the `security_company_operator`'s own
+   account. The returned count is **never** written to `result_count`. The `status` filter is recorded **not at
+   all** — never as a value (§9.4(e)/C-17).
+   *Superseded, for the record:* this item previously read "Security handler: no audit call
+   (RR-012-1/RR-012-2)". That is void. RR-012-1 and RR-012-2 remain open exactly as written in §9 — C-012-1
+   closes only the actor-keyed half for this one endpoint and must not be cited as closing either.
 7. **Rate limits, final:** admin 60/min; security 100/min; support 30/60s — each with its **own** limiter key
    (SR-012-3). Tightening is permitted at `security-engineer`'s discretion; loosening is not.
 8. **Route registration order:** `/count` above `:caseId` in both affected routers, with a route-level test
@@ -1058,7 +1068,123 @@ C-012-1's departure from §10.6, and `security-engineer` may wish to note the §
 requires a fresh review cycle and neither reopens this gate.
 
 **Filed by:** `compliance-specialist`, 2026-09-10.
-**Does not discharge:** Stage 10 QA · RR-012-2 / ADR-0006 C-15/C-16(b) and the
+**Does not discharge (compliance limb):** Stage 10 QA · RR-012-2 / ADR-0006 C-15/C-16(b) and the
 partner-org audit gap · the `web-admin-verification`, `web-security-cases`, `backend-security-cases`,
 `backend-customer-lookup` waivers · Feature 009 A-1 · INC-001-C-10 (RoPA, 2026-09-15) · CT-3 (breach
 runbook) · CT-4 · Feature 011's C-011-1 … C-011-12 · SR-010-2's `scope=all` withholding · SH-2.
+
+---
+
+## 14. Chair acknowledgement under SR-012-7 — C-012-1 accepted; §10.6 amended
+
+**Date:** 2026-09-10. **Role:** `cybersecurity-architect` (chair). **Scope:** narrow. This is the SR-012-7
+acknowledgement §13.2/§13.6 asks for, plus reconciliation of C-012-2/-3/-4 against §10. It is not a re-review
+and it reopens nothing.
+
+### 14.1 C-012-1 — **ACKNOWLEDGED AND ACCEPTED. §10.6 is amended, not annotated.**
+
+`compliance-specialist` was right to route this through SR-012-7 rather than applying it over the chair ruling,
+and right on the merits. I verified the technical basis in the running code rather than accepting it, since
+§13.2 is itself a correction of a wrong premise in §9.7 and a second wrong premise would propagate the same
+way. All four load-bearing claims hold:
+
+- **`privileged_bulk_access` has no `resourceType` and no subject requirement.** `audit-log.ts:140-168`:
+  `assertInvariants` requires, for this event type, only an actor (`actorAccountId` **or** `actorService`,
+  `:147-151`) and a set `resultCount` (`:161-167`). The subject requirement at `:156-160` is scoped to
+  `privileged_data_access` only, and `account_id` is nullable by design (module header). `resourceType` is not
+  a column of `app.account_audit_log` at all — `COLUMNS`, `:112-115`, is ten fields and none of them is one.
+  §9.7's "no row shape for this access class" was indeed a statement about Trail B (`admin_access_log`, whose
+  `recordBulkDisclosure` does take `resourceType: 'policy' | 'asset'` — `admin-policies.ts:72-82`) applied to
+  the wrong trail. Confirmed.
+- **`recordBulkDisclosure({ disclosedAccountIds: [] })` yields exactly the required row.** `:203-230`:
+  `subjects` is empty, so `rows` is the single call-scoped row `{ accountId: null, eventType:
+  'privileged_bulk_access', resultCount: 0 }` and no subject rows. One statement, one round trip. This is the
+  same structural guarantee §8 already credited for F-012-1, now reused rather than re-argued.
+- **`actor_account_id` is satisfiable by a `security_company_operator`.** `migrations/031:29` —
+  `uuid references app.accounts (id) on delete set null`; `migrations/030:56-67` copies `user_type` and
+  `partner_organization_id` **from `app.accounts`** into the status cache, which is only possible because they
+  are columns on `app.accounts`. A partner operator is an account row. FK satisfiable. Confirmed.
+- **No plumbing is needed.** `ctx.auditLog` is on the shared `AppContext` (`context.ts:105`, wired `:184`),
+  which `createSecurityCasesRouter(ctx)` already receives (`security-cases.ts:28`), and every handler in that
+  file already reads `req.auth!.accountId` (`:46, :78, :104, :136`). Confirmed.
+
+**Why I accept rather than defend §10.6.** My §10.6 encoded compliance's §9.7 non-extension as a deliberate
+absence, and `security-engineer` §12.5 verified it as consistent with §9.7 — which it was. Both of us verified
+faithfulness to a ruling, not the ruling's premise. That is the failure mode: §10.6 was correct as a
+transcription and wrong as a control. C-012-1 adds a control, removes nothing, and costs one `await` on a
+writer this feature already mandates twice. On my own §3.2 analysis this is the **one** of the three endpoints
+that deserved attention — a cheap, quiet, pollable integer available to an **external legal entity** over a
+population including customers it has not been assigned. Accepting an unlogged read there while requiring a row
+for an internal admin's subject-less queue depth was the wrong asymmetry, and §13.2's "of all the privileged
+principals on this platform, this is the last one whose reads should leave no trace" is the argument I should
+have made in §3.2 myself instead of routing it entirely into RR-012-1.
+
+**§10.6 is amended above** (and §6.3 extended to all three handlers) so Stage 9 reads one spec, not a spec plus
+a contradicting appendix. The superseded text is retained inline, marked void, so the change is auditable.
+
+**Two implementation consequences the amendment creates, named here rather than discovered in Stage 9:**
+
+1. **This is the first Postgres write in `security-cases.ts`,** today a Mongo-only router. Fail-closed (AUD-10)
+   therefore means a Postgres outage now 5xx's a partner read path that previously survived one. I accept that
+   — it is the same trade already accepted for the other two handlers and for every `/admin/*` list route, and
+   a partner read that cannot be logged is a partner read that should not complete. It is **not** a licence to
+   soften AUD-10 for this handler.
+2. `clientIp` is not currently imported in `security-cases.ts`. Copy the sibling pattern
+   (`admin-verification.ts:62-69`) verbatim, including `actorSessionId` and `auditRequestId`; do not
+   hand-roll a reduced actor block. AUD-1/AUD-5's join key is what makes the row answer "what did this operator
+   do in this sitting," which is C-012-1's entire purpose.
+
+**RR-012-1 is re-stated, not re-opened:** its "with no audit trail of any kind" premise is now false for the
+count endpoint. The residual — a cheap pollable cross-tenant aggregate — stands, still accepted, now
+actor-traceable, still bounded by SR-012-3's no-polling constraint. **RR-012-2 stands unchanged and NOT
+ACCEPTED.** I adopt §13.2's framing in terms: one endpoint of four is traceable; the class is not; C-012-1 is
+not a down-payment and this gate must not be cited as having narrowed the partner-org audit gap.
+
+### 14.2 C-012-2 — accepted, and it strengthens §10.3 rather than changing it
+
+C-012-2 (a count route's audit shape is a static property of its Zod schema; no optional subject-keyed filter;
+a subject-keyed count is a separate route with a **required** `accountId`) is the durable generalisation of
+SR-012-1 and I adopt it as a standing architecture rule, not merely a compliance one — it is the same
+"structurally impossible over remembered-to-validate" preference §2 and SR-012-4 already apply to row data and
+imports, extended to the audit path where regression is silent. **No change to §10.3** (already `no accountId`,
+`no category`) and **no change to §1**; C-012-2 is why they are right. One chair addition: the rule binds the
+**schema**, so `status` staying an `enum` (never a free-string) on the security and support counts is part of
+it — a string filter is one edit from a subject-keyed one.
+
+### 14.3 C-012-3 / C-012-4 — accepted; §10.5 and §10.13 gain a second owner, no text change
+
+- **C-012-3** (a count's population may never exceed its sibling list's, for the same caller) is the *reason*
+  behind §10.5's shared-`buildPartnerOrgQuery` requirement, which I wrote as a correctness measure. It is now
+  also a compliance control: un-sharing that helper, or narrowing `GET /security/cases` without narrowing
+  `countForPartnerOrg` in the same change, breaches C-012-3 **and** voids §10.5. §13.3 is right that the
+  count's defensibility is a *relative* property — I under-stated this in §3.2, where I established zero
+  marginal information over the sibling list without recording that the conclusion expires the moment the
+  sibling narrows. Explicitly: **RR-012-2's eventual fix must narrow the count in the same change.**
+- **C-012-4** (§3.2's cross-role exclusion is a compliance control; any revival needs a fresh compliance ruling
+  before Stage 2) matches §10.13 exactly. No text change; the practical effect is that reviving cross-role
+  visibility now needs a fresh pass by **both** this role (SR-012-7) and `compliance-specialist`, which is
+  strictly better than mine alone.
+
+### 14.4 Net effect on Stage 9
+
+`backend-engineer` and `frontend-engineer` build against **§10 as amended above** and nothing else. The only
+substantive change from the 2026-09-09 spec is §10.6: **three audit-writing count handlers, not two.** Rate
+limits are unchanged — security count stays at `DEFAULT_AUTHENTICATED_LIMIT` (100/min) per §10.7 for sibling
+parity; SR-012-3's audit-shaped-tier reasoning applied to the admin route because it moved *off* an
+audit-shaped tier, and does not require re-tiering a route that now merely joins the writers. Tightening
+remains at `security-engineer`'s discretion; loosening is not. RR-012-3's volume cost now has a third writer,
+bounded by the same once-per-mount fetch rule (§10.11) — accepted, as §13.5 records.
+
+**Conditions register, additions:** C-012-1, C-012-2 (Stage 9 exit) and C-012-3, C-012-4 (standing) are
+adopted into §11 by reference and carry the same force as SR-012-1 … SR-012-7. SR-012-7's acknowledgement
+requirement for C-012-1 is **discharged by this section.**
+
+**Gate status unchanged: Stage 8 DISCHARGED on a conditional basis, all three signatures recorded.** This
+section does not reopen it, does not require a fresh concurrence from `security-engineer` or
+`compliance-specialist`, and does not alter Stage 9's start.
+
+**Filed by:** `cybersecurity-architect` (chair), 2026-09-10.
+**Does not discharge:** Stage 9 exit (SR-012-1 … SR-012-6 + C-012-1 + C-012-2) · Stage 10 QA · RR-012-1 /
+RR-012-2 / RR-012-3 / RR-012-4 · ADR-0006 C-15/C-16(b) and the partner-org audit gap · the
+`web-admin-verification`, `web-security-cases`, `backend-security-cases`, `backend-customer-lookup` waivers ·
+Feature 009 A-1 · SH-2.
