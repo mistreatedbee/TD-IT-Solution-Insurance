@@ -5,6 +5,7 @@ import { PrivilegedLoginPage } from '../dashboard/components/PrivilegedLoginPage
 import { CallCentreAuthGate, CallCentreLayout } from './layout/CallCentreLayout';
 import { CustomerLookupPage } from './pages/CustomerLookupPage';
 import { CreateSupportCasePage, SupportCaseDetailPage, SupportCasesListPage } from './pages/SupportCasesPages';
+import { CallCentreHomePage } from './pages/CallCentreHomePage';
 
 function SupportCaseDetailRoute() {
   const { caseId } = useParams();
@@ -33,7 +34,7 @@ export default function CallCentreRoutes() {
         />
         <Route element={<CallCentreAuthGate />}>
           <Route element={<CallCentreLayout />}>
-            <Route index element={<Navigate to="lookup" replace />} />
+            <Route index element={<CallCentreHomePage />} />
             <Route path="lookup" element={<CustomerLookupPage />} />
             <Route path="cases" element={<SupportCasesListPage />} />
             <Route path="cases/new" element={<CreateSupportCasePage />} />

@@ -27,6 +27,21 @@ export function listVerificationRequests(params?: { cursor?: string; limit?: num
   );
 }
 
+/**
+ * FR-4 (Feature 012) — `GET /v1/admin/verification-requests/count`. A true
+ * `countDocuments()` aggregate over `{ verificationStatus: 'pending_review' }`, distinct
+ * from `listVerificationRequests` above (which returns a `CursorPage` of subject rows and
+ * fires a bulk-disclosure audit event per row). Per
+ * `docs/features/012-employee-dashboard/api-design.md` §4 and
+ * `security-review.md` §10 item 3, this route takes **no query parameters** — do not add
+ * any without a fresh compliance/security pass.
+ */
+export function countPendingVerifications() {
+  return apiFetch<{ data: { count: number } }>('/admin/verification-requests/count').then(
+    (r) => r.data.count,
+  );
+}
+
 export function getAdminCustomerProfile(accountId: string) {
   return apiFetch<AdminCustomerProfileResponse>(
     `/admin/accounts/${encodeURIComponent(accountId)}/profile`,

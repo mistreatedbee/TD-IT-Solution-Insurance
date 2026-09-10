@@ -3,6 +3,7 @@ import { DashboardAuthProvider } from '../dashboard/auth/DashboardAuthProvider';
 import { PRIVILEGED_DASHBOARD_CONFIG } from '../dashboard/auth/roleRouting';
 import { PrivilegedLoginPage } from '../dashboard/components/PrivilegedLoginPage';
 import { AdminAuthGate, AdminLayout } from './layout/AdminLayout';
+import { AdminHomePage } from './pages/AdminHomePage';
 import {
   AccountDetailPage,
   AccountsListPage,
@@ -51,7 +52,7 @@ export default function AdminRoutes() {
         />
         <Route element={<AdminAuthGate />}>
           <Route element={<AdminLayout />}>
-            <Route index element={<Navigate to="accounts" replace />} />
+            <Route index element={<AdminHomePage />} />
             <Route path="accounts" element={<AccountsListPage />} />
             <Route path="accounts/:accountId" element={<AccountDetailRoute />} />
             <Route path="policies" element={<PoliciesListPage />} />

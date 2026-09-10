@@ -4,6 +4,7 @@ import { PRIVILEGED_DASHBOARD_CONFIG } from '../dashboard/auth/roleRouting';
 import { PrivilegedLoginPage } from '../dashboard/components/PrivilegedLoginPage';
 import { SecurityAuthGate, SecurityLayout } from './layout/SecurityLayout';
 import { CaseDetailPage, CasesListPage } from './pages/SecurityCasePages';
+import { SecurityHomePage } from './pages/SecurityHomePage';
 
 export default function SecurityRoutes() {
   return (
@@ -26,7 +27,7 @@ export default function SecurityRoutes() {
         />
         <Route element={<SecurityAuthGate />}>
           <Route element={<SecurityLayout />}>
-            <Route index element={<Navigate to="cases" replace />} />
+            <Route index element={<SecurityHomePage />} />
             <Route path="cases" element={<CasesListPage />} />
             <Route path="cases/:caseId" element={<CaseDetailPage />} />
           </Route>

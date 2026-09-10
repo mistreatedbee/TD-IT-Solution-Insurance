@@ -87,6 +87,22 @@ export function listMySupportCases(options: ListMySupportCasesOptions = {}) {
   return apiFetch<SupportCaseListPage>(`/support-cases?${qs}`);
 }
 
+/**
+ * FR-4 (Feature 012) — `GET /v1/support-cases/count`. A true `countDocuments()` aggregate,
+ * not a page-limited row count. Per SR-012-1 (`security-review.md` §1/§10 item 3), this
+ * route's schema is deliberately narrower than `listMySupportCases` above: `scope=mine`
+ * (the only value ever offered, same as the list call) plus optional `status` only — no
+ * `accountId`, no `category`. Do not widen this without a fresh compliance/security pass;
+ * an `accountId` filter here would make this a subject-keyed disclosure, not an aggregate.
+ */
+export function countMySupportCases(options: { status?: SupportCaseStatus } = {}) {
+  const qs = new URLSearchParams({ scope: 'mine' });
+  if (options.status) qs.set('status', options.status);
+  return apiFetch<{ data: { count: number } }>(`/support-cases/count?${qs}`).then(
+    (r) => r.data.count,
+  );
+}
+
 /** FR-17 (detail) — `GET /v1/support-cases/:caseId`. */
 export function getSupportCase(caseId: string) {
   return apiFetch<{ data: SupportCaseDetail }>(`/support-cases/${encodeURIComponent(caseId)}`).then(
