@@ -1,4 +1,10 @@
-# ADR-0010: Marketing-Origin Privileged Login — Documented Risk Acceptance (R-LU-3)
+# ADR-0011: Marketing-Origin Privileged Login — Documented Risk Acceptance (R-LU-3)
+
+> **Renumbered 2026-09-10** from ADR-0010 to ADR-0011. `payment-gateway-vendor-scorecard.md` reserved
+> ADR-0010 for the payment-gateway ratification on 2026-08-24, before this document existed —
+> confirmed by re-reading that file, which explicitly states the reservation and the date. This
+> document's original number collided with that reservation; caught by `cto`'s 2026-09-10 status
+> check-in, fixed same-day. No content below this line changed, only the number.
 
 Status: **Accepted (risk acceptance, not a design change)** — `cto`, 2026-09-09.
 Date: 2026-09-09.
