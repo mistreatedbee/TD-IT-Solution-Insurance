@@ -141,3 +141,21 @@ and an expiring artifact. Sprint 4 at the earliest stands. **Cheapest unblock no
 (superseding §7's "run A-13 this week", which we now know cannot be executed here): the **C-R-3(a)
 template-content audit** — pure engineering, needs no owner, no device, no vendor, and closes the
 largest single privacy exposure named today.
+
+---
+
+### Test-suite confirmation — 2026-09-10 (orchestrator, post-C-R-3(a))
+
+The CTO's own follow-up (below/above, same date) correctly declined to claim the test suites were
+green without running them — that session had no shell. Closing that gap directly, run just now,
+not inferred from any prior report:
+
+- `cd backend && npm test` → **370/370 passed**, 56 files.
+- `npx vitest run` (repo root) → **31/31 passed**, 9 files.
+- `cd mobile && npx jest` → **151/151 passed**, 41 suites.
+- `node scripts/verify-stage8-manifest.mjs` → **PASS** (75 backend routes, 50 mobile screens, 42
+  web dashboard routes, 85 manifest entries).
+
+All four genuinely green, today, after every change landed this session including the
+C-R-3(a)/reauthentication.ts fix. The CTO's read ("very likely still green, formally unconfirmed")
+was the right posture to take without a shell; it is now confirmed, not just likely.
