@@ -687,6 +687,39 @@
       }
     },
     {
+      "id": "web-admin-home",
+      "kind": "web_route",
+      "pattern": "/admin (index)",
+      "feature": "012",
+      "stage8": {
+        "doc": "docs/features/012-employee-dashboard/security-review.md",
+        "verdict": "conditional-sign-off",
+        "note": "F-QA-012-1 backfill (2026-09-10, Stage 10 QA) — src/admin/pages/AdminHomePage.tsx, mounted as AdminRoutes.tsx's index route (SR-012-5 required this entry at Stage 9; frontend commit 860a4ae omitted it, not caught by CI per SH-2 — <Route index> elements carry no path attribute the scanner can discover). HomeScreen.tsx is the shared, role-parameterized component (C-012-A1 — no cross-role import, enforced by an ESLint no-restricted-imports fence). Calls GET /v1/admin/verification-requests/count (see backend-admin-verification-requests-count)."
+      }
+    },
+    {
+      "id": "web-security-home",
+      "kind": "web_route",
+      "pattern": "/security (index)",
+      "feature": "012",
+      "stage8": {
+        "doc": "docs/features/012-employee-dashboard/security-review.md",
+        "verdict": "conditional-sign-off",
+        "note": "F-QA-012-1 backfill (2026-09-10, Stage 10 QA) — src/security/pages/SecurityHomePage.tsx, mounted as SecurityRoutes.tsx's index route. Same shared HomeScreen.tsx as web-admin-home; calls GET /v1/security/cases/count (see backend-security-cases-count)."
+      }
+    },
+    {
+      "id": "web-call-centre-home",
+      "kind": "web_route",
+      "pattern": "/call-centre (index)",
+      "feature": "012",
+      "stage8": {
+        "doc": "docs/features/012-employee-dashboard/security-review.md",
+        "verdict": "conditional-sign-off",
+        "note": "F-QA-012-1 backfill (2026-09-10, Stage 10 QA) — src/call-centre/pages/CallCentreHomePage.tsx, mounted as CallCentreRoutes.tsx's index route. Same shared HomeScreen.tsx as web-admin-home; calls GET /v1/support-cases/count?scope=mine (see backend-support-cases-count)."
+      }
+    },
+    {
       "id": "web-admin-login",
       "kind": "web_route",
       "pattern": "/admin/login",
