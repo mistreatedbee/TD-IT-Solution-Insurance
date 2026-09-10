@@ -136,4 +136,54 @@ describe('HomeScreen — FR-2/FR-4 quick-link cards + counts (AC-3, AC-9)', () =
     screen.getByRole('button', { name: 'Retry' }).click();
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
+
+  it('CTO-1: the Retry control is not a DOM descendant of the card <Link> (HTML5 content model / a11y)', () => {
+    const onRetry = vi.fn();
+    renderHome({
+      cards: [
+        {
+          key: 'verification',
+          to: '/admin/verification',
+          title: 'Verification queue',
+          description: 'desc',
+          ctaText: 'Review verification queue',
+          emphasis: 'primary',
+          count: { status: 'error', count: null, formatLabel: (n) => `${n} pending`, onRetry },
+        },
+      ],
+    });
+
+    const retryButton = screen.getByRole('button', { name: 'Retry' });
+    // A <button> nested inside an <a> is invalid per the HTML5 content model and a
+    // known screen-reader footgun (interactive content inside interactive content) —
+    // assert structurally that Retry is not a descendant of the card's anchor.
+    expect(retryButton.closest('a')).toBeNull();
+
+    // Retry must still work via click, and clicking it must not also navigate (no
+    // ancestor <a> to trigger navigation on in the first place).
+    retryButton.click();
+    expect(onRetry).toHaveBeenCalledTimes(1);
+
+    // The card's own navigation link is unaffected by the restructure.
+    const link = screen.getByRole('link', { name: /Verification queue/ });
+    expect(link).toHaveAttribute('href', '/admin/verification');
+    expect(link.contains(retryButton)).toBe(false);
+  });
+
+  it('does not render a Retry control outside the error state', () => {
+    renderHome({
+      cards: [
+        {
+          key: 'verification',
+          to: '/admin/verification',
+          title: 'Verification queue',
+          description: 'desc',
+          ctaText: 'Review verification queue',
+          emphasis: 'primary',
+          count: { status: 'loaded', count: 5, formatLabel: (n) => `${n} pending` },
+        },
+      ],
+    });
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  });
 });

@@ -18,9 +18,16 @@ import type { HomeAnnouncement } from '../content/homeAnnouncements';
  * page + `announcementsForRole`) before this component ever sees them, which is a stronger
  * (not weaker) reading of that permission.
  *
- * `HomeScreen.eslint.test.ts` (co-located) asserts this file contains no import of any
- * `src/admin/**`, `src/security/**`, or `src/call-centre/**` module — the AC-6 guarantee
- * this component exists to make structural, not just reviewed.
+ * Enforced as a build error by the `no-restricted-imports` override in `.eslintrc.cjs`
+ * (scoped to `src/dashboard/**`, not just this file — see CTO-2,
+ * `docs/features/012-employee-dashboard/cto-review.md` §1.2(b)/§2.1), which fails
+ * `eslint` on any import of a `src/admin/**`, `src/security/**`, or `src/call-centre/**`
+ * module from this file or from `src/dashboard/hooks/useHomeCount.ts` /
+ * `src/dashboard/content/homeAnnouncements.ts` — the AC-6 guarantee this component
+ * exists to make structural, not just reviewed. That rule catches only **direct**
+ * imports (ESLint cannot see transitive import graphs), so it is not a guarantee
+ * against a role-specific import arriving indirectly through some other module these
+ * files import.
  */
 
 export interface HomeQuickLinkCount {
@@ -70,28 +77,16 @@ function CountBadge({ count }: { count: HomeQuickLinkCount }) {
     return <Badge tone="neutral">Loading…</Badge>;
   }
   if (count.status === 'error') {
+    // Only the neutral "count unavailable" badge renders here. The Retry control is
+    // deliberately *not* rendered as a child of this badge (see `QuickLinkCard` below):
+    // the whole card is wrapped in a `<Link>`, and a `<button>` nested inside an `<a>`
+    // is invalid per the HTML5 content model and a screen-reader footgun (CTO-1,
+    // `docs/features/012-employee-dashboard/cto-review.md` §2.2 / `qa-report.md` §8.4).
     return (
-      <span className="inline-flex items-center gap-2">
-        <Badge tone="neutral">
-          <span aria-hidden="true">—</span>
-          <span className="sr-only">Count unavailable</span>
-        </Badge>
-        {count.onRetry ? (
-          <button
-            type="button"
-            onClick={(event) => {
-              // The whole card is a `<Link>` (§4.2's one-focus-stop rule) — this
-              // sits inside it, so a click must not also trigger navigation.
-              event.preventDefault();
-              event.stopPropagation();
-              count.onRetry?.();
-            }}
-            className="text-xs font-medium text-primary underline-offset-2 hover:underline"
-          >
-            Retry
-          </button>
-        ) : null}
-      </span>
+      <Badge tone="neutral">
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">Count unavailable</span>
+      </Badge>
     );
   }
   // status === 'loaded'
@@ -127,20 +122,41 @@ function QuickLinkCard({
     );
   }
 
+  // CTO-1 (`cto-review.md` §2.2, `qa-report.md` §8.4): the FR-4 error-state Retry
+  // control must not be a DOM descendant of the whole-card `<Link>` — interactive
+  // content nested inside interactive content is invalid HTML5 and a plausible
+  // screen-reader trap. Retry is rendered here as a *sibling* of the `<Link>`,
+  // positioned to sit visually where the count badge already is (top-right of the
+  // card's padded area), rather than inside the anchor. This only changes markup for
+  // the (rare, transient) error state — every other state keeps the exact whole-card
+  // `<Link>` structure `ui-design.md` §3.3/§4.2 specifies.
+  const retry = card.count?.status === 'error' ? card.count.onRetry : undefined;
+
   return (
-    <Link to={card.to} className={`block ${spanClassName ?? ''}`}>
-      <Card padding="lg" interactive as="div">
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="text-base font-semibold text-text-primary">{card.title}</h3>
-          {card.count ? <CountBadge count={card.count} /> : null}
-        </div>
-        <p className="mt-2 text-sm text-text-secondary">{card.description}</p>
-        <p className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary">
-          {card.ctaText}
-          <ArrowRightIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
-        </p>
-      </Card>
-    </Link>
+    <div className={`relative ${spanClassName ?? ''}`}>
+      <Link to={card.to} className="block">
+        <Card padding="lg" interactive as="div">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-base font-semibold text-text-primary">{card.title}</h3>
+            {card.count ? <CountBadge count={card.count} /> : null}
+          </div>
+          <p className="mt-2 text-sm text-text-secondary">{card.description}</p>
+          <p className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary">
+            {card.ctaText}
+            <ArrowRightIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
+          </p>
+        </Card>
+      </Link>
+      {retry ? (
+        <button
+          type="button"
+          onClick={() => retry()}
+          className="absolute right-8 top-8 text-xs font-medium text-primary underline-offset-2 hover:underline"
+        >
+          Retry
+        </button>
+      ) : null}
+    </div>
   );
 }
 
