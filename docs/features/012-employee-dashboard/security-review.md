@@ -3,10 +3,12 @@
 **Status:** **CONDITIONAL SIGN-OFF — Stage 9 (Development) may begin, bounded by SR-012-1 … SR-012-7.**
 **Date:** 2026-09-09
 **Lifecycle stage:** 8 — Security Review (hard gate). **Chair / decision owner (A):** `cybersecurity-architect`.
-**Joint gate status — INCOMPLETE:** `security-engineer` (R) and `compliance-specialist` (C) concurrence not yet
-recorded (**SR-012-8**). `compliance-specialist`'s ruling at `api-design.md` §9 is an *input* to this gate — §9.8
+**Joint gate status — INCOMPLETE:** `security-engineer` (R) concurrence recorded 2026-09-10, **CONCURRENCE
+GIVEN** — see §12. `compliance-specialist` (C) concurrence not yet recorded (**SR-012-8** remains open on that
+limb). `compliance-specialist`'s ruling at `api-design.md` §9 is an *input* to this gate — §9.8
 says so in terms ("**Is not:** a Stage 8 compliance sign-off for Feature 012") — not a limb of it. Per
-`02-feature-lifecycle.md` and root `CLAUDE.md`, **Stage 8 discharges only when all three roles sign.**
+`02-feature-lifecycle.md` and root `CLAUDE.md`, **Stage 8 discharges only when all three roles sign — this
+document alone does not yet clear Stage 8.**
 
 **Scope of this gate — exactly what was reviewed:**
 - FR-1 (identity greeting), FR-2 (per-role quick links), FR-3 (static announcements), FR-4 (per-role counts) as
@@ -503,7 +505,250 @@ withholding · Feature 011's open conditions · Stage 10 QA.
 
 ## 12. `security-engineer` concurrence under SR-012-8
 
-_Not yet recorded._
+**Date:** 2026-09-10. **Role:** `security-engineer` (R on this gate).
+
+**Scope of this section:** unlike Feature 011, no code exists for Feature 012 yet (Stage 9 has not started).
+This is therefore not an implementation-fidelity review — it is a hands-on verification of the **chair's own
+findings against the running code and the design documents**, the same rigor this role would apply to a diff,
+applied here to the claims in §1–§11 above. I re-derived each of the chair's load-bearing citations rather than
+trusting them, and looked for anything the chair's pass might have missed.
+
+**Commands run and files read for this section (2026-09-10):**
+`grep -n "router\.\(get\|post\|patch\|delete\)\|:caseId\|/count" backend/src/routes/security-cases.ts
+backend/src/routes/support-cases.ts backend/src/routes/admin-verification.ts` ·
+`backend/src/routes/security-cases.ts` (full route table, all four handlers) ·
+`backend/src/routes/support-cases.ts:60-320` (full router body) ·
+`backend/src/routes/admin-verification.ts:1-90` ·
+`node scripts/verify-stage8-manifest.mjs` (executed) ·
+`scripts/verify-stage8-manifest.mjs:100-145` (`discoverWebRoutes()`) ·
+`grep -rn "Route index" src/admin src/security src/call-centre` ·
+`grep -n "limit" src/admin/pages/AdminVerificationPages.tsx` ·
+`docs/features/012-employee-dashboard/api-design.md` §3, §5, §6, §9 (full) ·
+`docs/features/012-employee-dashboard/ui-design.md` (table of contents + §3.2/3.3/4) ·
+`ls src/dashboard/content/ src/dashboard/auth/` (confirms `homeAnnouncements.ts` and the shared Home module do
+not exist yet — nothing to regress, consistent with Stage 9 not having started).
+
+### 12.1 SR-012-1 (accountId filter contradiction) — **confirmed, and the required fix is sufficient**
+
+Traced §5 and §9.5/§9.6 independently rather than taking the chair's quotation at face value.
+
+`api-design.md` §5's query line reads, verbatim: *"Optional `status`/`category`/`accountId` filters, same as
+`listMine`'s filter shape … leaving the others available costs nothing."* Checked against
+`support-cases.ts:79-86` (`listQuerySchema`): `accountId: z.string().uuid().optional()` is present and is
+passed through to `ctx.supportCases.listMine(req.auth!.accountId, { status, category, accountId }, ...)` at
+the list handler. §5's proposed `countMine` code block mirrors this exactly (`...(filters.accountId ? {
+accountId: filters.accountId } : {})`). The schema-level contradiction is real, not a paraphrase.
+
+Checked §9.5's durable rule table independently: the second row is unambiguous — *"Count keyed to an
+identified subject (`countByAccount(accountId)`, 'how many assets does customer X have') | a **disclosure**
+about X → `privileged_data_access` with `accountId: X`."* `GET /v1/support-cases/count?scope=mine&accountId=X`
+is exactly that shape: an agent-scoped filter that additionally names a specific customer. Checked §9.6
+directly (not summarized) — it corrects only §5.1's *conclusion* ("emits nothing" → "emits one
+`privileged_bulk_access` row"); it does not touch §5's *schema* at all, and §9.4(e) is explicit that "an
+`accountId`-style filter may not be recorded at all without my review," which has not happened. The
+contradiction is genuine: as written, the route can be called with a subject-keyed filter that compliance's own
+rule requires a `privileged_data_access` row for, and no code path in §5/§9 writes one.
+
+**Is the required fix sufficient?** Yes, and I checked for gaps the chair might have left. Removing `accountId`
+and `category` from the schema and from `countMine`'s filter argument removes the only two levers that could
+turn this endpoint into a subject-keyed or population-partitioning oracle — `status` alone (an enum over a
+fixed small set: `open`/`in_progress`/`resolved`/`closed`/`escalated`) cannot identify a subject, and `scope`
+is pinned to the literal `'mine'` with the existing SR-010-2 explicit-rejection pattern. I checked whether
+`category` alone (without `accountId`) could still create a disclosure risk if left in: it cannot — a category
+filter narrows a population, not an individual, and compliance's own rule (§9.5) only fires on subject
+identifiers, not narrowing filters generally. The chair's choice to drop `category` too is not strictly
+required by §9.5's rule but is the right conservative call given `category` buys FR-4 nothing (only `status`
+is needed) and every unused parameter is attack surface for the next feature that reuses this schema without
+rereading §9.5. **No gap found. Fix is complete.**
+
+### 12.2 SR-012-2 (route-shadowing 400 bug) — **confirmed as a real bug; fix confirmed sufficient; no additional ordering conflict found**
+
+Independently grepped route registration order rather than trusting the chair's line numbers:
+
+```
+security-cases.ts:41   router.get('/security/cases', ...)
+security-cases.ts:73-74 router.get('/security/cases/:caseId', ...)   caseIdParamsSchema = /^[0-9a-f]{24}$/i
+security-cases.ts:99-100 router.post('/security/cases/:caseId/claim', ...)
+security-cases.ts:131-132 router.patch('/security/cases/:caseId', ...)
+
+support-cases.ts:120  router.post('/support-cases', ...)
+support-cases.ts:168  router.get('/support-cases', ...)              (scope=mine list)
+support-cases.ts:235-236 router.get('/support-cases/:caseId', ...)
+support-cases.ts:262-263 router.post('/support-cases/:caseId/notes', ...)
+support-cases.ts:310-311 router.patch('/support-cases/:caseId/status', ...)
+
+admin-verification.ts:27  router.get('/admin/verification-requests', ...)
+admin-verification.ts:81  router.get('/admin/accounts/:id/profile', ...)   (different path entirely)
+```
+
+Express dispatches middleware/route handlers in registration order and, for a `GET` request, tries each
+registered `GET` route in turn until one matches; `:caseId` is a single-path-segment wildcard, so
+`GET /v1/security/cases/count` and `GET /v1/support-cases/count` — if a `/count` route were appended *after*
+these routers' existing route lists, per the design chain's implicit assumption of "add a new handler" — would
+both reach the `:caseId` handler first, fail the handler's own param validation (`caseIdParamsSchema`'s 24-hex
+regex on `security-cases.ts`; presumably an ObjectId-shaped check on `support-cases.ts`, same pattern), and
+return `400 VALIDATION_ERROR` before the count logic ever runs. **This is a real bug, not a hypothetical** — it
+is a direct, mechanical consequence of Express's ordered matching plus a single-segment param route, and it is
+exactly the kind of defect that would pass a design review reading each document in isolation and only surface
+at Stage 9/10 as an inexplicable 400 on a brand-new route.
+
+`admin-verification.ts` is confirmed clean: its only other `GET` route is `/admin/accounts/:id/profile`, a
+different path prefix (`/admin/accounts/...` vs `/admin/verification-requests/...`) that cannot match
+`/admin/verification-requests/count` under any Express matching rule. The chair's "this one is fine" holds.
+
+**Does the fix (`/count` registered above `:caseId`) resolve it?** Yes — registering the `/count` route earlier
+in the same router means Express tries the literal-segment route (`/count`) before the wildcard-segment route
+(`:caseId`), and Express has no most-specific-match reordering; registration order is dispositive. This is the
+correct and only fix short of changing the `:caseId` param's own regex to explicitly exclude the literal
+string `count` (a worse fix — it couples an unrelated route's validation to this one's existence).
+
+**Checked for other ordering conflicts the chair might have missed, beyond the two named:** I looked at every
+route in both files for any other single-segment `:param` route that a `/count` suffix could collide with.
+`security-cases.ts` has exactly one such route (`:caseId`) and the chair covered it. `support-cases.ts` has one
+single-segment param route (`:caseId`) plus two two-segment param routes (`:caseId/notes`, `:caseId/status`)
+that cannot match a one-segment `/support-cases/count` request regardless of registration order, so they are
+correctly out of scope and the chair did not need to (and did not) mention them. **No additional conflict
+found; the chair's fix and its stated scope are both complete.**
+
+### 12.3 SR-012-5 (CI-1 manifest blindness, SH-2) — **confirmed as described; confirmed genuinely unfixable without a scanner change; no smaller fix available**
+
+Ran the verifier rather than reading about it: `node scripts/verify-stage8-manifest.mjs` →
+`Discovered 72 backend routes, 50 mobile screens, 39 web dashboard routes; manifest has 79 entries. PASS.`
+Confirms CI-1 is green today, before this feature exists — consistent with the chair's framing that the defect
+is latent, not yet triggered.
+
+Read `discoverWebRoutes()` directly (`scripts/verify-stage8-manifest.mjs:100-127`, not the chair's excerpt):
+the loop matches `<Route\b([^>]*)>` tags, then does `attrs.match(/\bpath=["']([^"']+)["']/)` and `continue`s
+(skips) when there is no `path` attribute. Confirmed by grep that all three affected trees currently use
+`<Route index>` with **no `path` attribute at all** — that is what makes the regex miss them, not a bug in the
+regex's handling of a value:
+
+```
+src/admin/AdminRoutes.tsx:54    <Route index element={<Navigate to="accounts" replace />} />
+src/security/SecurityRoutes.tsx:29  <Route index element={<Navigate to="cases" replace />} />
+src/call-centre/CallCentreRoutes.tsx:36  <Route index element={<Navigate to="lookup" replace />} />
+```
+
+These are exactly what the scanner's own comment describes ("index/catch-all-less routes carry no distinct
+screen") — today's index routes are pure `<Navigate>` redirects with no rendered content of their own, so the
+comment's premise is currently true. Feature 012 replaces each of these three with a real, content-bearing Home
+screen mounted at the same `<Route index>` position — the premise the comment relies on stops holding the
+moment this feature ships, and nothing in the scanner changes to notice that.
+
+**Is this truly unfixable without touching the scanner, or is there a smaller fix?** I looked specifically for
+a synthetic-path-convention alternative, since that is the obvious "small fix" to reach for. It does not work:
+`<Route index>` is a React Router API constraint, not a stylistic choice — an `index` route is defined
+precisely by the *absence* of a `path` prop (React Router rejects `index` and `path` on the same element), so
+there is no JSX-level convention (e.g. `path=""`) that could be adopted in the route files themselves to make
+the existing regex pick it up. The only way to make the scanner see these routes is to change what the
+scanner looks for: either special-case `<Route index` (a `\bindex\b` attribute-presence check, mapping it to
+the parent's mount prefix, exactly as SH-2 proposes) or fail loudly when an `index`-tagged route can't be
+named. Both of those are changes to `verify-stage8-manifest.mjs` itself. **Confirmed: there is no fix smaller
+than a manifest-scanner change, and the chair's disposition (file as SH-2, fix owned by `devops-engineer` +
+this role, not a Feature 012 blocker because condition 2 in §5 covers this feature by hand) is correct as
+written.** I would add one implementation note for whoever picks up SH-2 (not a condition on this feature):
+the fix is a small, mechanical change — detect `index` via `/\bindex\b/.test(attrs)` before the `path`-attribute
+check, and emit `mountPrefix` itself (with no trailing segment) as the discovered route — not a structural
+rework of the scanner, so "unfixable without a manifest-scanner change" should not be read as "expensive to
+fix." It is a five-line change, gated correctly behind its own review rather than folded into this one.
+
+### 12.4 SR-012-6 (AC-5 wording) — **confirmed real, not overthinking**
+
+Checked the actual list route's pagination limit rather than trusting the citation: `grep -n "limit"
+src/admin/pages/AdminVerificationPages.tsx` confirms `listVerificationRequests({ limit: 50 })` at line 21 — a
+fixed client-side page size with no headline total rendered elsewhere on that page. The chair's arithmetic
+(60 pending, count says 60, list page shows 50 rows) is not manufactured; it is the direct consequence of a
+real, currently-shipped `limit: 50` call site plus a `countDocuments()`-backed count that has no equivalent
+cap. A QA engineer executing AC-5 exactly as currently worded ("counting/reading its own total") against a
+seed of more than 50 pending verifications would file a defect against a correctly-implemented system, and the
+"obvious" fix an engineer under schedule pressure might reach for — capping the count at the list's `limit` —
+is precisely F-012-2, the bug this whole design chain exists to have resolved. This is a genuine testability
+defect with a genuine bad-fix trap behind it, not a stylistic nitpick. The chair's required restatement (count
+must equal the *true total of the filtered population*, tested with more rows than one page's `limit`) is the
+correct and minimal fix, and directly matches `api-design.md` §6's own Stage 10 test note — so the chair is not
+inventing a new requirement, only making an existing one testable as literally written.
+
+### 12.5 §10 (Stage 9 non-deviation spec) — internal consistency check
+
+I checked every cross-reference in §10 against the document it cites, rather than trusting §10's own
+parentheticals:
+
+- Item 3's "no `accountId`, no `category`" matches §1's SR-012-1 requirement verbatim. Consistent.
+- Item 5's "via the shared `buildPartnerOrgQuery` helper for security-cases (§3)" — checked against
+  `api-design.md` §3 directly: `buildPartnerOrgQuery(partnerOrganizationId, filters)` is named there exactly,
+  extracted from `listForPartnerOrg`'s existing inline query (lines 246–254) and reused by both the list and
+  the new count method. Consistent, not a dangling reference.
+- Item 6's "Security handler: no audit call (RR-012-1/RR-012-2)" — checked against §9.7 directly: compliance
+  explicitly declines to extend the audit requirement to the security-cases count, for the stated reason that
+  `recovery_cases` reads have no audit trail shape to write into today. Consistent — §10 correctly encodes an
+  absence as deliberate, not an oversight.
+- Item 8 ("Route registration order... with a route-level test") is the SR-012-2 fix stated as a fixed
+  contract point, not merely a recommendation buried in §2 — this is good practice: a condition that only lives
+  in prose above a numbered register (as C-012-A1 did, per §4) is exactly the drift pattern this document
+  itself warns about, and §10 correctly promotes it into the non-deviation list rather than leaving it there.
+- **One gap I would flag, not blocking:** §10 item 6 specifies the audit call as
+  `recordBulkDisclosure({ disclosedAccountIds: [] })` "before serialising the response, and let a throw become
+  a 5xx" for admin and support handlers, but does not explicitly restate AUD-10's fail-closed requirement for
+  *when* in the handler this call must occur relative to the count's own `countDocuments()` call — i.e. whether
+  the audit write happens before or after the repository read. This is implicit from "before serialising the
+  response" and from the sibling routes' own pattern (audit call immediately precedes `res.json(...)` in both
+  `admin-verification.ts` and `support-cases.ts` today), so an engineer reading the sibling code alongside §10
+  would not go wrong — but §10 itself does not say "audit call after the count is computed, before the response
+  is written," and a strict reading of item 6 in isolation (audit before serialising) is technically satisfied
+  even by an audit call that races the `countDocuments()` call. I do not consider this ambiguous enough to
+  block Stage 9 — the sibling-route precedent closes it in practice — but I record it so a reviewer at Stage 9
+  checks the handler orders `count → audit → respond`, not `audit → count → respond` (the latter would let an
+  audit-log failure short-circuit before the count is even known, which is harmless here but is the kind of
+  small inversion that becomes a real bug on a route that does more work).
+- No other gap found. §10 gives `backend-engineer`/`frontend-engineer` a spec that is buildable without
+  further clarification on every other point checked.
+
+### 12.6 RR-012-2 (partner-org audit gap) — **position confirmed: correctly scoped as tracked-separately, not a blocker**
+
+I independently re-derived this rather than deferring to the chair's framing. `admin_access_log`'s validator
+constrains `resourceType` to `policy | asset` (`backend/src/db/feature004-collections.ts`) — confirmed by the
+chair's citation and consistent with what this role already knows of that collection's schema from prior
+reviews (Feature 010/011). There is genuinely no row shape to write a `recovery_cases` partner-read event into
+today, so **any** fix would require schema work (a new `resourceType` value plus a validator migration) that is
+squarely outside Feature 012's scope, which touches zero rows of `admin_access_log`. Feature 012's own
+contribution to this gap is exactly one endpoint (`GET /v1/security/cases/count`) that is, on the chair's own
+§3.2 analysis (independently re-checked: with `status=open` or no filter the query legitimately spans the
+cross-tenant unassigned-open pool; with any other `status` value the two `$or` limbs are mutually exclusive and
+the result is strictly the caller's own org's cases — I re-verified this against `recovery-cases.ts:246-254`'s
+`$or` shape and it holds), strictly *cheaper* to call than the already-shipped, already-unlogged
+`GET /v1/security/cases` list route at the same auth tier. Feature 012 does not create the gap, does not
+meaningfully widen it (a poll of an integer is a strictly weaker signal than a poll of the full list, which
+already exists and is already unlogged), and closing it correctly requires a `resourceType` schema change that
+belongs with the Security Company Dashboard's own Stage 8 (ADR-0006 C-15/C-16(b)) — building it backwards,
+starting from a count endpoint, would produce a worse-shaped audit trail than building it from the dashboard's
+actual read surface. **My position: this feature's shipping does not need to wait on RR-012-2 being closed.**
+It is correctly scoped in §9 as "flagged, tracked separately, not a blocker to this specific conditional
+sign-off," bounded by SR-012-3's no-polling / same-tier constraints so the marginal exposure stays small while
+the gap remains open. I concur with the chair's disposition and add no new condition.
+
+### 12.7 Verdict
+
+**CONCURRENCE GIVEN.**
+
+Every load-bearing citation in the chair's review that I could independently verify against the running code —
+the §5/§9.5/§9.6 contradiction, the route-registration order and the 400 failure mode, the manifest scanner's
+literal blind spot for `<Route index>`, the AC-5/`limit: 50` mismatch, and the internal consistency of §10 —
+checked out exactly as described, with no material inaccuracy and no gap the chair's own proposed fixes leave
+open. I found one non-blocking documentation gap of my own (§12.5's audit-call-ordering point in §10 item 6) and
+one implementation note for SH-2's eventual fix (§12.3) — neither changes the conditions register, neither
+withholds concurrence, and neither requires a fresh pass by this role before Stage 9 begins.
+
+SR-012-1 through SR-012-7 are, on my independent review, the right conditions, correctly scoped, and
+individually sufficient to close the gaps they target. SR-012-8 remains open on the `compliance-specialist`
+limb only; my limb is discharged as of this section. **Stage 8 is not yet fully discharged** — it requires
+`compliance-specialist`'s concurrence in §13 before Development may treat this gate as closed on all three
+required signatures, per `02-feature-lifecycle.md`.
+
+**Filed by:** `security-engineer`, 2026-09-10.
+**Does not discharge:** Stage 8 (SR-012-8 remains open on the `compliance-specialist` limb) · Stage 10 QA ·
+RR-012-1/RR-012-2/RR-012-3/RR-012-4 · the `web-admin-verification`, `web-security-cases`,
+`backend-security-cases` and `backend-customer-lookup` waivers · ADR-0006 C-15/C-16(b) · SH-2 (filed, not
+fixed) · Feature 009 A-1.
 
 ## 13. `compliance-specialist` concurrence under SR-012-8
 
