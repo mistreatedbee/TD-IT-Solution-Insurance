@@ -1188,3 +1188,29 @@ section does not reopen it, does not require a fresh concurrence from `security-
 RR-012-2 / RR-012-3 / RR-012-4 · ADR-0006 C-15/C-16(b) and the partner-org audit gap · the
 `web-admin-verification`, `web-security-cases`, `backend-security-cases`, `backend-customer-lookup` waivers ·
 Feature 009 A-1 · SH-2.
+
+---
+
+## 15. `cto` — scheduling addendum for SH-2 and RR-012-2 (CTO-4/CTO-6)
+
+`cto-review.md` (§5, CTO-4/CTO-6) found that both SH-2 and RR-012-2 existed only as feature-folder
+cross-references and a manifest `note` field — no ticket, no owner-with-a-date, which is the same
+"documented but not scheduled" failure mode INC-001's own root cause named. Neither is a Stage 8/10
+finding of mine to rule on; this section only records where each now lives so neither quietly stays
+undated:
+
+- **SH-2** (CI-1 manifest scanner blind to `<Route index>` elements) — scheduled as
+  [`sprint-plan-release-gate-a.md`](../../organization/sprint-plan-release-gate-a.md) item **3.9**,
+  owner `devops-engineer`, chair sign-off `cybersecurity-architect`, ~1 day, Sprint 3 (current
+  sprint, no dependency blocking immediate start).
+- **RR-012-2** (Security Company Dashboard partner-org audit-trail gap) — scheduled as
+  [`sprint-plan-release-gate-a.md`](../../organization/sprint-plan-release-gate-a.md) item **4.10**,
+  owner `database-architect` (schema design), consult `cybersecurity-architect`, 2–3 days, Sprint 4.
+  This is the design stage only — implementation is a follow-on item once the schema is agreed, not
+  claimed as closed by scheduling the design work.
+
+Neither item is discharged by this section — both remain open exactly as the chair (§11/§14) and
+`security-engineer`/`compliance-specialist` (§12/§13) recorded them. This section exists solely so a
+future reader of this document finds a live date and owner instead of an unscheduled cross-reference.
+
+**Filed by:** `cto`, 2026-09-10.
