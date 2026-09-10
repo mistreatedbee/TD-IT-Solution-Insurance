@@ -237,10 +237,27 @@ These are testable criteria for the net-new shared-hub piece (§3.1). Per-role f
    renders nothing (not an error state, not an empty box with a border) when the static content
    list is empty — since v1 ships with no authoring tool, an empty list is the default state and
    must look intentional.
-5. **AC-5:** The Home screen shows the per-role operational count(s) from FR-4, each number
-   verifiably matching what the operator sees by navigating to the corresponding existing list
-   page and counting/reading its own total (no discrepancy between the "glance" number and the
-   full page's own count).
+5. **AC-5 [amended by Stage 10 QA, 2026-09-10, per SR-012-6]:** The Home screen shows the
+   per-role operational count(s) from FR-4, and each number is the **true total of the filtered
+   population the operator is authorized to see** (i.e., the backend's `countDocuments()` result
+   against the identical filter the sibling list route applies — never a page's `data.length` or
+   any other page-capped derivation). This is **not** the same test as "matches the number of rows
+   rendered on the corresponding list page": the corresponding list pages are paginated (e.g. the
+   admin verification queue currently requests `limit: 50`) and, once a filtered population exceeds
+   one page, the list page's own visible row count is *expected* to read lower than the Home
+   screen's true total — that is correct pagination behaviour, not a discrepancy to reconcile. The
+   original wording ("verifiably matching what the operator sees by navigating to the corresponding
+   existing list page and counting/reading its own total") is retired: it was unsatisfiable for any
+   population larger than one page and, if used as the literal test, would reward re-deriving the
+   count from a capped page fetch — reintroducing F-012-2 (the exact page-cap bug this feature's
+   design chain exists to have resolved) — rather than catching it. **Corrected test:** seed a
+   filtered population strictly larger than the sibling list route's page `limit`; call the count
+   endpoint and assert it returns the true total (e.g. 61 for a 61-row seed against a `limit: 50`
+   list); separately confirm the list route's own page still caps at `limit` and is not expected to
+   match. See `security-review.md` §10 item 5 (`countDocuments()`, no `limit`/cursor in any count
+   path) and SR-012-6, and `backend/src/routes/admin-verification.test.ts`'s
+   `AC-5/SR-012-6 — count is a true total, not capped at the list route's page limit` test, which
+   already implements this corrected version.
 6. **AC-6:** No data belonging to a different role (per §3.2) is fetched, requested, or rendered
    anywhere on any role's Home screen. This is a explicit negative test, not just an omission —
    `automation-qa-engineer`/`manual-qa-engineer` should verify no cross-role network calls occur
