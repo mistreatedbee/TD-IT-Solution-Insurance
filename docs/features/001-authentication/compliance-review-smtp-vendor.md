@@ -1,5 +1,14 @@
 # Feature 001 — Compliance Review: Brevo as Transactional Email (SMTP) Operator
 
+> ⚠️ **SUPERSEDED ON VENDOR (2026-09-10) — Brevo is NOT the shipped email operator.**
+> The code sends via **Resend** (`supabase/functions/auth-send-email/lib/send-email.ts`,
+> `backend/src/lib/resend-email.ts`). The operative email-operator review is
+> **[`compliance-review-resend.md`](compliance-review-resend.md)** (discharges **CT-7** limb 1).
+> This document is retained as the record of the Brevo analysis and its method. **Do not cite its
+> §4.4 EU-domicile / s72 "subject to a law" reasoning, its §6 retention findings, or its §11 privacy
+> notice copy — none of them describe the live operator, and the §11 copy is now factually false.**
+> Which C-5.x conditions transfer, die, or are re-issued as C-R-n: see `compliance-review-resend.md` §2.
+
 **Status:** **APPROVED WITH CONDITIONS.** Brevo is accepted as C-5's vendor. **9 sub-conditions (C-5.1 … C-5.9)** and **7 new open items (OI-9 … OI-15)** attach. C-5 item 5 — *"reviewed by `compliance-specialist` before selection is finalised, not after"* — **is discharged by this document.** C-5 itself remains open as a go-live blocker until C-5.1 … C-5.9 close.
 **Date:** 2026-08-11
 **Author / decision owner:** `compliance-specialist`
