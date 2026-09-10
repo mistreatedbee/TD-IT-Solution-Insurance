@@ -183,6 +183,17 @@
       }
     },
     {
+      "id": "backend-security-cases-count",
+      "kind": "backend_route",
+      "pattern": "/security/cases/count",
+      "feature": "012",
+      "stage8": {
+        "doc": "docs/features/012-employee-dashboard/security-review.md",
+        "verdict": "conditional-sign-off",
+        "note": "FR-4. Distinct entry — NOT absorbed into the waived backend-security-cases group (SR-012-5): this is a new privileged aggregate endpoint reviewed on its own terms. Registered above /security/cases/:caseId (SR-012-2). countForPartnerOrg() reuses buildPartnerOrgQuery(), the identical filter listForPartnerOrg applies (C-012-3). Emits exactly one privileged_bulk_access row, resultCount 0, via recordBulkDisclosure({disclosedAccountIds: []}) per C-012-1 (superseding this doc's own §10.6/§3's original 'no audit call' — see §14 chair acknowledgement). RR-012-1 (unlogged-until-C-012-1 cross-tenant aggregate poll) and RR-012-2 (partner-org audit trail gap, ADR-0006 C-15/C-16(b)) remain open, tracked separately — this entry does not close either."
+      }
+    },
+    {
       "id": "backend-notifications",
       "kind": "backend_route_group",
       "pattern": "/notifications*",
@@ -220,6 +231,17 @@
       "stage8": {
         "doc": "docs/features/004-policy-asset-management/security-review-admin-surface.md",
         "verdict": "sign-off-granted-with-changes"
+      }
+    },
+    {
+      "id": "backend-admin-verification-requests-count",
+      "kind": "backend_route",
+      "pattern": "/admin/verification-requests/count",
+      "feature": "012",
+      "stage8": {
+        "doc": "docs/features/012-employee-dashboard/security-review.md",
+        "verdict": "conditional-sign-off",
+        "note": "FR-4. Distinct entry — NOT absorbed into the backend-admin group (SR-012-5): a Feature 004 policy/asset registry review is not a review of this Feature 012 verification-queue aggregate. countByVerificationStatus('pending_review') mirrors listByVerificationStatus's filter. Emits exactly one privileged_bulk_access row, resultCount 0, via recordBulkDisclosure({disclosedAccountIds: []}) per compliance-specialist §9.4 (no privileged_data_access row — the response names no subject)."
       }
     },
     {
@@ -607,6 +629,17 @@
         "doc": "docs/features/010-call-centre-dashboard/security-review.md",
         "verdict": "conditional-sign-off",
         "note": "FR-15/16. 'escalated' is rejected by the Zod schema (400) and is unreachable from repositories/support-cases.ts's updateStatus() transition table — the only path to that status remains the not-implemented escalate endpoint. resolutionSummary required on resolved/closed. SR-010-1a audit on every write."
+      }
+    },
+    {
+      "id": "backend-support-cases-count",
+      "kind": "backend_route",
+      "pattern": "/support-cases/count",
+      "feature": "012",
+      "stage8": {
+        "doc": "docs/features/012-employee-dashboard/security-review.md",
+        "verdict": "conditional-sign-off",
+        "note": "FR-4. Distinct entry, not an amendment to backend-support-cases-list. Registered above /support-cases/:caseId (SR-012-2). Query schema is scope='mine' (literal, explicit 'all' rejection mirroring SR-010-2) + optional status only — NO accountId, NO category (SR-012-1/C-012-2: an optional accountId would make this a subject-keyed count requiring a privileged_data_access row instead). countMine() mirrors listMine's filter minus accountId/category. Emits exactly one privileged_bulk_access row, resultCount 0, via recordBulkDisclosure({disclosedAccountIds: []}) per compliance-specialist §9.6. Own rate-limiter bucket (support-cases-count:*) distinct from the list/detail/notes/status shared limiter (SR-012-3.2)."
       }
     },
     {

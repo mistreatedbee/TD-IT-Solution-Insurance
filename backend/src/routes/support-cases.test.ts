@@ -171,6 +171,11 @@ function createHarness(opts: { accounts?: Account[]; cases?: SupportCaseDocument
             (!filters.accountId || c.accountId === filters.accountId),
         );
       },
+      async countMine(agentAccountId: string, filters: { status?: string }) {
+        return cases.filter(
+          (c) => c.createdByAgentAccountId === agentAccountId && (!filters.status || c.status === filters.status),
+        ).length;
+      },
       async appendNote(caseId: string, agentAccountId: string, text: string) {
         const idx = cases.findIndex((c) => c.id === caseId);
         if (idx < 0) return null;
@@ -673,6 +678,165 @@ describe('PATCH /v1/support-cases/:caseId/status (FR-15/16)', () => {
         body: JSON.stringify({ status: 'in_progress' }),
       });
       expect(res.status).toBe(409);
+    });
+  });
+});
+
+// Feature 012 FR-4 — GET /v1/support-cases/count (api-design.md §5, security-review.md §1/§10, SR-012-1).
+describe('GET /v1/support-cases/count (Feature 012 FR-4)', () => {
+  it('returns the true total for scope=mine — happy path', async () => {
+    const agentId = randomUUID();
+    const otherAgentId = randomUUID();
+    const customerA = randomUUID();
+    const customerB = randomUUID();
+    const mine = sampleCase({ id: 'a'.repeat(24), accountId: customerA, createdByAgentAccountId: agentId });
+    const theirs = sampleCase({ id: 'b'.repeat(24), accountId: customerB, createdByAgentAccountId: otherAgentId });
+    const { app, env } = createHarness({ cases: [mine, theirs] });
+    const token = agentToken(env, agentId, randomUUID());
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support-cases/count?scope=mine`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { count: number } };
+      expect(body.data.count).toBe(1);
+    });
+  });
+
+  it('AC-5 — count equals the true total the sibling list route would show for the same caller', async () => {
+    const agentId = randomUUID();
+    const cases = Array.from({ length: 5 }, (_, i) =>
+      sampleCase({ id: `${i}`.padStart(24, '0'), accountId: randomUUID(), createdByAgentAccountId: agentId, status: 'open' }),
+    );
+    const { app, env } = createHarness({ cases });
+    const token = agentToken(env, agentId, randomUUID());
+
+    await withServer(app, async (baseUrl) => {
+      const [countRes, listRes] = await Promise.all([
+        fetch(`${baseUrl}/v1/support-cases/count?scope=mine&status=open`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${baseUrl}/v1/support-cases?scope=mine&status=open`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      const countBody = (await countRes.json()) as { data: { count: number } };
+      const listBody = (await listRes.json()) as { data: unknown[] };
+      expect(countBody.data.count).toBe(5);
+      expect(countBody.data.count).toBe(listBody.data.length);
+    });
+  });
+
+  it('rejects scope=all with 400 — same withholding as the list route (SR-010-2)', async () => {
+    const agentId = randomUUID();
+    const { app, env } = createHarness({});
+    const token = agentToken(env, agentId, randomUUID());
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support-cases/count?scope=all`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  it('rejects a missing scope with 400 (required, no default)', async () => {
+    const agentId = randomUUID();
+    const { app, env } = createHarness({});
+    const token = agentToken(env, agentId, randomUUID());
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support-cases/count`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  it('ignores/rejects an accountId query param — SR-012-1: no subject-keyed filter on this route', async () => {
+    const agentId = randomUUID();
+    const customerA = randomUUID();
+    const customerB = randomUUID();
+    const mine = sampleCase({ id: 'a'.repeat(24), accountId: customerA, createdByAgentAccountId: agentId });
+    const alsoMine = sampleCase({ id: 'b'.repeat(24), accountId: customerB, createdByAgentAccountId: agentId });
+    const { app, env } = createHarness({ cases: [mine, alsoMine] });
+    const token = agentToken(env, agentId, randomUUID());
+
+    await withServer(app, async (baseUrl) => {
+      // The schema does not declare accountId at all — Zod's default (non-strict)
+      // parsing drops unknown keys, so this must return the FULL scope=mine count (2),
+      // never a count narrowed to customerA alone. That would prove accountId is inert.
+      const res = await fetch(`${baseUrl}/v1/support-cases/count?scope=mine&accountId=${customerA}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { count: number } };
+      expect(body.data.count).toBe(2);
+    });
+  });
+
+  it('emits exactly one privileged_bulk_access audit row, resultCount 0, and zero privileged_data_access rows', async () => {
+    const agentId = randomUUID();
+    const { app, env, auditCalls } = createHarness({});
+    const token = agentToken(env, agentId, randomUUID());
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support-cases/count?scope=mine`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(200);
+
+      expect(auditCalls).toHaveLength(1);
+      expect(auditCalls[0]!.kind).toBe('bulk');
+      expect(auditCalls[0]!.event).toMatchObject({
+        disclosedAccountIds: [],
+        actorAccountId: agentId,
+      });
+      const recordCalls = auditCalls.filter((c) => c.kind === 'record');
+      expect(recordCalls).toHaveLength(0);
+    });
+  });
+
+  it('returns 403, not the count, for a wrong-role token', async () => {
+    const { app, env } = createHarness({});
+    const token = signAccessToken(
+      {
+        sub: randomUUID(),
+        user_type: 'customer',
+        mfa_required: false,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support-cases/count?scope=mine`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // SR-012-2 regression guard: /count must not be shadowed by the earlier-registered
+  // /:caseId route. Without the fix, this request matches :caseId="count", fails the
+  // 24-hex regex, and returns 400 — not the count.
+  it('SR-012-2 regression — /count is not captured by the :caseId route (would 400 if shadowed)', async () => {
+    const agentId = randomUUID();
+    const { app, env } = createHarness({});
+    const token = agentToken(env, agentId, randomUUID());
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support-cases/count?scope=mine`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).not.toBe(400);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { count: number } };
+      expect(typeof body.data.count).toBe('number');
     });
   });
 });

@@ -96,6 +96,9 @@ function createInMemoryProfilesRepo(): CustomerProfilesRepo {
         .filter((p) => p.verificationStatus === status)
         .slice(0, limit);
     },
+    async countByVerificationStatus(status) {
+      return [...profiles.values()].filter((p) => p.verificationStatus === status).length;
+    },
     async reviewVerification(accountId, decision, rejectionReasonCustomerSafe) {
       const profile = profiles.get(accountId);
       if (!profile || profile.verificationStatus !== 'pending_review') {
@@ -124,6 +127,7 @@ describe('admin verification routes', () => {
   let baseUrl = '';
   let customerProfiles: CustomerProfilesRepo;
   let auditEvents: string[] = [];
+  let auditCalls: Array<{ kind: 'record' | 'bulk'; event: unknown }> = [];
 
   function adminToken(): string {
     return signAccessToken(
@@ -144,6 +148,7 @@ describe('admin verification routes', () => {
     customerProfiles = createInMemoryProfilesRepo();
     await customerProfiles.getOrCreateForAccount(customerId);
     auditEvents = [];
+    auditCalls = [];
 
     const ctx = {
       env,
@@ -174,9 +179,11 @@ describe('admin verification routes', () => {
       auditLog: {
         async record(event: { accountId: string }) {
           auditEvents.push(event.accountId);
+          auditCalls.push({ kind: 'record', event });
         },
         async recordBulkDisclosure(event: { disclosedAccountIds: string[] }) {
           auditEvents.push(...event.disclosedAccountIds);
+          auditCalls.push({ kind: 'bulk', event });
         },
       },
       alerts: {
@@ -250,5 +257,81 @@ describe('admin verification routes', () => {
     };
     expect(body.profile.verificationStatus).toBe('rejected');
     expect(body.profile.rejectionReasonCustomerSafe).toContain('could not be verified');
+  });
+
+  // Feature 012 FR-4 — GET /admin/verification-requests/count (api-design.md §4, security-review.md §10).
+  describe('GET /admin/verification-requests/count (Feature 012 FR-4)', () => {
+    it('returns the true total pending-review count — happy path', async () => {
+      // Seed more accounts to exercise a non-trivial count beyond the one seeded in beforeEach.
+      const secondCustomerId = randomUUID();
+      await customerProfiles.getOrCreateForAccount(secondCustomerId);
+
+      const res = await fetch(`${baseUrl}/admin/verification-requests/count`, {
+        headers: { Authorization: `Bearer ${adminToken()}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { count: number } };
+      expect(body.data.count).toBe(2);
+    });
+
+    it('AC-5/SR-012-6 — count is a true total, not capped at the list route\'s page limit', async () => {
+      // Seed 60 pending-review profiles — more than the list route's `limit: 50` page,
+      // per api-design.md §6's own test note and SR-012-6.2. A count derived from
+      // page.data.length would silently cap at 50; countDocuments() must not.
+      for (let i = 0; i < 60; i += 1) {
+        await customerProfiles.getOrCreateForAccount(randomUUID());
+      }
+
+      const res = await fetch(`${baseUrl}/admin/verification-requests/count`, {
+        headers: { Authorization: `Bearer ${adminToken()}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { count: number } };
+      // 60 seeded here + the 1 seeded in beforeEach.
+      expect(body.data.count).toBe(61);
+
+      const listRes = await fetch(`${baseUrl}/admin/verification-requests`, {
+        headers: { Authorization: `Bearer ${adminToken()}` },
+      });
+      const listBody = (await listRes.json()) as { data: unknown[] };
+      expect(listBody.data.length).toBeLessThan(body.data.count);
+    });
+
+    it('emits exactly one privileged_bulk_access audit row, resultCount 0, and zero privileged_data_access rows', async () => {
+      const res = await fetch(`${baseUrl}/admin/verification-requests/count`, {
+        headers: { Authorization: `Bearer ${adminToken()}` },
+      });
+      expect(res.status).toBe(200);
+
+      expect(auditCalls).toHaveLength(1);
+      expect(auditCalls[0]!.kind).toBe('bulk');
+      expect(auditCalls[0]!.event).toMatchObject({
+        disclosedAccountIds: [],
+        actorAccountId: adminId,
+        actorSessionId: sessionId,
+      });
+      const recordCalls = auditCalls.filter((c) => c.kind === 'record');
+      expect(recordCalls).toHaveLength(0);
+    });
+
+    it('returns 403, not the count, for a wrong-role token', async () => {
+      const token = signAccessToken(
+        {
+          sub: customerId,
+          user_type: 'customer',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+
+      const res = await fetch(`${baseUrl}/admin/verification-requests/count`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(403);
+    });
   });
 });

@@ -91,6 +91,7 @@ function createHarness(opts: { cases?: RecoveryCaseDocument[]; partnerOrgId?: st
   const sessionId = randomUUID();
   const partnerOrgId = opts.partnerOrgId ?? randomUUID();
   const cases = [...(opts.cases ?? [])];
+  const auditCalls: Array<{ kind: 'record' | 'bulk'; event: unknown }> = [];
 
   const stubAccount: AccountRow = {
     id: operatorId,
@@ -168,6 +169,23 @@ function createHarness(opts: { cases?: RecoveryCaseDocument[]; partnerOrgId?: st
         };
         return cases[idx]!;
       },
+      async countForPartnerOrg(orgId: string, filters: { status?: RecoveryCaseStatus }) {
+        return cases
+          .filter(
+            (c) =>
+              c.partnerOrganizationId === orgId ||
+              (c.partnerOrganizationId === null && c.status === 'open'),
+          )
+          .filter((c) => (filters.status ? c.status === filters.status : true)).length;
+      },
+    },
+    auditLog: {
+      async record(event: unknown) {
+        auditCalls.push({ kind: 'record', event });
+      },
+      async recordBulkDisclosure(event: unknown) {
+        auditCalls.push({ kind: 'bulk', event });
+      },
     },
     assets: {
       async findByIdForAdmin() {
@@ -218,6 +236,7 @@ function createHarness(opts: { cases?: RecoveryCaseDocument[]; partnerOrgId?: st
     sessionId,
     partnerOrgId,
     cases,
+    auditCalls,
     token: operatorToken(env, operatorId, sessionId, partnerOrgId),
     async start() {
       await new Promise<void>((resolve) => {
@@ -526,5 +545,139 @@ describe('routes/security-cases', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(403);
+  });
+
+  // Feature 012 FR-4 — GET /security/cases/count (api-design.md §3, security-review.md §10, C-012-1).
+  describe('GET /security/cases/count (Feature 012 FR-4)', () => {
+    it('returns the true total count for the org — happy path', async () => {
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({ id: '507f1f77bcf86cd799439011', accountId: randomUUID(), assetId: '507f1f77bcf86cd799439021', partnerOrganizationId: null, status: 'open' }),
+          sampleCase({ id: '507f1f77bcf86cd799439012', accountId: randomUUID(), assetId: '507f1f77bcf86cd799439022', partnerOrganizationId: orgId, status: 'investigating' }),
+          sampleCase({ id: '507f1f77bcf86cd799439013', accountId: randomUUID(), assetId: '507f1f77bcf86cd799439023', partnerOrganizationId: orgId, status: 'closed' }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/count'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { count: number } };
+      // All 3 cases are partner-visible: the unassigned open one + the org's own two.
+      expect(body.data.count).toBe(3);
+    });
+
+    it('applies the status filter identically to the sibling list route (AC-5 / SR-012-6)', async () => {
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({ id: '507f1f77bcf86cd799439011', accountId: randomUUID(), assetId: '507f1f77bcf86cd799439021', partnerOrganizationId: null, status: 'open' }),
+          sampleCase({ id: '507f1f77bcf86cd799439012', accountId: randomUUID(), assetId: '507f1f77bcf86cd799439022', partnerOrganizationId: orgId, status: 'investigating' }),
+        ],
+      });
+      await harness.start();
+
+      const [countRes, listRes] = await Promise.all([
+        fetch(harness.url('/security/cases/count?status=open'), {
+          headers: { authorization: `Bearer ${harness.token}` },
+        }),
+        fetch(harness.url('/security/cases?status=open'), {
+          headers: { authorization: `Bearer ${harness.token}` },
+        }),
+      ]);
+      const countBody = (await countRes.json()) as { data: { count: number } };
+      const listBody = (await listRes.json()) as { data: unknown[] };
+      expect(countBody.data.count).toBe(listBody.data.length);
+      expect(countBody.data.count).toBe(1);
+    });
+
+    it('emits exactly one privileged_bulk_access audit row, resultCount 0, and zero privileged_data_access rows (C-012-1)', async () => {
+      harness = createHarness({});
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/count'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+
+      expect(harness.auditCalls).toHaveLength(1);
+      expect(harness.auditCalls[0]!.kind).toBe('bulk');
+      expect(harness.auditCalls[0]!.event).toMatchObject({
+        disclosedAccountIds: [],
+        actorAccountId: harness.operatorId,
+        actorSessionId: harness.sessionId,
+      });
+      const recordCalls = harness.auditCalls.filter((c) => c.kind === 'record');
+      expect(recordCalls).toHaveLength(0);
+    });
+
+    it('returns 403 when operator has no partner organization — not data', async () => {
+      const env = fakeEnv();
+      const operatorId = randomUUID();
+      const token = signAccessToken(
+        {
+          sub: operatorId,
+          user_type: 'security_company_operator',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+
+      harness = createHarness({});
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/count'), {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 403, not the count, for a wrong-role token', async () => {
+      const env = fakeEnv();
+      const token = signAccessToken(
+        {
+          sub: randomUUID(),
+          user_type: 'support_agent',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+
+      harness = createHarness({});
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/count'), {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    // SR-012-2 regression guard: /count must not be shadowed by the earlier-registered
+    // /:caseId route. Without the fix, this request matches :caseId="count", fails the
+    // 24-hex regex, and returns 400 — not the count.
+    it('SR-012-2 regression — /count is not captured by the :caseId route (would 400 if shadowed)', async () => {
+      harness = createHarness({});
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/count'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).not.toBe(400);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { count: number } };
+      expect(typeof body.data.count).toBe('number');
+    });
   });
 });

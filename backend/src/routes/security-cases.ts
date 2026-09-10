@@ -11,7 +11,7 @@ import { serializeSecurityRecoveryCase } from '../repositories/recovery-cases.js
 import { scheduleCustomerRecoveryCaseChange } from '../lib/recovery-case-notifications.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
-import { createRateLimiter } from '../middleware/rate-limit.js';
+import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 
 const listFiltersSchema = z.object({
   status: z.enum(['open', 'investigating', 'tracking', 'recovered', 'closed']).optional(),
@@ -64,6 +64,50 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
           data: page.data.map(serializeSecurityRecoveryCase),
           pagination: { nextCursor: page.nextCursor, hasMore: page.hasMore },
         });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Feature 012 FR-4 — GET /v1/security/cases/count. Registered ABOVE
+  // '/security/cases/:caseId' (SR-012-2): Express matches GET routes in registration
+  // order, and `:caseId`'s single-segment wildcard param would otherwise swallow
+  // `/count` first and fail its 24-hex regex, returning 400 instead of running this
+  // handler. Do not move this below the `:caseId` route.
+  router.get(
+    '/security/cases/count',
+    authenticate,
+    requireUserType('security_company_operator'),
+    requirePartnerOrg,
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `security-cases-count:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const filtersParsed = listFiltersSchema.safeParse(req.query);
+        if (!filtersParsed.success) {
+          next(apiError('VALIDATION_ERROR', { details: filtersParsed.error.issues.map((i) => i.message) }));
+          return;
+        }
+        const orgId = req.auth!.partnerOrganizationId!;
+        const count = await ctx.recoveryCases.countForPartnerOrg(orgId, filtersParsed.data);
+
+        // security-review.md §14.1 (C-012-1, superseding §10.6's original "no audit
+        // call"): exactly one privileged_bulk_access row, resultCount 0, empty array
+        // literal (never a variable) — this is the ONLY GET .../count handler in this
+        // router; ordering is count -> audit -> respond, audit write precedes
+        // serialisation (AUD-10 fail-closed — a throw here must 5xx, not return count).
+        // The returned `count` is NEVER written into `resultCount`, and the `status`
+        // filter is never recorded (§9.4(e)/C-17).
+        await ctx.auditLog.recordBulkDisclosure({
+          disclosedAccountIds: [],
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        res.status(200).json({ data: { count } });
       } catch (err) {
         next(err);
       }

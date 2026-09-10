@@ -85,6 +85,19 @@ const listQuerySchema = z.object({
   limit: z.union([z.string(), z.number()]).optional(),
 });
 
+// Feature 012 FR-4 / SR-012-1 (as amended by C-012-2 — a count route's audit shape is
+// a static property of its schema, never a request-time branch): `scope` is required
+// and pinned to the literal `'mine'`, same as `listQuerySchema`, but `accountId` and
+// `category` are DELIBERATELY OMITTED — an optional `accountId` would make this a
+// subject-keyed count, which compliance's own durable rule (api-design.md §9.5)
+// classifies as a disclosure requiring `privileged_data_access`, not the
+// subject-less `privileged_bulk_access` row this route emits. Do not add `accountId`
+// or `category` back onto this schema without a fresh compliance + security pass.
+const countQuerySchema = z.object({
+  scope: z.literal('mine'),
+  status: z.enum(['open', 'in_progress', 'resolved', 'closed', 'escalated']).optional(),
+});
+
 function validateCategory(category: string): void {
   if (!CATEGORY_VALUES.includes(category)) {
     throw apiError('VALIDATION_ERROR', {
@@ -102,6 +115,14 @@ export function createSupportCasesRouter(ctx: AppContext): Router {
     ctx.kv,
     { attempts: 30, windowSeconds: 60 },
     (req) => `support-cases:${req.auth!.accountId}:${clientIp(req)}`,
+  );
+  // security-review.md SR-012-3.2 — same tier as the shared limiter above, but its own
+  // bucket: reusing the shared `rateLimit` instance here would let a Home-screen count
+  // fetch consume the agent's case-work budget on the same key.
+  const countRateLimit = createRateLimiter(
+    ctx.kv,
+    { attempts: 30, windowSeconds: 60 },
+    (req) => `support-cases-count:${req.auth!.accountId}:${clientIp(req)}`,
   );
 
   async function recordCaseAudit(req: Request, subjectAccountId: string): Promise<void> {
@@ -225,6 +246,64 @@ export function createSupportCasesRouter(ctx: AppContext): Router {
           data: page.data.map(serializeSupportCaseSummary),
           pagination: { nextCursor: page.nextCursor, hasMore: page.hasMore },
         });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Feature 012 FR-4 — GET /v1/support-cases/count?scope=mine&status=<optional enum>.
+  // Registered ABOVE '/support-cases/:caseId' (SR-012-2): Express matches GET routes
+  // in registration order, and `:caseId`'s single-segment wildcard param would
+  // otherwise swallow `/count` first and fail its 24-hex regex, returning 400 instead
+  // of running this handler. Do not move this below the `:caseId` route.
+  router.get(
+    '/support-cases/count',
+    authenticate,
+    requireUserType('support_agent'),
+    countRateLimit,
+    async (req, res, next) => {
+      try {
+        const rawScope = req.query.scope;
+        if (rawScope === undefined) {
+          throw apiError('VALIDATION_ERROR', { message: 'scope is required' });
+        }
+        if (rawScope !== 'mine') {
+          // SR-010-2's `scope=all` withholding applies identically to this route —
+          // there is no `countAll`-shaped repository method for this branch to call
+          // even if validation below were bypassed.
+          throw apiError('VALIDATION_ERROR', {
+            message: "scope must be 'mine'. 'all' is not available on this endpoint.",
+          });
+        }
+
+        const parsed = countQuerySchema.safeParse(req.query);
+        if (!parsed.success) {
+          throw apiError('VALIDATION_ERROR', {
+            message: parsed.error.issues[0]?.message ?? 'Invalid query',
+          });
+        }
+
+        const count = await ctx.supportCases.countMine(req.auth!.accountId, {
+          status: parsed.data.status,
+        });
+
+        // compliance-specialist ruling (api-design.md §9.6, security-review.md §10.6):
+        // exactly one privileged_bulk_access row, resultCount 0, empty array literal
+        // (never a variable) — no `privileged_data_access` row, since this schema
+        // (SR-012-1/C-012-2) structurally cannot name a customer subject. Ordering is
+        // count -> audit -> respond, audit write precedes serialisation (AUD-10
+        // fail-closed). The returned `count` is NEVER written into `resultCount`.
+        await ctx.auditLog.recordBulkDisclosure({
+          disclosedAccountIds: [],
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        res.status(200).json({ data: { count } });
       } catch (err) {
         next(err);
       }

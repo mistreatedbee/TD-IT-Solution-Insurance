@@ -139,6 +139,7 @@ export interface CustomerProfilesRepo {
     limit: number,
     cursor: MongoDecodedCursor | null,
   ): Promise<CustomerProfileDocument[]>;
+  countByVerificationStatus(status: VerificationStatus): Promise<number>;
   reviewVerification(
     accountId: string,
     decision: 'verified' | 'rejected' | 'action_required',
@@ -262,6 +263,15 @@ export function createCustomerProfilesRepo(db: Db): CustomerProfilesRepo {
         .limit(limit)
         .toArray();
       return docs.map(toProfile);
+    },
+
+    /**
+     * Feature 012 FR-4 — `GET /v1/admin/verification-requests/count`. `countDocuments()`
+     * against the identical field `listByVerificationStatus` filters on — no `limit`,
+     * no cursor (F-012-2 resolved by construction, api-design.md §6).
+     */
+    async countByVerificationStatus(status) {
+      return col.countDocuments({ verificationStatus: status });
     },
 
     async reviewVerification(accountId, decision, rejectionReasonCustomerSafe) {

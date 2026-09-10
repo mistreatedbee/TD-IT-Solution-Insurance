@@ -78,6 +78,44 @@ export function createAdminVerificationRouter(ctx: AppContext): Router {
     },
   );
 
+  // Feature 012 FR-4 — GET /v1/admin/verification-requests/count. No `:id`/`:caseId`
+  // sibling exists on the `/admin/verification-requests` path today (SR-012-2 checked
+  // this file explicitly and found it clean), but this is registered alongside the
+  // list route, above the unrelated `/admin/accounts/:id/profile` path, for readability.
+  router.get(
+    '/admin/verification-requests/count',
+    authenticate,
+    requireUserType('admin'),
+    createRateLimiter(
+      ctx.kv,
+      { attempts: AUDIT_LOG_READ_LIMIT.attempts, windowSeconds: AUDIT_LOG_READ_LIMIT.windowSeconds },
+      (req) => `admin-verification-count:${req.auth!.accountId}`,
+    ),
+    async (req, res, next) => {
+      try {
+        const count = await ctx.customerProfiles.countByVerificationStatus('pending_review');
+
+        // compliance-specialist ruling (api-design.md §9.4, security-review.md §10.6):
+        // exactly one privileged_bulk_access row, resultCount 0, empty array literal
+        // (never a variable). Ordering is count -> audit -> respond, audit write
+        // precedes serialisation (AUD-10 fail-closed). The returned `count` is NEVER
+        // written into `resultCount`.
+        await ctx.auditLog.recordBulkDisclosure({
+          disclosedAccountIds: [],
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        res.status(200).json({ data: { count } });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
   router.get(
     '/admin/accounts/:id/profile',
     authenticate,

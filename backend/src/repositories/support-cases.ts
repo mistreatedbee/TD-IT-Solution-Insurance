@@ -242,6 +242,22 @@ export function createSupportCasesRepo(db: Db) {
       return rows.map(toCase);
     },
 
+    /**
+     * Feature 012 FR-4 — `GET /v1/support-cases/count`. Mirrors `listMine`'s query
+     * exactly (SR-012-1: no `accountId`, no `category` — `status` only, C-012-2's
+     * static-schema rule). `countDocuments()` — no `limit`, no cursor
+     * (F-012-2 resolved by construction, api-design.md §6).
+     */
+    async countMine(
+      agentAccountId: string,
+      filters: { status?: SupportCaseStatus },
+    ): Promise<number> {
+      return collection().countDocuments({
+        createdByAgentAccountId: agentAccountId,
+        ...(filters.status ? { status: filters.status } : {}),
+      });
+    },
+
     async appendNote(caseId: string, agentAccountId: string, text: string): Promise<SupportCaseDocument | null> {
       if (!ObjectId.isValid(caseId)) return null;
       const note: SupportCaseNote = { agentAccountId, text, createdAt: new Date() };

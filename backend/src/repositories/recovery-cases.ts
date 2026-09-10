@@ -181,6 +181,28 @@ export function serializeSecurityRecoveryCase(doc: RecoveryCaseDocument) {
   };
 }
 
+/**
+ * Feature 012 (api-design.md §3 / security-review.md §10.5, C-012-3) — the SAME
+ * partner-visible filter used by both `listForPartnerOrg` and `countForPartnerOrg`.
+ * Extracted so the two paths cannot drift apart (C-012-3: a count's population may
+ * never exceed what the same caller can read via its sibling list route). Do not
+ * hand-duplicate this `$or` clause anywhere else — narrowing this filter (e.g. to
+ * close RR-012-2) MUST be done here so both callers narrow together.
+ */
+export function buildPartnerOrgQuery(
+  partnerOrganizationId: string,
+  filters: { status?: RecoveryCaseStatus },
+): Document {
+  const statusFilter = filters.status ? { status: filters.status } : {};
+  return {
+    $or: [
+      { partnerOrganizationId },
+      { partnerOrganizationId: null, status: 'open' as RecoveryCaseStatus },
+    ],
+    ...statusFilter,
+  };
+}
+
 export function createRecoveryCasesRepo(db: Db) {
   const collection = (): Collection<RecoveryCaseDbRow> =>
     db.collection<RecoveryCaseDbRow>('recovery_cases');
@@ -243,13 +265,8 @@ export function createRecoveryCasesRepo(db: Db) {
       limit: number,
       cursor: MongoDecodedCursor | null,
     ): Promise<RecoveryCaseDocument[]> {
-      const statusFilter = filters.status ? { status: filters.status } : {};
       const query = {
-        $or: [
-          { partnerOrganizationId },
-          { partnerOrganizationId: null, status: 'open' as RecoveryCaseStatus },
-        ],
-        ...statusFilter,
+        ...buildPartnerOrgQuery(partnerOrganizationId, filters),
         ...mongoCursorFilter(cursor),
       };
       // SR-011-1a: police-report fields are excluded at the query level — never fetched
@@ -261,6 +278,19 @@ export function createRecoveryCasesRepo(db: Db) {
         .limit(limit)
         .toArray();
       return rows.map(toCase);
+    },
+
+    /**
+     * Feature 012 FR-4 — `GET /v1/security/cases/count`. Reuses `buildPartnerOrgQuery`
+     * verbatim (C-012-3) so this can never diverge from `listForPartnerOrg`'s own
+     * filter. `countDocuments()` — no `limit`, no cursor, no page-size ceiling
+     * (F-012-2 resolved by construction, api-design.md §6).
+     */
+    async countForPartnerOrg(
+      partnerOrganizationId: string,
+      filters: { status?: RecoveryCaseStatus },
+    ): Promise<number> {
+      return collection().countDocuments(buildPartnerOrgQuery(partnerOrganizationId, filters));
     },
 
     async claimForPartnerOrg(
