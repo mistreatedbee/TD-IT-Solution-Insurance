@@ -91,6 +91,22 @@ function discoverMobileScreens(dir = mobileAppDir, prefix = '') {
 // this scan will under-report — a limitation worth revisiting if that
 // pattern appears, not a silent gap today (verified against the three
 // existing files at review time).
+//
+// SH-2 fix (docs/organization/sprint-plan-release-gate-a.md 3.9, INC-001's
+// third sub-case): React Router's `index` route API structurally forbids an
+// `index` element from also carrying a `path` attribute, so the scan above
+// (keyed off `path`) is blind to `<Route index element={<X />} />` — it was
+// silently skipped by the `if (!pathMatch) continue` line with the comment
+// "index/catch-all-less routes carry no distinct screen". That premise held
+// while every `<Route index>` in the repo was a bare `<Navigate>` redirect;
+// it stopped holding when Feature 012 mounted real, content-bearing Home
+// screens at those same index positions (`security-review.md` §12.3, SR-012-5,
+// CTO-4). Detect `index` via attribute presence and attribute it to the
+// parent's mount prefix with no trailing segment, formatted as
+// `${mountPrefix} (index)` — matching the convention already hand-written
+// into stage8-manifest.json's `web-admin-home`/`web-security-home`/
+// `web-call-centre-home` entries (pattern `"/admin (index)"` etc.), so no
+// existing manifest entry needs to change shape for this fix to take effect.
 function discoverWebRoutes() {
   const routes = new Set();
   let topLevelDirs;
@@ -118,7 +134,15 @@ function discoverWebRoutes() {
     for (const routeTag of content.matchAll(/<Route\b([^>]*)>/g)) {
       const attrs = routeTag[1];
       const pathMatch = attrs.match(/\bpath=["']([^"']+)["']/);
-      if (!pathMatch) continue; // index/catch-all-less routes carry no distinct screen
+      if (!pathMatch) {
+        if (/\bindex\b/.test(attrs)) {
+          // <Route index .../> — no `path` by construction (React Router
+          // rejects `index` and `path` together); attribute to the parent
+          // mount prefix itself, matching the manifest's `(index)` convention.
+          routes.add(`${mountPrefix} (index)`);
+        }
+        continue; // otherwise: layout/gate-only route, carries no distinct screen
+      }
       const p = pathMatch[1];
       if (p === '*') continue; // catch-all fallback redirect, not a reviewable screen
       routes.add(`${mountPrefix}/${p}`);
