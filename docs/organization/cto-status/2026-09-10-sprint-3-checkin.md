@@ -91,3 +91,53 @@ before 2026-09-14.
 
 **Engineering:** `security-engineer` — run A-13 on APK `426e5c01` this week. `technical-project-manager` —
 re-baseline the sprint plan to include Features 010/011/012 and the CT-register deadlines.
+
+---
+
+## Addendum — 2026-09-10 (same day, post-dispatch)
+
+Append-only. Three items from §5/§7 were dispatched after the above was filed. This records what
+changed and corrects two things I got wrong. It does not re-open the §2 gate assessment.
+
+**1. ADR-0008 blocker 8 — half-closed, and a design question I own surfaced.** `devops-engineer`
+confirmed by code review that `verifyMongoCatalog()` runs on every deploy (`backend/src/index.ts:60–94`);
+`sprint-plan-release-gate-a.md` blocker 8 carries a dated correction. Live-log confirmation is still
+outstanding. Newly surfaced and correctly *not* decided by the dispatched agent: the check is
+non-fatal and log-only, and nothing reads the log. **Whether "log-only, unread" satisfies ADR-0008
+condition 1 is my call, not `devops-engineer`'s** — I will rule on it, with `database-architect`,
+before Sprint 4. My §5 framing ("closer to closed than stated") was right on the deploy-path
+question and wrong to imply only an observation was missing.
+
+**2. Resend — my item 2 was under-scoped; it splits into three, and one new owner ask.**
+`compliance-review-resend.md` (APPROVED WITH CONDITIONS, C-R-1…C-R-9) confirms CT-7 was real and
+finds it larger: Resend's 22 sub-processors are **all US** (the Brevo review's EU-domicile s72
+reasoning is dead — binding-agreement only), ~20 Feature 007 domain templates carrying
+theft/recovery-case and IP-address content were **never in scope of any email review**, and
+`email-footer.ts:44` publishes a consumer Gmail address as the de facto s18/s23/s24 contact.
+Consequence for §2 criterion 2: **"Resend delivery confirmed" is no longer a single owner action.**
+It now has an engineering leg (C-R-3(a) template-content audit, C-R-8 dead-Brevo removal), a
+contractual leg (CT-1, unmet), and a contact-address leg (C-R-9). **New owner action — OI-R-5, and
+it goes first:** does a live Resend account exist, who owns it, and has it sent to real addresses?
+One sentence to answer; it determines whether we are prospectively clean or already in a live
+contravention. Owner list is now six.
+
+**3. Criterion 6 — MORE urgent, and my "an afternoon" framing was wrong.** `manual-qa-engineer`
+executed the checklist and correctly refused to fake a pass: §1 confirmed, §2 backed by
+build-artifact + 12/12 flag-guard tests, §3/§4/§5 explicitly **NOT verified** — no tap-injection
+tooling, no proxy, no backend log access. Verdict recorded: not ready for chair sign-off. This was
+not sign-off inertia; **no one in this org currently has a device-capable or log-capable
+environment.** Note also that APK `426e5c01` **expires 2026-09-11** — a rebuild is required
+regardless. Criterion 6 joins criteria 1/2/3 as owner-blocked.
+
+**4. Read-through.** The same missing capability blocked all three: live Render logs (item 1 §4),
+a real device (item 3), and account access (OI-R-5). **The platform's binding constraint this
+sprint is not engineering capacity or unmade decisions — it is the absence of anyone with hands on
+live infrastructure and hardware.** That is one procurement/access problem wearing four hats, and
+it should be treated as a single item at re-baseline, not four independent blockers.
+
+**Gate A timeline: unchanged in date, worse in quality.** Nothing closed today was on the critical
+path; criterion 2 acquired three blocking conditions and criterion 6 acquired a documented negative
+and an expiring artifact. Sprint 4 at the earliest stands. **Cheapest unblock now available**
+(superseding §7's "run A-13 this week", which we now know cannot be executed here): the **C-R-3(a)
+template-content audit** — pure engineering, needs no owner, no device, no vendor, and closes the
+largest single privacy exposure named today.
