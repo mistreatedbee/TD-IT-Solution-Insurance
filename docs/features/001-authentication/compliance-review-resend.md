@@ -835,3 +835,94 @@ it under SR-007-2. **Cite it in review, not this appendix.**
 **Reassessment trigger added:** any change to `summarizeMaterialAssetChanges()`, `statusLabel()`, or
 `RecoveryCaseStatus` — three closed vocabularies that this audit's "clean" finding **depends on** and
 that no compliance document previously named.
+
+---
+---
+
+## A.12 Product ruling — `buildOnboardingIncompleteEmail` (ONB-002) is characterised as MARKETING
+
+**Owner:** `product-manager` · **Appended 2026-09-10, in response to §A.9's referral.** `compliance-specialist`'s
+interim transactional treatment stands until this ruling; this section resolves the characterisation
+question §A.9 declined to settle alone and hands the compliance mechanics back to `compliance-specialist`
+to formalise. **§§0–15 and Appendix A.1–A.11 stand unamended.**
+
+### A.12.1 What the email actually does
+
+Read at source (`backend/src/lib/domain-email-templates.ts:371–389`,
+`backend/src/lib/onboarding-notification-service.ts:63–96`): fires at 24h and 72h after account
+creation, **only** where `policyCount === 0`, capped at two sends. Copy: *"You have not added a
+protection policy yet. It only takes a few minutes to **choose a plan** and register your first
+asset."* CTA: *"Continue onboarding"* → the marketing site root URL, not a specific in-progress form.
+
+### A.12.2 Ruling: MARKETING, not transactional
+
+**This is a direct-marketing communication under POPIA s69, not a service email.** Reasoning:
+
+1. **The recipient has no existing service relationship for this email to "service."** Every other
+   Tier 1/Tier 2 template either completes an action the recipient is *mid-transaction* on
+   (verification, reset, invitation — all carrying a credential the recipient cannot get anywhere
+   else) or reports on a **contract that already exists** (policy activation, renewal, asset change,
+   theft/recovery status). `buildOnboardingIncompleteEmail` does neither: `policyCount === 0` is, by
+   construction, the state of someone who has **not yet bought anything**. There is no policy to
+   service, no in-flight form submission being resumed, no credential to deliver. The only thing the
+   email "completes" is a sale that has not happened.
+2. **The copy's operative instruction is an acquisition CTA, not a status update.** "Choose a plan and
+   register your first asset" is not "here is a link to the page you were already on" — it is an
+   imperative to make a purchase decision. That is precisely POPIA s69's "direct or indirect… promoting
+   or offering to supply, in the ordinary course of business, any goods or services," which the Act
+   reads broadly and does not carve out for a business's own product being promoted to its own
+   prospective customer.
+3. **The s69(3) existing-customer accommodation is unavailable on the facts, and that is the exemption
+   this email would need.** `compliance-specialist` already found this at §A.9: no sale has occurred,
+   so contact details were not obtained "in the context of the sale of a product or service" in the
+   sense s69(3)(a) requires. Absent that exemption, s69 defaults to requiring **prior consent**, which
+   this send does not currently have.
+4. **The "they initiated this" argument proves too much if accepted as stated.** Nearly every
+   direct-marketing send in existence can be redescribed as "completing a journey the recipient
+   started" — that is what a sales funnel is. Accepting initiation-alone as sufficient to make a
+   purchase-nudge transactional would let any post-signup, pre-purchase engagement email in this
+   platform's history self-certify as non-marketing merely by timing its trigger off account creation
+   rather than off a marketing list. That is not a standard this role can adopt without eroding s69 to
+   nothing for every SaaS-shaped onboarding funnel — including this one's own future re-engagement,
+   win-back, and upsell sends, which will want exactly this same argument. **A rule that cannot
+   distinguish this email from a Sprint-6 "you haven't upgraded to Plus, here's why you should" email is
+   not doing the work a characterisation ruling needs to do.**
+5. **What distinguishes it from the templates that are genuinely fine.** `buildWelcomeEmail` (ONB-001)
+   is not caught by this ruling — it has no purchase CTA and fires once, unconditionally, as a pure
+   account-creation acknowledgement. Neither is `buildPolicyRenewalUpcomingEmail`, which services an
+   **existing** contract. The line this ruling draws is narrow and specific: **an email is marketing
+   when its trigger condition is "no purchase yet" and its content asks the recipient to purchase** —
+   not every onboarding-adjacent or re-engagement-adjacent send.
+
+**This overrules the interim position at §3 and §9(c) of the main review ("no template is marketing")
+and supersedes §A.9's provisional transactional treatment for this one template.** No other template in
+the §A.1 inventory of 28 is affected — this ruling is scoped to `buildOnboardingIncompleteEmail` alone.
+
+### A.12.3 What this does not decide
+
+Consistent with this role's stated authority: I am ruling on **characterisation** — what kind of
+communication this is — not on the compliance mechanics that follow from that characterisation.
+Handed to `compliance-specialist` to formalise, not designed here:
+
+- **Lawful basis** — most likely prior opt-in consent under s69(1), captured at signup, distinct from
+  the account-creation consent already collected for the service itself (bundling the two would repeat
+  the "unbundled-consent theatre" defect §5.3 of the main review already rejected for a different
+  flow). Whether a lighter-touch basis (e.g. a narrowly-scoped legitimate-interest-style argument, if
+  POPIA's structure admits one here) is available is `compliance-specialist`'s call, not mine.
+- **Unsubscribe/opt-out mechanics**, compliant with s69(3)'s notice-of-objection requirement and general
+  ECTA unsubscribe norms — and, per **C-R-6(a)**, built so it cannot be confused with or accidentally
+  wired into the Tier 1 auth-email suppression path that must never be interruptible.
+- **Whether the two-send cap and `policyCount === 0` gate, on their own, are sufficient scoping once a
+  consent basis is required**, or whether the send should be paused entirely until that basis exists.
+- **RoPA and privacy-notice treatment** of this send as a distinct purpose from the Tier 1/Tier 2
+  service notifications already covered by §11's copy.
+
+### A.12.4 Interim instruction, pending `compliance-specialist` formalisation
+
+**Do not extend, redesign, or "improve" this email's copy or targeting in the meantime** — no pricing,
+no discount, no urgency, no broadened trigger (e.g. firing on low-asset-count as well as
+zero-policy-count) — until the consent/opt-out mechanics above are in place. This is stricter than
+§A.9's interim conditions (i)–(iii), not merely a restatement of them, because those conditions were
+written for a template still presumed transactional; this ruling removes that presumption.
+`product-manager` to confirm scope with `compliance-specialist` before Sprint 4, per §A.9's original
+timeline — unchanged.
