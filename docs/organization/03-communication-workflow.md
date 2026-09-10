@@ -10,6 +10,7 @@ Every agent operates asynchronously and in isolation by default (this is how Cla
 2. The next stage's owner is invoked with a direct pointer to that artifact (file path or PR link), not a paraphrase.
 3. If the next-stage owner needs something the artifact doesn't answer, they push the question back to the artifact — adding an open-question section or PR comment — rather than guessing.
 4. Once resolved, the artifact is updated in place. History lives in git, not in chat.
+5. **"Updated in place" means append-only for any artifact more than one role has contributed to** (business requirements, security reviews, QA reports, ADRs, incident records). Targeted edits or new appended sections only — never a wholesale rewrite of a shared document. You may not delete or restructure a section you didn't author; disagree with it in a new section that cites it. Corrections to your own prior section stay in place with the superseded text marked void, not deleted, so the change is auditable in the document itself, not only in git blame. Commit before handing the document to the next role — see root `CLAUDE.md`'s House Rules for the full statement of this rule, adopted after a real incident (`docs/features/012-employee-dashboard/cto-review.md` §4) where a wholesale rewrite silently dropped another agent's findings from a shared QA report.
 
 ## Escalation path
 
