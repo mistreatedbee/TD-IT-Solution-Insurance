@@ -61,6 +61,19 @@ export const customerProfilesIndexes: IndexDescription[] = [
     name: 'customer_profiles_accountId_unique',
     unique: true,
   },
+  /**
+   * cto-review.md CTO-3 — `countByVerificationStatus()` (Feature 012 FR-4, admin Home-screen
+   * count badge) and `listByVerificationStatus()` (admin verification-queue list) both filter
+   * on `verificationStatus` with no other index to use, forcing a COLLSCAN on every call. The
+   * list query additionally sorts by `verificationSubmittedAt desc, _id desc`, so this is a
+   * compound index rather than a single-field one: the `verificationStatus` prefix alone serves
+   * the equality-only count query, and the full key serves the list query's filter+sort without
+   * an in-memory sort stage.
+   */
+  {
+    key: { verificationStatus: 1, verificationSubmittedAt: -1, _id: -1 },
+    name: 'customer_profiles_verificationStatus_verificationSubmittedAt_id',
+  },
 ];
 
 export async function bootstrapCustomerProfileCollections(db: Db): Promise<void> {
