@@ -1,11 +1,15 @@
 import { renderEmailLayout } from './layout.ts';
-import { escapeHtml, renderOtpBox } from './helpers.ts';
+import { renderOtpBox } from './helpers.ts';
 import { EMAIL_BRAND } from './brand.ts';
 
 export function renderReauthenticationEmail(token: string): string {
   return renderEmailLayout({
     theme: 'reauthentication',
-    preheader: `Your verification code is ${escapeHtml(token)}.`,
+    // C-R-3(a) audit, 2026-09-10: the preheader is rendered in inbox previews and
+    // lock-screen notifications. It must never carry the OTP itself — that puts a
+    // live credential on a locked screen and into every preview-scanning
+    // intermediary. The code stays in the body only.
+    preheader: 'Your verification code is inside this message.',
     title: 'Your verification code',
     showHeroIcon: false,
     bodyHtml: `<p style="margin:0 0 8px;font-size:16px;line-height:1.6;color:${EMAIL_BRAND.text};">

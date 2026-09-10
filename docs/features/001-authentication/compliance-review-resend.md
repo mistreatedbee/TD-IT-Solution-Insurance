@@ -552,3 +552,286 @@ customer being onboarded (C-011-7) · the payment gateway decision landing (C-R-
 
 **Sources consulted (first-party, 2026-09-10):** `resend.com/legal/dpa` · `resend.com/legal/subprocessors`
 (Last Updated 27 August 2026) · `resend.com/security` · `resend.com/legal/privacy-policy`.
+
+---
+---
+
+# Appendix A — C-R-3(a) template-content audit (executed 2026-09-10)
+
+**Owner:** `compliance-specialist` · **Appended, not substituted** — §§0–15 above stand unamended.
+**Status of C-R-3(a): PARTIALLY DISCHARGED.** Its four **prohibitions** (§A.4) are **verified clean
+across all 28 rendered bodies** and are hereby **closed as a factual matter**, standing forward as
+C-R-3(c). Its **proportionality limb** — the question §3 of the CTO addendum actually asked, and
+which the original condition did not itself pose — is **not** clean: **8 of 28 templates disclose
+more than their purpose requires**, and they are exactly the theft/recovery family §8(1) ranked
+highest. Those 8 are **[BLOCK]-carrying until rewritten**; the rewrite copy is at §A.6.
+
+**Method.** Every rendered body read in source, not sampled: `backend/src/lib/domain-email-templates.ts`
+(21 builders), `supabase/functions/auth-send-email/templates/` (7 action types), plus the two shared
+chrome modules (`backend/src/lib/email-footer.ts`, `supabase/functions/auth-send-email/templates/{signature,disclaimer}.ts`).
+Every interpolated parameter traced to its **call site** — the five `*-notification-service.ts` files
+and, where the value is derived rather than passed through, to the function that derives it
+(`backend/src/lib/asset-change-summary.ts`, `policy-notification-service.ts` `formatAmount`/`formatDate`,
+`recovery-notification-service.ts` `statusLabel`). A field is only "safe" if the *deriving* code cannot
+emit free text; a parameter name is not evidence.
+
+---
+
+## A.1 Inventory — 28 rendered bodies, all wired, none orphaned
+
+§4.2's "roughly twenty" is now exact: **21** domain builders + **7** auth action types.
+
+**Tier 1 — `supabase/functions/auth-send-email/templates/index.ts` (7):** `signup` · `recovery` ·
+`invite` · `magiclink` · `email_change` · `reauthentication` · `default` fallback.
+
+**Tier 2 — `domain-email-templates.ts` (21), each traced to its sender:**
+
+| Sender | Builders |
+|---|---|
+| `customer-notification-service.ts` (6) | `buildPolicyCreatedEmail`, `buildPolicyPendingActivationEmail`, `buildAssetCreatedEmail`, `buildAssetUpdatedEmail`, `buildAssetRemovedEmail`, `buildAssetRecoveredEmail` |
+| `auth-notification-service.ts` (6) | `buildPasswordChangedEmail`, `buildNewDeviceLoginEmail`, `buildMfaEnabledEmail`, `buildAccountLockedEmail`, `buildPushTokenReregisteredAlertEmail`, `buildEmailAlreadyVerifiedEmail` |
+| `recovery-notification-service.ts` (5) | `buildTheftReportSubmittedEmail`, `buildRecoveryCaseAssignedEmail`, `buildRecoveryCaseUpdateEmail`, `buildRecoverySuccessfulEmail`, `buildRecoveryCaseClosedEmail` |
+| `policy-notification-service.ts` (2) | `buildPolicyActivatedEmail`, `buildPolicyRenewalUpcomingEmail` |
+| `onboarding-notification-service.ts` (2) | `buildWelcomeEmail`, `buildOnboardingIncompleteEmail` |
+
+**21 of 21 are reachable from a live sender.** There is no dead template to descope, and no sender
+constructing HTML outside these modules — checked by grepping every `sendResendEmail` call site: all
+23 pass a `{subject, html}` produced by one of the builders above.
+
+---
+
+## A.2 What is actually disclosed — the field-level matrix
+
+Cross-referenced against the handling rules already set by
+[`compliance-review-notifications.md`](../007-notifications/compliance-review-notifications.md) §2,
+which is the operative data-type table for this channel and which **nothing in the shipped templates
+violates on its own terms**.
+
+| Field | Where it appears | Source / derivation | F-007 §2 rule | Verdict |
+|---|---|---|---|---|
+| Email address | recipient header, all 28 | `account.email`; `buildEmailAlreadyVerifiedEmail` uses `normalizedEmail`, which `routes/auth.ts:289–308` resolves from the **Supabase user id**, so it cannot be a third party's address | Allowed | OK |
+| **Customer name** | **nowhere — no template greets the recipient by name** | — | "Minimum necessary" | **OK, and better than the rule requires.** Recorded deliberately: do **not** "improve" these with a `Hi {firstName}` pass. See §A.7(3). |
+| Single-use token / token-bearing URL | Tier 1 body ×2 (button + copy-link fallback) | Supabase GoTrue | AUTH-005 | OK — governed by C-R-4, not by content |
+| **OTP verification code** | `reauthentication` body **and, until today, its preheader** | GoTrue `otpToken` | "OTP only in AUTH-005" | **DEFECT — FIXED IN THIS PASS.** §A.5 |
+| Plan name / tier | 4 policy templates | `policy.planTier` (enum) | Policy numbers allowed | OK |
+| Policy id | 4 policy templates, as "Reference:" | Mongo ObjectId | Allowed | OK — see §A.7(2) |
+| Renewal date, effective date | 2 templates | `toLocaleDateString('en-ZA')` | Allowed | OK |
+| **Premium amount** | `buildPolicyRenewalUpcomingEmail` | `Intl.NumberFormat` over `policy.billing.amount` | "Payment amounts: allowed" | OK. **Re-confirms §3: currency amount, no instrument. PCI scope remains nil.** |
+| **Asset display name** | 6 templates + 5 subject lines | `asset.displayName` — **customer-authored free text** | Minimum necessary | **OK in body; NOT ok in subject/preheader for the theft family.** §A.6 |
+| Asset type | `buildAssetCreatedEmail` only | enum, `_`→space | — | **Minimise — recommended removal.** §A.6(C) |
+| Change summary | `buildAssetUpdatedEmail` | **`summarizeMaterialAssetChanges()` emits only the fixed labels `name`, `estimated value`, `asset details`** — field *names*, never field *values* | — | **OK, and materially safer than its parameter name suggests.** No serial number, no valuation, no plate can reach this string. |
+| **Serial number / IMEI / plate** | **nowhere** | — | — | **OK.** Answering the CTO's §3 question directly: **no theft-report confirmation restates a serial number**, because no template touches `asset.details` at all. |
+| **`ipAddress`** | `buildNewDeviceLoginEmail` body | `req` ip | "Last seen (city/region): caution" | **KEEP** — §8(4) ruling unchanged; RoPA/notice obligation under C-R-7(b) and §11 constraint 5 |
+| Device name | `buildNewDeviceLoginEmail` | client-supplied, defaults `'Unknown device'` | — | OK |
+| **Case `referenceNumber`** | 6 templates — **in body, subject AND preheader** | recovery case | Claim numbers allowed | **Body OK. Subject + preheader: DISPROPORTIONATE.** §A.6 |
+| Case `statusLabel` | `buildRecoveryCaseUpdateEmail` | **`statusLabel()` — closed switch over 4 enum values + `'Updated'` default.** Cannot emit free text | — | **OK.** The status label is safe *by construction*, which is the finding that keeps the "case narrative" question narrow. |
+| **`caseId`** | **nowhere in any body** | passed to `buildTheftReportSubmittedEmail`, **never interpolated** | — | OK — §A.7(1) |
+| Director name, office address, landlines, company reg. no. | all 28, in signature/footer | `EMAIL_BRAND` / `EMAIL_COLORS` constants | — | OK — business contact information of a company officer, not data-subject PI |
+| **`td.itsolution60@gmail.com`** | **all 28** | `email-footer.ts:44` **and `brand.ts:46`** | — | **C-R-9 — scope wider than recorded.** §A.8 |
+
+---
+
+## A.3 The three questions the addendum posed, answered directly
+
+**(a) "Does a recovery-case-update email need the full case narrative, or just 'log in to view it'?"**
+**Neither, on the facts.** There is no narrative to remove: `buildRecoveryCaseUpdateEmail` carries a
+five-value enum label, not prose, and **`recovery_cases.notes` is not interpolated anywhere** — §4.2(b)'s
+boundary holds, verified line by line today. The disproportion is **not in the body**; it is that the
+**subject line and preheader** broadcast `Recovery update — {referenceNumber}` and
+`Update on case {ref}: {status}` into every inbox preview, lock-screen banner and mail-gateway log.
+**Ruling: keep the body, neutralise the subject and preheader.**
+
+**(b) "Does a theft-report confirmation need to restate the asset's serial number?"**
+**It does not restate it, and never has.** No template reads `asset.details`. The serial-number risk
+the question anticipated is **absent** — record that as a genuine negative finding, not as an oversight
+that happened to work out: `buildTheftReportSubmittedEmail`'s parameter list stops at
+`{assetName, referenceNumber, caseId}`.
+
+**(c) Is the aggregate proportionate?** For the theft/recovery family, **no — in the subject line.**
+The purpose of these six sends is *"something happened on your case; open the app."* That purpose is
+fully served without putting **"Theft report received"** and a case reference on a phone's lock screen,
+where it is legible to anyone in the room, and into Resend's 30-day US store **in the message metadata
+that is most durably indexed and most visible in a dashboard listing**. A body is one click deep in a
+compromised inbox; a subject line is the compromise's index. **This is the whole of §8(1)'s "30-day
+aggregate" risk, concentrated in the field we control most cheaply.**
+
+---
+
+## A.4 The four C-R-3(a) prohibitions — verified, clean, closed as fact
+
+Re-verified by exhaustive read, not by grep alone:
+
+| Prohibition | Result |
+|---|---|
+| `recovery_cases.notes` / any free-text field carrying third-party suspect data (s26(b)) | **CLEAN.** Not interpolated. The two fields that *look* like free text (`changedSummary`, `statusLabel`) are both **closed-vocabulary derivations** — verified in `asset-change-summary.ts` and `recovery-notification-service.ts:67–80`. |
+| `sapsCaseNumber` / `reportingStation` / `reportedToPoliceAt` | **CLEAN.** Absent from every builder signature. |
+| **Any GPS coordinate, address or last-known-location string** | **CLEAN.** No template imports from any location module; no `lastLocation`, no coordinate, no city. §8(3)'s foreclosure holds. |
+| ID number / payment-instrument data | **CLEAN.** No `idNumber`/`idNumberLast4`; the only financial value is a formatted currency amount. |
+
+**s26 special personal information: none present.** The §4.3 boundary is intact. **C-R-3(a)'s
+prohibition limb is discharged on evidence and converts to standing surveillance under C-R-3(c).**
+
+---
+
+## A.5 Defect fixed in this pass (1)
+
+**`supabase/functions/auth-send-email/templates/reauthentication.ts` — OTP in the preheader.**
+
+Before: `preheader: \`Your verification code is ${escapeHtml(token)}.\`` — the live re-authentication
+code rendered into the hidden preview span, i.e. into **inbox list previews and lock-screen notification
+banners**, and into any preview-generating intermediary between GoTrue and the recipient's screen.
+A step-up credential displayed on a locked device defeats the possession factor it exists to prove,
+and it is a disclosure with **no purpose whatsoever** — the code is already in the body, one tap away.
+
+**Changed to** a constant string, with the reasoning inline; the now-unused `escapeHtml` import was
+dropped in the same edit. `renderOtpBox()` escapes internally (`helpers.ts:13`), so body rendering is
+unaffected. **No test asserts on any preheader or on this subject line** (checked repo-wide), and the
+Edge Function has no test suite, so this is behaviourally inert beyond the intended change. This met
+the "trivial and unambiguous" bar the tasking set; **everything in §A.6 did not, and was not touched.**
+
+---
+
+## A.6 Rewrites required — 8 templates, for `notification-engineer` / `backend-engineer`
+
+Copy is **approved as written** under this role's §11 authority. Implement verbatim or come back to me.
+**No recordkeeping counter-argument survives here**, and I checked before assuming minimisation wins:
+`compliance-review-saps-case-data.md` §5 attaches its five-year floor to *the record*, and §3 of this
+review already ruled Resend's copy a **transmission artefact, not the record of authority**. Shortening
+an email creates **no** recordkeeping shortfall. Precedent examined and found not to apply.
+
+**(A) Theft/recovery family — 6 templates. Subject + preheader only. Bodies unchanged.**
+
+| Builder | Subject now | **Subject required** | **Preheader required** |
+|---|---|---|---|
+| `buildTheftReportSubmittedEmail` | `Theft report received — {ref}` | `Your report has been received — TD IT Solution Insurance` | `We have received your report. Open the app for details.` |
+| `buildRecoveryCaseAssignedEmail` | `Recovery partner assigned — {ref}` | `Update on your case — TD IT Solution Insurance` | `There is an update on your case. Open the app for details.` |
+| `buildRecoveryCaseUpdateEmail` | `Recovery update — {ref}` | `Update on your case — TD IT Solution Insurance` | `There is an update on your case. Open the app for details.` |
+| `buildRecoverySuccessfulEmail` | `Asset recovered — {ref}` | `Good news about your case — TD IT Solution Insurance` | `There is an update on your case. Open the app for details.` |
+| `buildRecoveryCaseClosedEmail` | `Case closed — {ref}` | `Your case has been closed — TD IT Solution Insurance` | `Your case has been closed. Open the app for details.` |
+| `buildAssetRecoveredEmail` | `Asset recovered — {assetName}` | `Good news about your registered item — TD IT Solution Insurance` | `There is an update on one of your registered items.` |
+
+**Rule, stated so it generalises:** *no case reference and no asset name in the `subject` or `preheader`
+of any theft-, recovery- or claim-related email.* Both fields stay in the **body**, where they are
+genuinely useful — a customer phoning support needs the reference, and a customer with four registered
+items needs to know which one. That is proportionate. Putting the same strings on a lock screen is not.
+
+**(B) `buildRecoveryCaseUpdateEmail` — body, optional but recommended.** The `statusLabel` is safe
+today only because `statusLabel()` is a closed switch. If `RecoveryCaseStatus` ever gains a
+free-text-adjacent member, this template becomes the s26 leak §4.2(b) warns about **silently**. Either
+keep the switch exhaustive with a `never` guard, or drop the label and let the body read
+*"Your recovery case for **{assetName}** has been updated."* **My preference is the `never` guard** —
+it keeps a useful notification useful and makes the next contributor's mistake a compile error.
+`backend-engineer`'s call; either satisfies me.
+
+**(C) `buildAssetCreatedEmail` — remove `assetType` from the body.** Currently
+*"**{assetName}** ({assetType}) has been registered."* The customer just typed the name; the
+parenthetical tells them nothing they do not know, and it adds a **machine-parseable category** to
+§8(1)'s aggregate — turning a 30-day window of item names into a 30-day window of *classified* item
+names. Replace with *"**{assetName}** has been registered on your account."* Drop the now-unused
+parameter. **Low severity, zero cost, and it is the difference between a list and a sortable list.**
+
+**(D) `buildAssetCreatedEmail` / `buildAssetUpdatedEmail` — subject lines carry `{assetName}`.**
+Unlike (A), I am **not** requiring removal: an item-registration confirmation is not a victimisation
+disclosure, and the name aids recognition against phishing. **Fine as-is.** Recorded so the (A) rule is
+not over-generalised into every template by a well-meaning implementer.
+
+---
+
+## A.7 Hygiene findings — no disclosure today, flagged so they stay that way
+
+1. **Three parameters are accepted and never rendered:** `caseId` (`buildTheftReportSubmittedEmail`),
+   `assetId` (`buildAssetCreatedEmail`, `buildAssetUpdatedEmail`). **This is currently a safety
+   property** — the identifiers reach the template layer and stop there. It is also a standing
+   invitation: the next contributor adding a line to one of these bodies has an unused id in scope and
+   no signal that using it is prohibited. **Remove them from the signatures** (callers pass them for
+   the push payload, which is a different and separately-governed surface). Cheap, and it converts an
+   accident-of-restraint into a structural one.
+2. **"Reference: {policyId}" is a Mongo ObjectId, not a customer-facing policy number.** Not a
+   compliance defect — it is the customer's own identifier and discloses nothing about them. Noted for
+   `product-manager`: when a human-readable policy number exists, use it; an ObjectId in a customer
+   email is a usability defect wearing a compliance-adjacent costume, and I am **not** conditioning it.
+3. **No template personalises with the recipient's name.** Deliberately recorded as a **minimisation
+   property to preserve**. Any future "warm up the emails" copy pass adds identity PII to all 28 bodies
+   at once and requires my review under C-R-3(c).
+
+---
+
+## A.8 C-R-9 cross-reference — scope confirmed, and it is wider than C-R-9 states
+
+Confirmed as asked, without re-auditing the finding itself. **The consumer Gmail address appears on
+all 28 rendered bodies**, via **two independent constants in two separate deployment units**:
+
+- `backend/src/lib/email-footer.ts:44` — the Tier 2 domain signature (**the address C-R-9 names**);
+- **`supabase/functions/auth-send-email/templates/brand.ts:46`** (`EMAIL_BRAND.email`), rendered by
+  `templates/signature.ts:30` on **every Tier 1 auth email** — **not named in C-R-9.**
+
+**C-R-9 is hereby restated as covering both call sites.** Fixing only `email-footer.ts` would leave the
+consumer-webmail address published on the *verification and password-reset* mail — the highest-volume
+first-contact surface on the platform, and the one a data subject is most likely to reply to. The
+Supabase Edge Function is a **separate deploy**, so this is two changes and two deployments, not one.
+`integration-architect` + owner, unchanged ownership, **[BLOCK]** unchanged.
+
+---
+
+## A.9 One item I cannot rule on alone — `buildOnboardingIncompleteEmail` (ONB-002)
+
+**This partially corrects §3 and §9(c) of the main review**, which state flatly that no template is
+marketing. On a closer read of the copy and its trigger, that is too confident.
+
+**The facts:** fired at 24h and 72h after signup, **only where `policyCount === 0`**, capped at two
+sends (`onboarding-notification-service.ts:63–96`). Copy: *"You have not added a protection policy yet.
+It only takes a few minutes to **choose a plan** and register your first asset."*
+
+**The tension.** POPIA **s69** governs electronic communication *for the purpose of direct marketing* —
+promoting or offering to supply goods or services. This send promotes the purchase of a plan **to a
+person who has not purchased one**. The **s69(3)** existing-customer accommodation is unavailable on
+its face: it requires details obtained *"in the context of the sale of a product or service"*, and no
+sale has occurred. The counter-argument is real and I think stronger — the data subject **initiated**
+this signup, the message completes a journey they started, and treating every "finish setting up" nudge
+as direct marketing would make onboarding impossible — but it is a **judgement about the character of a
+product communication**, and §9(b)'s discipline applies: I do not decide product/safety-shaped questions
+alone.
+
+**Interim ruling, effective now, so nothing is blocked:** **it may continue as transactional**, on the
+existing basis, **provided** (i) the cap stays at two, (ii) it remains gated on `policyCount === 0`,
+and (iii) the copy is **not** extended toward promotional content — no pricing, no discount, no
+urgency, no third-party offer. **Any one of those changes converts it to s69 direct marketing requiring
+prior opt-in, and is a fresh review under C-R-6(b).** `product-manager` to confirm the characterisation
+with me before Sprint 4. **Not a blocker; a correction to my own record.**
+
+---
+
+## A.10 Disposition summary — all 28
+
+| Disposition | Count | Templates |
+|---|---|---|
+| **Fine as-is** | **19** | Tier 1: `signup`, `recovery`, `invite`, `magiclink`, `email_change`, `default` (6). Tier 2: `buildPolicyCreatedEmail`, `buildPolicyPendingActivationEmail`, `buildPolicyActivatedEmail`, `buildPolicyRenewalUpcomingEmail`, `buildAssetUpdatedEmail`, `buildAssetRemovedEmail`, `buildPasswordChangedEmail`, `buildMfaEnabledEmail`, `buildAccountLockedEmail`, `buildNewDeviceLoginEmail` (keep the IP — §8(4)), `buildWelcomeEmail`, `buildEmailAlreadyVerifiedEmail`, **`buildPushTokenReregisteredAlertEmail`** (13) |
+| **Fixed in this pass** | **1** | `reauthentication` — §A.5 |
+| **Minimise: rewrite copy supplied** | **7** | The 6 theft/recovery templates (subject + preheader) + `buildAssetCreatedEmail` (drop `assetType`) — §A.6 |
+| **Needs a ruling I will not make alone** | **1** | `buildOnboardingIncompleteEmail` — §A.9 |
+
+**`buildPushTokenReregisteredAlertEmail` is the model.** Its source comment states *"Deliberately says
+nothing about who registered it — no other account's identifying information belongs in this email."*
+That is the reasoning §A.6 asks for on six other templates, already applied unprompted by whoever wrote
+it under SR-007-2. **Cite it in review, not this appendix.**
+
+---
+
+## A.11 Effect on the conditions
+
+- **C-R-3(a): PARTIALLY DISCHARGED.** Prohibition limb **closed on evidence** (§A.4). Proportionality
+  limb **remains [BLOCK]** until §A.6's 7 rewrites land. **The block is now precisely scoped to a named
+  copy change in one file** — `backend/src/lib/domain-email-templates.ts` — rather than to an
+  unbounded "audit the templates." That is the cheap unblock the addendum asked for, delivered as a
+  work item rather than a warning.
+- **C-R-3(c) is now live and load-bearing**, and its subject-line rule is explicit (§A.6(A)).
+- **C-R-9: scope expanded to `brand.ts:46`** (§A.8). Two deploys, not one. Still **[BLOCK]**.
+- **C-R-4** unaffected in substance; §A.5 removes an OTP exposure that sat *outside* the TTL analysis
+  entirely — a reminder that C-R-4's arithmetic assumes the credential is only where we think it is.
+- **C-R-6(b)** acquires §A.9 as an open characterisation question.
+- **§3's PCI-DSS row re-verified at field level: scope remains nil.**
+- **Nothing here discharges C-R-1, CT-1 or OI-R-5.** Production email stays blocked on the owner.
+
+**Reassessment trigger added:** any change to `summarizeMaterialAssetChanges()`, `statusLabel()`, or
+`RecoveryCaseStatus` — three closed vocabularies that this audit's "clean" finding **depends on** and
+that no compliance document previously named.
