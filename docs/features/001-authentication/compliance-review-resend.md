@@ -932,6 +932,15 @@ timeline — unchanged.
 
 # Appendix B — OI-R-5 ANSWERED: live account, real sends. Disposition re-assessed.
 
+> **⚠ SUPERSEDED IN PART BY [APPENDIX C](#appendix-c--correction-to-appendix-b-the-resend-account-exists-but-has-never-sent) (2026-09-14, later the same day).**
+> Appendix B's factual premise — that the live Resend account *has sent to real recipients* — is
+> **withdrawn on new owner evidence** (Resend Logs page empty; owner clarifies the emails received
+> came from Supabase, not Resend). **Appendix B's text is left unamended as the record of the
+> reasoning as it stood.** Read it only together with Appendix C, which states precisely which of
+> its findings are retracted (B.1's live-contravention framing, B.2.1's retroactivity split, B.3's
+> log-preservation item, B.4's "already in inboxes" reasoning) and which survive (C-R-9, CT-1, the
+> C-R-1 evidence task, the §A.6 rewrites). **Do not cite Appendix B on its own.**
+
 **Owner:** `compliance-specialist` · **Date:** 2026-09-14 · **Appended, not substituted** — §§0–15 and
 Appendix A stand unamended. This is a status re-assessment of a single answered open item, not a new
 review.
@@ -1109,3 +1118,323 @@ done in order, and OI-R-6 answered before anyone characterises the scope.
 **Reassessment triggers (added to §15's list):** OI-R-6 answered — if Tier 2 has sent, I will
 re-score §8(1)'s content exposure against actual send volumes rather than against the template
 inventory · OI-R-7 answered positive — s69 formalisation moves from Sprint 4 to immediate.
+
+---
+---
+
+# Appendix C — Correction to Appendix B: the Resend account exists but has never sent
+
+**Owner:** `compliance-specialist` · **Date:** 2026-09-14 (later the same day as Appendix B) ·
+**Appended, not substituted** — §§0–15 and Appendices A and B stand unamended in their text.
+**Effect: Appendix B is SUPERSEDED IN PART.** Its analysis is sound; its **factual premise is
+wrong**, and a wrong premise at the top of a severity assessment propagates all the way down it.
+I wrote Appendix B. This is my correction of it, made on the same standard I would apply to anyone
+else's.
+
+**Trigger:** two owner screenshots of the Resend dashboard, plus a direct owner clarification.
+
+---
+
+## C.1 The new evidence, and what it actually establishes
+
+| Evidence | What it shows |
+|---|---|
+| Resend dashboard → **Logs** | *"No logs yet. Start sending emails to see insights and previews for every message."* — **zero send events recorded in this account.** |
+| Resend dashboard → **API Keys** | **One** key, named `Onboarding`, created **2026-08-13**, permission `sending_access`, creator `ashleymashigo288@gmail.com`. |
+| Owner, asked directly to reconcile an empty Logs page with "emails are received" | **"it means the emails came from Supabase"** — i.e. the mail the owner received was delivered by **Supabase Auth's own built-in sender**, not by Resend and not by the `auth-send-email` Edge Function. |
+
+**What this establishes, stated at the strength the evidence actually supports:**
+
+1. **A Resend account and a sending-scoped API key exist.** That is not in doubt, and it is the
+   part of Appendix B's premise that survives.
+2. **No email has been sent through Resend by this platform, on the best available evidence.**
+   A `sending_access` key that has produced zero log entries is a key that was created and never
+   wired in. **Key creation is not integration.** Appendix B read "the account works" as "the
+   integration is live," and those are different claims. I made that inference; it was not
+   supported, and it is the single error this appendix exists to correct.
+3. **The delivery path that actually ran was Supabase's own built-in auth email**, i.e.
+   `resend-setup.md` §4's fallback condition: *"When enabled, Supabase built-in SMTP is **not** used
+   for auth mail"* — read in reverse, **not enabled ⇒ built-in SMTP is what delivers.**
+
+### C.1.1 Which of the three candidate causes the code actually supports
+
+The task framing offered three candidates (hook never enabled · `RESEND_API_KEY` never set in the
+Edge Function · sending domain never verified). They are **not equally consistent with the
+evidence**, and the code discriminates between them:
+
+- **Secret never set — RULED OUT as the explanation for *received* mail.**
+  `supabase/functions/auth-send-email/lib/send-email.ts:14–17` **throws** if `RESEND_API_KEY` is
+  absent. If the hook were enabled and the secret missing, GoTrue's Send Email Hook would error and
+  **the auth email would fail outright** — the owner would have seen signup/reset failures, not
+  received mail. (It remains possible the secret is *also* unset; it is simply not what produced the
+  observed behaviour.)
+- **Domain never verified — UNLIKELY as the sole cause.** That path calls Resend and receives a 4xx;
+  an attempted request would ordinarily surface in the account's log/insights view. An empty Logs
+  page is more consistent with **no API request ever reaching Resend at all.**
+- **Hook never enabled (or the Edge Function never deployed) — the best-supported explanation.**
+  It is the only candidate that produces *all three* observed facts simultaneously: mail delivered
+  and received, zero Resend API activity, and no user-visible auth failure. **This is a finding at
+  the level of "most probable cause on the evidence," not a certainty** — C.6/OI-R-8 states the
+  one-screenshot check that would make it certain.
+- **Tier 2 (Render backend → Resend) — separately and independently not sending.**
+  `backend/src/lib/resend-email.ts:14–22` **no-ops with a log line** (`[email] NOT sent to … —
+  RESEND_API_KEY or EMAIL_FROM not configured on backend`) when the key or sender is unset. It does
+  not throw and does not surface to the user. **Domain notifications silently do not send** in that
+  configuration — consistent with zero Resend logs.
+
+### C.1.2 The residual I am not going to hide
+
+Resend's retention is a flat **30 days** (§6). The key was created **2026-08-13**, which is **32 days
+ago**. There is therefore a **~2-day window (roughly 13–15 August)** in which a send could in
+principle have occurred and since rolled off the log. The empty-state wording *"No logs yet. Start
+sending emails…"* reads as a never-used account rather than an aged-out one, and the owner's own
+account of events points the same way — but **"the logs are empty" and "nothing was ever sent" are
+not the same statement**, and I will not repeat the Appendix B error by collapsing them. Residual
+risk: **low, non-zero, and bounded to a two-day window five weeks ago during setup.** Closed by
+OI-R-8.
+
+---
+
+## C.2 The corrected answer to OI-R-5
+
+**OI-R-5 was: "Which Resend plan the account is on, who owns it, and whether the DPA has in fact
+been accepted."** Appendix B recorded it CLOSED on the answer *"a live Resend account exists, it
+works, and emails are being received."*
+
+**Corrected answer, on the evidence:**
+
+> **A Resend account and a sending-scoped API key exist (created 2026-08-13, by
+> `ashleymashigo288@gmail.com`). The account has not been used to send email from this platform.
+> The emails the owner received were delivered by Supabase Auth's built-in sender, bypassing both
+> the `auth-send-email` Edge Function and Resend.**
+
+**Status: OI-R-5 is PARTIALLY answered, not closed.** The existence limb is answered. The **plan,
+account-owner entity, and DPA acceptance status** limbs — which are what **C-R-1** actually needs —
+remain **unanswered**, exactly as they were on 2026-09-10. Appendix B closed OI-R-5 one limb too
+early. **Re-opened.**
+
+**And this selects between §14's two worlds the other way.** §14 posed them as: *"If no account
+exists, nothing has flowed yet and the position is clean prospectively. If an account exists and has
+been used against real addresses, then email has been flowing to an unreviewed operator…"*
+**Neither is exactly right. There is a third world, and we are in it: an account exists, is
+un-evidenced, and has not been used.** For the purposes of accrued exposure, that behaves like the
+**first** world — **clean prospectively** — while leaving C-R-1's evidence obligation exactly where
+§12 put it.
+
+---
+
+## C.3 Is Supabase's own auth-email sending already in scope of the Supabase review?
+
+**Answer: partly — and the part that is not in scope is narrow, previously unexamined, and low
+severity today. It is not a new unreviewed vendor relationship.** Broken into its three limbs,
+because answering it as one question is how a real gap gets waved through:
+
+| Limb | In scope of `compliance-review-supabase.md`? | Reasoning |
+|---|---|---|
+| **The operator relationship itself** | **YES, fully.** | Supabase is already reviewed as an operator across that document. Mail sent by Supabase's own infrastructure is **Supabase processing data we already gave it** — an email address it already stores in `auth.users` (§2.1) and a token GoTrue itself minted. No new counterparty, no new PI category, no new s21 instrument required. It rides on **C-2** (execute the Supabase DPA) — which is **still open** and is an existing owner blocker, not a new one. |
+| **The cross-border leg** | **YES.** | The project is in an **EU region** (§3.4, owner-confirmed 2026-08-08), and **CT-1 itemises "Supabase EU region (exact code)" by name.** Supabase-delivered auth mail is a cross-border flow **to a destination already inside CT-1's schedule.** Nothing new to add to the consent request. |
+| **Which sub-processor physically delivers built-in GoTrue auth mail, and where** | **NO — genuinely not determined.** | Two reasons, and both were reasonable at the time. (a) **§5.2 assessed the built-in service only as a capability to be *replaced*** — "explicitly not for production… ~2 emails/hour… refuses to deliver to addresses that are not part of the project's team" — **never as a live processing path**, because nobody expected it to be one. (b) **§5.1.2's Bucket B ruling** placed Supabase's email-adjacent sub-processors (**Postmark / Active Campaign, LLC**, described as *"Communication with Authorized Users"*; **Sublime Security Inc**, *"Email Security"*; **Google, LLC**, *"hosting"*) **out of scope as a customer-identity-data flow** — a ruling that is correct **for** Authorized-User communications but **assumed built-in auth mail was not in the picture.** Supabase does not publish which sub-processor carries built-in auth mail, and none of the 24 entries carries a **stated location**. |
+
+**Ruling.** This is a **small, real, previously-unnamed gap — logged as C-R-10 / OI-R-9 — not a
+second Resend-shaped problem, and anyone reading it as one has over-read it.** Three things keep it
+small, and I want them on the record so this is not re-escalated later by someone reading only the
+gap and not the containment:
+
+1. **The built-in sender only delivers to project team addresses.** That is Supabase's documented
+   limitation (§5.2), and it is corroborated here: the recipient was the **owner**. So the PI that
+   has actually traversed this path is **staff/business-contact PI plus staff auth tokens — not
+   customer PI.** That is the same low-sensitivity category §5.1.2 already accepted for Bucket B in
+   its "one honest qualification" paragraph.
+2. **It is a path we are contractually and architecturally committed to leaving.** C-5 / the whole
+   Resend onboarding exists precisely to replace it. This is not a permanent flow to be regularised;
+   it is a temporary setup-phase flow to be switched off.
+3. **It is bounded by the same DPA and the same CT-1 line item**, so there is no un-contracted
+   counterparty here in the way an un-onboarded Brevo (C-R-8) or a consumer Gmail address (C-R-9)
+   would be.
+
+**C-R-10 [PRE-PROD, low].** Record in the RoPA that **during setup, Supabase's built-in auth mail
+delivered verification/reset messages to project team addresses**, that **the delivering
+sub-processor and its location are not published by Supabase (OI-R-9)**, and that this path **ceases
+on enabling the Send Email Hook**. Add "which sub-processor delivers built-in GoTrue auth email, and
+in which country" to the **existing** OI-3 written enquiry to Supabase rather than opening a separate
+thread — same discipline as C-R-7(c). **Owner:** `compliance-specialist` (RoPA), `integration-architect`
+(enquiry). **Explicitly not a blocker**, and it self-extinguishes when the hook goes live.
+
+**One correction to §5.1.2 flowing from this, recorded so it is not lost:** the Bucket B ruling
+should be read as *"out of scope for the customer-identity-data flow **provided built-in auth email
+is not in use**"* — the proviso was implicit and is now explicit. `compliance-specialist` to carry
+this into the next revision of that document; it does not change any of its conditions.
+
+---
+
+## C.4 What in Appendix B is retracted, and what survives
+
+**RETRACTED — these were premised on sends that did not happen:**
+
+| Appendix B item | Status |
+|---|---|
+| **B.1's headline: "LIVE NON-CONFORMANCE UNDER REMEDIATION"** | **WITHDRAWN.** There is no live non-conformance **arising from Resend**, because no personal information has reached Resend. The posture reverts to **§12 as written: APPROVED WITH CONDITIONS, pre-go-live gate.** The conditions are gates again, not remediation items. |
+| **B.1's s72 / s21 "probably lawful, unevidenced" framing of accrued flow** | **MOOT as to accrued exposure.** Nothing flowed. C-R-1's evidence obligation is unchanged and still [BLOCK], but it gates a future first send rather than documenting a past one. |
+| **B.1's s18 finding — "real-world customers have had their email address and message content sent to a Californian processor without ever having been told"** | **WITHDRAWN as to Resend.** No customer message content left for California. Publishing the §11 notice remains required **before** first send (C-R-7(d)); it is no longer an overdue disclosure about live processing. |
+| **B.2.1 in its entirety — the "now RETROACTIVE" split** | **WITHDRAWN.** **Every** condition reverts to **prospective**, per B.2.2's framing. Nothing accrued. |
+| **B.3.1 — "[≤24h — DECAYING] preserve the Resend log before it rolls off"** | **MOOT. There is nothing to export.** This was the most urgent item on the list and it evaporates entirely. (The 32-day/2-day residual at C.1.2 is not curable by exporting an empty log; it is curable by OI-R-8.) |
+| **B.3.3 / OI-R-6 — "which tier has actually sent?"** | **ANSWERED: NEITHER.** Tier 1 never reached Resend (hook not enabled); Tier 2 silently no-ops without the backend key. **OI-R-6 CLOSED.** The §8(1) aggregate content exposure is **prospective**, as originally written. |
+| **B.3.5 / OI-R-7 — ONB-002 s69 direct-marketing exposure** | **PROSPECTIVE, not accrued.** ONB-002 is a Tier 2 backend send; with no backend key it cannot have delivered. **No s69 contravention has occurred.** A.12's characterisation ruling **stands unchanged** and must be formalised **before** first send — but the "pause it now" urgency is withdrawn. **OI-R-7 CLOSED (negative), subject to C.1.2's residual.** |
+| **B.4's reasoning that the Gmail address is "a defect in mail already sitting in real customers' inboxes"** | **WITHDRAWN as stated** — see C.5(3), which replaces it with a **better-evidenced** reason the same conclusion holds. Built-in Supabase mail uses **Supabase's** templates, not `brand.ts`, so our footer was probably never rendered to anyone. |
+| **B.6's "exposure window that started at a date we do not yet know and is still running"** | **WITHDRAWN.** There is no open exposure window against Resend. |
+
+**SURVIVES — unaffected by this correction:**
+
+- **All nine conditions C-R-1 … C-R-9, verbatim**, with their original **[BLOCK] / [PRE-PROD] /
+  [STANDING]** markers as set at §12. The whole of §§0–15 and Appendix A is untouched — **this
+  correction is about *whether sending has happened*, not about *what the vendor is* or *what the
+  templates say*.**
+- **CT-1** — see C.5(1). Unaffected, and never depended on Resend.
+- **C-R-9** — see C.5(3). **Strengthened, not weakened.**
+- **The §A.6 seven template rewrites** — still required, still not landed (B.2.1 verified them
+  missing in code today and that verification is independent of delivery). Now **pre-send work with
+  no accrued harm behind it**, which is the cheapest time to do it.
+- **A.12's s69 characterisation of ONB-002** — a ruling about content, unaffected by delivery.
+- **The §A.5 OTP preheader fix** — confirmed landed; unaffected.
+- **C-R-8** (dead Brevo path) — unchanged; it was always latent.
+
+---
+
+## C.5 Re-assessed urgency — the four questions put to me, answered directly
+
+**(1) Is CT-1 still needed regardless? YES — unambiguously, and it never rested on Resend.**
+CT-1 requires the Client's prior written consent to cross-border processing **itemising each
+location: Render Frankfurt (backend + web), Supabase EU region, MongoDB Atlas, Resend, and AWS as
+substrate** (`10-data-protection-contract-obligations.md` §6). **Four of those five are live today
+and have nothing to do with email.** §9.1 of that same document already **ruled out** making CT-1
+moot by leaving Frankfurt, and §9.2 **ruled out** an internal risk acceptance. **The only change this
+correction makes to CT-1 is that the "Resend" line item is now honestly describable as *a planned
+recipient that has not yet received anything*** — which is a **mildly better** disclosure to make to
+the Client, not a reason to delay making it. **CT-1's deadline, owner and standing containment
+condition ("no new real customer PII on any surface until consent is obtained") are unchanged.**
+
+**(2) Is the log-export item moot? YES, completely.** B.3.1 is withdrawn (C.4). There is nothing to
+export. **It is replaced by a cheaper and more durable item: OI-R-8**, below — confirm the hook state
+rather than reconstruct a send history.
+
+**(3) Is C-R-9 (the Gmail contact) still valid? YES — and it is now better evidenced than Appendix B
+made it.** B.4 tied its urgency to inboxes; that limb is withdrawn. But C-R-9 was **never** a finding
+about which sender delivered a message — it is a finding about **static contact content**, and I
+verified the address in source again today at **four** sites, two of which are **live public web
+pages right now**:
+
+- `backend/src/lib/email-footer.ts:44` — domain email footer (**unsent today**)
+- `supabase/functions/auth-send-email/templates/brand.ts:46` — auth email chrome (**unrendered
+  today**, since the hook is not enabled)
+- **`src/lib/companyContact.ts:15`** — consumed by **`src/pages/PrivacyPolicyPage.tsx:59–60` and
+  `src/pages/TermsOfServicePage.tsx:55–56`**, plus the landing page and three customer/onboarding
+  flows
+- **`mobile/src/lib/companyContact.ts:2`**
+
+**This is the important correction *against* my own withdrawal: the consumer Gmail address is the
+published contact on the live Privacy Policy and Terms of Service pages.** That makes it the **de
+facto s18 notice contact and s23/s24 data-subject-request channel *today*, on a public website,
+entirely independently of whether a single email has ever been sent.** **C-R-9 stays [BLOCK], stays
+at the top of the engineering queue, and its scope is now four sites across three surfaces — wider
+than both §A.8 (two sites) and B.4 (two sites) recorded.** Appendix B reached the right conclusion
+via the wrong route; the right route is stronger.
+
+**(4) Does anything else from the 24h/72h/this-sprint list still apply?**
+
+| Original item | Re-assessed |
+|---|---|
+| B.3.1 export Resend logs **[≤24h]** | **MOOT** — nothing to export. |
+| B.3.2 close C-R-1 (owner entity, plan, DPA status) **[≤24h]** | **STILL REQUIRED — but back to its original [BLOCK]-before-first-send status, not a 24h emergency.** Still one screenshot. **Do it while enabling the hook**, since the owner will be in the dashboard anyway. |
+| B.3.3 OI-R-6 which tier sent **[≤24h]** | **CLOSED — neither.** |
+| B.3.4 verify C-R-5 (no AI feature enabled) **[≤48h]** | **Downgraded to a one-line check at hook-enable time.** On an account that has never sent, there is nothing for an AI feature to have processed. Reverts to **[STANDING] prospective prohibition**, as §12 wrote it. |
+| B.3.5 confirm/pause ONB-002 **[≤48h]** | **No pause needed — it has not sent.** A.12's consent mechanics revert to the **Sprint 4** timeline §A.9/§A.12.4 originally set. |
+| B.3.6 disclose to Client and regularise CT-1 **[≤72h]** | **STILL REQUIRED, unchanged in substance** — but it is **not a disclosure of an accrued Resend contravention**. It is CT-1 as it always was (§9.5's draft letter), now with one line item described more accurately. **`cto` + owner. The draft does not need rewriting for this; it needs one factual adjustment to the Resend row.** |
+| B.3.7 §A.6 rewrites + C-R-9 fix **[this sprint]** | **STILL REQUIRED, unchanged.** C-R-9 first (C.5(3)). |
+| B.3.8 log the non-conformance in the CT register with a start date **[this sprint]** | **WITHDRAWN as to Resend** — there is no Resend non-conformance and no start date to record. **Do not create a register entry for one.** CT-1's own existing entry already records the live contractual exposure from the four non-email locations, and that entry is unchanged. |
+| B.3's "what does NOT need to happen" (no Regulator notification, no breach notification, no suspension of sending) | **UNCHANGED, and now *more* clearly right.** B.1's s22 row was correct then and is correct now: **there is no breach.** |
+
+**Net urgency: the two genuine 24-hour clocks in Appendix B are gone.** What is left is a
+pre-go-live condition set with **one item that is live-and-public today (C-R-9)** and **one item that
+was always independently live (CT-1)**.
+
+---
+
+## C.6 Open items — corrected status
+
+- **OI-R-5: RE-OPENED, partially answered.** Existence confirmed; **plan, account-owner entity and
+  DPA acceptance status still unknown**, and **C-R-1 still cannot close.** (Appendix B closed this
+  prematurely.)
+- **OI-R-6: CLOSED — neither tier has sent via Resend.**
+- **OI-R-7: CLOSED (negative) — ONB-002 has not sent; the s69 finding is prospective.** Subject to
+  C.1.2.
+- **OI-R-8 (NEW): confirm the actual integration state, by screenshot, in one sitting.**
+  (a) Supabase Dashboard → Authentication → Hooks → **Send Email: enabled or not**; (b) whether
+  `auth-send-email` is deployed and its **invocation count**; (c) whether `RESEND_API_KEY` /
+  `EMAIL_FROM` are set as **Edge Function secrets**; (d) whether they are set on **Render**;
+  (e) Resend → Domains → **verification status**. **Owner / `cto`, before enabling the hook.**
+  This replaces B.3.1 and is what definitively closes C.1.2's two-day residual — (b) is the decisive
+  one: a deployed function with **zero invocations** settles it outright.
+- **OI-R-9 (NEW): which Supabase sub-processor delivers built-in GoTrue auth email, and in which
+  country?** Fold into the **existing** OI-3 enquiry (`compliance-review-supabase.md` §6.3).
+  `integration-architect`. **Low priority, self-extinguishing on hook enable.** See C.3.
+- **OI-R-1 / OI-R-2 / OI-R-3 / OI-R-4: unchanged, all open.** None on the critical path.
+
+---
+
+## C.7 Owner-facing summary — short version
+
+**What is actually true:**
+
+- You have a Resend account and an API key. **Resend has never sent an email for this platform** —
+  the empty Logs page is the proof, and it matches the code.
+- **The verification emails you received came from Supabase's own built-in sender.** Almost
+  certainly the **Send Email Hook was never switched on** in the Supabase dashboard, so Supabase
+  quietly fell back to its own email service. Our branded Edge Function never ran.
+- **That built-in sender only delivers to addresses on your Supabase project team.** So it worked
+  for you — and it would **not** have worked for a real customer signing up. **Enabling the hook is
+  an operational prerequisite for launch, not just a compliance one.**
+
+**What changed from this morning's urgent version:**
+
+- **There is no live non-conformance from Resend, and there has been no breach.** No customer data
+  ever reached the United States via email. That escalation is withdrawn.
+- **The two 24-hour clocks are gone.** Nothing to export from Resend; nothing to pause.
+- Everything reverts to what it was on 10 September: a **normal pre-launch condition list**.
+
+**What is still genuinely time-sensitive:**
+
+1. **The Gmail address (`td.itsolution60@gmail.com`) is published on your live Privacy Policy and
+   Terms pages right now.** That is the contact a customer would use to exercise their legal rights,
+   and it is a personal Gmail account. **Cheapest fix on the list, four files, still blocking.**
+2. **CT-1 — the Client's written consent to processing outside South Africa — is still unmet and
+   still blocks real customer data.** It never depended on Resend: Render Frankfurt, Supabase EU and
+   MongoDB Atlas are all cross-border on their own. The draft letter is ready; it needs sending.
+3. **One screenshot sitting (OI-R-8)** when you next open the dashboards — hook status, secrets,
+   domain verification, account plan. Not urgent, but it closes C-R-1 and removes the last doubt in
+   this appendix.
+
+**And the honest note:** this morning's escalation was **mine**, and it was wrong on its facts
+because I read "the account works and emails arrive" as "the integration is live." It was not.
+**The lesson is the house rule: check the code and the evidence before asserting a system is
+running.** I have applied it to myself here.
+
+---
+
+## C.8 Sign-off on the correction
+
+**Resend remains APPROVED WITH CONDITIONS (C-R-1 … C-R-9, plus C-R-10 at C.3). The §12 markers
+stand as originally written: pre-go-live gates, not remediation items.** Appendix B's
+**LIVE NON-CONFORMANCE UNDER REMEDIATION** status is **withdrawn**; Appendix B is **superseded in
+part** per C.4 and carries a pointer to this appendix.
+
+**This does not reopen the review.** §§0–15 and Appendix A are untouched on their merits, and
+nothing here alters the vendor analysis, the template audit, or the conditions.
+
+**Blocking first production send:** **C-R-1**, **C-R-3(a)** (§A.6 rewrites), **C-R-9**, and —
+independently and contractually — **CT-1**.
+
+**Reassessment triggers (replacing B.6's):** **OI-R-8 answered** — if the Edge Function shows
+non-zero invocations, or the Resend Domains page shows a verified domain with delivery history, this
+appendix reopens immediately and Appendix B's framing is reinstated on the new facts · **the Send
+Email Hook being enabled** — at which point C.3's built-in-sender path closes and C-R-10 extinguishes
+· first real Resend send — at which point C-R-2's RoPA entry moves from prospective to live.
