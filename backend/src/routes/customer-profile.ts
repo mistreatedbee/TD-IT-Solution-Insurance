@@ -113,7 +113,10 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
           await ctx.accounts.updatePhone(accountId, body.phone);
         }
         if (body.idNumber !== undefined) {
-          patch.idNumberLast4 = body.idNumber.slice(-4);
+          // CT-11: body.idNumber is already just the last 4 digits — the Zod schema
+          // (customer-profile-validation.ts) rejects anything else. No further truncation
+          // needed or possible server-side; the full number never reaches this handler.
+          patch.idNumberLast4 = body.idNumber;
         }
         if (body.residentialAddress !== undefined) {
           patch.residentialAddress = {

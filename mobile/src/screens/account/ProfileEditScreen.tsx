@@ -12,6 +12,7 @@ import {
 } from '../../api/hooks/useCustomerProfile';
 import { ProfileAvatar, ProfilePictureActions } from '../../components/ProfileAvatar';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { truncateSaIdNumber, validateSaIdNumber } from '../../lib/sa-id-number';
 import { useProfilePictureUpload } from './useProfilePictureUpload';
 import { Alert, Badge, Button, Card, Input, Screen } from '../../theme/primitives';
 import { colors, spacing, typography } from '../../theme/tokens';
@@ -98,8 +99,13 @@ function validateProfileForm(input: {
   }
 
   const id = input.idNumber.trim();
-  if (id && !/^[0-9]{13}$/.test(id)) {
-    errors.idNumber = 'South African ID must be 13 digits.';
+  if (id) {
+    // CT-11: full checksum/format validation happens client-side, on the full 13-digit number,
+    // before it is truncated for transmission — see handleSave below.
+    const result = validateSaIdNumber(id);
+    if (!result.valid) {
+      errors.idNumber = result.error;
+    }
   }
 
   if (!input.line1.trim()) errors.line1 = 'Street address is required.';
@@ -234,7 +240,10 @@ export function ProfileEditScreen() {
     };
 
     if (idNumber.trim()) {
-      body.idNumber = idNumber.trim();
+      // CT-11 (docs/organization/10-data-protection-contract-obligations.md §9.6): only the
+      // last 4 digits ever leave the device — the full number has already been checksum
+      // validated above and is truncated here, never sent in full to the Frankfurt API.
+      body.idNumber = truncateSaIdNumber(idNumber);
     }
 
     try {

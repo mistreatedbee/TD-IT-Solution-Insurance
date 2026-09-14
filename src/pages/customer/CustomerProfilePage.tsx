@@ -22,12 +22,14 @@ import {
   type UpdateCustomerProfileRequest,
 } from '../../customer/api/profile';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { truncateSaIdNumber, validateSaIdNumber } from '../../lib/sa-id-number';
 
 export function CustomerProfilePage() {
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [idNumberError, setIdNumberError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,6 +78,20 @@ export function CustomerProfilePage() {
   async function handleSave() {
     setSaveError(null);
     setSaveSuccess(false);
+    setIdNumberError(null);
+
+    const trimmedIdNumber = idNumber.trim();
+    if (trimmedIdNumber) {
+      // CT-11 (docs/organization/10-data-protection-contract-obligations.md §9.6): validate the
+      // full number locally before it is truncated below — the full 13-digit number must never
+      // be sent to the API.
+      const result = validateSaIdNumber(trimmedIdNumber);
+      if (!result.valid) {
+        setIdNumberError(result.error ?? 'That ID number is not valid.');
+        return;
+      }
+    }
+
     setIsSaving(true);
 
     const body: UpdateCustomerProfileRequest = {
@@ -98,7 +114,7 @@ export function CustomerProfilePage() {
         phone: emergencyPhone.trim(),
       },
     };
-    if (idNumber.trim()) body.idNumber = idNumber.trim();
+    if (trimmedIdNumber) body.idNumber = truncateSaIdNumber(trimmedIdNumber);
 
     try {
       const updated = await updateCustomerProfile(body);
@@ -251,7 +267,8 @@ export function CustomerProfilePage() {
                   placeholder={profile.idNumberMasked ? 'Enter new ID to update' : '13 digits'}
                   type="password"
                   autoComplete="off"
-                  hint="Only the last four digits are shown after saving."
+                  error={idNumberError ?? undefined}
+                  hint="Only the last four digits ever leave this device."
                 />
               </div>
             </div>

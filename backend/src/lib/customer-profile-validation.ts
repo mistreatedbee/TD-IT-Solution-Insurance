@@ -14,10 +14,14 @@ export const updateCustomerProfileBodySchema = z
     lastName: z.string().trim().min(1).max(80).optional(),
     dateOfBirth: z.string().date().nullable().optional(),
     phone: phoneSchema.optional(),
+    // CT-11 (docs/organization/10-data-protection-contract-obligations.md §9.6): the full
+    // 13-digit SA ID number must never cross the border to this Frankfurt-hosted API. Clients
+    // validate (checksum) and truncate to the last 4 digits locally; this schema accepts only
+    // that already-truncated form. Do not widen this back to a 13-digit regex.
     idNumber: z
       .string()
       .trim()
-      .regex(/^[0-9]{13}$/, 'South African ID must be 13 digits')
+      .regex(/^[0-9]{4}$/, 'idNumber must be the last 4 digits only')
       .optional(),
     residentialAddress: z
       .object({

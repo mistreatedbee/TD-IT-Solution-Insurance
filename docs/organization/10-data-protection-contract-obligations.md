@@ -775,3 +775,74 @@ row asserts the opposite of the truth. **CT-14** below.
 **Does not discharge:** C-6 (breach runbook — superseded in part, see §12.1) ·
 INC-001-C-3/C-8/C-10/C-13 · any C-008 condition · Feature 008 Stage 8 · legal sign-off ·
 CT-13 · CT-14 · CT-3-OI-1…5 · CT-4a…CT-4d (all new, open).
+
+---
+
+## 13. CT-11 — closed. Client-side truncation shipped — 2026-09-14
+
+**Append-only.** Nothing in §9 (which opened CT-11) or §9.6's register row is withdrawn; this
+section records disposition, per the convention at §8/§10/§12.
+
+### 13.1 What shipped
+
+`backend-engineer` moved SA ID truncation from server-side to client-side, so the full 13-digit
+number no longer crosses the border at all — only the pre-truncated last 4 digits are ever sent
+to the Frankfurt API:
+
+- **`backend/src/lib/customer-profile-validation.ts:17-24`** — the `idNumber` field's Zod schema
+  now requires `/^[0-9]{4}$/` (exactly 4 digits) instead of the previous `/^[0-9]{13}$/`. This is
+  a **breaking API contract change** on `PATCH /v1/customer/profile`: a client sending a full
+  13-digit number is now rejected with `VALIDATION_ERROR`, not silently truncated server-side.
+- **`backend/src/routes/customer-profile.ts:115-120`** — `patch.idNumberLast4 = body.idNumber`
+  (previously `.slice(-4)` on a 13-digit input; now a straight assignment of the already-4-digit
+  input, since the Zod schema guarantees the shape).
+- **`mobile/src/lib/sa-id-number.ts`** (new) and **`src/lib/sa-id-number.ts`** (new, identical —
+  no shared package exists between the mobile and web projects) — a pure, dependency-free
+  `validateSaIdNumber()` (13-digit format + Luhn-style check digit + real-calendar-date +
+  citizenship-digit checks, consistent with Feature 013 §2.1 FR-1–FR-4, but not the full Tier 1
+  scope — no date-of-birth cross-check (FR-5), no server-side authoritative validation) and
+  `truncateSaIdNumber()`, unit-tested (`mobile/src/lib/__tests__/sa-id-number.test.ts`,
+  `src/lib/__tests__/sa-id-number.test.ts`).
+- **`mobile/src/screens/account/ProfileEditScreen.tsx`** and
+  **`src/pages/customer/CustomerProfilePage.tsx`** — both now validate the full number client-side
+  before submission and send only `truncateSaIdNumber(idNumber)` in the request body. The full
+  number is held only in local component state and is never passed to the API client.
+
+### 13.2 Admin-verification workflow — checked, no tension found, no unilateral decision made
+
+Point 5 of this task asked specifically whether `backend/src/routes/admin-verification.ts` or
+`src/admin/pages/AdminVerificationPages.tsx` assume access to more of the ID number than the last
+4 digits, since admin KYC review might need more of the number to cross-check submitted
+documents. **Checked by reading both files line-by-line: no tension exists, because it already
+didn't before this change.** `admin-verification.ts:55` has only ever built
+`idNumberMasked: \`********${profile.idNumberLast4}\`` from the stored `idNumberLast4` field —
+the full number was never stored (`customer-profile-collections.ts:19` has no field for it) and
+so was never available to the admin review workflow, full stop, independent of this change. This
+is the same fact Feature 013 §0.1 already documents. CT-11's change reduces what crosses the
+border in transit; it does not remove anything the admin workflow previously had, because the
+admin workflow never had it. **No compliance tradeoff decision was required here** — flagged as
+checked, not assumed.
+
+### 13.3 Verification
+
+- `cd backend && npx tsc --noEmit` — clean.
+- `cd backend && npm test` — **366/366 passed** (55 test files), including the two existing
+  `customer-profile.test.ts` cases that submit `idNumber`, updated from a 13-digit literal to a
+  4-digit literal to match the new contract.
+- `cd mobile && npx tsc --noEmit` — clean.
+- `cd mobile && npm test` — **158/158 passed** (42 test files), including 7 new
+  `sa-id-number.test.ts` cases.
+- `npx tsc --noEmit -p tsconfig.json` (web root) — clean.
+- `npx vitest run` (web root) — **38/38 passed** (10 test files), including 7 new
+  `sa-id-number.test.ts` cases. No existing web test exercises `CustomerProfilePage.tsx` directly
+  (none existed before this change).
+
+### 13.4 Register change
+
+| ID | Change |
+|---|---|
+| **CT-11** | **CLOSED 2026-09-14**, ahead of its 2026-09-19 deadline. Full ID number truncated client-side (mobile and web) before transmission; backend now rejects anything but the last-4-digit form. Admin-verification workflow checked — never depended on more than `idNumberLast4`, so nothing broke and no compliance tradeoff was required (§13.2) |
+
+---
+
+**Filed by:** `backend-engineer`, 2026-09-14 (§13 appended, CT-11 closed).

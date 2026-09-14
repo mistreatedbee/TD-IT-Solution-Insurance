@@ -354,7 +354,7 @@ describe('customer profile routes', () => {
         firstName: 'Ashley',
         lastName: 'Smith',
         phone: '+27821234567',
-        idNumber: '9001015800085',
+        idNumber: '0085',
         residentialAddress: address,
         emergencyContact: emergency,
       }),
@@ -434,7 +434,7 @@ describe('customer profile routes', () => {
         firstName: 'Ashley',
         lastName: 'Smith',
         phone: '+27821234567',
-        idNumber: '9001015800085',
+        idNumber: '0085',
         residentialAddress: {
           line1: '12 Main Rd',
           city: 'Johannesburg',
