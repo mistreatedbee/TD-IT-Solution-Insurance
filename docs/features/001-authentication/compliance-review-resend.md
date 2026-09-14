@@ -1438,3 +1438,97 @@ non-zero invocations, or the Resend Domains page shows a verified domain with de
 appendix reopens immediately and Appendix B's framing is reinstated on the new facts · **the Send
 Email Hook being enabled** — at which point C.3's built-in-sender path closes and C-R-10 extinguishes
 · first real Resend send — at which point C-R-2's RoPA entry moves from prospective to live.
+
+---
+
+# Appendix D — C-R-9 CLOSED. Verified in source 2026-09-14.
+
+**Append-only.** Nothing in §§0–15 or Appendices A–C is withdrawn. This appendix does one thing:
+it records that **C-R-9's remediation has landed**, so that the `[BLOCK]` marker at §12, §A.11,
+B.4 and C.5(3) stops describing the platform's current state. Those sections are **left as
+written** — they were accurate when written, and this review's convention (C.4, §10 of
+`10-data-protection-contract-obligations.md`) is that corrections are appended, not retrofitted.
+
+## D.1 What I verified, and how
+
+`compliance-specialist`, 2026-09-14. Method: source grep across the repository, not a report from
+another role and not the commit message.
+
+| # | Site named by C.5(3) | Old value | Verified value today | Result |
+|---|---|---|---|---|
+| 1 | `backend/src/lib/email-footer.ts:44` | `td.itsolution60@gmail.com` | `info@tditsolutionsinsurance.co.za` (both `href` and link text) | **CLEAN** |
+| 2 | `supabase/functions/auth-send-email/templates/brand.ts:46` | same | `info@tditsolutionsinsurance.co.za` | **CLEAN** |
+| 3 | `src/lib/companyContact.ts:15` | same | `info@tditsolutionsinsurance.co.za` | **CLEAN** |
+| 4 | `mobile/src/lib/companyContact.ts:2` | same | `info@tditsolutionsinsurance.co.za` | **CLEAN** |
+
+**Negative control:** a repository-wide grep for `gmail.com` across `*.ts`, `*.tsx`, `*.js`, `*.mjs`
+and `*.json` returns **zero matches**. A grep for the literal old address `td.itsolution60` across
+**all** file types returns exactly **one** file — *this review document* — i.e. the only remaining
+occurrence anywhere in the repository is the historical record of the finding itself. That is the
+correct end-state.
+
+**Consumption verified, not assumed.** The limb that made C-R-9 urgent at C.5(3) was that the
+address was published on **live public web pages**, independently of email. Confirmed remediated at
+source: `src/pages/PrivacyPolicyPage.tsx:59–60` and `src/pages/TermsOfServicePage.tsx:55–56` both
+render `COMPANY_CONTACT.email` from site 3 — they do not hardcode an address — as do
+`WaitlistForm.tsx`, `LandingPage.tsx` and `CustomerChangePlanPage.tsx`. Fixing the constant fixed
+the pages.
+
+**What I did not verify, and am not claiming.** Commit `0ea5190`'s diff was not read and the
+deployed Vercel/Render artefacts were not inspected. **The end-state in source is what I am
+certifying; a deploy is what publishes it.** If the live Privacy Policy page has not been
+redeployed since the fix landed, the old address is still public. That is a deployment check for
+`devops-engineer`, not a reason to hold the condition open.
+
+## D.2 Ruling
+
+**C-R-9 is CLOSED.** The condition was to *replace the consumer-webmail address with a domain
+address before it is published as the s18 notice contact or the s23/s24 data-subject-request
+channel*. The replacement is made at all four sites, including the two that were already public.
+The undocumented-operator limb (data-subject rights requests routed through Google's consumer
+webmail) is extinguished with it.
+
+**Consequential status changes:**
+
+- **§12 C-R-9 `[BLOCK]` — discharged.** It no longer blocks production email delivery.
+- **§0/§15/C.8's "blocking first production send" set reduces to three:** **C-R-1** (DPA evidence),
+  **C-R-3(a)** (the seven §A.6 template rewrites), and — independently and contractually — **CT-1**.
+- **CT-7 limb 2 is discharged.** Limb 1 (compliance-review Resend as an operator) was already
+  discharged by this document at §15. **CT-7 therefore closes in full**; recorded at
+  [`../../organization/10-data-protection-contract-obligations.md`](../../organization/10-data-protection-contract-obligations.md) §11.
+- **A.11's and B.4's `[BLOCK]` markers are superseded by this appendix**, not deleted.
+
+## D.3 Two residuals I am opening rather than quietly inheriting
+
+Closing C-R-9 fixes the *string*. It does not, by itself, establish that the new string is a
+**working rights channel**, and I am not going to let the closure imply that it does.
+
+- **OI-R-10 (new) — is `info@tditsolutionsinsurance.co.za` actually provisioned, monitored, and by
+  whom?** Nothing in this repository evidences that the mailbox exists, that MX records for
+  `tditsolutionsinsurance.co.za` resolve, or that anyone reads it. `src/lib/companyContact.ts:2–3`
+  sources the contact block from the owner's published **site123.me** site, which suggests the
+  custom domain may be recent. **A published s18/s23 contact that bounces is a worse defect than a
+  Gmail address that works** — the Gmail address at least reached someone. Owner / `integration-architect`
+  to confirm the mailbox exists and name the human who monitors it. **Not a blocker on C-R-9's
+  closure; a blocker on relying on the address in a privacy notice.** Fold into the **OI-R-8**
+  dashboard sitting — the Resend Domains page (OI-R-8(e)) shows the domain's DNS state and will
+  answer half of this for free.
+- **OI-R-11 (new) — s23/s24 request handling has no named owner or timetable.** POPIA gives a data
+  subject a right to request access and correction; s23 imports a response obligation. We have now
+  published a contact address on two live public pages **with no documented procedure behind it** —
+  no SLA, no identity-verification step, no named responder, no interaction with the AUD-8
+  reconstruction runbook that would actually be needed to answer "what do you hold about me."
+  `compliance-specialist` (procedure) + `cto` (naming the responder). **Pre-go-live, tracked with
+  C-R-7(d).**
+
+Both are recorded here because the honest reading of D.2 is *"the address is no longer wrong,"*
+which is a smaller claim than *"the platform can receive and answer a rights request."*
+
+## D.4 Sign-off
+
+**C-R-9: CLOSED, 2026-09-14, on source verification of all four sites plus a negative control.**
+Remediation credited to the owner (commit `0ea5190`, diff unverified, end-state verified).
+Review status is unchanged: **Resend remains APPROVED WITH CONDITIONS**, now C-R-1 … C-R-8 plus
+C-R-10, with **C-R-9 discharged**.
+
+**Filed by:** `compliance-specialist`, 2026-09-14. Discharges CTO task **T-06**.

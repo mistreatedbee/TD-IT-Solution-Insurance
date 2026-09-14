@@ -251,7 +251,117 @@ function printSummary(results: SeedResult[], webBase: string): void {
   );
 }
 
+interface TeardownResult {
+  email: string;
+  found: boolean;
+  userId: string | null;
+  deleted: boolean;
+}
+
+/**
+ * CT-5 / clause 19(d): remove the seeded test accounts by their known,
+ * hardcoded email addresses only. This function never accepts a caller-
+ * supplied list — the only accounts it will ever touch are the four in
+ * `TEST_ACCOUNTS`.
+ */
+async function teardownOne(
+  spec: (typeof TEST_ACCOUNTS)[keyof typeof TEST_ACCOUNTS],
+  env: Env,
+  pool: ReturnType<typeof getPgPool>,
+  apply: boolean,
+): Promise<TeardownResult> {
+  const supabase = getSupabaseAdmin(env);
+  const accounts = createAccountsRepo(pool);
+
+  const existingAccount = await accounts.findByEmail(spec.email);
+  const existingAuth = await supabase.getUserByEmail(spec.email);
+  const userId = existingAccount?.id ?? existingAuth?.userId ?? null;
+
+  if (!userId) {
+    return { email: spec.email, found: false, userId: null, deleted: false };
+  }
+
+  if (!apply) {
+    return { email: spec.email, found: true, userId, deleted: false };
+  }
+
+  await supabase.deleteUser(userId);
+  return { email: spec.email, found: true, userId, deleted: true };
+}
+
+function printTeardownSummary(results: TeardownResult[], apply: boolean): void {
+  // eslint-disable-next-line no-console
+  console.log(
+    apply
+      ? '\n[seed-test-accounts] --teardown --confirm: deletion results:\n'
+      : '\n[seed-test-accounts] --teardown (dry run — pass --confirm to actually delete):\n',
+  );
+  for (const row of results) {
+    if (!row.found) {
+      // eslint-disable-next-line no-console
+      console.log(`  ${row.email}: not found — nothing to do`);
+      continue;
+    }
+    // eslint-disable-next-line no-console
+    console.log(
+      `  ${row.email} (${row.userId}): ${
+        apply ? (row.deleted ? 'deleted' : 'FAILED') : 'would be deleted'
+      }`,
+    );
+  }
+  console.log('');
+}
+
+async function runTeardown(): Promise<void> {
+  const apply = process.argv.includes('--confirm');
+  const env = loadSeedEnv();
+  const pool = getPgPool(env);
+
+  await pool.query('select 1');
+  // eslint-disable-next-line no-console
+  console.log('[seed-test-accounts] Connected to Postgres (app schema).');
+  // eslint-disable-next-line no-console
+  console.log(`[seed-test-accounts] Target Supabase project: ${env.supabaseUrl}`);
+
+  const targets = Object.values(TEST_ACCOUNTS);
+
+  if (apply) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `\nAbout to PERMANENTLY delete up to ${targets.length} test account(s) and all data ` +
+        'that cascades from them (sessions, state-transition history, MFA factors) from the ' +
+        'Supabase project above. This only ever targets the fixed seeded test-account emails ' +
+        'listed in this script — no other accounts are affected.\n',
+    );
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await rl.question('Type YES to confirm and continue: ');
+    rl.close();
+    if (answer.trim() !== 'YES') {
+      // eslint-disable-next-line no-console
+      console.log('[seed-test-accounts] Confirmation not given ("YES" required). Aborting — nothing deleted.');
+      return;
+    }
+  }
+
+  const results: TeardownResult[] = [];
+  for (const spec of targets) {
+    results.push(await teardownOne(spec, env, pool, apply));
+  }
+
+  printTeardownSummary(results, apply);
+
+  if (!apply) {
+    // eslint-disable-next-line no-console
+    console.log('Re-run with --teardown --confirm to actually delete the account(s) listed above.\n');
+  }
+}
+
 async function main(): Promise<void> {
+  if (process.argv.includes('--teardown')) {
+    await runTeardown();
+    return;
+  }
+
   const force = process.argv.includes('--force');
   const env = loadSeedEnv();
   const pool = getPgPool(env);

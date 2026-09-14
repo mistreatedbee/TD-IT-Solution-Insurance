@@ -102,11 +102,9 @@ export interface Env {
   /** Public app/web base URL for invitation deep links (no trailing slash). */
   appPublicUrl?: string;
 
-  /** @deprecated Brevo is no longer used — all auth email via Supabase Auth. */
-  brevoApiKey?: string;
-  /** @deprecated */
+  /** From-address for domain transactional email (Resend — Feature 007). */
   emailFrom?: string;
-  /** @deprecated */
+  /** From-name for domain transactional email (Resend — Feature 007). */
   emailFromName?: string;
 
   /** Resend API key for domain transactional email (policies, assets — Feature 007). */
@@ -301,7 +299,6 @@ export function loadEnv(): Env {
     );
   }
 
-  const brevoApiKey = process.env.BREVO_API_KEY?.trim() || undefined;
   const emailFrom = process.env.EMAIL_FROM?.trim() || undefined;
   const emailFromName = process.env.EMAIL_FROM_NAME?.trim() || undefined;
   const resendApiKey = process.env.RESEND_API_KEY?.trim() || undefined;
@@ -343,7 +340,6 @@ export function loadEnv(): Env {
     internalServiceCredentials,
     trustProxyHops,
     corsAllowedOrigins,
-    brevoApiKey,
     emailFrom,
     emailFromName,
     resendApiKey,
