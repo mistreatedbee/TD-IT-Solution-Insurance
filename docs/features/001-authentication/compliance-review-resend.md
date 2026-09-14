@@ -926,3 +926,186 @@ zero-policy-count) — until the consent/opt-out mechanics above are in place. T
 written for a template still presumed transactional; this ruling removes that presumption.
 `product-manager` to confirm scope with `compliance-specialist` before Sprint 4, per §A.9's original
 timeline — unchanged.
+
+---
+---
+
+# Appendix B — OI-R-5 ANSWERED: live account, real sends. Disposition re-assessed.
+
+**Owner:** `compliance-specialist` · **Date:** 2026-09-14 · **Appended, not substituted** — §§0–15 and
+Appendix A stand unamended. This is a status re-assessment of a single answered open item, not a new
+review.
+
+**Trigger:** the platform owner has confirmed directly that **a live Resend account exists, it works,
+and emails are being received by real recipients.** That answers **OI-R-5**, and it selects between
+the two worlds §14 refused to guess between. **It is the second world.**
+
+---
+
+## B.1 Ruling on disposition — the verdict changes in kind, not in content
+
+**New status: APPROVED WITH CONDITIONS — but the operative posture is now LIVE NON-CONFORMANCE
+UNDER REMEDIATION, not a pre-go-live gate.**
+
+The nine conditions survive verbatim. What changes is what they *are*. §12 marked C-R-1, C-R-3(a) and
+C-R-9 **[BLOCK]** — a block on *production email delivery*. **There is no longer a delivery event in
+front of us to block.** Production email delivery has been happening. A condition that gates a
+door someone has already walked through is not a condition; it is a remediation item with an accrued
+exposure behind it, and calling it anything softer would misdescribe the record.
+
+**§14 said this outcome would be "a live contravention requiring assessment, not a paperwork gap."
+I wrote that, the CTO escalated it twice (09-10 §3, 09-14 §3), and I am not going to walk it back now
+that it has landed. It is the live-contravention branch.** Here is the assessment it called for,
+severity-separated, because "contravention" is not one thing:
+
+| Limb | Status now | Severity, honestly |
+|---|---|---|
+| **s21 written operator contract** | Resend's DPA is **click-accept and binds "upon Customer entering into the Agreement"** (§5.1). If an account exists, the DPA is **on its own terms already in force**. | **Probably substantively satisfied; evidentially unproven.** This is the least-bad limb. We are almost certainly contracted; we simply cannot *show* it, and s21 compliance that cannot be evidenced to the Regulator is worth little on the day it is asked for. **C-R-1 is now an evidence-recovery task, not a negotiation.** |
+| **s72 transborder flow** | Rests on the same instrument. Rides entirely on the above. | Same: probably lawful, unevidenced. **Not** a rejection ground — §5.2's reasoning is unchanged by the fact of sending. |
+| **TDIT-2026-09 §19(c) — Client's prior written consent to cross-border processing (CT-1)** | **Unmet. Unambiguously, and not curable by finding a document.** | **This is the real one.** Unlike s21, there is no instrument sitting in an account somewhere that quietly satisfies it. Personal information of the Client's data subjects has been transmitted to a US sub-operator **without the prior written consent the contract requires**. That is a **live contractual contravention by the Developer against the Client**, accruing from first send. It cannot be back-dated. It can only be disclosed and regularised. |
+| **s18 — notification to data subjects of the recipient of their PI** | **Deficient, retroactively.** The §11 privacy-notice copy was drafted in this review on 2026-09-10 and, as far as this repository shows, **has never been published.** | Real-world customers have had their email address and message content sent to a Californian processor **without ever having been told**. Lower severity than CT-1 (remediable prospectively by publishing the notice; POPIA does not require re-notifying past collection in the way a breach would), but it is a second accrued deficiency, and it was invisible while this was hypothetical. |
+| **s22 — security compromise notification to the Regulator and data subjects** | **NOT ENGAGED. No notification obligation arises from this.** | Stated plainly so nobody over-escalates in the other direction: s22 triggers on **reasonable grounds to believe PI has been accessed or acquired by an unauthorised person.** Resend is not an unauthorised person — it is a contracted processor doing the job it was engaged for. **There is no breach here. There is a contracting and consent defect.** Anyone drafting a regulator notification off this appendix has misread it. |
+
+**Net:** the exposure is **contractual and evidential, not a data breach**, and the single item that is
+genuinely un-curable-by-paperwork is **CT-1**. That is the honest shape of it — worse than "same
+conditions apply," materially better than "we have had a breach."
+
+---
+
+## B.2 Which conditions were prospective, and which are now retroactive
+
+The split §12 never had to make, because on 09-10 everything was prospective.
+
+### B.2.1 Now RETROACTIVE — exposure has already accrued
+
+| ID | Why it is retroactive now |
+|---|---|
+| **C-R-1** | Sending has occurred **without the account-side evidence ever being produced.** The obligation did not start when we write it down; it started at first send. Now the most urgent single item, and it is one screenshot. |
+| **CT-1** (not a C-R, but the binding one) | Cross-border transmission **already happened** before the Client's §19(c) consent. See B.1. **This is the item that changed character most.** |
+| **C-R-2** | Customer PI is **in** Resend's 30-day US store right now, not prospectively. The RoPA is now describing **actual** processing, which raises the accuracy bar on it. |
+| **C-R-3(a) — proportionality limb (§A.6)** | **Verified in code today, 2026-09-14: the 7 rewrites have NOT landed.** `domain-email-templates.ts` still emits `Theft report received — {referenceNumber}`, `Recovery partner assigned — {ref}`, `Recovery update — {ref}`, `Asset recovered — {ref}`, `Case closed — {ref}` (lines 461, 485, 510, 534, 558). **If any Tier 2 theft/recovery send has gone to a real recipient, case references are already in inbox previews, lock-screen banners and Resend's US log.** Scope depends on **OI-R-6** below. |
+| **C-R-5** | A prohibition on enabling AI features is prospective **only if nobody enabled one.** On a live account that has existed for an unknown period, this is now a **fact to verify**, not a rule to impose. |
+| **C-R-7(b)/(d)** | The RoPA entry and the privacy notice are now **overdue disclosures about live processing**, not pre-launch documentation. Feeds the s18 deficiency at B.1. |
+| **C-R-9** | Every email already received by a real customer carries a consumer Gmail address as the contact. §B.4. |
+| **A.12 / ONB-002** | `product-manager` ruled this **direct marketing under s69**. If it has actually sent — it fires at 24h/72h post-signup on any account with no policy, so on a live system with real signups it plausibly **has** — then **s69 direct marketing without prior consent has already occurred.** This is the one limb with a genuine statutory-enforcement flavour rather than a contractual one. **Must be confirmed, and paused if confirmed, before anything else on the marketing track.** |
+
+### B.2.2 Still PROSPECTIVE — unchanged by live usage
+
+**C-R-3(b)** (never cite vendor logs as audit record — standing rule, nothing accrued) ·
+**C-R-3(c)** (review new templates — forward surveillance) ·
+**C-R-4** (token TTL ceilings — the arithmetic is unchanged and the credentials already sent are
+single-use and long since consumed; configure forward) ·
+**C-R-6(a)** (auth email outside the suppression path — **verified still true today**, nothing to
+remediate) · **C-R-6(b)/(c)** (marketing / payments — forward, save for the ONB-002 carve-out above) ·
+**C-R-7(a)/(c)** (mark Brevo docs superseded; single cross-vendor notice-monitoring process) ·
+**C-R-8** (dead Brevo path — a *latent* second operator, still never activated; unchanged) ·
+**OI-R-1 / OI-R-3 / OI-R-4** (vendor-side unknowns, unaffected).
+
+---
+
+## B.3 Immediate remediation — what actually has to happen, and by when
+
+Ordered by decay, not by importance. Two of these have a clock on them that the others do not.
+
+1. **[≤24h — DECAYING] Preserve the Resend log before it rolls off.** Retention is a **flat,
+   non-configurable 30 days** (§6). **Anything sent more than 30 days ago is already unrecoverable**,
+   which means our ability to establish *what was sent to whom* has a hard 30-day horizon that is
+   moving away from us daily. Export/screenshot the dashboard log now — message types, volumes, date
+   of first send. This is the evidence base for every other item here, and it is the only one that
+   gets permanently harder by waiting. (The same 30-day roll is also a genuine **mitigant**: the
+   content exposure self-heals for old sends. It cuts both ways.)
+2. **[≤24h] Close C-R-1.** Account owner entity, plan, DPA acceptance status + version, account
+   creation date. Owner-only. One screenshot each.
+3. **[≤24h] Answer OI-R-6 (new).** **Which tier has actually sent?** The confirmed fact is "emails are
+   received," not "which emails." Tier 1 auth email runs through the Supabase Edge Function; Tier 2
+   domain notifications run through the Render backend and require `RESEND_API_KEY` in that
+   environment. **If only Tier 1 has sent, the accrued content exposure is email addresses and
+   expired tokens — thin.** If Tier 2 has sent, it is the §8(1) aggregate: item inventories, IP
+   addresses, and theft/recovery case references, with the §A.6 subject-line defect live. **These are
+   very different exposures and I will not assume the worse one.** Answerable from the Render env var
+   and the Resend dashboard.
+4. **[≤48h] Verify C-R-5 retroactively** — confirm no AI/beta feature has ever been enabled on the
+   account. Verification, not instruction.
+5. **[≤48h] Confirm whether ONB-002 has sent** (B.2.1). If yes, **pause that send** pending the
+   A.12.3 consent mechanics. It is the only template where continuing to send makes the position
+   worse each day.
+6. **[≤72h] Disclose to the Client and regularise CT-1.** Prior written consent cannot be obtained
+   retrospectively; what can be done is disclose that sending commenced before consent, obtain the
+   consent for continuing processing, and seek ratification of the period already elapsed.
+   **`cto` + owner. Do not present this to the Client as a formality — §192 of the CT register already
+   says so, and this appendix is the reason why.** Drafting support from me.
+7. **[This sprint] Land the §A.6 rewrites and the C-R-9 footer fix** (§B.4). Engineering work, no
+   external dependency, closes the two largest *forward* exposures.
+8. **[This sprint] Log the non-conformance in the CT register** with a start date (= first send date
+   from item 1), so the exposure window is a recorded fact rather than something reconstructed under
+   pressure later. **CT-3's overdue runbook does not gate this** — this is not a s22 event (B.1).
+
+**What does NOT need to happen:** no Regulator notification, no data-subject breach notification, no
+suspension of email sending. **Suspending auth email would lock real customers out of verification
+and password reset, degrading their s23/s24 rights — a worse compliance outcome than the one we are
+remediating.** Keep sending; fix the record.
+
+---
+
+## B.4 C-R-9 — still open, and yes, it is more urgent now
+
+**Verified in source today, 2026-09-14. Both sites C-R-9/§A.8 named are unchanged:**
+
+- `backend/src/lib/email-footer.ts:44` — `td.itsolution60@gmail.com`
+- `supabase/functions/auth-send-email/templates/brand.ts:46` — same address
+
+**C-R-9 is open. Nothing has been fixed.** The only §A.5 fix that landed is the OTP preheader
+(`reauthentication.ts:12` now reads `'Your verification code is inside this message.'`, with the
+audit reference retained in the comment at line 8) — **confirmed applied, C-R-4's adjacent exposure
+closed.** That one is done. The Gmail address is not.
+
+**Why live usage raises it rather than merely restating it.** On 09-10 this was a defect in an
+unsent artefact. Today it is a defect in mail **already sitting in real customers' inboxes**:
+
+1. **Brand and trust, now.** A first-contact verification email from an insurance company whose
+   published contact is a personal Gmail address reads as phishing. That is not a future risk; it is
+   the impression already formed by every recipient to date, and it is the single cheapest thing on
+   this entire list to fix.
+2. **Compliance.** It is the de facto **s18 notice contact** and **s23/s24 data-subject-request
+   channel**. A data subject who exercises a statutory right by replying to it routes their request
+   through **Google's consumer webmail — an undocumented operator with no DPA and no RoPA entry**.
+   That is a *third* unonboarded processor, and unlike Resend it has no plausible click-accept DPA
+   behind it.
+3. **It compounds the phishing risk at B.1's periphery.** §10(3) noted a stolen API key permits
+   believable mail *as this platform*. A platform whose genuine mail already looks unprofessional has
+   no baseline for customers to distinguish a forgery against.
+
+**Ruling: C-R-9 stays [BLOCK]-marked and is re-prioritised to the top of the engineering queue,
+ahead of the §A.6 rewrites.** Two constants, two deploys, no design work, no external dependency.
+There is no defensible reason for it to survive this week.
+
+---
+
+## B.5 Open items — status
+
+- **OI-R-5: CLOSED.** A live Resend account exists and has sent to real recipients (owner, 2026-09-14).
+  Consequences at B.1–B.3.
+- **OI-R-6 (NEW): which tier(s) have actually sent, and from what date?** Owner / `cto`, ≤24h.
+  Determines whether the accrued content exposure is "addresses and expired tokens" or the full
+  §8(1) aggregate. **Until answered, nobody should state the exposure scope in either direction.**
+- **OI-R-7 (NEW): has `buildOnboardingIncompleteEmail` (ONB-002) sent to any real recipient?**
+  Owner / `notification-engineer`, ≤48h. Determines whether the A.12 s69 finding is prospective or
+  accrued.
+- **OI-R-1 / OI-R-2 / OI-R-3 / OI-R-4: unchanged, all open.** None of them is on the critical path
+  this week.
+
+---
+
+## B.6 Sign-off on the re-assessment
+
+**The approval stands. The framing does not.** Resend remains an approved operator/sub-operator on
+conditions C-R-1 … C-R-9; nothing discovered today makes it the wrong vendor, and §5's analysis is
+untouched. **What changed is that this stopped being a gate and became a remediation, with an
+exposure window that started at a date we do not yet know and is still running.**
+
+**This does not reopen the review and does not require a new one.** It requires items B.3.1–B.3.8
+done in order, and OI-R-6 answered before anyone characterises the scope.
+
+**Reassessment triggers (added to §15's list):** OI-R-6 answered — if Tier 2 has sent, I will
+re-score §8(1)'s content exposure against actual send volumes rather than against the template
+inventory · OI-R-7 answered positive — s69 formalisation moves from Sprint 4 to immediate.
