@@ -159,3 +159,9 @@ not inferred from any prior report:
 All four genuinely green, today, after every change landed this session including the
 C-R-3(a)/reauthentication.ts fix. The CTO's read ("very likely still green, formally unconfirmed")
 was the right posture to take without a shell; it is now confirmed, not just likely.
+
+---
+
+**Follow-on entry:** [`2026-09-14-payment-deadline-read.md`](2026-09-14-payment-deadline-read.md) —
+payment-gateway deadline day, expired criterion-6 build, and one correction to §5 of this document
+(owner commercial input was never the binding constraint on the payment scorecard).
