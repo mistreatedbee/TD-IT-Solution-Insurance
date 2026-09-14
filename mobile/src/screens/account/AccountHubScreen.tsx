@@ -18,7 +18,7 @@ import {
   UserIcon,
 } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { Linking, Text, View } from 'react-native';
+import { Alert, Linking, Text, View } from 'react-native';
 import { logout, logoutAll } from '../../api/auth';
 import { sendTestPushNotification } from '../../api/notifications';
 import { revokePushTokenFromBackend } from '../../notifications/push';
@@ -121,7 +121,36 @@ export function AccountHubScreen() {
     logout().catch(() => {});
   }
 
-  async function handleLogoutAll() {
+  function handleLogoutAll() {
+    // Owner request (2026-09-14): this is destructive to every OTHER signed-in
+    // device/session, not just this one — require TWO explicit confirmations
+    // before firing (not one), matching the extra-layer instruction for this
+    // specific action. No Modal/prompt primitive exists in this design system
+    // yet (would need design-system-manager sign-off per CLAUDE.md house
+    // rules for a new one-off component) — a second, escalating native Alert
+    // is the safe extra layer without inventing one.
+    Alert.alert(
+      'Log out of all devices?',
+      'This will sign you out on this phone and every other device where you are currently signed in. You will need to log in again everywhere.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Continue', onPress: confirmLogoutAllStepTwo },
+      ],
+    );
+  }
+
+  function confirmLogoutAllStepTwo() {
+    Alert.alert(
+      'Are you sure?',
+      'This cannot be undone from this screen — every other device will need to log in again, including any family or team member using a shared session.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Yes, log out everywhere', style: 'destructive', onPress: () => void confirmLogoutAll() },
+      ],
+    );
+  }
+
+  async function confirmLogoutAll() {
     setIsLoggingOutAll(true);
     try {
       await logoutAll();
