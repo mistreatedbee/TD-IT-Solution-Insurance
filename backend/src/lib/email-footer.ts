@@ -41,7 +41,7 @@ export function renderDomainEmailSignature(): string {
         Director, ${escapeHtml(NOTIFICATION_BRAND.name)}
       </p>
       <p style="margin:0;font-size:12px;line-height:1.55;color:${EMAIL_COLORS.muted};">
-        <a href="mailto:td.itsolution60@gmail.com" style="color:${NOTIFICATION_BRAND.secondary};text-decoration:none;">td.itsolution60@gmail.com</a>
+        <a href="mailto:info@tditsolutionsinsurance.co.za" style="color:${NOTIFICATION_BRAND.secondary};text-decoration:none;">info@tditsolutionsinsurance.co.za</a>
         ·
         <a href="${escapeHtml(NOTIFICATION_BRAND.siteUrl)}" style="color:${NOTIFICATION_BRAND.secondary};text-decoration:none;">${escapeHtml(NOTIFICATION_BRAND.siteUrl.replace(/^https:\/\//, ''))}</a>
       </p>

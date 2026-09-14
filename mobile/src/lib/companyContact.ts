@@ -1,3 +1,3 @@
 export const COMPANY_CONTACT = {
-  email: 'td.itsolution60@gmail.com',
+  email: 'info@tditsolutionsinsurance.co.za',
 } as const;

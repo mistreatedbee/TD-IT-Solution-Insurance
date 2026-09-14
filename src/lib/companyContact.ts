@@ -12,7 +12,7 @@ export const COMPANY_CONTACT = {
     'Nelspruit, Mpumalanga',
     'South Africa',
   ] as const,
-  email: 'td.itsolution60@gmail.com',
+  email: 'info@tditsolutionsinsurance.co.za',
   registrationNumber: '2019/565817/07',
   phones: [
     { display: '068 132 9499', href: 'tel:+27681329499' },

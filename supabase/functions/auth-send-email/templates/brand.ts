@@ -43,7 +43,7 @@ export const EMAIL_BRAND = {
     { display: '068 132 9499', href: 'tel:+27681329499' },
     { display: '076 357 2860', href: 'tel:+27763572860' },
   ],
-  email: 'td.itsolution60@gmail.com',
+  email: 'info@tditsolutionsinsurance.co.za',
 } as const;
 
 /** Per-template accent + hero treatment for distinct visual personality. */
