@@ -196,7 +196,7 @@ of them.
 | **CT-5** | **Add a teardown path to `seed-test-accounts.ts`** (e.g. `--teardown`) that deletes seeded accounts without recreating them, and document that it must be run after test completion. Non-negotiable once a staging environment exists; required now because seeding targets the live project. | `backend-engineer` | 2026-09-12 |
 | **CT-6** | **INC-001-C-7 (coordinate purge, 2026-09-08) is re-flagged as discharging §19(d) as well as POPIA s14.** The `cto` legal-hold carve-out at INC-001 §7.3 G-4 is unaffected, but a hold now requires the Client to be informed, since the retained data is the Client's responsibility as Responsible Party. | `database-architect`, verified `security-engineer` | 2026-09-08 (unchanged) |
 | **CT-7** | **Compliance-review Resend** as an operator (s21 contract, s72 basis, sub-processor chain, data location), applying the method at `compliance-review-supabase.md` §4–§6. The existing SMTP vendor review covers **Brevo**, which is not what ships. Separately, replace the consumer-webmail contact in `email-footer.ts:44` with a domain address before it is published as the s18/s23 contact channel. | `compliance-specialist` + `integration-architect` | **Before production email delivery is enabled** |
-| **CT-8** | **Amend ADR-0003 by appendix** (not rewrite — per ADR-0006/ADR-0009 precedent) to record that `region: frankfurt` is a **cross-border data-location decision** under POPIA s72 and TDIT-2026-09 §19(c), not only an architecture-fit one, and that it was made without compliance input. Any future region change requires my counter-sign, on the same standing as the Supabase EU-region rule at `compliance-review-supabase.md` §3.3. | `cloud-infrastructure-architect` | 2026-09-12 |
+| **CT-8** | **Amend ADR-0003 by appendix** (not rewrite — per ADR-0006/ADR-0009 precedent) to record that `region: frankfurt` is a **cross-border data-location decision** under POPIA s72 and TDIT-2026-09 §19(c), not only an architecture-fit one, and that it was made without compliance input. Any future region change requires my counter-sign, on the same standing as the Supabase EU-region rule at `compliance-review-supabase.md` §3.3. | `cloud-infrastructure-architect` | 2026-09-12 — **CLOSED LATE 2026-09-14, see note below** |
 | **CT-9** | **Standing constraint — §19(e) non-monetisation.** No analytics, advertising, data-brokerage, model-training, or third-party data-sharing integration may be introduced on any surface without my prior review. Recorded now, before it is proposed. | all roles; enforced at Stage 8 | Standing |
 
 ---
@@ -611,7 +611,63 @@ context the date the unfilled `[DATE]` placeholder omitted), of roughly this len
 
 ---
 
+---
+
+## 11. CT-8 closed — ADR-0003 appendix filed — 2026-09-14
+
+**Append-only.** Closes CT-8 (§6), overdue since 2026-09-12; closed late, same day as this note.
+
+`cloud-infrastructure-architect` has amended
+[`adr/0003-backend-hosting-platform.md`](adr/0003-backend-hosting-platform.md) with a new
+**Appendix A**, added by edit at the end of that document (it was Accepted/111 lines before this
+change; the appendix runs from its current "Revisit Trigger" section to end-of-file). The appendix
+records, in substance:
+
+1. `region: frankfurt` (`render.yaml:9`) was a **cross-border personal-information transfer
+   decision**, not only an architecture-fit one, and was made without compliance input — ADR-0003's
+   body contains no POPIA analysis and no data-location finding, matching this register's own §2
+   finding about the original ADR.
+2. A **POPIA s72(1)(a) legal-basis analysis run specifically against Render**, using the method
+   already established this session at `compliance-review-supabase.md` §4.3/§5 and
+   `compliance-review-resend.md` §5.3 — **not** simply asserting Supabase's ruling applies by
+   analogy. The appendix's own ruling is narrower than Supabase's: it finds a *reasoned expectation*
+   of lawfulness under s72(1)(a)/(c) by structural analogy, but is explicit that **Render's DPA has
+   not been requested, read, or executed**, and Render's sub-processor chain has not been obtained —
+   so, unlike Supabase's tested ruling, this is not yet a verified finding. That gap is opened as a
+   **new condition, CT-13** (below), separate from CT-8 and now closed.
+3. A cross-reference to **CT-1's current status**, quoted verbatim from this document's own §10.5
+   register row (not paraphrased) — correctly stating CT-1 as "sent 2026-09-14; informally
+   acknowledged ('its fine'); consent not confirmed in the required form" and **not closed**, and
+   correctly identifying that CT-1's §19(c) contractual-consent test and this appendix's s72
+   statutory test are different tests that must not be conflated (consistent with §2(a) of this
+   document).
+4. Why Frankfurt is the only practical choice — no African region exists on Render — sourced from
+   and consistent with this document's own §9.1 finding, not re-litigated or duplicated in
+   substance.
+5. A **standing requirement that any future hosting-region or hosting-provider change requires
+   `compliance-specialist` counter-sign before shipping to production**, on the same footing as the
+   Supabase EU-region rule at `compliance-review-supabase.md` §3.3.
+
+**Verified by direct read of the amended file after the edit landed** (not reported from memory of
+intent): the appendix is present at `adr/0003-backend-hosting-platform.md` lines 112–226, headed
+`## Appendix A — POPIA s72 compliance addendum: \`region: frankfurt\` is a cross-border transfer
+decision, not only an architecture-fit one`, dated 2026-09-14.
+
+**CT-13 (new):** obtain and execute Render's DPA (or, if Render has no standard customer-facing DPA,
+escalate that gap to `cto`), and run the same s72(1)(a)(i)/(ii) test against it that
+`compliance-review-supabase.md` §4–§5 ran for Supabase, including obtaining and triaging Render's
+sub-processor chain. Until CT-13 closes, treat the Render Frankfurt transfer's lawfulness as a
+**reasoned expectation, not a verified finding** — do not cite ADR-0003 Appendix A as a completed
+s72 clearance on the same footing as `compliance-review-supabase.md`'s tested ruling.
+
+| ID | Condition | Owner | Deadline |
+|---|---|---|---|
+| **CT-8** | **CLOSED 2026-09-14 (overdue from 2026-09-12).** ADR-0003 Appendix A filed, verified present by direct file read | `cloud-infrastructure-architect` | Closed |
+| **CT-13** *(new)* | **Obtain and execute Render's DPA; run the full s72(1)(a) test against it** (per Supabase's method), including its sub-processor chain. Until closed, the Frankfurt transfer's lawfulness is a reasoned expectation, not a verified finding | `compliance-specialist` (analysis) + `cloud-infrastructure-architect` (vendor contact) | Not yet set — to be dated when filed as its own condition |
+
+---
+
 **Filed by:** `compliance-specialist`, 2026-08-28; §8 appended 2026-09-02; §9 appended 2026-09-14;
-§10 appended 2026-09-14.
+§10 appended 2026-09-14; §11 appended 2026-09-14 (CT-8 closed by `cloud-infrastructure-architect`).
 **Does not discharge:** C-6 (breach runbook) · INC-001-C-3/C-8/C-10/C-13 · any C-008 condition ·
-Feature 008 Stage 8 · legal sign-off.
+Feature 008 Stage 8 · legal sign-off · CT-13 (new, open).

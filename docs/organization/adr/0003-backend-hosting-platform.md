@@ -108,3 +108,129 @@ The `services.backend` block and the `/api(/.*)?` → backend-service rewrite ar
 ## Revisit Trigger
 
 Reopen this ADR if: Render's free/starter tier can't sustain real traffic or GPS-ingestion load once Phase 2 begins (triggers the fuller multi-provider hosting evaluation already scoped to `cloud-infrastructure-architect` in ADR-0001, not a re-litigation of this decision); region-latency requirements emerge that Render can't meet for GPS data; or a custom-domain / cross-subdomain cookie requirement from Feature 001's session design makes a specific alternate topology (e.g. same-apex subdomains) worth doing sooner than "later."
+
+---
+
+## Appendix A — POPIA s72 compliance addendum: `region: frankfurt` is a cross-border transfer decision, not only an architecture-fit one
+
+**Added:** 2026-09-14, by `cloud-infrastructure-architect`, discharging **CT-8** in
+[`docs/organization/10-data-protection-contract-obligations.md`](../10-data-protection-contract-obligations.md)
+(deadline 2026-09-12, closed late). Appended per the ADR-0006/ADR-0009 precedent of amending by
+appendix rather than rewriting an Accepted decision. Nothing above this line is changed or
+withdrawn by what follows — the hosting decision stands; what was missing is the compliance
+analysis that should have accompanied it.
+
+### A.1 What this appendix corrects
+
+The body of this ADR (§"Decision", §"Why Render specifically") selected Render, and
+`render.yaml:9` sets `region: frankfurt`, on **architecture-fit and operational grounds only** —
+persistent-process semantics, deploy simplicity, cost, the platform owner's own instinct. The word
+"region" appears in the ADR's own future-work list ("region coverage") as a **deferred evaluation
+item**, and nowhere else. **No POPIA analysis, no cross-border-transfer analysis, and no data-location
+finding of any kind was performed before `region: frankfurt` was set and shipped to production.**
+
+That is the finding CT-8 exists to record: **placing the backend API — the system that receives,
+processes and returns every customer's personal information — in Frankfurt, Germany was, in
+substance, a decision to transfer personal information about South African data subjects outside
+the Republic.** It was made as though it were purely a technical placement choice. It was not. Every
+API request carrying customer PII (account data, policy data, asset data, and — once Feature
+008/009 hardware integration lands — location data) is processed on German soil as a direct
+consequence of this ADR's `region:` field. That consequence should have triggered the same
+transborder-transfer analysis Feature 001 performed for Supabase, at the same time this ADR was
+written (2026-08-07). It did not, until now, five weeks later.
+
+This appendix does not reverse the decision — §A.4 explains why Frankfurt is in practice the only
+available choice — but it supplies the compliance analysis that should have gated it, and it
+records that gap so it is not repeated for the next infrastructure placement decision.
+
+### A.2 POPIA s72(1)(a) legal-basis analysis for Render Frankfurt
+
+Applying the same method already established this session for the platform's other cross-border
+stores — [`compliance-review-supabase.md`](../../features/001-authentication/compliance-review-supabase.md)
+§4.3, and the equivalent test run for the email operator at
+[`compliance-review-resend.md`](../../features/001-authentication/compliance-review-resend.md)
+§5.3 — to the Render backend specifically, rather than reasoning from Supabase's ruling by analogy.
+
+| Ground | Available for Render? | Ruling |
+|---|---|---|
+| **s72(1)(a)** — recipient subject to a law, binding corporate rules, or **binding agreement** providing an adequate level of protection, upholding (i) substantially similar processing principles and (ii) substantially similar onward-transfer provisions | **Basis exists in principle, but is contractually unverified for Render specifically.** Render publishes a standard Terms of Service and a Data Processing Addendum for customers processing personal information through its services; Render's infrastructure runs on top of major cloud substrate (its own hosting stack), analogous in structure to Supabase's AWS-backed model. **No one has yet executed, or even requested, Render's DPA, and no one has read it against the s72(1)(a)(i)/(ii) tests the way `compliance-review-supabase.md` §4.3/§5.1 did for Supabase.** This is the load-bearing gap: the *statutory route* to lawfulness is the same binding-agreement route already proven to work for Supabase, but the *specific instrument* has not been obtained, read, or executed for Render. |
+| **s72(1)(b)** — data subject consent | Available in principle for customer data subjects. | **Not the basis relied on**, for the same reasons `compliance-review-supabase.md` §4.3.1 rejected it for Supabase: the account/API cannot function without the backend that processes it, so consent to that processing would not be freely given, and Stage 1 §9.2's contract-necessity framing already governs this data. Do not introduce a "consent to backend hosting location" checkbox — it would fail for the identical reasons already ruled on. |
+| **s72(1)(c)** — necessary for performance of a contract with the data subject | **Yes, for customer data subjects.** The backend API is not an optional processing path — it *is* the mechanism by which the policy/asset service the customer contracted for is delivered. Directly analogous to `compliance-review-supabase.md` §4.3's s72(1)(c) finding for Supabase. | **SUPPORTING basis**, same scope limitation as Supabase's ruling: not available for processing that has no data-subject contract behind it (e.g., any future security-company-operator or admin-only processing routed through this same backend). |
+| **s72(1)(d)/(e)** | Not applicable. | Not relied on, consistent with the Supabase and Resend rulings. |
+
+**Ruling, provisional and narrower than Supabase's: the Frankfurt transfer is *probably* lawful under
+s72(1)(a), on the strength of the same binding-agreement route already validated for Supabase's
+structurally similar EU hosting arrangement, supported for customer data subjects by s72(1)(c) — but
+this is not yet a closed finding the way Supabase's is.** The difference from Supabase's "COMPLIANT
+WITH CONDITIONS" ruling is material: Supabase's s72(1)(a) basis was tested against an actually-read
+DPA and an actually-read sub-processor list (§5.1). **Render's has not been tested at all — no DPA has
+been requested, read, or executed, and no sub-processor list has been obtained.** Until that work is
+done, this appendix records a **reasoned expectation of lawfulness by structural analogy, not a
+verified finding**. The verification work — obtain and execute Render's DPA, read it against the
+s72(1)(a)(i)/(ii) tests exactly as `compliance-review-supabase.md` §4–§5 did for Supabase, obtain and
+triage Render's sub-processor chain — is **not scoped to CT-8** and is recorded as a new open item
+for `compliance-specialist`: **CT-13**, tracked in the register (§A.6 below), separate from and
+in addition to CT-1's Client-consent requirement, which is a §19(c) contractual-consent question
+and answers a different test than this s72 statutory one (see `10-data-protection-contract-obligations.md`
+§2(a) for why the two must not be conflated).
+
+### A.3 Cross-reference to CT-1's current status
+
+CT-1 governs the **Client's contractual §19(c) consent** to cross-border processing, of which the
+Render/Frankfurt transfer is one itemised component (item 1 of the schedule referenced at
+`10-data-protection-contract-obligations.md` §9.5/§10). As of this appendix's authorship
+(2026-09-14), CT-1's own register records its status, **quoted exactly, not paraphrased or
+summarised from memory**, at `10-data-protection-contract-obligations.md` §10.5:
+
+> **CT-1** | **Superseded state — see §10.3. Sent 2026-09-14; informally acknowledged ("its fine");
+> consent not confirmed in the required form.** No objection or condition received. Containment
+> (§9.3) remains operative | **Owner** (send CT-1a) + `compliance-specialist` (rule on the reply) |
+> Reply requested **2026-09-17**
+
+That is: the Client has been told, in writing, that Render Frankfurt is one of the processing
+locations (per the schedule at §9.4/§10.1), and has responded with an informal, non-binding
+acknowledgement that `compliance-specialist` has ruled (§10.2) does **not** satisfy §19(c)'s
+requirement for specific, scoped, authority-evidenced written consent. **CT-1 is not closed.** The
+standing containment condition — no real customer personal information on any surface until CT-1
+closes in the required form — remains operative and is not altered by this appendix. This appendix
+does not, and per the task framing need not, wait on CT-1 to close: it is scoped to the s72
+statutory analysis and the ADR's own documentation gap, not to the separate §19(c) contractual
+consent question, which CT-1 continues to own.
+
+### A.4 Why Frankfurt — the localisation question is not being re-litigated here
+
+Per `10-data-protection-contract-obligations.md` §9.1, already checked on the evidence and not
+reopened by this appendix: **Render's entire region set is Oregon, Ohio, Virginia, Frankfurt, and
+Singapore — no African region exists on Render.** Data localisation in South Africa is therefore
+**impossible** on Render, on identical structural footing to Supabase's own no-African-region
+constraint (`compliance-review-supabase.md` finding 1, §0). Frankfurt is, among Render's available
+regions, the one already selected for the reasons this ADR's body gives (and incidentally the
+lowest-latency non-US option for a South African client base, though that was not the stated
+rationale at the time). Localising would require abandoning Render entirely — reversing this ADR
+and re-running a full host selection — for a cost `10-data-protection-contract-obligations.md` §9.1
+already assessed as "grotesquely out of proportion" for the identity-store case and no less
+disproportionate here. **This appendix does not propose relocating the backend.** The question of
+*whether* to be in a foreign region is closed by constraint, not by preference; what remained open,
+and what this appendix closes, is the compliance analysis of the region actually available.
+
+### A.5 Standing requirement: future hosting-region changes require compliance-specialist counter-sign
+
+**Effective immediately, on the same standing as the Supabase EU-region rule at
+`compliance-review-supabase.md` §3.3:** any future change to `render.yaml`'s `region:` field, any
+migration to a different hosting provider under this ADR's Revisit Trigger, or any new backend
+service deployed to a region not already covered by this appendix, requires `compliance-specialist`
+counter-sign **before** the change ships to production — not as a retrospective document, as
+happened with the original `region: frankfurt` placement. This closes the gap CT-8 exists to record:
+a region/host placement decision is a data-location decision with POPIA consequences, and it must be
+reviewed as one at decision time, not reconstructed after the fact.
+
+### A.6 Register update
+
+Discharges **CT-8** (`10-data-protection-contract-obligations.md` §6, deadline 2026-09-12, closed
+late 2026-09-14). Opens **CT-13**: obtain and execute Render's DPA (if one exists as a standard
+customer-facing instrument; if not, escalate the gap to `cto`) and run the same s72(1)(a)(i)/(ii)
+analysis against it that `compliance-review-supabase.md` §4–§5 ran for Supabase, including obtaining
+and triaging Render's sub-processor chain. Owner `compliance-specialist`, with `cloud-infrastructure-architect`
+supplying the vendor contact/account-tier context needed to request the DPA. No deadline set in this
+appendix — `compliance-specialist` to set one when the register entry is filed, consistent with how
+every other CT item in that register carries an explicit date.
