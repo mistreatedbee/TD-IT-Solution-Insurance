@@ -1,0 +1,33 @@
+# INC-001 A-13 criterion 6 — §3 "Assets: list + register + detail (no
+# location map coords when flag off)" and the plan-info half of "Account
+# hub" (email, plan link — no KYC rows visible).
+appId: host.exp.Exponent
+---
+- runFlow: _login-customer.yaml
+
+# Home shows the real protection-status summary from the live backend.
+- assertVisible: "Protection status"
+- assertVisible: "assets protected"
+
+# Assets tab (point-tap — see README "Known quirks → tab bar text
+# ambiguity" for why this isn't `tapOn: "Assets"`).
+- tapOn:
+    point: "50%,94%"
+- extendedWaitUntil:
+    visible: "Protection vault"
+    timeout: 10000
+- assertVisible: "Protection vault"
+- assertVisible: "CURRENT PLAN"
+# No raw coordinate pair should ever render with location tracking off.
+- assertNotVisible: "-?\\d{1,3}\\.\\d{3,},\\s*-?\\d{1,3}\\.\\d{3,}"
+
+# Account tab — profile + plan only, no KYC/identity-verification rows.
+- tapOn:
+    point: "80%,94%"
+- extendedWaitUntil:
+    visible: "Account"
+    timeout: 10000
+- assertVisible: "test.customer@tditsolutions.dev"
+- assertVisible: "Essential"
+- assertNotVisible: "SA ID number"
+- assertNotVisible: "Identity verification"

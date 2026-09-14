@@ -30,8 +30,21 @@ export interface InputProps
   style?: StyleProp<TextStyle>;
 }
 
+/**
+ * Deterministic fallback test selector (Maestro/Detox etc.) so QA automation
+ * doesn't have to disambiguate between a field's label Text and its
+ * TextInput by visible text alone — see mobile/e2e/README.md.
+ */
+function slugify(label: string): string {
+  return label
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
 export const Input = forwardRef<TextInput, InputProps>(function Input(
-  { label, type = 'text', hint, error, required, style, ...rest },
+  { label, type = 'text', hint, error, required, style, testID, ...rest },
   ref,
 ) {
   const generatedId = useId();
@@ -40,6 +53,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   const message = error ?? hint;
   const [secureVisible, setSecureVisible] = useState(false);
   const isPassword = type === 'password';
+  const resolvedTestID = testID ?? `input-${slugify(label)}`;
 
   return (
     <View style={styles.wrapper}>
@@ -51,6 +65,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
       <View style={styles.fieldRow}>
         <TextInput
           ref={ref}
+          testID={resolvedTestID}
           accessibilityLabel={label}
           accessibilityLabelledBy={`${generatedId}-label`}
           accessibilityState={{ disabled: rest.editable === false }}

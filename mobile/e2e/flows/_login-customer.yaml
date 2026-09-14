@@ -1,0 +1,40 @@
+# Shared subflow: log in as the seeded customer test account. Not run
+# directly — referenced via `runFlow` from other flows (auth-login.yaml,
+# flags-off-screens.yaml, policies-and-assets.yaml).
+#
+# KNOWN FLAKY POINT (tracked, not yet fixed — see README "Known quirks →
+# password field / post-login navigation flakiness"): the password-field
+# retry below brings the fill success rate close to 100%, but the final
+# "Good afternoon" wait after tapping Log in has intermittently missed its
+# window in this harness even past 35s with no visible error banner — most
+# likely a login-screen remount clearing local input state rather than a
+# real auth failure (curl to the live backend responds in ~1s). If this
+# flow fails on the final extendedWaitUntil, re-run once before treating it
+# as a real regression. Owner: automation-qa-engineer. Remediation deadline:
+# next mobile e2e session — either root-cause the remount or replace the
+# local useState form with a more test-durable pattern.
+appId: host.exp.Exponent
+---
+- tapOn: "I already have an account"
+- tapOn:
+    id: "input-email"
+- inputText: "test.customer@tditsolutions.dev"
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn:
+          id: "input-password"
+      - eraseText:
+          charactersToErase: 30
+      - inputText: "CustomerTest1234!"
+      - assertVisible:
+          id: "input-password"
+          text: ".+"
+- hideKeyboard
+- extendedWaitUntil:
+    visible: "Log in"
+    timeout: 5000
+- tapOn: "Log in"
+- extendedWaitUntil:
+    visible: "Good afternoon"
+    timeout: 35000

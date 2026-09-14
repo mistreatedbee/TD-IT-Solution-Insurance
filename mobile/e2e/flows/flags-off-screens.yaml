@@ -1,0 +1,34 @@
+# INC-001 A-13 criterion 6 — §2 "flag-off surfaces must show coming soon".
+# Requires Metro started with the gated EXPO_PUBLIC_FEATURE_* vars set to
+# "false" (mirroring eas.json's preview/production profiles) — see
+# mobile/e2e/README.md "Running against Expo Go".
+#
+# Covers the Claims row from the checklist's §2 table end-to-end via real
+# navigation (not just source/bundle-string inspection): confirmed live
+# during harness verification (2026-09-14) that this deep link renders the
+# actual ClaimsComingSoon-style screen, not a stub assertion.
+#
+# Does not yet cover every §2 row (map/device-locations/alerts/KYC/
+# hardware-tracker/security-operator) — extend this file with additional
+# `openLink` + assertVisible pairs per README "Extending this suite".
+appId: host.exp.Exponent
+---
+- runFlow: _login-customer.yaml
+
+# Tab bar composition: only Home/Assets/Account should exist with
+# EXPO_PUBLIC_FEATURE_ALERTS=false (no Alerts tab) and
+# EXPO_PUBLIC_FEATURE_LOCATION_TRACKING=false (no Map tab).
+- assertVisible: "Home"
+- assertVisible: "Assets"
+- assertVisible: "Account"
+- assertNotVisible: "Map"
+- assertNotVisible: "Alerts"
+
+# Claims (EXPO_PUBLIC_FEATURE_CLAIMS=false) — deep link must resolve to the
+# gated fallback screen, not the claims-filing flow.
+- openLink: "exp://localhost:8098/--/claims"
+- extendedWaitUntil:
+    visible: "Claims filing is coming soon"
+    timeout: 15000
+- assertVisible: "Claims filing is coming soon"
+- assertNotVisible: "Submit claim"

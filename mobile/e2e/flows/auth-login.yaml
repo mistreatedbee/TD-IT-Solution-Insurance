@@ -1,0 +1,11 @@
+# INC-001 A-13 criterion 6 — §3 "auth works". Logs in as the seeded
+# customer test account (backend/scripts/seed-test-accounts.ts) against
+# EXPO_PUBLIC_API_BASE_URL (default: live Render backend — see mobile/.env).
+#
+# Preconditions: see mobile/e2e/README.md "Running against Expo Go". App
+# must be on the onboarding welcome screen when this flow starts.
+appId: host.exp.Exponent
+---
+- runFlow: _login-customer.yaml
+- assertVisible: "Assets"
+- assertVisible: "Account"
