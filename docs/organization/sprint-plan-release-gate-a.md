@@ -107,6 +107,25 @@ Focus: Release Gate A close-out (if not already closed), build #2 ships once gat
 | 3.8 *(Sprint 3 close)* | Batch sweep of ~30 stale agent role-brief files (`.claude/agents/*.md`) still stating "ADR-0008 proposed, pending `cto` ratification" — single pass, low value/low risk, explicitly not worth interrupting critical-path work for | Housekeeping | `technical-writer` | `technical-writer` | 0.5 day | ADR-0008 ratification (1.4) |
 | 3.9 | **SH-2 — CI-1's manifest scanner is structurally blind to React Router `<Route index>` elements** (no `path` attribute for the regex-based scanner to discover, so `verify-stage8-manifest.mjs` reports PASS even when an index-route surface's manifest entry is missing entirely). Confirmed reproduced a third time in Feature 012 (`docs/features/012-employee-dashboard/security-review.md` §12.3, cto-review.md CTO-4) — INC-001's root cause, same shape as SH-1a/SH-1b, now in a sub-case neither of those covers. Fix: extend `discoverWebRoutes()` to also match `<Route index element={<X />} />` siblings and attribute them the parent route's path prefix (the same technique already used for `discoverAppTsxRoutes()`'s App.tsx-direct-route fix this session). Small, ~1 day per CTO-4's estimate — do not let it silently roll to "later" the way SH-1a/b sat undated before this entry existed | INC-001 §6 (CI-1), SH-1a/b precedent | `devops-engineer` | `devops-engineer`; chair sign-off `cybersecurity-architect` | ~1 day | None — can start immediately |
 
+**3.9 chair sign-off (2026-09-14, `cybersecurity-architect`):** code fix landed in `ff73018`
+(`discoverWebRoutes()` now detects `\bindex\b` before the `path` `continue` and emits
+`` `${mountPrefix} (index)` ``). **Design signed off** — see
+[`012-employee-dashboard/security-review.md`](../features/012-employee-dashboard/security-review.md) §16.
+Verified statically: the three `<Route index>` elements (`AdminRoutes.tsx:55`, `SecurityRoutes.tsx:30`,
+`CallCentreRoutes.tsx:37`) now map to the existing `/admin (index)` / `/security (index)` /
+`/call-centre (index)` manifest entries, and **no** web wildcard pattern would absorb those strings if an
+entry were deleted, so a missing entry does fail the run. **Still owed by `devops-engineer` before 3.9 is
+marked done:** the actual `node scripts/verify-stage8-manifest.mjs` PASS output plus a recorded
+deliberate-FAIL (remove one manifest entry, re-run, restore) — the chair session could not execute
+commands and will not attest to an exit code it did not observe. **New residual SH-2a** (nested
+`<Route index>` would be mis-attributed to the mount root and silently absorbed) filed in §16, owner
+`devops-engineer`, follow-on — not a blocker on closing 3.9.
+
+**3.9 runtime evidence (2026-09-14, orchestrator):** the PASS/deliberate-FAIL output the chair flagged
+as still owed has now been captured directly — see
+[`012-employee-dashboard/security-review.md`](../features/012-employee-dashboard/security-review.md) §17.
+**Item 3.9 is fully closed.**
+
 **Note on §3 ordering:** the memo lists (b)–(e) as a priority chain, "the difference between internal build and real customers." This plan treats (b) as substantially closing by Sprint 3 before (c)'s engineering stages begin in earnest — Stage 1/2 requirements work for (c) can run in parallel (it doesn't touch customer PII directly), but Stage 5 (Architecture Review) and beyond for (c) should not start until (b)'s Supabase DPA, RoPA, and Resend operator review are closed, since SR-007-11 itself touches account data governed by those same compliance artifacts.
 
 ---

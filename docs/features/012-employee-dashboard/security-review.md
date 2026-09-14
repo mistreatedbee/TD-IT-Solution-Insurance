@@ -1214,3 +1214,75 @@ Neither item is discharged by this section — both remain open exactly as the c
 future reader of this document finds a live date and owner instead of an unscheduled cross-reference.
 
 **Filed by:** `cto`, 2026-09-10.
+
+---
+
+## 16. Chair sign-off on SH-2's fix — **SIGN-OFF GRANTED (design), runtime evidence still owed**
+
+**Date:** 2026-09-14. **Role:** `cybersecurity-architect` (chair). **Scope:** narrow — SH-2 only
+(`sprint-plan-release-gate-a.md` item 3.9, commit `ff73018`, `scripts/verify-stage8-manifest.mjs`).
+This section reopens nothing else and discharges no other condition.
+
+**What the fix does.** `discoverWebRoutes()` now tests `/\bindex\b/.test(attrs)` *before* the
+`path`-attribute `continue`, emitting `` `${mountPrefix} (index)` `` for index routes. That is exactly
+the shape §12.3 specified and exactly the string convention the `web-admin-home` / `web-security-home` /
+`web-call-centre-home` entries already use, so no manifest entry had to change shape. Verified by reading
+the code and the manifest, not by trusting the commit message.
+
+**Static verification performed (chair, this session):**
+- Three `<Route index>` elements exist and each is the mount-root index of its surface layout:
+  `src/admin/AdminRoutes.tsx:55`, `src/security/SecurityRoutes.tsx:30`,
+  `src/call-centre/CallCentreRoutes.tsx:37`. No nested index routes today.
+- The scanner therefore emits `/admin (index)`, `/security (index)`, `/call-centre (index)`, each matched
+  by its hand-written manifest entry via `globToRegExp` (parentheses are escaped by `escapeRegex`).
+- **Negative control, traced statically:** no `web_route` / `web_route_group` pattern in
+  `stage8-manifest.json` absorbs those three strings if their own entry were deleted —
+  `/admin/{accounts,policies,assets}*`, `/admin/plans*`, `/admin/verification*`, `/security/cases*`
+  and `/dashboard*` all fail both the prefix and the glob test against `"/admin (index)"` et al. So a
+  missing entry lands in `missing[]` and the script exits 1. SH-1b-style silent absorption does **not**
+  apply here.
+
+**Limitation on this sign-off — stated plainly rather than papered over.** The chair session that wrote
+this section had no command-execution capability, so `node scripts/verify-stage8-manifest.mjs` was **not
+run here**, and neither was the delete-an-entry / restore negative control. The verification above is a
+code and data trace, not an observed exit code. `devops-engineer` owes the recorded PASS line plus the
+deliberate-FAIL output in item 3.9 before 3.9 is marked done. This sign-off covers the *design* of the
+fix, which I find correct and sufficient for the defect as filed.
+
+**Residual filed — SH-2a (new, low, not blocking).** The fix attributes every `index` route to its file's
+*mount prefix*, and dedupes through a `Set`. A future nested index (e.g. `<Route path="cases">` wrapping
+`<Route index>`) would be emitted as `/security (index)` — the root entry — and silently pass as covered,
+which is SH-1b's absorption shape recurring one level down. Not a defect today (no nested index exists),
+and strictly better than the pre-fix state where index routes were invisible entirely. Owner
+`devops-engineer`, consult this role; track under item 3.9's follow-on, not as a blocker on closing 3.9.
+
+**Filed by:** `cybersecurity-architect` (chair), 2026-09-14.
+**Does not discharge:** item 3.9 itself (pending `devops-engineer`'s runtime evidence) · SH-2a · Stage 9
+exit conditions · RR-012-1 … RR-012-4 · the standing manifest waivers · Feature 009 A-1.
+
+---
+
+## 17. Runtime evidence for §16 — closes the gap the chair flagged
+
+**Orchestrator, 2026-09-14.** §16's chair sign-off was granted on a full static trace but explicitly
+withheld final closure pending real command output — that session had no shell. Ran it directly:
+
+```
+$ node scripts/verify-stage8-manifest.mjs
+[verify-stage8-manifest] Discovered 75 backend routes, 50 mobile screens, 42 web dashboard routes; manifest has 85 entries.
+[verify-stage8-manifest] PASS — all discovered surfaces are manifest-covered.
+```
+
+Deliberate-fail/restore cycle, exactly as §16 specified: removed `web-admin-home` from
+`stage8-manifest.json`, re-ran:
+
+```
+[verify-stage8-manifest] Discovered 75 backend routes, 50 mobile screens, 42 web dashboard routes; manifest has 84 entries.
+[verify-stage8-manifest] FAIL — surfaces missing from stage8-manifest.json:
+  - web_route: /admin (index)
+```
+
+Restored the file from a pre-edit backup; `git diff --stat` on `stage8-manifest.json` shows no
+change, confirming a byte-identical restore. Both halves of §16's outstanding verification are now
+recorded with real output. **SH-2 / sprint item 3.9 is fully closed** — no further runtime evidence
+owed.
