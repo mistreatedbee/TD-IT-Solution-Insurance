@@ -221,7 +221,13 @@ was insufficient. Recorded honestly rather than attempted anyway.
 ### 7.1 What was confirmed
 
 - **Production Mongo credentials are present** in repo-root `.env.local` (gitignored,
-  `MONGODB_URI=mongodb+srv://ashleymashigo013_db_user:...@tditsolutions.xtlqvx2.mongodb.net/...`).
+  `MONGODB_URI=mongodb+srv://<redacted-user>:<redacted-password>@<redacted-cluster>.mongodb.net/`).
+  **2026-09-14 correction: the real username and cluster hostname were briefly committed here in
+  cleartext (password itself was already masked) — flagged by GitHub secret scanning on a public
+  repo. Redacted in this commit. Redaction alone does NOT remediate this: the value is still
+  visible in prior commits in this public repo's history, and the database password for this user
+  must be rotated in the Atlas console — that has NOT been done from this session (no Atlas
+  console/API access here). This is an outstanding action for whoever holds Atlas credentials.**
   This URI has **no path segment**, which is exactly the condition §1/§3 describes as resolving
   to the driver default `"test"` — consistent with the confirmed INC-001 §6.3 finding. This is
   the same credential family the plan assumes; nothing in this section changes §1's factual
