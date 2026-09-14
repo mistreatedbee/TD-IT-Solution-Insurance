@@ -206,3 +206,103 @@ with sign-off, a backup taken, and rollback verified as cheap (env var revert) b
 - This document does not grant itself approval to execute — Step 0's checklist is a precondition
   for a future, separate execution, owned by whoever is assigned `database-architect` /
   `cloud-infrastructure-architect` sign-off at that time.
+
+## 7. 2026-09-14 — owner go-ahead received; execution attempted, then declined; runbook prepared instead
+
+**Owner ("the platform owner") gave explicit verbal go-ahead** ("Yes you can rename the MongoDB
+database.") on 2026-09-14 and asked for this plan to be executed, or prepared for immediate
+execution if it couldn't be executed safely in this session. Result: **not executed against
+production.** Runbook script prepared instead. Details below, per this role's own house rule that
+"if there's any ambiguity about whether an operation is reversible, stop and report" — the
+determining factor here wasn't reversibility of the *plan* (the plan is designed to be safely
+reversible per §4 Rollback) but this session's *actual capability* to carry it out safely, which
+was insufficient. Recorded honestly rather than attempted anyway.
+
+### 7.1 What was confirmed
+
+- **Production Mongo credentials are present** in repo-root `.env.local` (gitignored,
+  `MONGODB_URI=mongodb+srv://ashleymashigo013_db_user:...@tditsolutions.xtlqvx2.mongodb.net/...`).
+  This URI has **no path segment**, which is exactly the condition §1/§3 describes as resolving
+  to the driver default `"test"` — consistent with the confirmed INC-001 §6.3 finding. This is
+  the same credential family the plan assumes; nothing in this section changes §1's factual
+  findings.
+- `render.yaml` was re-read and confirmed unchanged from §1's description: no `MONGODB_DB_NAME`
+  key on the production service.
+
+### 7.2 What was NOT available in this session, and why that blocks execution
+
+- **No shell/command-execution tool.** This session's toolset (file read/write/edit, web
+  search/fetch) includes no way to actually run `mongodump`, `mongorestore`, `mongosh`, or even
+  the existing read-only `backend/scripts/inc-001-location-inventory.ts` inventory script — there
+  is no Bash-equivalent execution capability available. This alone makes Steps 1, 3, 4 of §4
+  physically impossible to carry out in this session, including the **read-only** baseline count
+  that would otherwise have been safe and low-risk to run first.
+- **No Render dashboard or Render API access.** Nothing in this session can set
+  `MONGODB_DB_NAME` on the live production service, scale it to zero, flip a maintenance flag, or
+  trigger a redeploy. That makes Step 2 (write freeze) and Step 5 (cutover) impossible regardless
+  of the mongodump/mongorestore question — and per §2 of this document, doing the copy (Steps
+  1/3/4) *without* a working write freeze and a working cutover mechanism reproduces exactly the
+  silent-data-loss-equivalent failure mode §2 warns about: a copy taken while the source is still
+  writable is stale by the time (if ever) cutover happens, and with no way to actually flip
+  `MONGODB_DB_NAME` on Render, there is no way to complete cutover at all in this session — so
+  running the copy alone would produce an orphaned, immediately-stale `td_it_insurance_production`
+  database with no path to it ever becoming authoritative from this session.
+- **No coordination of a maintenance window.** Executing Step 2 responsibly requires
+  `site-reliability-engineer` notification and a chosen low-traffic time — this session has no
+  channel to do either in a way that constitutes real coordination, only this document.
+
+Given all three of the above, this satisfies this document's own "do NOT attempt it against
+production" bar from the task brief: no way to coordinate a maintenance window, no way to execute
+or verify the migration end-to-end, and (independently) no way to execute anything against Mongo
+at all in this session. Attempting a partial execution (e.g., taking a backup with no way to
+verify it, or restoring into a new database with no way to ever cut over to it) would not be
+"lower risk" than doing nothing — it would leave an unverified, unreferenced copy of production
+data sitting in the cluster with no one having confirmed it's correct, which is its own hygiene
+problem layered on top of the one this plan exists to fix.
+
+### 7.3 What was prepared instead
+
+- **`backend/scripts/migrate-mongo-db-rename.sh`** (new, added this session) — encodes Steps 1, 3,
+  and 4 of §4 as a single, fail-fast, confirmation-gated shell script a human operator with real
+  Mongo + shell access can run:
+  1. Prints per-collection document counts for the source database (`test` by default) and
+     **stops**, requiring the operator to review the baseline and re-invoke with `--confirm`.
+  2. Takes a `mongodump --archive` backup to a human-specified `--backup-dir` (intentionally
+     outside the repo — the script does not write backups into the working tree).
+  3. Before restoring, prompts the operator to explicitly type `YES` confirming the Render write
+     freeze (Step 2) is already in effect — the script cannot verify this itself since it has no
+     Render access, so it asks rather than assumes.
+  4. Runs `mongorestore --nsFrom/--nsTo` to copy into the target database name
+     (`td_it_insurance_production` by default, overridable via `--target-db`).
+  5. Re-counts every source collection against the target and prints a match/mismatch table,
+     explicitly refusing to say it's safe to cut over if any collection's count differs.
+  6. Prints the remaining manual steps (Render env var, `render.yaml` update, redeploy, health
+     check, write-freeze lift, retention window) as a checklist — it does not and cannot perform
+     those itself.
+  - The script never issues a delete/drop against the source database at any point, and aborts
+    cleanly (no partial writes) if the operator doesn't type the required confirmations.
+- **This document itself** — already contained the exact commands (§4 Steps 1/3); this section
+  adds the executable form and records that execution was considered and declined for the stated
+  reasons.
+
+### 7.4 What still has to happen before this can be executed
+
+1. A human with real production Mongo credentials, a working shell, and Render dashboard/API
+   access runs `backend/scripts/migrate-mongo-db-rename.sh` from a machine with `mongodump`,
+   `mongorestore`, and `mongosh` installed (MongoDB Database Tools + mongosh — not installed/
+   verified in this session either, since there's no way to check).
+2. That same operator (or a coordinated pair) performs the Render-side actions the script cannot:
+   `site-reliability-engineer` notification, scaling/maintenance-flagging the service for the
+   freeze window, setting `MONGODB_DB_NAME` on the Render dashboard, updating `render.yaml`
+   (the one repo-file change §4 Step 5 calls for — still not made, per the original document's
+   §6 "planning only" note, which this section does not override), redeploying, and the
+   authenticated read-path health check.
+3. Step 0's sign-off checkbox (`cloud-infrastructure-architect` and/or `database-architect`
+   explicit approval for the chosen window) — still not recorded anywhere as completed; the
+   owner's go-ahead received this session authorizes the *plan*, not a specific executed window,
+   and does not substitute for that role-level sign-off being logged.
+
+**Status remains PLANNED, now with an executable runbook attached** — not EXECUTED. No production
+database, connection string, Render environment variable, or `render.yaml` entry was modified as
+part of this section either. No `mongodump`, `mongorestore`, or Mongo query was run against any
+database this session.
