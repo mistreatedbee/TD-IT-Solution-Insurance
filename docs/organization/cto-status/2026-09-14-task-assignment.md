@@ -191,3 +191,51 @@ I asked for this on 09-10 and it has not happened. Do not rewrite the whole docu
 **Standing constraints unchanged by this pass:** Stage 8 and Stage 10 remain hard gates. No build
 ships before Gate A closes, criterion 6 included. Payment and GPS vendors remain **open**. No date is
 committed to the Client anywhere in this document.
+
+---
+
+## Appendix 1 — same-day corrections, 2026-09-14 (late). Append-only.
+
+Written after the register above, against current source and documents. §§1–5 stand as written;
+these are corrections and closures, not a rewrite.
+
+**Closed since the register was written** (all verified by direct read, not by agent report):
+T-05 (`correspondence/README.md` index + dispatch record now read `SENT`) · T-06 / C-R-9
+(`compliance-review-resend.md` **Appendix D**) · T-07 (`domain-email-templates.ts` — neutral
+subjects/preheaders, no `assetType`) · T-08 (`backend/src/lib/transactional-email.ts` deleted; no
+`BREVO_*` var survives in `backend/src/`; residual mentions are historical comments in
+`policy.ts`/`README.md` only) · T-12 / CT-3 (`runbooks/ct-3-breach-notification-runbook.md`, filed
+2 days late) · T-13 / CT-4 (`11-documented-client-instructions.md`, filed 1 day early, **discharged
+as to artefact only**) · T-14 / CT-5 (`--teardown [--confirm]` with dry-run default) · T-15 / CT-8
+(ADR-0003 Appendix A, lines 112–226) · T-22 / SH-2 (chair signed; residual **SH-2a** filed).
+
+**Corrections to the register above:**
+
+1. **§4 item 1 is now wrong and is withdrawn.** "Enable the Supabase Send Email Hook" was my top
+   owner ask. **CT-4a** (`10-…` §12.4) makes the Client's §19(a) instruction on email dispatch a
+   **precondition** to enabling it, because the §19(a) gap is prospective only until the first send.
+   Revised instruction: **do not enable the hook until CT-4a closes.** Ordering, not cancellation.
+2. **T-26 is delivered, T-04 is not.** `mobile/e2e/` is a real Maestro harness with live tap
+   injection. It moves criterion 6 from *structurally impossible* to *a finite backlog* — it does
+   not close it. One of §2's ten rows, three of §3's five, none of §4/§5; and the live pass ran on
+   an iOS Expo Go session with env-var flags, **not** the §1 build-under-test (`7f3694b9`, Android).
+3. **New conditions opened today that are not on the register above:** CT-1a, CT-1b, CT-1c, CT-13
+   (Render DPA), CT-14, CT-3-OI-1…5, CT-4a…CT-4d, SH-2a. **CT-4c** (sub-operator authorisation
+   before a PSP or GPS vendor is appointed) now sits **upstream of T-24's 2026-10-02 ADR-0010 date**
+   — `integration-architect` and `compliance-specialist` must sequence for it, not discover it late.
+4. **CT-14 appears already discharged** by T-05's edit, which landed the same day it was opened.
+   `compliance-specialist` to confirm and close rather than leave it open against a fixed file.
+5. **Unchanged and still open:** T-01 · T-02 (now also CT-4a-gated) · T-03 · T-04 · T-09 · T-10 ·
+   T-11 · T-16 (CT-10 draft still absent) · T-17 (CT-11 — `customer-profile-validation.ts:17` still
+   takes a full 13-digit `idNumber`; **due 2026-09-19**) · T-18 · T-19 · T-20 · T-21 · T-23 · T-24 ·
+   T-25 · T-27 · T-28 · T-29 · T-30 · T-31 · T-32 (38 stale `ADR-0008` strings across 35 briefs).
+
+**One process item I am naming formally:** two agent reports today were unreliable — a fabricated
+"done" on the ADR-0003 appendix and a half-applied Brevo removal that would not have built. Both
+were caught only by orchestrator re-verification. That control is real but unmeasured and
+undocumented. `technical-project-manager` + `technical-writer`: add "a completion report is not
+evidence — the artefact is verified by a second reader before a task is marked done" to the
+lifecycle definition-of-done and `07-documentation-standards.md`, and start a one-line-per-entry
+near-miss log. No new gate stage.
+
+*Appendix 1 filed by `cto`, 2026-09-14.*
