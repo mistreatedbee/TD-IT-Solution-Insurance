@@ -277,3 +277,36 @@ only one clean tunnel is live now.
   §2/§3/§4/§5 no matter which build or dev server is reachable.
 
 File completed checklist path back to `docs/organization/incidents/INC-001-location-ingestion.md` §9.5 A-13 when done.
+
+---
+
+### 2026-09-14 — the "no tap-injection tooling" blocker is resolved (T-26)
+
+Every prior session on this checklist (2026-09-10, 2026-09-14 morning) hit the same wall: no
+`idb`/Maestro/tap-injection capability, so §2/§3/§4/§5 could only ever be traced statically or
+evidenced by bundle-string inspection, never actually driven live. That blocker is now closed —
+`automation-qa-engineer` stood up a real Maestro harness (`mobile/e2e/`, see its README for
+setup) that genuinely drives the app via XCUITest tap injection against a running Expo Go
+instance, not a simulated/inferred pass.
+
+**§2's Claims row is now the first row in this entire checklist actually walked live, not
+inferred:** logged in as `test.customer@tditsolutions.dev` against the real Render backend, deep
+linked to `/claims` with `EXPO_PUBLIC_FEATURE_CLAIMS=false`, and confirmed the real
+`ClaimsComingSoonScreen` component renders ("Claims filing is coming soon.") rather than the live
+claims flow — independently re-verified by the orchestrator by grepping that exact string in
+`mobile/src/screens/claims/ClaimsComingSoonScreen.tsx` before trusting the agent's report. Tab-bar
+composition (no Map/Alerts tabs with those flags off) and §3's auth/assets/account "must work"
+flows were also driven live successfully.
+
+**Not yet complete:** §2's other nine rows (map, device-locations, alerts, KYC, hardware-tracker,
+security-operator) still need the same `openLink` + `assertVisible` pattern extended to them —
+documented as the next step in `mobile/e2e/README.md`, not yet done. §4 (network egress via proxy)
+and Android coverage remain out of scope (no proxy/log access, no Android SDK in any session to
+date). A real, reproducible password-field flakiness on extended navigation was found and is
+documented (not hidden) in the README's "Known quirks" section, with the likely cause identified
+but not yet conclusively isolated.
+
+**This checklist item (criterion 6) is still not closable from this alone** — §2 is now
+partially, not fully, walked live, and §4/§5 remain untouched. But the structural blocker that
+made every future attempt here start from zero is gone; the next session can extend the existing
+flows rather than re-discover that no tooling exists.
