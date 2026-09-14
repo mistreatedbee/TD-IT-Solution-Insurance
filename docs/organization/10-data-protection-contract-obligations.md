@@ -332,6 +332,286 @@ of it — the distinction the task rightly pressed on, and it holds:
 
 ---
 
-**Filed by:** `compliance-specialist`, 2026-08-28; §8 appended 2026-09-02.
+## 9. CT-1 delegated to engineering — the ruling, and why consent is the only path — 2026-09-14
+
+The owner was asked to open the CT-1 conversation with the Client personally. The owner's response
+was to delegate it: *"Make the decision the Agents know best."* This section is that decision.
+
+**First, the boundary.** Two different things were sitting under "CT-1", and only one of them was
+ever delegable:
+
+- **Delegable, and now decided here:** *how* to discharge CT-1 — relocate infrastructure to make
+  the consent unnecessary, obtain the consent, or accept the risk internally. That is an
+  engineering-and-compliance judgement and it is made in §9.1–§9.3 below.
+- **Not delegable, to us or to anyone in this organisation:** *the consent itself.* It is TD IT
+  Solution's to give. No ruling in this document, no ADR, and no `cto` signature creates it. A
+  delegation from the owner cannot transfer a counterparty's decision to the delegate — it can only
+  transfer the work of asking. **That work is done: the actual letter is drafted, at
+  [`correspondence/DRAFT-2026-09-14-ct-1-cross-border-consent-request.md`](correspondence/DRAFT-2026-09-14-ct-1-cross-border-consent-request.md).**
+  It needs a human with an email channel and about fifteen minutes.
+
+### 9.1 Can CT-1 be made technically moot by leaving Frankfurt? **No. Ruled out on evidence.**
+
+Checked properly, because "move the region" is the answer that would make the conversation
+unnecessary, and it would be negligent not to test it before asking a counterparty for something.
+
+| Component | Is a South African region available? | Consequence |
+|---|---|---|
+| **Application/API** (Render) | **No.** Render's entire region set is Oregon, Ohio, Virginia, Frankfurt, Singapore — **no African region exists** | Localisation requires **abandoning Render**, i.e. reversing ADR-0003 (Accepted, ratified 2026-08-07) and re-running a host selection |
+| **Identity DB** (Supabase) | **No.** `af-south-1` existed in alpha and is **withdrawn for new projects**. This is not new information — `compliance-review-supabase.md` §3.1 finding 1 already recorded it on 2026-08-08: *"Data localisation in South Africa is therefore impossible on Supabase Cloud"* | Localisation requires **replacing Supabase**, i.e. rebuilding Feature 001's entire auth/session/MFA layer on a different identity provider |
+| **Domain DB** (MongoDB Atlas) | **Yes** — Atlas supports AWS `af-south-1` (Cape Town) on dedicated (M10+, paid) tiers | The **only** movable component. Moving it alone does not remove the cross-border transfer |
+| **Web dashboards** (Vercel) | Static SPA on a global CDN; holds no data at rest | Not a localisation lever |
+| **Transactional email** (Resend) | **No** — US company, 22 sub-processors all US (`compliance-review-resend.md`) | Would require a different email provider |
+
+**Three findings, in order of weight.**
+
+**(a) A migration is not near-term, and the cost is grotesquely out of proportion.** Two of five
+components cannot be localised without replacing the supplier, and one of those two is the identity
+provider underneath every authenticated request on the platform. Against a **R3,000/month retainer,
+R36,000 total** (`contract-tdit-2026-09-scope-summary.md` §1), a re-platform is not a schedule
+question — it is a different commercial agreement, and per that document's §6 it would itself
+require a Change Request with a 50% advance. Meanwhile the consent request costs one email.
+
+**(b) Decisive, and it holds even if migration were free: relocation cannot cure the past.**
+§19(c) attaches to the *transfer*. Personal information has been processed in Frankfurt since the
+Render cutover. A flawless migration completed tomorrow would end future transfers and would leave
+every transfer already made without the consent the clause required. **The Client's consent is
+needed whether or not we migrate.** Migration is therefore not an alternative to the conversation;
+at best it is a thing the Client might *ask for* during it — which is why §7 of the draft letter
+offers exactly that as a conditional-consent option rather than pre-empting it.
+
+**(c) One genuine benefit of having asked: a migration would itself need disclosure.** Changing
+where the Client's data is processed is a change to the schedule they would be consenting to. Doing
+it unilaterally to avoid a conversation would have created a second undisclosed relocation on top
+of the first. The instinct to engineer around the ask was worth testing and is worth rejecting.
+
+**Ruling: obtaining consent is both faster and lower-risk than migrating, and migrating does not
+substitute for it. CT-1 stands as written. Proceed to ask.**
+
+### 9.2 Is the ADR-0011 risk-acceptance pattern available here? **No — and the distinction matters.**
+
+ADR-0011 (marketing-origin privileged login, R-LU-3) is the precedent: `cto` records a structural
+exposure, declines to block on it, sets a review date so it cannot go silent. It worked because of
+a property that **is absent here**:
+
+> In ADR-0011, **the risk-bearer and the risk-acceptor are the same party.** The platform accepted
+> a risk to the platform. That is what an organisation's own risk register is *for*.
+
+CT-1 inverts that. The exposure under §19(c) runs to **TD IT Solution**, a separate company, under
+a **signed, fully binding** contract (`contract-tdit-2026-09-scope-summary.md` §1). An internal ADR
+saying "we accept the risk of not having the Client's consent" would be this organisation
+purporting to waive, on the Client's behalf, a protection the Client negotiated for itself. Three
+consequences follow, and the third is the one that should end the discussion:
+
+1. **It does not bind the Client.** The exposure is unchanged the moment it is written; only our
+   awareness of it changes.
+2. **It substitutes our judgement for the Responsible Party's** — the precise failure mode already
+   ruled against at §8 ¶4 on the §19(b) question. The Operator framing forbids it there for the
+   same reason it forbids it here.
+3. **It converts an omission into a documented, dated decision not to tell them.** In any dispute,
+   an ADR reading "we knew consent was required, we knew it was absent, we decided to continue" is
+   not a mitigation. It is the counterparty's best exhibit. **Writing it would make the position
+   materially worse than leaving it undocumented** — and this register, which *is* the
+   documentation, is already sufficient for our own governance.
+
+**Ruling: no ADR-style risk acceptance for CT-1. This is the category of risk the ADR-0011 pattern
+must not be extended to, and that boundary is recorded here so the next person reaching for the
+pattern finds the line already drawn: the pattern is for risks this organisation bears, never for
+obligations it owes another party.**
+
+### 9.3 What *is* legitimately available in the interim — two things, both ours to do
+
+Neither is a substitute for consent. Both reduce exposure while it is sought, and both are within
+our authority because they constrain *our own* processing rather than disposing of the Client's
+rights.
+
+1. **Standing containment (already CT-1's own condition, restated as operative now).** No new real
+   customer personal information onto any surface until consent is obtained. This is already the
+   register's position; §7 of the draft letter states it to the Client as a commitment, which is
+   where it belongs.
+2. **New — CT-11, data minimisation at the most sensitive point.**
+   `backend/src/lib/customer-profile-validation.ts:17–21` accepts the **full 13-digit South African
+   ID number** into the Frankfurt API, and `customer-profile-collections.ts:19` persists only
+   `idNumberLast4`. The full number is therefore transmitted to and processed in Germany purely to
+   be validated and discarded — and in the interim it is the single most sensitive item crossing the
+   border, with a live secondary risk that it reaches Render request logs. **Checksum-validate and
+   truncate on the client before transmission**, so only the last four digits ever leave South
+   Africa. This measurably shrinks what consent is being sought for, costs little, and is exactly
+   the kind of thing to be able to say we did without being asked.
+
+### 9.4 Two factual corrections to this document, found while verifying the schedule
+
+Both favour us; both are recorded because the register is only useful if it is right.
+
+- **§2's Supabase row is out of date.** It records the region as *"an EU region, exact code never
+  recorded."* The exact code **is** recorded, and has been since 2026-08-11:
+  [`adr/0006-privileged-access-audit-correlation.md`](adr/0006-privileged-access-audit-correlation.md)
+  §17.8 states the live project `TD IT Solutions` is **`eu-central-1`**, catalog-verified. The
+  residual documentation item at `compliance-review-supabase.md` §3.4 is **satisfied** — the code
+  belongs in the RoPA (C-8) and the privacy notice (C-7) as `eu-central-1`, Frankfurt.
+- **§2's web row is wrong.** It cites `render.yaml:56` — `region: frankfurt` for a web service.
+  **That line does not exist.** `render.yaml` today defines **one** service (the backend) and its
+  header comment records *"web SPA is on Vercel (ADR-0003)"*, consistent with ADR-0003's "Frontend
+  stays on Vercel". The web surfaces are a **Vercel-hosted static SPA holding no personal
+  information at rest**, not a second Frankfurt deployment. The §2 finding *"every deployed surface
+  of this platform runs outside South Africa"* survives — a global CDN is not South Africa — but the
+  reason is different and the schedule sent to the Client must say so. Corrected in the draft
+  letter's paragraph 3; §2's table should be amended when this document is next revised.
+
+### 9.5 Recommendation — what happens next, and who does it
+
+| # | Action | Owner | When |
+|---|---|---|---|
+| 1 | **Read, correct and send the drafted consent request.** `correspondence/DRAFT-2026-09-14-...` §B. Send from a domain address, not the webmail address in `email-footer.ts:44`. Do not soften paragraphs 1, 7 or 8 | **Owner** (or a named delegate with a channel to the Client) | **This week.** Do not wait for item 2 |
+| 2 | **Close CT-2 — read the Atlas region off the console.** Overdue since 2026-08-31. If it returns before item 1 is sent, fold it into the main ask; if after, it goes as the supplementary consent the letter already promises | `cloud-infrastructure-architect` | 48 hours |
+| 3 | **Confirm Vercel edge geography** (or confirm the "no data at rest" characterisation is complete) | `cloud-infrastructure-architect` | With item 2 |
+| 4 | **CT-11 (new) — truncate the SA ID client-side** so only `idNumberLast4` crosses the border | `backend-engineer` + `frontend-architect` | 2026-09-19 |
+| 5 | **Do not merge CT-10 into this letter.** Serve the §19(b) INC-001 notice as a separate document in the same week | `cto` (service), `compliance-specialist` (draft) | Per CT-10 |
+| 6 | **On dispatch, move CT-1 to "requested, awaiting response"** and rename the draft `SENT-…`. Until that happens, CT-1 is unmet and the `DRAFT-` prefix is the evidence of it | `compliance-specialist` | On dispatch |
+
+**The honest bottom line for the owner:** the delegation was accepted for everything that could be
+delegated, and it removed roughly all of the work. What could not be delegated is a signature from
+another company, and no amount of engineering judgement substitutes for it. The remaining ask is to
+send an email that is already written.
+
+### 9.6 Register additions
+
+| ID | Condition | Owner | Deadline |
+|---|---|---|---|
+| **CT-1** | **Unchanged and unmet.** Now supported by a ready-to-send draft (§9.5 item 1). Migration alternative **assessed and rejected** (§9.1); internal risk acceptance **ruled unavailable** (§9.2) | `cto`/owner (send) + `compliance-specialist` (drafted — done) | Before any real customer PII on any surface |
+| **CT-11** *(new)* | **Client-side checksum-validate and truncate the SA ID number** so only the last four digits are transmitted to the Frankfurt API. Interim minimisation while CT-1 is open; good practice permanently | `backend-engineer` + `frontend-architect` | 2026-09-19 |
+| **CT-12** *(new)* | **Amend §2's location table** for the two errors at §9.4 (Supabase region is `eu-central-1`, evidenced; web is Vercel-hosted, not a Render Frankfurt service). Do not rewrite §2's finding — it survives | `compliance-specialist` | Next revision of this document |
+
+---
+
+## 10. CT-1 — letter sent, informal response received. Ruling on whether it is consent — 2026-09-14
+
+**Append-only.** Nothing in §9 is withdrawn. §9.6's CT-1 row said "unchanged and unmet"; that was
+accurate when written this morning and is superseded by this section as of this date.
+
+### 10.1 The facts, from the owner
+
+| | |
+|---|---|
+| **Sent** | 2026-09-14 |
+| **By** | the platform owner |
+| **To** | "TD IT Insurance Solutions the owner" — the Client's principal, understood to be the signatory to TDIT-2026-09 |
+| **What was sent** | [`correspondence/SENT-2026-09-14-ct-1-cross-border-consent-request.md`](correspondence/SENT-2026-09-14-ct-1-cross-border-consent-request.md), **as drafted, unmodified** |
+| **Response** | *"its fine."* |
+
+Two consequences of "unmodified" that matter and are recorded rather than glossed: the `[DATE]`,
+`[NAME]` and `[N]` placeholders in §B went out unfilled, so the letter does not state its own date
+on its face and does not commit to a number of business days for the item 3 (Atlas region)
+supplementary disclosure; and §A/§C, which are internal and marked not-for-sending, were not
+stripped. None of that invalidates the disclosure — the schedule at §B paragraph 3 is the operative
+content and it is complete and accurate — but it does mean the follow-up must supply the date, and
+that the Client has now seen our own pre-send checklist, including the two unconfirmed rows.
+
+### 10.2 Ruling: *"its fine"* does **not** satisfy clause 19(c). Reasoning, not assertion.
+
+The question splits into two limbs, and only the first one passes.
+
+**Limb 1 — is it "written"? Yes.** Under ECTA sections 11–12, a data message satisfies a
+requirement of writing where it is accessible in a form usable for subsequent reference. An email
+reply is writing. Clause 19(c) requires *written consent*, not a signature, so the ECTA section 13
+signature machinery is not the test; and even if it were, a reply from the principal's own mailbox
+is a reasonably reliable method of identifying the person. **The medium is not the defect. Do not
+record this as "not in writing" — that would be wrong.**
+
+**Limb 2 — is it *consent*, and consent *to what*? No, not demonstrably.** Five reasons, in
+descending weight:
+
+1. **It does not identify its object.** Consent is only meaningful against a defined scope. The
+   letter asked for consent to items **1, 2, 5 and 6** of the paragraph 3 schedule and expressly
+   *excluded* items 3 and 4. "Its fine" carries no scope at all. On its face it is equally capable
+   of meaning "consent to the four items", "consent to the whole schedule including the two we said
+   we could not yet describe", or "noted".
+2. **"Fine" is ambiguous between acknowledgement and consent.** In ordinary usage it reads at least
+   as naturally as *"received, no objection, I'm not troubled by this"* as it does *"TD IT Solution
+   hereby consents."* A consent that a reasonable reader could construe as a mere acknowledgement is
+   not the "prior written consent" a strict clause contemplates. Where the construction is
+   genuinely open, the party relying on the consent — us — bears the weakness.
+3. **POPIA's own definition imports specificity.** Section 1 defines consent as a *voluntary,
+   specific and informed expression of will*. Clause 19(c) is a contractual obligation and POPIA's
+   definition does not automatically govern it, but we cited section 72 to the Client as the legal
+   basis in the same letter; it would be incoherent to accept, for the contractual limb, a consent
+   that would fail the statutory limb's specificity element.
+4. **It does not state that it is given on behalf of, or binds, TD IT Solution (Pty) Ltd**, and we
+   hold nothing in writing evidencing the responder's authority to bind the company. The letter
+   asked for a reply "from a person authorised to bind TD IT Solution" for exactly this reason. The
+   owner's understanding that the recipient is the principal is probably right, but "probably right"
+   and "on the record" are different things, and this register exists to hold the second.
+5. **We set the form ourselves.** The letter prescribed a single sentence and gave the reason. When
+   the requesting party specifies the form of consent and the response departs from it entirely, the
+   departure cuts against a finding that the parties were *ad idem* — it is harder to argue the
+   Client consented to a defined schedule than it would have been had we never specified anything.
+
+**Against all that, what the response genuinely achieves — and this is not nothing.** The §19(c)
+disclosure has actually happened: the Client's principal has been told, in writing, with a complete
+schedule, that the platform processes personal information in Frankfurt and the United States, and
+has been told expressly that this was provisioned before consent was sought. **No objection was
+raised. No condition was imposed. Nothing in the response needs routing under §C.4.** The residual
+risk is no longer "the Client does not know" — it is "the Client's agreement is not recorded in a
+form we could rely on." That is a materially smaller and different exposure, and it is one
+one-sentence email from being closed.
+
+### 10.3 Status: CT-1 is **"sent — informally acknowledged, consent not confirmed in the required form."**
+
+Not "unmet": that would deny a real letter and a real, positive, unconditional response.
+Not "met": "its fine" is not the consent that was asked for and is not a record we would want to
+rely on if clause 19(c) were ever tested. Not "awaiting response" either — a response *came*.
+
+This is a new intermediate state and it should stay visible as its own thing rather than being
+rounded to either neighbour.
+
+**The §9.3 containment condition is unchanged and still operative: no real customer personal
+information on any surface until CT-1 is closed in the required form.** An ambiguous "fine" is not
+the basis on which to start processing live PII. The gap is expected to be days, not weeks.
+
+### 10.4 Next step — CT-1a. One reply on the existing thread. Do not send a second letter.
+
+The owner has a live channel and a warm response. The proportionate action is a **reply in the same
+email thread** (so the original subject line and headers tie the consent to the letter, supplying by
+context the date the unfilled `[DATE]` placeholder omitted), of roughly this length:
+
+> Thank you — much appreciated. So that we have it cleanly on file against the contract, could you
+> reply to this email with just this sentence:
+>
+> *"TD IT Solution (Pty) Ltd consents, for the purposes of clause 19(c) of TDIT-2026-09, to the
+> cross-border processing described in items 1, 2, 5 and 6 of the schedule in your letter dated 14
+> September 2026."*
+>
+> Nothing has changed from what we sent — this is purely so the consent is recorded in the specific
+> terms clause 19(c) calls for, rather than resting on an informal reply. If anything in the
+> schedule does give you pause, please say so instead and we will pick it up properly.
+
+**Constraints on that follow-up:**
+
+- **Reply on the thread; do not restate the schedule and do not re-argue paragraphs 7 or 8.** The
+  substance was sent and answered. Re-sending it invites a re-read and looks like we are dissatisfied
+  with the answer rather than with our own record-keeping.
+- **Do not characterise the follow-up as a formality** — §9's standing instruction survives. The
+  final line above preserves the Client's ability to decline or condition, which is what stops this
+  from being a rubber stamp being chased.
+- **If the reply comes back verbatim (or in substance: company named, clause 19(c) named, items
+  1/2/5/6 or "the schedule in your letter" named), CT-1 closes** and I will record it. If it comes
+  back as another informal affirmative, escalate to option (b) — the signed consent addendum — and
+  stop asking by email.
+- **Option (b) remains outstanding regardless.** Even a verbatim email closes CT-1 only as the fast
+  record; the signed addendum is still the durable one and should follow.
+
+### 10.5 Register additions
+
+| ID | Condition | Owner | Deadline |
+|---|---|---|---|
+| **CT-1** | **Superseded state — see §10.3. Sent 2026-09-14; informally acknowledged ("its fine"); consent not confirmed in the required form.** No objection or condition received. Containment (§9.3) remains operative | **Owner** (send CT-1a) + `compliance-specialist` (rule on the reply) | Reply requested **2026-09-17** |
+| **CT-1a** *(new)* | **Send the one-line follow-up at §10.4 on the existing email thread**, asking the recipient to reply with the specific consent sentence, with the date supplied as 14 September 2026. Do not send a second letter | **Owner** | 2026-09-15 |
+| **CT-1b** *(new)* | **Prepare the signed consent addendum to TDIT-2026-09** (letter §6 option (b)) annexing the paragraph 3 schedule — the durable record, due whether or not CT-1a returns verbatim | `compliance-specialist` (draft) + `cto`/owner (execute) | 2026-09-26 |
+| **CT-1c** *(new)* | **Supplementary disclosure for item 3 (Atlas region) and item 4 (Vercel edge geography)**, promised in the letter but with the `[N] business days` placeholder unfilled — so no committed date went to the Client. Blocked on CT-2 | `cloud-infrastructure-architect` (region) → `compliance-specialist` (disclosure) | Within 5 business days of CT-2 closing |
+
+---
+
+**Filed by:** `compliance-specialist`, 2026-08-28; §8 appended 2026-09-02; §9 appended 2026-09-14;
+§10 appended 2026-09-14.
 **Does not discharge:** C-6 (breach runbook) · INC-001-C-3/C-8/C-10/C-13 · any C-008 condition ·
 Feature 008 Stage 8 · legal sign-off.
