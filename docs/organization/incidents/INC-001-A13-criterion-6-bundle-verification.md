@@ -213,4 +213,67 @@ backend-log or proxy access for §4.
 **Criterion 6 statement (chair only, when all rows pass):**  
 *"No surface that bypassed Stage 8 security review is reachable in the preview build tested above."*
 
+---
+
+### 2026-09-14 execution note (`mobile-engineer`)
+
+Platform owner approved proceeding ("Okey lets do it"). Prior build `426e5c01` expired
+2026-09-11 per its own EAS record, so a fresh build was required regardless of the 2026-09-10
+substitution note above. Two things were done this session; neither is a §2/§3/§4/§5
+verification pass — that still requires a human with real tap input, which this session again
+does not have (same tap-injection blocker as 2026-09-10, not re-tested since the finding hasn't
+changed).
+
+**1. Fresh EAS preview (Android) build triggered from current `main`.**
+
+| Field | Value |
+|---|---|
+| **Build ID** | `7f3694b9-8066-4b28-b956-e4957d36ea2e` |
+| **Commit SHA** | `2630cd93cbc1bf2ebec90344ef22e0216370352a` |
+| **Profile** | `preview` (Android, `buildType: apk`) |
+| **EAS logs** | https://expo.dev/accounts/socials/projects/mobile/builds/7f3694b9-8066-4b28-b956-e4957d36ea2e |
+| **Status** | **FINISHED** (started 9/14/2026, 10:47:34 AM SAST, finished 11:08:18 AM SAST, ~21 min; started by `socials`) |
+| **Install (QR / device)** | https://expo.dev/accounts/socials/projects/mobile/builds/7f3694b9-8066-4b28-b956-e4957d36ea2e |
+| **APK artifact** | https://expo.dev/artifacts/eas/zlOYuV5AEbLyj6eyfbBPQuZJM5hgAgwdGB1gzklAOcw.apk |
+| **Fingerprint** | `6f564ea16d103f39d9cc0bc46b60575ebd2951d5` |
+| **Flag snapshot** | Confirmed against `mobile/eas.json` before triggering: all `EXPO_PUBLIC_FEATURE_*` = `"false"` in the `preview` profile env block, identical to `426e5c01`'s recorded snapshot in §1 |
+| **Env access** | `eas whoami` → `ashleymashigo013@gmail.com` (account `socials`); `eas build:list`/`build --non-interactive` both worked from `mobile/` — EAS CLI access confirmed present in this session |
+
+**2. Live tunnel dev server started as a faster path to a human tester.** The owner said "let's
+do it" and has a real phone, so rather than wait ~15 min for the EAS build alone, also started a
+local Expo dev server in tunnel mode (`@expo/ngrok`, already a project dependency — see
+`mobile/package.json`) pointed at current `main` (same commit `2630cd9`, working tree clean
+under `mobile/`):
+
+```
+cd mobile && CI=1 npx expo start --tunnel
+```
+
+Found and killed one stale leftover dev server from an earlier session first (non-tunnel, bound
+to port 8081, PID from a 3+ day old process) plus a second stale tunnel instance on port 8090, so
+only one clean tunnel is live now.
+
+| Field | Value |
+|---|---|
+| **Connection URL (Expo Go)** | `exp://yxp6o0u-socials-8081.exp.direct` |
+| **Web/manifest URL** | https://yxp6o0u-socials-8081.exp.direct (verified `200` via `curl`, both at start and re-checked ~20 min later while the EAS build ran) |
+| **Mode** | `expo start --tunnel` against local commit `2630cd9` (`main` HEAD) — **not** the `preview` build's flag snapshot. This is a plain dev-client/Expo-Go session running the **development** profile's env implicitly (`mobile/.env`: `EXPO_PUBLIC_API_BASE_URL` only — no `EXPO_PUBLIC_FEATURE_*` overrides are set for local `expo start`, so screens read `mobile/src/config/features.ts` defaults, not the preview `"false"` block). **This matters for scope:** a live-tester session over this tunnel is useful for exercising §3 (auth/policies/assets/notifications) but is not evidence for §2's flag-off claims, since it is not running the same build/flag configuration recorded in §1. Only the EAS `preview` artifact (`7f3694b9`, or the still-live `426e5c01`/`1f89a386`) should be used for §2 rows. |
+| **Caveat: `expo-notifications` in Expo Go** | Dev-server logs show repeated warnings that remote push via `expo-notifications` is unsupported in Expo Go (SDK 53+) — expected, not a new finding, doesn't block §3 walkthrough of auth/policies/assets/notification-*preferences* (local, non-push UI). |
+
+**What the owner needs to do next to become the actual human tester this checklist needs:**
+
+- **For a genuine §2 flag-off pass:** install build `7f3694b9` (APK link above — **finished**,
+  fresh, not expired) on a real Android device, sign in as `test.customer@tditsolutions.dev` (seeded via
+  `backend/scripts/seed-test-accounts.ts`), and walk each row in §2's table, §3's table, then
+  §5's AsyncStorage-inspection step — this is the only surface that carries the preview flag
+  snapshot the checklist actually calls for.
+- **Fastest immediate option (right now):** open Expo Go on their phone and enter/scan
+  `exp://yxp6o0u-socials-8081.exp.direct` — this gets a live, tappable app in front of them in
+  seconds, useful for a first-look/UX pass and for §3's "must work" auth/policy/asset flows
+  against the real Render backend, but again **not** a substitute for §2 since it runs dev-flag
+  defaults rather than the preview build's all-`false` block.
+- Either way, this is still `manual-qa-engineer`/a human with fingers, not a further automated
+  session — this session still has no `idb`/Maestro/tap-injection tooling, so it cannot self-certify
+  §2/§3/§4/§5 no matter which build or dev server is reachable.
+
 File completed checklist path back to `docs/organization/incidents/INC-001-location-ingestion.md` §9.5 A-13 when done.
