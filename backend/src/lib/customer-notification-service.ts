@@ -89,7 +89,7 @@ export function createCustomerNotificationService(deps: {
       const tasks: Promise<unknown>[] = [];
 
       if (isEmailEnabled(prefs.channels, 'general') && isResendConfigured(deps.env)) {
-        const email = buildAssetCreatedEmail({ assetName, assetType, assetId });
+        const email = buildAssetCreatedEmail({ assetName, assetId });
         tasks.push(sendResendEmail(deps.env, { to: account.email, subject: email.subject, html: email.html }));
       }
 

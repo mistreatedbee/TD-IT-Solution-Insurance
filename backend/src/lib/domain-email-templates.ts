@@ -116,13 +116,11 @@ export function buildPolicyPendingActivationEmail(params: {
 
 export function buildAssetCreatedEmail(params: {
   assetName: string;
-  assetType: string;
   assetId: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = `${params.assetName} is now on your protection plan.`;
   const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
-    <strong>${escapeHtml(params.assetName)}</strong> (${escapeHtml(params.assetType.replace(/_/g, ' '))})
-    has been registered on your account.
+    <strong>${escapeHtml(params.assetName)}</strong> has been registered on your account.
   </p>
   <p style="margin:0;font-size:14px;color:#6B6156;">We will notify you here if tracking or recovery action is needed.</p>`;
 
@@ -189,7 +187,7 @@ export function buildAssetRecoveredEmail(params: {
   assetName: string;
   referenceNumber: string | null;
 }): { subject: string; html: string; preheader: string } {
-  const preheader = `${params.assetName} has been marked recovered.`;
+  const preheader = 'There is an update on one of your registered items.';
   const refLine = params.referenceNumber
     ? `<p style="margin:0;font-size:14px;color:#6B6156;">Case reference: ${escapeHtml(params.referenceNumber)}</p>`
     : '';
@@ -201,7 +199,7 @@ export function buildAssetRecoveredEmail(params: {
 
   return {
     preheader,
-    subject: `Asset recovered — ${params.assetName}`,
+    subject: `Good news about your registered item — ${NOTIFICATION_BRAND.name}`,
     html: wrapBrandedEmail({
       preheader,
       title: 'Asset recovered',
@@ -449,7 +447,7 @@ export function buildTheftReportSubmittedEmail(params: {
   referenceNumber: string;
   caseId: string;
 }): { subject: string; html: string; preheader: string } {
-  const preheader = `Theft report received for ${params.assetName}. Reference ${params.referenceNumber}.`;
+  const preheader = 'We have received your report. Open the app for details.';
   const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
     We received your theft report for <strong>${escapeHtml(params.assetName)}</strong>.
     Our recovery team and security partners have been alerted.
@@ -458,7 +456,7 @@ export function buildTheftReportSubmittedEmail(params: {
 
   return {
     preheader,
-    subject: `Theft report received — ${params.referenceNumber}`,
+    subject: `Your report has been received — ${NOTIFICATION_BRAND.name}`,
     html: wrapBrandedEmail({
       preheader,
       title: 'Theft report submitted',
@@ -473,7 +471,7 @@ export function buildRecoveryCaseAssignedEmail(params: {
   assetName: string;
   referenceNumber: string;
 }): { subject: string; html: string; preheader: string } {
-  const preheader = `A security partner is now handling case ${params.referenceNumber}.`;
+  const preheader = 'There is an update on your case. Open the app for details.';
   const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
     A security partner has been assigned to your recovery case for
     <strong>${escapeHtml(params.assetName)}</strong>.
@@ -482,7 +480,7 @@ export function buildRecoveryCaseAssignedEmail(params: {
 
   return {
     preheader,
-    subject: `Recovery partner assigned — ${params.referenceNumber}`,
+    subject: `Update on your case — ${NOTIFICATION_BRAND.name}`,
     html: wrapBrandedEmail({
       preheader,
       title: 'Partner assigned',
@@ -498,7 +496,7 @@ export function buildRecoveryCaseUpdateEmail(params: {
   referenceNumber: string;
   statusLabel: string;
 }): { subject: string; html: string; preheader: string } {
-  const preheader = `Update on case ${params.referenceNumber}: ${params.statusLabel}.`;
+  const preheader = 'There is an update on your case. Open the app for details.';
   const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
     Your recovery case for <strong>${escapeHtml(params.assetName)}</strong> is now
     <strong>${escapeHtml(params.statusLabel)}</strong>.
@@ -507,7 +505,7 @@ export function buildRecoveryCaseUpdateEmail(params: {
 
   return {
     preheader,
-    subject: `Recovery update — ${params.referenceNumber}`,
+    subject: `Update on your case — ${NOTIFICATION_BRAND.name}`,
     html: wrapBrandedEmail({
       preheader,
       title: 'Case update',
@@ -522,7 +520,7 @@ export function buildRecoverySuccessfulEmail(params: {
   assetName: string;
   referenceNumber: string;
 }): { subject: string; html: string; preheader: string } {
-  const preheader = `${params.assetName} has been marked recovered.`;
+  const preheader = 'There is an update on your case. Open the app for details.';
   const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
     Your asset <strong>${escapeHtml(params.assetName)}</strong> has been marked
     <strong>recovered</strong>. Thank you for working with our recovery team.
@@ -531,7 +529,7 @@ export function buildRecoverySuccessfulEmail(params: {
 
   return {
     preheader,
-    subject: `Asset recovered — ${params.referenceNumber}`,
+    subject: `Good news about your case — ${NOTIFICATION_BRAND.name}`,
     html: wrapBrandedEmail({
       preheader,
       title: 'Recovery successful',
@@ -546,7 +544,7 @@ export function buildRecoveryCaseClosedEmail(params: {
   assetName: string;
   referenceNumber: string;
 }): { subject: string; html: string; preheader: string } {
-  const preheader = `Recovery case ${params.referenceNumber} has been closed.`;
+  const preheader = 'Your case has been closed. Open the app for details.';
   const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
     Your recovery case for <strong>${escapeHtml(params.assetName)}</strong> has been closed.
     If you still need assistance, contact our support team.
@@ -555,7 +553,7 @@ export function buildRecoveryCaseClosedEmail(params: {
 
   return {
     preheader,
-    subject: `Case closed — ${params.referenceNumber}`,
+    subject: `Your case has been closed — ${NOTIFICATION_BRAND.name}`,
     html: wrapBrandedEmail({
       preheader,
       title: 'Case closed',
