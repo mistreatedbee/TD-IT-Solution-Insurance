@@ -667,7 +667,111 @@ s72 clearance on the same footing as `compliance-review-supabase.md`'s tested ru
 
 ---
 
+## 12. CT-3 and CT-4 filed. CT-7 closure recorded. — 2026-09-14
+
+**Append-only.** Nothing in §§1–11 is withdrawn or rewritten. The §6 register rows for CT-3 and CT-4
+were accurate when written and are **left as written**; this section records their disposition, per
+the convention established at §8 and §10.
+
+*(Numbering note: this section was drafted as "§11" and renumbered on filing — `cloud-infrastructure-architect`
+landed a §11 (CT-8) in the same session and also took the ID **CT-13**. My new condition below is
+therefore **CT-14**, not CT-13. Both §11 and this section stand.)*
+
+### 12.1 CT-3 — **FILED**, two days late
+
+| | |
+|---|---|
+| **Artefact** | [`runbooks/ct-3-breach-notification-runbook.md`](runbooks/ct-3-breach-notification-runbook.md) |
+| **Filed** | 2026-09-14 (due **2026-09-12** — **late by two days**, recorded not glossed) |
+| **Location rationale** | `runbooks/`, alongside `aud-8-privileged-access-reconstruction.md`, on the same `cto` ruling (ADR-0006 §16.4/§16.5): platform-level, spans every feature and both stores |
+
+**What it does.** It compresses the three nested chains §3.2 identified — Supabase's 48h leg,
+Resend's **unbounded** "without undue delay" leg (`compliance-review-resend.md` §10(1)), our 48h
+§19(b) leg, and the Client's onward s22 leg — via four rules at its §5: internal targets **below**
+the 48h ceiling scaled to breach origin (T+6/12/24h); **preliminary notice served inside the window
+with unknowns listed as unknowns**, so completeness is never a precondition; a **holding message at
+T+0 ≤ 1h** so the Client's s22 assessment runs *in parallel* with our investigation rather than
+after it; and pre-emption of the vendor legs. It closes §3.4's undefined awareness trigger (its §4 —
+named declarer, UTC timestamp, earliest-of rule, 2-hour deputy escalation) and supplies the s22(3)
+law-enforcement-deferral decision path.
+
+**It discharges the *requirement*, not the *capability*.** Its §9 records eight things that make it
+only partially executable today — the unreachable-data-subject channel (**INC-001-C-8**) foremost,
+plus AUD-8 blocked on **FU-A11**, no anomalous-send detection (**FU-02(c)**), Resend's unknown
+security contact (**OI-R-4**), the unexecuted Supabase DPA (**C-2**), and **no tabletop yet**.
+
+**C-6** (`compliance-review-supabase.md` §6) — its *"no breach notification runbook exists for this
+platform today"* statement is superseded as of this date. **C-6 is not closed**: it closes when §9's
+gaps close and the runbook has been tabletopped (**CT-3-OI-4** / INC-001-C-12, 2026-10-08).
+
+### 12.2 CT-4 — **FILED** one day early, and deliberately incomplete
+
+| | |
+|---|---|
+| **Artefact** | [`11-documented-client-instructions.md`](11-documented-client-instructions.md) |
+| **Filed** | 2026-09-14 (due 2026-09-15) |
+
+**The finding is the shape of the document.** Register A holds **nine rows, every one derived from
+TDIT-2026-09 itself** — Schedule A's seven modules, the five §19 limbs, the tablet split, the
+Client-paid cost items, and the Change Request procedure. **A repository-wide search returns no
+Client-originated direction outside the contract.** Register B holds **fourteen gaps (G-1…G-14)**
+where no instruction exists and one is needed. **Register B is longer than Register A. That is the
+honest state, and it is the finding.**
+
+**Nothing was invented to fill it.** The temptation that document's §1 is written against — writing
+down our own conduct under the Client's name and calling §19(a) discharged — was declined
+explicitly. **Four gaps are producing processing without authority now**: G-2 (ungoverned
+engineering access to live data), G-3 (retention periods we set ourselves), G-6 (location processing
+never instructed at all — the INC-001 limb), G-8 (published rights-request channel with no responder).
+
+**Email dispatch (G-1, §5) — and the news is good.** On the Appendix C findings, **Resend has never
+sent for this platform and Supabase's built-in sender reaches only project-team addresses**, so **no
+customer personal information has ever been dispatched to an email operator on the Client's behalf.**
+The §19(a) email gap is therefore **prospective, not retroactive** — and that advantage is lost the
+moment the Send Email Hook is enabled. **The instruction must precede the switch.**
+
+**CT-4's row is discharged as to the artefact, not as to substance.** Clause 19(a) is satisfied when
+the Client answers Register B, not when we file a register recording that they haven't.
+
+### 12.3 CT-7 — closure recorded, resolving a dangling cross-reference
+
+`compliance-review-resend.md` **Appendix D §D.2** states that CT-7's full closure is *"recorded at
+`10-data-protection-contract-obligations.md` §11."* **No §11 existed when that was written**, and
+the §11 that now exists records CT-8. **This subsection is that record:**
+
+**CT-7 is CLOSED in full, 2026-09-14.** Limb 1 (compliance-review Resend as an operator) was
+discharged by `compliance-review-resend.md` §15. Limb 2 (replace the consumer-webmail address at
+`email-footer.ts:44`) is discharged on source verification of all four sites plus a negative control
+(Appendix D §D.1), with the two live public pages confirmed remediated via `COMPANY_CONTACT`.
+**Residuals deliberately not swept up in the closure: OI-R-10** (nothing evidences that
+`info@tditsolutionsinsurance.co.za` is provisioned or monitored — a published contact that bounces is
+worse than a Gmail address that works) and **OI-R-11** (no s23/s24 procedure, no named responder),
+which is **G-8** in the CT-4 register.
+
+**Also corrected:** `correspondence/README.md`'s index still lists the CT-1 letter as `DRAFT-…` /
+**"DRAFT — NOT SENT"**. The file is `SENT-2026-09-14-…` and was sent. Under that directory's own
+rule 2, a `DRAFT-` entry is *"evidence that the communication has not happened"* — so the stale index
+row asserts the opposite of the truth. **CT-14** below.
+
+### 12.4 Register changes
+
+| ID | Change |
+|---|---|
+| **CT-3** | **DISCHARGED 2026-09-14** by [`runbooks/ct-3-breach-notification-runbook.md`](runbooks/ct-3-breach-notification-runbook.md). Filed two days after its 2026-09-12 deadline. Its §13 opens **CT-3-OI-1…5** (deputy dispatcher + out-of-hours channel; Resend security contact; anomalous-send-volume ownership; tabletop by 2026-10-08; Client incident contact) |
+| **CT-4** | **DISCHARGED as to the artefact 2026-09-14** by [`11-documented-client-instructions.md`](11-documented-client-instructions.md). **Open as to substance** — see §12.2. Opens **CT-4a…CT-4d** |
+| **CT-7** | **CLOSED IN FULL 2026-09-14** (§12.3). Residuals **OI-R-10** and **OI-R-11** remain open and are not part of the closure |
+| **C-6** | **Superseded in its "no runbook exists" limb.** Not closed — closes on the CT-3 §9 gaps plus a completed tabletop |
+| **CT-4a** *(new)* | **Obtain the Client's instruction on email dispatch** (G-1, `11-…` §5.4). **Blocks enabling production email delivery and the Supabase Send Email Hook**, independently of C-R-1, C-R-3(a) and CT-1. `cto`/owner (obtain), `compliance-specialist` (draft) — **2026-09-26**, with CT-1b |
+| **CT-4b** *(new)* | **Obtain instructions on the four live-exposure gaps** — G-2, G-3, G-6, G-8. **G-6 blocks any re-enablement of location ingestion.** `cto`/owner (obtain), `compliance-specialist` (draft) — **2026-09-26**, with CT-1b |
+| **CT-4c** *(new)* | **Obtain a general sub-operator appointment authorisation (G-5)** before the GPS hardware vendor or PSP is selected — both are Client-paid and both will process personal information. `integration-architect` + `compliance-specialist` — before vendor selection |
+| **CT-4d** *(new)* | **Stage 8 gate hook** — every feature review must cite the Register A row authorising its processing, or block. `compliance-specialist` — standing, effective immediately |
+| **CT-14** *(new)* | **Correct `correspondence/README.md`'s index row** for the CT-1 letter from `DRAFT- / NOT SENT` to `SENT-2026-09-14`, with the response and the §10.3 ruling noted. A stale index in a directory whose governing rule makes the filename prefix load-bearing is a factual error about whether a communication happened. `compliance-specialist` — **2026-09-17** |
+
+---
+
 **Filed by:** `compliance-specialist`, 2026-08-28; §8 appended 2026-09-02; §9 appended 2026-09-14;
-§10 appended 2026-09-14; §11 appended 2026-09-14 (CT-8 closed by `cloud-infrastructure-architect`).
-**Does not discharge:** C-6 (breach runbook) · INC-001-C-3/C-8/C-10/C-13 · any C-008 condition ·
-Feature 008 Stage 8 · legal sign-off · CT-13 (new, open).
+§10 appended 2026-09-14; §11 appended 2026-09-14 (CT-8 closed by `cloud-infrastructure-architect`);
+§12 appended 2026-09-14 (CT-3 and CT-4 filed; CT-7 closed).
+**Does not discharge:** C-6 (breach runbook — superseded in part, see §12.1) ·
+INC-001-C-3/C-8/C-10/C-13 · any C-008 condition · Feature 008 Stage 8 · legal sign-off ·
+CT-13 · CT-14 · CT-3-OI-1…5 · CT-4a…CT-4d (all new, open).

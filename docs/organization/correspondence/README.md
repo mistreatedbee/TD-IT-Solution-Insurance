@@ -19,4 +19,4 @@ Drafts of communications **to parties outside this engineering organisation** �
 
 | File | Purpose | Status |
 |---|---|---|
-| [`DRAFT-2026-09-14-ct-1-cross-border-consent-request.md`](DRAFT-2026-09-14-ct-1-cross-border-consent-request.md) | CT-1 — §19(c) prior written consent to cross-border processing | **DRAFT — NOT SENT** |
+| [`SENT-2026-09-14-ct-1-cross-border-consent-request.md`](SENT-2026-09-14-ct-1-cross-border-consent-request.md) | CT-1 — §19(c) prior written consent to cross-border processing | **SENT 2026-09-14 — informally acknowledged, consent not yet confirmed in the required form (see `10-data-protection-contract-obligations.md` §10)** |
