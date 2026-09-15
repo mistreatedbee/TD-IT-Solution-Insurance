@@ -20,6 +20,12 @@ export interface ToggleProps {
   /** Optional short note shown under the switch — e.g. why it's locked. */
   disabledHint?: string;
   style?: StyleProp<ViewStyle>;
+  /**
+   * Stable selector for E2E automation (mirrors `Input.tsx`'s
+   * `testID="input-<slugified-label>"` pattern) — defaults to a slug of
+   * `accessibilityLabel` when not passed explicitly.
+   */
+  testID?: string;
 }
 
 export function Toggle({
@@ -29,10 +35,18 @@ export function Toggle({
   accessibilityLabel,
   disabledHint,
   style,
+  testID,
 }: ToggleProps) {
+  const resolvedTestID =
+    testID ??
+    `toggle-${accessibilityLabel
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')}`;
   return (
     <View style={[styles.root, style]}>
       <Switch
+        testID={resolvedTestID}
         value={value}
         onValueChange={onValueChange}
         disabled={disabled}

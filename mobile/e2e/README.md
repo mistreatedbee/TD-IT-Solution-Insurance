@@ -3,7 +3,13 @@
 **Owner:** `automation-qa-engineer`
 **Status:** Real, working harness — installed, driven with actual tap
 injection (XCUITest under the hood), and verified against the live app on
-an iOS Simulator on 2026-09-14. This is not a stub. See "Verification
+an iOS Simulator on 2026-09-14 (extended the same day, evening). This is
+not a stub. As of this update: 9/10 of the INC-001 A-13 checklist's §2 rows
+and 5/5 of its §3 rows are live-device-proven, plus §5 (AsyncStorage) has a
+real populate→relaunch→inspect result — all under Expo Go / local Metro,
+**not** the EAS build artifact (see the checklist doc's per-row
+configuration tags). §4 (network egress) remains genuinely blocked by a
+host-OS admin-privilege wall, not a missing tool. See "Verification
 record" below for exactly what was proven and how.
 
 ## Why Maestro (not Detox)
@@ -152,19 +158,36 @@ not have this Expo-Go-home quirk — `launchApp` would work as normal.
 |---|---|---|
 | `_login-customer.yaml` | Shared subflow: log in as `test.customer@tditsolutions.dev` (seeded via `backend/scripts/seed-test-accounts.ts`, verified against the live Render backend). Referenced via `runFlow` — not run directly. | — |
 | `auth-login.yaml` | Login succeeds, lands on Home with the Home/Assets/Account tab bar. | §3 "Auth (login/signup/MFA) — session established" |
-| `flags-off-screens.yaml` | Tab bar excludes Map/Alerts; `claims` deep link renders the real "Claims filing is coming soon" gated screen (confirmed live, not just bundle-string inspection). | §2 (Claims row fully; other rows still need extending — see below) |
-| `policies-and-assets.yaml` | Assets tab shows plan info + registered asset list with no raw lat/lng ever rendered; Account tab shows profile/plan with no KYC rows. | §3 "Policies", "Assets", "Account hub" |
+| `flags-off-screens.yaml` | Tab bar excludes Map/Alerts; 9 of 10 §2 rows (all but Security operator app) deep-link to their real gated fallback screen and are confirmed live via screenshot, not bundle-string inspection. | §2 — 9/10 rows (see below for Security operator app) |
+| `policies-and-assets.yaml` | Assets/Account/Policies-list/Policies-create/Notification-preferences all reached and confirmed live against the real Render backend. | §3 — 5/5 rows (Policies' "create" leg stops short of the terminal mutation — see the flow file's own comment for why) |
 
-### Extending this suite
+### Extending this suite further
 
-§2's table has ten rows; this session's time-boxed verification pass got
-one (Claims) to a fully live, tap-driven confirmation, backed by direct
-observation (not just static analysis). The remaining rows (map,
-device-locations, live-tracking, alerts, KYC profile/verification, theft
-report, hardware tracker, security-operator) follow the same pattern —
-add an `openLink: "exp://localhost:8098/--/<route>"` + `extendedWaitUntil`
-+ `assertVisible` block per row to `flags-off-screens.yaml`. Route paths
-are in each screen's gating `_layout.tsx` under `mobile/app/(app)/`.
+**9 of §2's ten rows are now live, tap-driven confirmations** (as of
+2026-09-14 evening) — Map, Device locations, Live tracking, Claims, Alerts,
+KYC profile, KYC verification, Theft report, Hardware tracker. **All 5 of
+§3's rows are now live** (Auth, Policies, Assets, Notification prefs,
+Account hub). What's still open:
+
+- **Security operator app (§2's 10th row).** Requires logging in as
+  `test.security@tditsolutions.dev`, which has `mfaRequired: true` and is
+  already TOTP-enrolled — this session had no `backend/.env.local` /
+  Supabase admin credentials to read the existing secret or `--force`
+  re-enroll to get a fresh one. Whoever next has that credential access
+  (see the CTO status doc's T-25) can extend `flags-off-screens.yaml` with
+  the same pattern once logged in as that account.
+- **The EAS build artifact.** Every flow in this directory has only ever
+  run against Expo Go / a local Metro dev server, never the actual
+  `preview` `.apk`/`.ipa`. This is a config gap, not a flow-coverage gap —
+  see "Running against Expo Go" above and the checklist doc's per-row
+  configuration tags.
+- **A single, fully green, uninterrupted run of `policies-and-assets.yaml`
+  end-to-end.** Every individual segment in that flow has been proven live
+  with a reviewed screenshot across multiple runs, but the flakiness
+  described below (plus one XCUITest driver hang that needed a simulator
+  reboot to clear) meant no single run made it start-to-finish clean in
+  ~10 attempts. Re-running the flow as-is should eventually produce one;
+  it wasn't a blocking requirement for counting each row as proven.
 
 ## Known quirks (read before debugging a "flaky" flow)
 
@@ -238,8 +261,54 @@ are in each screen's gating `_layout.tsx` under `mobile/app/(app)/`.
   inconsistent in testing (sometimes it instead opened the *full* dev
   menu, which then needs a tap outside the sheet — e.g. `50%,15%` — to
   dismiss). Not an issue on subsequent loads in the same Expo Go install.
+- **`assertVisible`/`extendedWaitUntil` against plain `<Text>` is
+  unreliable in this session's Maestro+XCUITest setup — real, reproducible,
+  not root-caused.** Found while extending `flags-off-screens.yaml` and
+  `policies-and-assets.yaml` (2026-09-14 evening): a headline string that a
+  `takeScreenshot` taken at the exact moment of a "FAILED" assertion
+  clearly shows on-screen would still fail the visibility query — this
+  reproduced across a fresh `terminate`+relaunch and a fresh Metro reload,
+  which rules out an ordinary post-navigation timing race as the sole
+  cause. It affected `openLink`-reached screens most consistently but also
+  hit ordinary in-app-tap-navigated screens intermittently (e.g. the
+  Account tab's own email/plan text). Interactive elements — `Button`,
+  `Pressable`, the "Back to home" button on every gated fallback screen —
+  did **not** show this flakiness. **Mitigation adopted across both flow
+  files:** wait for/tap an interactive element as the "did we actually get
+  here" proof, and use `takeScreenshot` for the actual copy-match evidence,
+  independently reviewed by a human/orchestrator rather than asserted by
+  the flow itself. This is a *different*, not weaker, evidence combination
+  — flagged here so a future session doesn't burn time re-discovering it,
+  and doesn't mistake "no bare `assertVisible` on headline text" for an
+  oversight. Root-cause candidates not yet ruled out: a stale
+  accessibility-tree cache inside Maestro's iOS driver across repeated
+  `openLink` calls in one long-running session, or a hit-testing
+  discrepancy specific to `Text` nodes nested inside this codebase's
+  `Alert`/`FeatureUnavailableScreen` component tree. Worth a dedicated
+  root-cause pass before this harness is treated as CI-gate-reliable for
+  text-heavy assertions.
+- **XCUITest driver hangs mid-run, requiring a simulator reboot.** Twice in
+  this session a `maestro test` run froze indefinitely mid-command (no
+  error, no timeout, no progress) with the underlying
+  `maestro-driver-iosUITests-Runner` process still alive but unresponsive.
+  Killing the `java`/`xcodebuild`/driver-runner processes and *reissuing
+  the same command* did not recover it — a full `xcrun simctl shutdown` +
+  `boot` of the simulator was needed before `maestro test` would reliably
+  install/start the driver again. If a run hangs past ~2 minutes with no
+  log progress (`tail -f ~/.maestro/tests/<latest>/*/logs/maestro.log`),
+  reboot the simulator rather than waiting it out or repeatedly retrying
+  in place.
+- **Toggle/Switch now has a stable `testID`.** `mobile/src/theme/primitives/Toggle.tsx`
+  previously exposed only an `accessibilityLabel` (no `testID`), making its
+  native `Switch` untappable by a stable Maestro selector. Added
+  `testID="toggle-<slugified-accessibilityLabel>"` (default, overridable),
+  same pattern as `Input.tsx`'s existing `input-<slug>` fix. Use
+  `tapOn: { id: "toggle-email-notifications-for-general" }` etc. going
+  forward for any `Toggle` in the app, not just notification preferences.
+  `npx jest` (158/158) confirms this didn't break `Toggle.test.tsx` or
+  anything consuming the component.
 
-## Verification record (2026-09-14)
+## Verification record (2026-09-14, updated evening)
 
 What was actually run and observed, with real device automation (XCUITest
 via Maestro, not a source-code/bundle-string substitute):
@@ -270,12 +339,74 @@ via Maestro, not a source-code/bundle-string substitute):
 
 This directly resolves the blocker recorded in
 `docs/organization/incidents/INC-001-A13-criterion-6-bundle-verification.md`
-("no tap-injection tooling... could not drive the app's UI"). File the
-completed checklist run (a from-scratch, single-session `maestro test
-e2e/flows/` pass, ideally on a physical device or a fresh simulator/Expo
-Go state to avoid the stacked-navigation flakiness noted above) back to
-that document's §6 when `security-engineer`/`cybersecurity-architect`
-schedule the sign-off pass.
+("no tap-injection tooling... could not drive the app's UI").
+
+### Evening extension (2026-09-14) — §2 to 9/10, §3 to 5/5, §5 executed, §4 attempted
+
+Everything below ran against Expo Go / a local Metro dev server (ports
+8098 for flags-off, 8099 for flags-on), never the EAS `preview` artifact.
+
+- `flags-off-screens.yaml` extended to 9 of §2's 10 rows (all but Security
+  operator app — MFA-gated test account, no credential access this
+  session to log in as it). Each row's gated-screen headline was read from
+  source *before* writing the assertion (not assumed), and each run's
+  `takeScreenshot` was independently reviewed against that exact string:
+  Map/Device locations/Live tracking all render the same
+  `LocationTrackingUnavailableScreen` ("Live location tracking is coming
+  soon."); Claims/Alerts/KYC-profile/KYC-verification/Theft-report/
+  Hardware-tracker each render `FeatureUnavailableScreen` with distinct
+  per-route copy — all confirmed on-screen.
+- `policies-and-assets.yaml` extended to all 5 of §3's rows. Policies list
+  (`/policy`) showed the real seeded "Essential" policy
+  (R199/month, 1/5 assets, "pending activation") from a live
+  `GET /v1/policies`. Policies create (`CreatePolicyScreen`, reached via
+  "Choose another plan") showed the real plan catalog (Essential R199/mo,
+  Plus R399/mo "MOST POPULAR") from a live `GET /v1/plans` — the terminal
+  `POST /v1/policies` was deliberately not exercised (shared, non-disposable
+  fixture account, no policy teardown path). Notification preferences
+  (`/notification-preferences`) showed real per-category/channel toggle
+  state (Theft-alerts Push correctly locked/disabled) from a live
+  `GET /v1/notifications/preferences`, and a toggle tap round-tripped a
+  live `PATCH` with no error surfaced.
+- **§5 (AsyncStorage) executed for real**, not just unit-tested: started a
+  fresh Metro session with `EXPO_PUBLIC_FEATURE_LOCATION_TRACKING` at its
+  default (`true`), confirmed via screenshot that the Home "Live protection
+  map" widget genuinely fetched and returned ("No pinned locations yet" —
+  a resolved-empty state, not loading/error), visited `/device-locations`
+  and `/map` (both read that same location-summary query), force-quit via
+  `xcrun simctl terminate`, relaunched, then read the real persisted
+  AsyncStorage blob directly off disk:
+  `xcrun simctl get_app_container <udid> host.exp.Exponent data` →
+  `Documents/ExponentExperienceData/@socials/mobile/RCTAsyncLocalStorage/`.
+  `manifest.json` maps `td_insurance.query_cache` to a file named by the
+  **MD5 hash of the key string itself** (confirmed:
+  `md5("td_insurance.query_cache") == 5eafb4df7857a2359c8459af010cd775`,
+  matching the real filename present). After relaunch, 11 query keys were
+  persisted (`assets`, `policies`, `plans`, `account.me`,
+  `recovery.cases`, `alerts`, etc.) — **`['assets','location-summary']`
+  was absent**, and a full-text scan of the blob for `"lat"`, `"lng"`,
+  `"latitude"`, `"longitude"`, and any coordinate-shaped number
+  (`-?\d{1,3}\.\d{4,}`) returned zero matches. This confirms
+  `shouldPersistQuery`'s exclusion end-to-end on a real device, not just
+  in its own unit test.
+- **§4 (network egress) attempted further than any prior session, still
+  blocked, more specifically now.** `pip3 install mitmproxy` succeeded
+  (no `brew` in this sandbox; pip worked). Generated its CA cert
+  successfully and confirmed `xcrun simctl keychain <udid> add-root-cert`
+  as the no-manual-Settings-tap way to trust it. **Blocked at routing
+  Simulator traffic through the proxy** — that requires
+  `networksetup -setwebproxy`/`-setsecurewebproxy` on the host Mac, which
+  returned "Command requires admin privileges" (`sudo -n true` confirmed
+  no passwordless sudo either). A host-OS admin-privilege wall, not a
+  missing-tool one. All four §4 checkboxes remain unchecked in the
+  checklist doc.
+
+File the completed checklist run back to
+`docs/organization/incidents/INC-001-A13-criterion-6-bundle-verification.md`
+§6 when `security-engineer`/`cybersecurity-architect` schedule the
+sign-off pass — it is **still not closable from this alone**: the
+Security operator app row, the EAS build-artifact configuration, and all
+of §4 remain open.
 
 ## MP-8
 
@@ -284,4 +415,5 @@ production data. See `backend/docs/DEPLOY.md`. (Unchanged from the prior
 scaffold note — this session's runs hit the live Render/Mongo backend
 directly since no staging environment exists yet per `HANDOFF.md`; treat
 `test.customer@tditsolutions.dev`'s asset data as shared fixture data, not
-disposable.)
+disposable — this is also why the policy-create flow stops short of
+actually subscribing to a plan.)

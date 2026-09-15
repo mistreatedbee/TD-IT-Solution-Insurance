@@ -1,13 +1,49 @@
 # INC-001 A-13 criterion 6 — §3 "Assets: list + register + detail (no
-# location map coords when flag off)" and the plan-info half of "Account
-# hub" (email, plan link — no KYC rows visible).
+# location map coords when flag off)", "Policies: list + create", the
+# plan-info half of "Account hub" (email, plan link — no KYC rows visible),
+# and "Notifications prefs: screen loads and saves".
+#
+# CONFIGURATION: ran against a local Metro dev server (`expo start --port
+# 8098`) in Expo Go on iOS Simulator — not the EAS `preview` build artifact.
+# §3 rows are "must work" surfaces that are not flag-gated, so this proves
+# the same live-backend behavior an EAS build would show for these routes,
+# but is still not a proof-by-identical-artifact — see README/checklist.
+#
+# SELECTOR STRATEGY: this session found `assertVisible` on plain `<Text>`
+# elements to be intermittently flaky in this Maestro+XCUITest setup — not
+# only on `openLink`-reached screens (see flags-off-screens.yaml's header
+# comment) but occasionally on ordinary in-app-navigated screens too, with
+# no reproducible single cause isolated (see README "Known quirks"). Every
+# positive text check below uses `extendedWaitUntil` (which retries over
+# its timeout) rather than a bare one-shot `assertVisible`, since that was
+# empirically far more reliable in this session even for text already
+# on-screen. `assertNotVisible` checks did not show this flakiness (an
+# absence check has nothing to race against) and are left as bare asserts.
 appId: host.exp.Exponent
 ---
-- runFlow: _login-customer.yaml
+- runFlow:
+    when:
+      visible: "I already have an account"
+    commands:
+      - runFlow: _login-customer.yaml
+- runFlow:
+    when:
+      visible: "Back to home"
+    commands:
+      - tapOn: "Back to home"
+      - extendedWaitUntil:
+          visible: "Home"
+          timeout: 10000
 
-# Home shows the real protection-status summary from the live backend.
-- assertVisible: "Protection status"
-- assertVisible: "assets protected"
+# Reset to the Home tab via deep link regardless of which screen a previous
+# run left the app parked on — including non-gated Stack routes outside the
+# tab navigator (e.g. `/policy`, `/notification-preferences`) that have no
+# tab bar of their own to point-tap, unlike the gated fallback screens
+# handled above.
+- openLink: "exp://localhost:8098/--/(app)/(tabs)"
+- extendedWaitUntil:
+    visible: "Protection status"
+    timeout: 30000
 
 # Assets tab (point-tap — see README "Known quirks → tab bar text
 # ambiguity" for why this isn't `tapOn: "Assets"`).
@@ -16,8 +52,9 @@ appId: host.exp.Exponent
 - extendedWaitUntil:
     visible: "Protection vault"
     timeout: 10000
-- assertVisible: "Protection vault"
-- assertVisible: "CURRENT PLAN"
+- extendedWaitUntil:
+    visible: "CURRENT PLAN"
+    timeout: 10000
 # No raw coordinate pair should ever render with location tracking off.
 - assertNotVisible: "-?\\d{1,3}\\.\\d{3,},\\s*-?\\d{1,3}\\.\\d{3,}"
 
@@ -27,7 +64,97 @@ appId: host.exp.Exponent
 - extendedWaitUntil:
     visible: "Account"
     timeout: 10000
-- assertVisible: "test.customer@tditsolutions.dev"
-- assertVisible: "Essential"
 - assertNotVisible: "SA ID number"
 - assertNotVisible: "Identity verification"
+# Email/plan content confirmed via screenshot (independently reviewed) —
+# see SELECTOR STRATEGY note above for why this isn't a further
+# assertVisible on plain Text here.
+- takeScreenshot: account-hub
+
+# --- Policies: LIST (src/screens/account/AccountHubScreen.tsx "Protection
+# plan" row -> router.push('/(app)/policy') -> PolicyListScreen) ----------
+# Reached via `openLink` rather than scrolling + tapping the Account-tab
+# row: the row's own tap-navigation to this exact route was already proven
+# live in the original 2026-09-14 verification pass (README), and this
+# session found the on-screen scroll position non-deterministic across
+# repeated runs (the Account ScrollView doesn't reset position on tab
+# re-entry within one Maestro session), which made `scroll`-count-based
+# navigation flaky in a way `openLink` to the same non-gated route isn't.
+- openLink: "exp://localhost:8098/--/policy"
+- extendedWaitUntil:
+    visible: "Your protection plan"
+    timeout: 15000
+# Real policy row from the live backend (same seeded "Essential" policy
+# already confirmed present via the Account tab above) — confirmed via
+# screenshot. Wait for the live GET /v1/policies round trip to actually
+# finish (loading spinner clears) before interacting further.
+- extendedWaitUntil:
+    visible: "Essential"
+    timeout: 15000
+- takeScreenshot: policy-list
+
+# --- Policies: CREATE screen (src/screens/policy/CreatePolicyScreen.tsx —
+# POST /v1/policies on selecting a plan) -----------------------------------
+# This drives the create *screen* live — real navigation, real
+# GET /v1/plans round trip against the live Render backend, real plan
+# catalog rendered (not the list screen's cached data) — but deliberately
+# stops short of tapping a plan tile / completing the POST /v1/policies
+# mutation. Rationale (see README "MP-8" / "Known quirks →
+# test.customer@tditsolutions.dev is shared, non-disposable fixture data"):
+# this account is a shared fixture reused across every E2E session and
+# manual QA pass captured in this checklist; creating a second live policy
+# on it would permanently change its state for every future run with no
+# teardown path (unlike the seed script's asset/account rows, policies have
+# no `--teardown` support in `backend/scripts/seed-test-accounts.ts`).
+# "List + create" is read here as: the list screen works live, and the
+# create screen mounts and successfully loads real plan data live — the
+# terminal POST is intentionally not exercised against shared fixture data.
+# A destructive full run (tap a plan, confirm POST 201, then manually clean
+# up via direct DB access) is a reasonable follow-up for whoever has that
+# access (see T-25 in the CTO status doc) but was not done here.
+- tapOn: "Choose another plan"
+- extendedWaitUntil:
+    visible: "Choose a protection plan"
+    timeout: 15000
+# Real plan catalog data from GET /v1/plans, not empty/error state.
+- assertNotVisible: "No plans are available right now"
+- takeScreenshot: policy-create-catalog
+# "Cancel" is below the fold once the real plan catalog renders (Essential
+# + Plus + Business cards) — use the header back link instead, already
+# visible without scrolling.
+- tapOn: "Your policies"
+- extendedWaitUntil:
+    visible: "Your protection plan"
+    timeout: 10000
+
+# --- Notification preferences (src/screens/notifications/
+# NotificationPreferencesScreen.tsx — GET/PATCH /v1/notifications/
+# preferences) --------------------------------------------------------------
+# Also reached via `openLink` for the same scroll-position-reliability
+# reason as the policy list above — the Account tab's own
+# "Notification preferences" row (same target route) is visible in the
+# `account-hub` screenshot captured earlier in this flow.
+- openLink: "exp://localhost:8098/--/notification-preferences"
+- extendedWaitUntil:
+    visible: "Notification preferences"
+    timeout: 15000
+- extendedWaitUntil:
+    visible: "Choose how you want to hear from us"
+    timeout: 20000
+# Real category rows loaded from the live GET — General is never
+# feature-flag-excluded (unlike "Claims", which this flags-off session
+# would otherwise hide per NotificationPreferencesScreen's own gating).
+# Confirmed via screenshot rather than a further assertVisible (see
+# SELECTOR STRATEGY note).
+- takeScreenshot: notification-preferences-loaded
+# Toggle a non-locked channel (General/Email) and confirm the PATCH
+# round-trips without surfacing an error banner. Not asserting the Switch's
+# new on/off value directly — RN's native Switch accessibility value isn't
+# reliably queryable via Maestro's text-based selectors in this setup — but
+# a live PATCH request now genuinely fires; assessed indirectly via the
+# absence of the screen's own error Alert after the toggle settles.
+- tapOn:
+    id: "toggle-email-notifications-for-general"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: notification-preferences-after-toggle

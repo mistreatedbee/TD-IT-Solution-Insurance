@@ -3,17 +3,51 @@
 # "false" (mirroring eas.json's preview/production profiles) — see
 # mobile/e2e/README.md "Running against Expo Go".
 #
-# Covers the Claims row from the checklist's §2 table end-to-end via real
-# navigation (not just source/bundle-string inspection): confirmed live
-# during harness verification (2026-09-14) that this deep link renders the
-# actual ClaimsComingSoon-style screen, not a stub assertion.
+# CONFIGURATION CAVEAT (read before citing this as evidence): this flow runs
+# against a local Metro dev server (`expo start --port 8098`) loaded into
+# Expo Go on iOS Simulator, with `EXPO_PUBLIC_FEATURE_*=false` env vars set
+# for that Metro process — NOT the actual EAS `preview` build artifact
+# (`7f3694b9`, Android) named in this checklist's §1. It proves the same
+# source code, with the same flag values, renders the same "coming soon"
+# screens live — it is not proof that the Android APK itself behaves
+# identically, though the gating code path is shared and platform-agnostic
+# (pure JS conditional, no native module differences on this call path).
 #
-# Does not yet cover every §2 row (map/device-locations/alerts/KYC/
-# hardware-tracker/security-operator) — extend this file with additional
-# `openLink` + assertVisible pairs per README "Extending this suite".
+# SELECTOR STRATEGY (read before "fixing" this to use assertVisible on the
+# headline text — it was tried first and is unreliable here, see README
+# "Known quirks → openLink-reached screens: plain Text assertVisible is
+# unreliable"): each row below (a) `openLink`s to the gated route, (b) waits
+# for the "Back to home" button (a real Pressable/Button element — reliably
+# hit-testable in this session's Maestro+XCUITest setup, unlike the plain
+# `<Text>` headline/body on these same screens), which only renders once
+# `FeatureUnavailableScreen`/`LocationTrackingUnavailableScreen` has
+# actually mounted, and (c) takes a named screenshot. The exact headline
+# copy on each screenshot was independently read back and confirmed against
+# each gate file's literal string by the orchestrator (not just the
+# automation agent's own report) — see the verification record in
+# mobile/e2e/README.md and the checklist doc for the per-row confirmation.
+#
+# Assumes it starts from an ALREADY-AUTHENTICATED session (persisted secure
+# session token from a prior login) OR the welcome screen — the first step
+# below handles both via a conditional `runFlow`.
 appId: host.exp.Exponent
 ---
-- runFlow: _login-customer.yaml
+- runFlow:
+    when:
+      visible: "I already have an account"
+    commands:
+      - runFlow: _login-customer.yaml
+
+# Reset to the tab shell if a previous run left the app parked on a gated
+# fallback screen (those screens have no tab bar of their own).
+- runFlow:
+    when:
+      visible: "Back to home"
+    commands:
+      - tapOn: "Back to home"
+      - extendedWaitUntil:
+          visible: "Home"
+          timeout: 10000
 
 # Tab bar composition: only Home/Assets/Account should exist with
 # EXPO_PUBLIC_FEATURE_ALERTS=false (no Alerts tab) and
@@ -22,13 +56,105 @@ appId: host.exp.Exponent
 - assertVisible: "Assets"
 - assertVisible: "Account"
 - assertNotVisible: "Map"
-- assertNotVisible: "Alerts"
+# NOTE: not asserting `assertNotVisible: "Alerts"` here — Home's stat row
+# renders "0 Alerts" (a live stat, not the tab), the same label-collision
+# class already documented for "Assets" in README "Known quirks". The
+# Alerts *route* itself is proven gated below via deep link, which is the
+# stronger assertion anyway.
 
-# Claims (EXPO_PUBLIC_FEATURE_CLAIMS=false) — deep link must resolve to the
-# gated fallback screen, not the claims-filing flow.
+# --- Claims (EXPO_PUBLIC_FEATURE_CLAIMS=false) --------------------------
+# Gate: app/(app)/claims/_layout.tsx -> ClaimsComingSoonScreen
+# Headline (verified in source): "Claims filing is coming soon."
 - openLink: "exp://localhost:8098/--/claims"
 - extendedWaitUntil:
-    visible: "Claims filing is coming soon"
+    visible: "Back to home"
     timeout: 15000
-- assertVisible: "Claims filing is coming soon"
 - assertNotVisible: "Submit claim"
+- takeScreenshot: flags-off-claims
+
+# --- Map (EXPO_PUBLIC_FEATURE_LOCATION_TRACKING=false) ------------------
+# Gate: app/(app)/(tabs)/map/_layout.tsx -> LocationTrackingUnavailableScreen
+# Headline (verified in source): "Live location tracking is coming soon."
+- openLink: "exp://localhost:8098/--/map"
+- extendedWaitUntil:
+    visible: "Back to home"
+    timeout: 15000
+- assertNotVisible: "-?\\d{1,3}\\.\\d{3,},\\s*-?\\d{1,3}\\.\\d{3,}"
+- takeScreenshot: flags-off-map
+
+# --- Device locations (EXPO_PUBLIC_FEATURE_LOCATION_TRACKING=false) -----
+# Gate: app/(app)/device-locations/_layout.tsx -> same
+# LocationTrackingUnavailableScreen component/copy as Map.
+- openLink: "exp://localhost:8098/--/device-locations"
+- extendedWaitUntil:
+    visible: "Back to home"
+    timeout: 15000
+- assertNotVisible: "-?\\d{1,3}\\.\\d{3,},\\s*-?\\d{1,3}\\.\\d{3,}"
+- takeScreenshot: flags-off-device-locations
+
+# --- Live tracking (EXPO_PUBLIC_FEATURE_LOCATION_TRACKING=false) --------
+# Gate: app/(app)/live-tracking/_layout.tsx -> same component/copy again.
+- openLink: "exp://localhost:8098/--/live-tracking"
+- extendedWaitUntil:
+    visible: "Back to home"
+    timeout: 15000
+- takeScreenshot: flags-off-live-tracking
+
+# --- Alerts (EXPO_PUBLIC_FEATURE_ALERTS=false) ---------------------------
+# Gate: app/(app)/(tabs)/alerts/_layout.tsx -> FeatureUnavailableScreen
+# Headline (verified in source): "Alerts are coming soon."
+- openLink: "exp://localhost:8098/--/alerts"
+- extendedWaitUntil:
+    visible: "Back to home"
+    timeout: 15000
+- takeScreenshot: flags-off-alerts
+
+# --- KYC profile (EXPO_PUBLIC_FEATURE_KYC=false) -------------------------
+# Gate: app/(app)/(tabs)/account/profile.tsx -> FeatureUnavailableScreen
+# Headline (verified in source): "Profile editing is coming soon."
+- openLink: "exp://localhost:8098/--/account/profile"
+- extendedWaitUntil:
+    visible: "Back to home"
+    timeout: 15000
+- assertNotVisible: "SA ID number"
+- takeScreenshot: flags-off-kyc-profile
+
+# --- KYC verification (EXPO_PUBLIC_FEATURE_KYC=false) --------------------
+# Gate: app/(app)/(tabs)/account/verification.tsx -> FeatureUnavailableScreen
+# Headline (verified in source): "Identity verification is coming soon."
+- openLink: "exp://localhost:8098/--/account/verification"
+- extendedWaitUntil:
+    visible: "Back to home"
+    timeout: 15000
+- assertNotVisible: "Upload"
+- takeScreenshot: flags-off-kyc-verification
+
+# --- Theft report (EXPO_PUBLIC_FEATURE_THEFT_REPORTING=false) -----------
+# Gate: app/(app)/report-theft/_layout.tsx -> FeatureUnavailableScreen
+# (checked before the plan-entitlement gate, so no live/plan data needed)
+# Headline (verified in source): "Theft reporting is coming soon."
+- openLink: "exp://localhost:8098/--/report-theft"
+- extendedWaitUntil:
+    visible: "Back to home"
+    timeout: 15000
+- takeScreenshot: flags-off-theft-report
+
+# --- Hardware tracker (EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING=false) -----
+# Gate: app/(app)/(tabs)/assets/[id]/activate-tracker.tsx ->
+# FeatureUnavailableScreen. Checklist treats "Hardware tracker" as one row;
+# the source has three sibling gated routes (activate-tracker,
+# installation-guide, device-health) sharing the same gate flag and the
+# same FeatureUnavailableScreen component with per-route copy — this flow
+# drives the one named explicitly in the checklist's "how to reach" column
+# (deep link activate-tracker). A placeholder asset id is safe here because
+# the flag check happens before any asset-id-dependent fetch.
+# Headline (verified in source): "Tracker setup is coming soon."
+- openLink: "exp://localhost:8098/--/assets/e2e-placeholder-asset-id/activate-tracker"
+- extendedWaitUntil:
+    visible: "Back to home"
+    timeout: 15000
+- takeScreenshot: flags-off-hardware-tracker
+
+# NOTE: "Security operator app" (10th §2 row) is NOT driven by this flow —
+# see README "Known quirks / gaps" for why (MFA-gated test account, no
+# credential access in this session to retrieve/generate a TOTP code).
