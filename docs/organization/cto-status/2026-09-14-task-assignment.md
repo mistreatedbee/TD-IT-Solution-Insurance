@@ -239,3 +239,105 @@ lifecycle definition-of-done and `07-documentation-standards.md`, and start a on
 near-miss log. No new gate stage.
 
 *Appendix 1 filed by `cto`, 2026-09-14.*
+
+---
+
+## Appendix 2 — 2026-09-15 read. Append-only. §§1–5 and Appendix 1 stand.
+
+**Closed since Appendix 1** (verified by direct read, not by report): **T-17 / CT-11** —
+`customer-profile-validation.ts:21-25` now enforces `/^[0-9]{4}$/`; `mobile/src/lib/sa-id-number.ts`
+and `src/lib/sa-id-number.ts` exist with checksum validation; disposition filed at
+`10-data-protection-contract-obligations.md` §13. Closed 4 days early.
+
+**T-26 → T-04:** harness extended (`mobile/e2e/README.md`, 2026-09-14 evening). §2 at 9/10, §3 at
+5/5, §5 genuinely executed. **T-04 still does not close, and the reason is no longer row count.**
+
+### 1. CT-11 does not move CT-1 or CT-13 — and must not be cited as if it did
+
+CT-11 is data minimisation on one field. CT-1 is the lawfulness of the transfer itself (§19(c) /
+s72). Sending less does not make a transfer lawful. Name, address, phone, emergency contact, policy
+and asset data still cross to Frankfurt in full, so the §9.3 containment posture is **unchanged**.
+CT-11 marginally strengthens the proportionality narrative CT-13's Render s72 analysis will use;
+that is the whole of its cross-border effect. **Standing instruction: nobody argues "less data
+crosses now, so containment can relax."**
+
+**Forward constraint I am recording now so it is not discovered late:** Feature 013's Tier 1 scope
+contemplates server-side authoritative ID validation (§13.1 notes CT-11 deliberately does *not*
+implement FR-5 or server-side validation). Any future design needing the full 13 digits server-side
+re-opens the cross-border question and goes back through CT-1/s72 — it does not inherit CT-11's
+closure. `compliance-specialist` + `solution-architect` to treat this as a design precondition.
+
+### 2. Criterion 6 — the binding gap is the build-under-test, not the row count
+
+Of the strictly-required rows, **14 of 15 are now live-proven** (§4 is marked "optional but
+recommended" in the checklist's own heading — it is not, and should stop being described as, a
+sign-off blocker). But **every one of those 14 ran on Expo Go / iOS / local Metro with
+`EXPO_PUBLIC_FEATURE_*` env vars — a different flag-injection mechanism than `eas.json`'s baked-in
+preview profile.** Criterion 6's statement is scoped to *"the preview build tested above."* Zero
+rows have been proven against `7f3694b9`. What exists today is strong evidence the **code gates**
+work; criterion 6 asks whether **this artifact** is gated. After INC-001, that distinction is the
+entire point of the criterion. **Not signable as-is, and I would not accept a conditional sign-off
+that papers over the configuration leg.**
+
+**Flag requiring confirmation first thing next session:** `7f3694b9` was built from commit
+`2630cd9` (2026-09-14 morning); the `testID="input-<slug>"` / `toggle-<slug>` additions to
+`Input.tsx`/`Toggle.tsx` that every flow's selectors depend on were made **that evening**. If so,
+the committed flows **cannot run against `7f3694b9` at all** and closing the artifact leg requires
+a fresh preview build from current `main`. **T-04's "do not trigger another build" instruction is
+therefore amended:** its rationale was that an unverifiable artefact is worse than none. We now
+have a harness that can verify one, so that rationale inverts. **One new preview build is
+authorised — but only once an Android execution path exists to drive it** (no `adb`/SDK/emulator in
+this sandbox today). Do not build before that. `mobile-engineer` to confirm the commit ordering by
+`git log` before acting.
+
+### 3. T-25 holds as one blocker, but now splits into two separately-satisfiable asks
+
+The §4 finding changed shape usefully: `pip3 install mitmproxy` succeeded and failed specifically at
+`networksetup` requiring sudo. That is an *environment* wall, not a *credential* wall, and the two
+have been conflated:
+
+- **T-25a — credentials.** Render read-only API key, Atlas console, Supabase dashboard,
+  `backend/.env.local` or Supabase admin for the MFA-enrolled `test.security@` account. Blocks
+  T-11, T-19, T-20's log leg, and §2's Security-operator row.
+- **T-25b — an admin-capable local environment.** sudo on the dev host, plus Android SDK/emulator
+  or a physical Android device with `adb`. Blocks §4's proxy capture and the **entire EAS-artifact
+  leg** — which is now criterion 6's critical path.
+
+**Both are genuinely needed, and T-25b is the cheaper and higher-leverage of the two** (it is the
+owner's own machine and one password). Note §4 also has a second route needing only T-25a: Render
+request logs would show whether gated endpoints were called at all. Keep T-25 as one tracked
+blocker for reporting; dispatch it as two asks.
+
+### 4. Pace risk — one concrete under-scrutiny finding, plus a net-count concern
+
+The verification discipline is holding; it caught two fabricated completions on 09-14 and
+independently re-checked today's two landings. **But it lives in one orchestrator's habit, not in
+the process** — Appendix 1's instruction to write it into the lifecycle definition-of-done and
+`07-documentation-standards.md` was assigned, not confirmed done. That remains the fragility.
+
+**Concrete finding the pace did obscure:** CT-11 shipped a **breaking API contract change** —
+`PATCH /v1/customer/profile` now rejects a 13-digit `idNumber` with `VALIDATION_ERROR` rather than
+truncating it. Safe today only because there is no third-party consumer and no published app. But
+**any already-installed client sends 13 digits and will now silently fail profile save** — that
+includes `7f3694b9` and any Expo Go tunnel session still open on the owner's phone. This is a live
+consequence and I find it recorded nowhere. `backend-engineer` to add one line to §13 and warn
+whoever next tests on the old artifact. Second, smaller: the ID checksum was hand-verified against
+**one** test vector. One vector proves not-obviously-wrong, not correct. Cheap follow-up with 5–10
+known-valid/known-invalid vectors — P2, since the failure modes are a blocked customer or a wrong
+last-4, not a disclosure.
+
+**Net-count concern:** ten-plus items closed in two days, but CT-1a/b/c, CT-13, CT-14, CT-3-OI-1…5,
+CT-4a…d and SH-2a all opened in the same window. Closure velocity is real; **net open count may be
+rising, and no artefact currently shows that.** `technical-project-manager`: the re-baseline at §5
+should report opened-vs-closed, not closed alone.
+
+### 5. Dispatch: none. This is a good stopping point.
+
+Every remaining high-value item is owner-gated (T-01, T-02/CT-4a, T-03, T-25) or needs a capability
+that does not exist at this hour. Dispatching hygiene work (T-21, T-32) late at night to have
+dispatched something would be manufacturing motion. **Stop here.** First thing next session, in
+order: (1) confirm the `7f3694b9`-vs-testID commit ordering (§2 above — ten minutes of `git log`,
+and it determines the criterion-6 plan), (2) the CT-11 breaking-change note, (3) T-25b as the
+cheapest unblock on the board.
+
+*Appendix 2 filed by `cto`, 2026-09-15.*
