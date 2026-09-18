@@ -21,6 +21,7 @@ import { CustomerLoginPage } from './pages/CustomerLoginPage';
 import { CustomerResetPasswordPage } from './pages/CustomerResetPasswordPage';
 import { CustomerOnboardingPage } from './pages/onboarding/CustomerOnboardingPage';
 import { LandingPage } from './pages/LandingPage';
+import { DeleteAccountPage } from './pages/DeleteAccountPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsOfServicePage } from './pages/TermsOfServicePage';
 
@@ -66,6 +67,7 @@ export function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/delete-account" element={<DeleteAccountPage />} />
             <Route path="/terms" element={<TermsOfServicePage />} />
             <Route
               element={
