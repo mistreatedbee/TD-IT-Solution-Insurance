@@ -384,6 +384,9 @@ export function LandingPage() {
               <ArrowLink tone="inverse" href="/privacy" size="sm">
                 Privacy Policy
               </ArrowLink>
+              <ArrowLink tone="inverse" href="mailto:info@tditsolutionsinsurance.co.za?subject=Request%20account%20and%20associated%20data%20deletion" size="sm">
+                Delete account & data
+              </ArrowLink>
               <ArrowLink tone="inverse" href="/terms" size="sm">
                 Terms of Service
               </ArrowLink>
