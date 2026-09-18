@@ -419,6 +419,12 @@ export function AccountHubScreen() {
             />
             <AccountMenuRow
               icon={FileTextIcon}
+              title="Delete account & data"
+              subtitle="Request removal of your account and associated data"
+              onPress={() => router.push('/(auth)/delete-account' as Href)}
+            />
+            <AccountMenuRow
+              icon={FileTextIcon}
               title="Terms of use"
               subtitle="Service terms and conditions"
               isLast
