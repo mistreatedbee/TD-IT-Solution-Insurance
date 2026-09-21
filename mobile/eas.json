@@ -37,6 +37,23 @@
         "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false"
       }
     },
+    "playInternal": {
+      "extends": "preview",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "_comment_INC-002": "LOCATION_TRACKING and HARDWARE_TRACKING are forced false by cto directive 2026-09-21 (INC-002). They may not be set true in any distributed build until INC-001-C-1/C-3/C-4 close AND compliance-specialist re-approves the Play Data safety declaration. ALERTS/THEFT_REPORTING/SECURITY_OPERATOR remain true but require a Data safety re-declaration before the next upload.",
+        "EXPO_PUBLIC_API_BASE_URL": "https://td-it-solution-insurance.onrender.com",
+        "EXPO_PUBLIC_FEATURE_CLAIMS": "false",
+        "EXPO_PUBLIC_FEATURE_LOCATION_TRACKING": "false",
+        "EXPO_PUBLIC_FEATURE_KYC": "false",
+        "EXPO_PUBLIC_FEATURE_ALERTS": "true",
+        "EXPO_PUBLIC_FEATURE_THEFT_REPORTING": "true",
+        "EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING": "false",
+        "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "true"
+      }
+    },
     "preview-simulator": {
       "distribution": "internal",
       "channel": "preview",

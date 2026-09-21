@@ -11,10 +11,20 @@
  * Jest) is `true` — surfaces stay visible in ad hoc local development unless
  * a build profile or `.env` explicitly sets the var to `"false"`. `eas.json`'s
  * preview and production profiles set gated flags to `"false"`.
+ *
+ * INC-002 (2026-09-21): a real EAS build profile is fail-open under the rule
+ * above — a missing/typo'd key in `eas.json` silently ships with the gated
+ * surface enabled. EAS sets `EAS_BUILD_PROFILE` on every cloud build, so for
+ * any build going through EAS (not local `expo start`), an unset var now
+ * fails closed instead. Local dev keeps the fail-open convenience.
  */
 
 function featureEnabled(envKey: string): boolean {
-  return process.env[envKey] !== 'false';
+  const raw = process.env[envKey];
+  if (process.env.EAS_BUILD_PROFILE) {
+    return raw === 'true';
+  }
+  return raw !== 'false';
 }
 
 /** Claims backend has not shipped — see `app/(app)/claims/_layout.tsx`. */
