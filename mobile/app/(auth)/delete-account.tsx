@@ -3,22 +3,13 @@
  */
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { COMPANY_CONTACT } from '../../src/lib/companyContact';
 import { Button, Screen } from '../../src/theme/primitives';
 import { colors, spacing, typography } from '../../src/theme/tokens';
 
 export default function DeleteAccountScreen() {
   const router = useRouter();
-
-  function handleRequestDeletion() {
-    const subject = encodeURIComponent('Request account and associated data deletion');
-    const body = encodeURIComponent(
-      'Please delete my TD IT Solution Insurance account and all associated personal data linked to my profile, assets, alerts, and device records.\n\nName:\nEmail used to sign in:\n\nPlease confirm once the deletion is complete.',
-    );
-
-    void Linking.openURL(`mailto:${COMPANY_CONTACT.email}?subject=${subject}&body=${body}`);
-  }
 
   return (
     <Screen>
@@ -36,18 +27,22 @@ export default function DeleteAccountScreen() {
       </Text>
 
       <Text style={styles.body}>
-        Please email us from the address used to create the account and include your full name so we
-        can identify and process the request.
+        Once you continue, you will be taken to a confirmation page where you can finalise the
+        deletion request.
       </Text>
 
       <View style={styles.emailBox}>
-        <Text style={styles.emailLabel}>Email</Text>
+        <Text style={styles.emailLabel}>Contact</Text>
         <Text style={styles.email}>{COMPANY_CONTACT.email}</Text>
       </View>
 
       <View style={styles.actions}>
-        <Button variant="primary" fullWidth onPress={handleRequestDeletion}>
-          Email deletion request
+        <Button
+          variant="primary"
+          fullWidth
+          onPress={() => router.push('/(auth)/delete-account-confirm' as never)}
+        >
+          Continue
         </Button>
         <Button variant="secondary" fullWidth onPress={() => router.back()} style={{ marginTop: spacing.md }}>
           Back
@@ -77,11 +72,11 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginTop: spacing.md,
     marginBottom: spacing.xl,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
   },
   emailLabel: {
     fontSize: typography.sizes.xs,
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: spacing.xs,

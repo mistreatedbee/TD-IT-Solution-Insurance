@@ -56,11 +56,22 @@ export function PrivacyPolicyPage() {
             <h2 className="text-lg font-semibold text-text-primary">Your rights</h2>
             <p>
               You can ask us to delete your details at any time by contacting{' '}
-              <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-primary hover:underline">
+              <a
+                href={`mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent('Account and data deletion request')}`}
+                className="text-primary hover:underline"
+              >
                 {COMPANY_CONTACT.email}
               </a>
               . We handle personal information under the Protection of
               Personal Information Act 4 of 2013 (POPIA).
+            </p>
+            <p className="mt-3">
+              <a
+                href={`mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent('Request account and associated data deletion')}`}
+                className="inline-flex items-center text-primary underline underline-offset-4 hover:text-primary/80"
+              >
+                Request account and data deletion
+              </a>
             </p>
           </div>
           <div>

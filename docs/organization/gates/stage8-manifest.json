@@ -255,6 +255,23 @@
       }
     },
     {
+      "id": "mobile-account-deletion-request",
+      "kind": "mobile_route_group",
+      "pattern": "(auth)/delete-account*",
+      "feature": "015",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-with-conditions-no-security-review-performed",
+        "reason": "2026-09-21 F-3 disposition (cybersecurity-architect). mobile/app/(auth)/delete-account.tsx and delete-account-confirm.tsx. Distinct entry — NOT absorbed into mobile-auth: that entry's sign-off-granted-with-changes verdict is scoped to the Feature 001 login/signup/MFA screens and its review never examined a data-erasure request flow. Same correction pattern as mobile-live-tracking-police-report (SR-011-6). NO Stage 8 review has been performed on these screens; this entry records that fact, it does not clear them. Scope reviewed by inspection only: two static screens, no API call, no PII read or written (the mailto: body asks the user to type name/email themselves), terminating in a mailto: to COMPANY_CONTACT.email — the web /delete-account precedent (web-legal-static) is the closest analogue. Residual risks accepted for this request-only form and NOT for any future erasure implementation: (1) F-5 — route is deep-link reachable while unauthenticated; harmless today only because the screens render static text and hold no session data, and this ceases to be true the moment any account context or backend call is added; (2) the copy promises deletion of profile/assets/alerts/device records while no backend erasure endpoint exists (no claims.ts-style route, manual fulfilment via inbox only) — a POPIA/Play-Store accuracy question owned by compliance-specialist, not disposed of here.",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "Any change that adds an authenticated API call, session read, or backend erasure endpoint behind these screens voids this waiver and requires a real Stage 8 review (authZ on the erasure path, re-authentication before destructive action, deep-link/unauthenticated reachability, audit logging of erasure requests).",
+          "compliance-specialist must confirm the deletion-promise copy and the manual mailto fulfilment path satisfy POPIA s.24 and app-store account-deletion requirements before store submission.",
+          "Review date 2026-10-21 or on first change to either file, whichever is sooner."
+        ]
+      }
+    },
+    {
       "id": "mobile-policy-assets",
       "kind": "mobile_route_group",
       "pattern": "(app)/{policy,assets}*",
@@ -810,11 +827,11 @@
     {
       "id": "web-legal-static",
       "kind": "web_route_group",
-      "pattern": "/{terms,privacy}",
+      "pattern": "/{terms,privacy,delete-account}",
       "feature": "006",
       "stage8": {
         "waived": true,
-        "reason": "2026-09-07 scanner-extension backfill — src/pages/TermsOfServicePage.tsx, PrivacyPolicyPage.tsx. Not a security-reviewed endpoint (static content, no auth surface), but flagged by Feature 006's compliance disposition, not cleared by it: security-review.md:320 records '/terms and /privacy are live static routes (src/App.tsx:61-62) with no version stamp' — the platform cannot produce evidence a given customer accepted a given version of either document. Consent-tracking gap, not a Stage 8 sign-off of these routes.",
+        "reason": "2026-09-07 scanner-extension backfill — src/pages/TermsOfServicePage.tsx, PrivacyPolicyPage.tsx, and src/pages/DeleteAccountPage.tsx. Not a security-reviewed endpoint (static content, no auth surface), but flagged by Feature 006's compliance disposition, not cleared by it: security-review.md:320 records '/terms and /privacy are live static routes (src/App.tsx:61-62) with no version stamp' — the platform cannot produce evidence a given customer accepted a given version of either document. The new /delete-account route follows the same static legal-page pattern and is intentionally included as a waived static-route entry rather than a security-reviewed business workflow.",
         "owner": "compliance-specialist"
       }
     },

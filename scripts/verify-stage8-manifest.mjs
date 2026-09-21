@@ -240,33 +240,63 @@ function patternCovers(manifestPattern, discovered) {
   return globToRegExp(manifestPattern).test(discovered);
 }
 
-function surfaceCovers(surfaces, kind, discovered) {
-  return surfaces.some((surface) => {
-    const pattern = surface.pattern;
-    if (!pattern) return false;
+function surfaceMatches(surface, kind, discovered) {
+  const pattern = surface.pattern;
+  if (!pattern) return false;
 
-    if (surface.kind === 'backend_route' && kind === 'backend_route') {
-      if (pattern.startsWith('GET ') || pattern.startsWith('POST ')) {
-        const path = pattern.split(' ').slice(1).join(' ');
-        return path === discovered || patternCovers(path, discovered);
-      }
-      return pattern === discovered || patternCovers(pattern, discovered);
+  if (surface.kind === 'backend_route' && kind === 'backend_route') {
+    if (pattern.startsWith('GET ') || pattern.startsWith('POST ')) {
+      const path = pattern.split(' ').slice(1).join(' ');
+      return path === discovered || patternCovers(path, discovered);
     }
+    return pattern === discovered || patternCovers(pattern, discovered);
+  }
 
-    if (surface.kind.startsWith('backend') && kind === 'backend_route') {
-      return patternCovers(pattern, discovered) || discovered.startsWith(pattern.replace(/\*$/, ''));
-    }
+  if (surface.kind.startsWith('backend') && kind === 'backend_route') {
+    return patternCovers(pattern, discovered) || discovered.startsWith(pattern.replace(/\*$/, ''));
+  }
 
-    if (surface.kind.startsWith('mobile') && kind === 'mobile_route') {
-      return patternCovers(pattern, discovered);
-    }
+  if (surface.kind.startsWith('mobile') && kind === 'mobile_route') {
+    return patternCovers(pattern, discovered);
+  }
 
-    if (surface.kind.startsWith('web') && kind === 'web_route') {
-      return patternCovers(pattern, discovered);
-    }
+  if (surface.kind.startsWith('web') && kind === 'web_route') {
+    return patternCovers(pattern, discovered);
+  }
 
-    return false;
-  });
+  return false;
+}
+
+// F-3 (cybersecurity-architect finding, docs/organization/cto-status/
+// 2026-09-21-status-and-dispatch.md): coverage was previously a bare
+// `.some()` across all manifest entries, with no notion of which entry
+// actually covered a route. A route could therefore be "covered" by a broad,
+// unrelated group entry (e.g. `mobile-auth`'s `(auth)*`) even when a
+// correctly narrow, honestly-scoped entry existed for it — and if that narrow
+// entry were later deleted or mistyped, the scan would keep passing on the
+// broad entry's back, with the evidence trail silently pointing at the wrong
+// Stage 8 record.
+//
+// Specificity model: the winning (attributed) entry for a route is the one
+// matching the most literal characters; a pattern with no wildcard outranks a
+// wildcard pattern that matches the same literal length. Wildcard glyphs
+// (`*`), `[id]`/`[param]` segments and `{a,b}` alternations contribute no
+// literal weight, since they are exactly the parts that make a pattern broad.
+function specificityScore(pattern) {
+  const literal = pattern
+    .replace(/\{[^}]*\}/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/\*/g, '');
+  return literal.length * 2 + (pattern.includes('*') ? 0 : 1);
+}
+
+function resolveCoverage(surfaces, kind, discovered) {
+  const matches = surfaces.filter((surface) => surfaceMatches(surface, kind, discovered));
+  if (matches.length === 0) return { covered: false, winner: null, matches };
+  const winner = matches.reduce((best, s) =>
+    specificityScore(s.pattern) > specificityScore(best.pattern) ? s : best,
+  );
+  return { covered: true, winner, matches };
 }
 
 function main() {
@@ -276,29 +306,79 @@ function main() {
   const webRoutes = [...new Set([...discoverWebRoutes(), ...discoverAppTsxRoutes()])].sort();
 
   const missing = [];
+  const overlaps = new Map(); // "broadId -> winnerId" => example route paths
+  const matchedEntryIds = new Set();
+  const attribution = [];
 
-  for (const route of backendRoutes) {
-    if (!surfaceCovers(surfaces, 'backend_route', route)) {
-      missing.push({ kind: 'backend_route', path: route });
+  const check = (kind, path) => {
+    const { covered, winner, matches } = resolveCoverage(surfaces, kind, path);
+    if (!covered) {
+      missing.push({ kind, path });
+      return;
     }
-  }
+    for (const m of matches) matchedEntryIds.add(m.id ?? m.pattern);
+    attribution.push({ kind, path, entry: winner.id ?? winner.pattern, pattern: winner.pattern });
 
-  for (const screen of mobileScreens) {
-    if (!surfaceCovers(surfaces, 'mobile_route', screen)) {
-      missing.push({ kind: 'mobile_route', path: screen });
+    // Warn (non-fatal) when a narrow entry and a broader wildcard entry both
+    // claim the same route: the narrow one wins attribution, but the overlap
+    // means deleting it would not fail this scan. A human should see that.
+    for (const m of matches) {
+      if (m === winner) continue;
+      if (!m.pattern.includes('*')) continue;
+      const key = `${m.id ?? m.pattern} >> ${winner.id ?? winner.pattern}`;
+      if (!overlaps.has(key)) overlaps.set(key, []);
+      overlaps.get(key).push(path);
     }
-  }
+  };
 
-  for (const route of webRoutes) {
-    if (!surfaceCovers(surfaces, 'web_route', route)) {
-      missing.push({ kind: 'web_route', path: route });
-    }
-  }
+  for (const route of backendRoutes) check('backend_route', route);
+  for (const screen of mobileScreens) check('mobile_route', screen);
+  for (const route of webRoutes) check('web_route', route);
+
+  // Inverse signal: a manifest entry that matches no discovered surface at
+  // all. On its own that is not a failure (waived/not-yet-built entries are
+  // legitimate), but it is how a mistyped narrow entry shows up — the typo'd
+  // entry matches nothing while a broad entry keeps the route "covered".
+  const orphanEntries = surfaces.filter(
+    (s) => s.pattern && !matchedEntryIds.has(s.id ?? s.pattern),
+  );
 
   // eslint-disable-next-line no-console
   console.log(
     `[verify-stage8-manifest] Discovered ${backendRoutes.length} backend routes, ${mobileScreens.length} mobile screens, ${webRoutes.length} web dashboard routes; manifest has ${surfaces.length} entries.`,
   );
+
+  if (process.argv.includes('--attribution')) {
+    for (const a of attribution) {
+      // eslint-disable-next-line no-console
+      console.log(`  ${a.kind}: ${a.path}  <-  ${a.entry} (${a.pattern})`);
+    }
+  }
+
+  if (overlaps.size > 0) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `\n[verify-stage8-manifest] WARN — ${overlaps.size} broad/narrow manifest overlap(s). The narrow entry is authoritative; the broad entry would still "cover" these routes if the narrow entry were deleted or mistyped:`,
+    );
+    for (const [key, paths] of [...overlaps.entries()].sort()) {
+      const sample = paths.slice(0, 3).join(', ');
+      // eslint-disable-next-line no-console
+      console.error(
+        `  - broad ${key.split(' >> ')[0]} also claims ${paths.length} route(s) attributed to ${key.split(' >> ')[1]}: ${sample}${paths.length > 3 ? ', …' : ''}`,
+      );
+    }
+  }
+
+  if (orphanEntries.length > 0) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `\n[verify-stage8-manifest] WARN — ${orphanEntries.length} manifest entr(ies) match no discovered surface (expected for waived/not-yet-built entries; otherwise a stale or mistyped pattern):`,
+    );
+    for (const s of orphanEntries) {
+      // eslint-disable-next-line no-console
+      console.error(`  - ${s.id ?? '(no id)'}: ${s.pattern}`);
+    }
+  }
 
   if (missing.length > 0) {
     // eslint-disable-next-line no-console
