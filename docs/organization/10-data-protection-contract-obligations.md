@@ -846,3 +846,57 @@ checked, not assumed.
 ---
 
 **Filed by:** `backend-engineer`, 2026-09-14 (§13 appended, CT-11 closed).
+
+---
+
+## 14. KYC expansion re-opens what CT-11 closed — 2026-09-21
+
+**Append-only.** Nothing in §13 is withdrawn: CT-11 shipped, is correctly recorded as closed, and the
+truncation is still in force in code today (`customer-profile-validation.ts:21-25`). This section
+records that a **new owner decision** has changed the facts CT-11's closure rested on, and opens the
+conditions that follow. Full analysis: **[`../features/013-sa-id-verification/compliance-review-kyc-identity-documents.md`](../features/013-sa-id-verification/compliance-review-kyc-identity-documents.md)**
+— not restated here.
+
+**The change.** The owner has decided to proceed with **real KYC**: government ID numbers *and*
+identity documents, proof of address, and DOB, on a surface that is currently feature-flagged off and
+scaffold-only (`mobile/app/(app)/(tabs)/account/verification.tsx`, `FEATURE_KYC_ENABLED`).
+
+**Why it touches this register, in three places.**
+
+1. **§19(c).** CT-11's compliance value was that the **full 13-digit SA ID number does not cross the
+   border** while CT-1 is unclosed. **Every form of real verification needs the digits CT-11
+   discards** — duplicate detection needs a full-number-derived key, and any DHA/vendor check needs
+   the whole number and sends it to a third party. **Truncation is not sufficient for this purpose,
+   and CT-11's closure must not be cited as evidence the ID-number border question is settled.**
+   (Same forward constraint already recorded at `cto-status/2026-09-14-task-assignment.md`
+   Appendix 2 §1; confirmed here on analysis.)
+2. **§19(a).** **G-11** (`11-documented-client-instructions.md` §4) was written against the *old*
+   code — full number into the API, last-4 persisted. CT-11 reversed that premise and this feature
+   reverses it back, at higher sensitivity. **G-11 must be re-put to the Client**, widened to cover
+   identity *documents* and proof of address, which are a new data class rather than an extension of
+   the existing field. Recommended new Register B rows **G-15** (identity-document and
+   proof-of-address collection) and **G-16** (biometric/liveness capture) — to be appended to
+   `11-…` separately, not silently folded into G-11.
+3. **§19(a)/G-5 again.** Any ID-verification vendor is a **sub-operator handling the most sensitive
+   data on the platform**. **CT-4c applies directly** — the general sub-operator appointment
+   authorisation must be obtained *before* selection, exactly as for the GPS vendor and the PSP.
+
+**One correction of a phrase in circulation, recorded here because it is load-bearing for urgency:**
+**FICA does not clearly apply to this business.** Schedule 1's insurance item is limited to
+**life/long-term** business; this is a **non-life** insurer. The determination at Feature 013 §3 is
+*probably not an accountable institution*, is expressly **uncertain**, and is referred to counsel.
+**No workstream may be justified, and no POPIA s11(1)(c) "legal obligation" basis may be cited, on
+the assumption that FICA compels customer due diligence.** Note separately that **FICA s29
+(suspicious-transaction reporting) binds any business regardless**, and no procedure for it exists —
+opened as C-013-9 in the feature review.
+
+### 14.1 Register additions
+
+| ID | Condition | Owner | Deadline |
+|---|---|---|---|
+| **CT-15** *(new)* | **Supplementary §19(c) disclosure covering the full 13-digit SA ID number** — transmitted to and processed transiently in Frankfurt for verification/duplicate detection, not stored — plus any ID-verification vendor's location, once selected. Served on the same footing as **CT-1c**. **Blocks any widening of `customer-profile-validation.ts`'s 4-digit `idNumber` schema.** Depends on CT-1 closing in the required form | `compliance-specialist` (draft) + `cto`/owner (serve) | Before any full ID number is accepted server-side |
+| **CT-16** *(new)* | **Re-put G-11 and add G-15/G-16** to the `11-…` Register B — whether the Client instructs collection of the full ID number, of identity documents and proof of address, and of any biometric/liveness data at all. Fold into the CT-4b instruction schedule (due 2026-09-26) rather than sending separately | `compliance-specialist` (draft) + `cto`/owner (obtain) | **2026-09-26**, with CT-4b |
+| **CT-4c** | **Restated as operative for this workstream, not only for GPS/PSP.** No ID-verification vendor may be selected, contracted, trialled, or sent a single real ID number before it closes | `integration-architect` + `compliance-specialist` | Before vendor selection |
+| **CT-11** | **Unchanged — remains CLOSED.** Its *control* is still in force and must not be reverted without CT-15. What is superseded is any reading of it as settling the ID-number cross-border question | — | Closed |
+
+**Filed by:** `compliance-specialist`, 2026-09-21 (§14 appended).

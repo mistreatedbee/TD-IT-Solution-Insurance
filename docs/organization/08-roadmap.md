@@ -16,6 +16,23 @@ Two tracks: what the **product** builds, and how the **organization** scales to 
 - Backend API + MongoDB schema for users, policies, assets.
 - Baseline security posture (MFA for admin, encryption in transit/at rest, audit logging) — non-negotiable even at MVP.
 
+### Phase 1.5 — Identity verification (Feature 016, gating layer over Feature 013)
+- Tracked 2026-09-21 (`docs/features/016-kyc-identity-verification/product-scope-decision.md`).
+  First shippable increment is **data-only**: Feature 013 Tier 1 (SA ID checksum/DOB consistency,
+  committed) + Tier 2 (peppered-HMAC duplicate detection, compliance-approved in principle) plus a
+  gating rule that blocks asset registration and claims filing (not subscription/billing) on
+  `verificationStatus: verified`.
+- Document-based verification (ID-document photo, proof of address, selfie/liveness, any
+  third-party vendor) is explicit non-goal until object storage + field-level encryption/KMS exist
+  as their own infrastructure feature — tracked separately (MP-5, KYC-R-4), not a later phase of
+  Feature 016.
+- Design/build may proceed now; the peppered-HMAC write path and gate enforcement stay behind a
+  flag until CT-1 (cross-border consent) plus its CT-15/CT-16 disclosure follow-ons close.
+- FICA s29 suspicious-transaction-reporting procedure gap (C-013-9,
+  `docs/features/013-sa-id-verification/compliance-review-kyc-identity-documents.md` §8) is a
+  separate, smaller tracked item — `compliance-specialist` owner, due 2026-10-31 — independent of
+  this feature and not gated on it.
+
 ### Phase 2 — GPS & Recovery
 - GPS Integration Layer: device onboarding, ping ingestion, geofencing.
 - Theft-report flow in the mobile app → live tracking map.

@@ -415,6 +415,53 @@ This concurrence discharges ADR-0009 §16. It does **not** authorize Feature 008
 | **INC-001-C-11** | **Erasure path (C-008-6).** There is still no account-closure or deletion endpoint. A s24(1)(b) deletion request or a s23 access request **could not be answered today** — including one arising from this incident | `backend-architect` + `database-architect` | Blocks go-live; escalated by INC-001 |
 | **INC-001-C-12** | **Tabletop the breach runbook within 30 days of closure**, using INC-001 as the scenario. The detection-to-notification chain has now been exercised once for real and the gaps at C-8 and C-11 were found the expensive way | `compliance-specialist` + `security-engineer` | 2026-10-08 |
 
+### 9.1 Addendum — 2026-09-21, `database-architect`, re-run of C-2 scoped to the INC-002 `playInternal` exposure window (INC-002 D-4)
+
+**No live MongoDB access from this environment.** This role's tool surface in this session has no database client, shell, or credential store — only file read/write/grep/web tools. I cannot connect to Atlas and therefore cannot return an actual row count for the exposure window myself. This is stated plainly rather than inferred or estimated.
+
+**What I did verify from the repository (not the database):**
+- `mobile/eas.json`'s `playInternal` profile now carries `EXPO_PUBLIC_FEATURE_LOCATION_TRACKING: "false"` and `EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING: "false"`, with the `_comment_INC-002` marker recorded at INC-002 §4(3) — confirms the client-side revert is in the tree, consistent with INC-002 §1.
+- `location_events` schema/fields (`backend/src/db/location-events-collections.ts`, `backend/src/repositories/location-events.ts`) — `receivedAt` (server-set) is the correct field to scope by, not `recordedAt` (device-claimed, untrusted per §2.2/§8.4(b)'s note that the client cannot be trusted for this).
+- Whether any row was actually written in the window depends on the D-1 finding (backend `LOCATION_INGESTION_ENABLED`) — I did not wait on that per dispatch instructions, but the query below is only meaningful once D-1 (backend kill-switch state during the window) is known; if D-1 returns "off throughout," the query below should return zero by construction and serves as confirmation, not discovery.
+
+**Exact query for someone with live Atlas access to run**, bounding `[windowStart, windowEnd]` to the actual playInternal upload timestamp (Play Console → Internal testing → Release → upload time) through the `eas.json` revert commit timestamp (`git log -1 --format=%cI -- mobile/eas.json` on the commit that set the flags back to `"false"`):
+
+```js
+// row count + distinct accounts/assets in the exposure window, scoped by server-received time
+db.location_events.countDocuments({ receivedAt: { $gte: ISODate("<windowStart>"), $lte: ISODate("<windowEnd>") } });
+db.location_events.distinct("accountId", { receivedAt: { $gte: ISODate("<windowStart>"), $lte: ISODate("<windowEnd>") } });
+db.location_events.distinct("assetId",   { receivedAt: { $gte: ISODate("<windowStart>"), $lte: ISODate("<windowEnd>") } });
+
+// reconciliation check per D-A-8: any Asset.lastLocation set/updated in the same window with no corresponding location_events row
+db.assets.find({ "lastLocation.recordedAt": { $gte: ISODate("<windowStart>"), $lte: ISODate("<windowEnd>") } },
+                { _id: 1, accountId: 1, "lastLocation": 1, locationSource: 1, reportingDeviceId: 1 });
+```
+
+Per §5.2's standing instruction: aggregate/metadata only, do not export coordinates, do not paste a coordinate into a ticket or chat. **This addendum does not supersede or restate the 2026-09-02 C-2 return** (still zero rows, still subject to the `--mongo-only` limits at §13) — it is a narrower, additional check scoped to today's window, and it stays open until someone with Atlas credentials runs the two queries above and returns the counts here or into INC-002 §6.
+
+### 9.2 INC-001-C-4 closure — `security-engineer`, 2026-09-21, grep-verified, scoped to include the INC-002 `playInternal` exposure window (INC-002 D-2)
+
+**Finding: CLEAN. No coordinate found in any log line, error envelope, APM/error-reporting payload, analytics event, notification payload, or third-party SDK call, client or server, across every path that touches a coordinate in this repository.** Evidence below is exact file:line, not assertion.
+
+**Server (`backend/`):**
+- `backend/src/routes/assets.ts:102-176` (`POST /assets/:assetId/location-report`) and `backend/src/routes/recovery.ts:255-282` (`GET /recovery/cases/:caseId/location`) are the only two handlers that read a coordinate. Neither contains a `console.*`/logger call. Both paths either `next(err)` to the central error handler or return the coordinate directly in the authenticated JSON response body to the owning customer — an intended primary-path response, not log/error/analytics/notification egress, and out of C-4's scope on that basis (consistent with §4.4's prior finding).
+- `backend/src/middleware/error-handler.ts:90` — `console.error(...)` logs `requestId`, `code`, `err.message`, `err.stack` only. `err` on both handlers above is always an `ApiError` built from the fixed catalogue (`lib/errors.ts`) or a Mongo driver error; neither ever embeds the request body. No coordinate reachable.
+- `backend/src/middleware/idempotency.ts` — not in the location-report route's middleware chain (`assets.ts:102-110`: `authenticate` → rate limiter → `validateBody` → handler; `requireIdempotencyKey` is wired only to `POST /assets` for asset creation, `assets.ts:53`). Even where it is wired, it hashes the body (`sha256Hex`, `idempotency.ts:35`) rather than logging it raw.
+- No `morgan`/`pino`/`winston`/HTTP access-log middleware exists anywhere in `backend/src` (grepped, zero hits) — there is no request/response body logger in the stack at all for this to leak through. The only `console.log` calls in `backend/src/index.ts` are startup/shutdown lifecycle messages (Mongo connect, listen, shutdown) — none references `req`/`res`/body.
+- Notification services (`backend/src/lib/recovery-case-notifications.ts`, `recovery-notification-service.ts`, `policy-notification-service.ts`, `customer-notification-service.ts`, `push-notification-service.ts`, `auth-notification-service.ts`, `onboarding-notification-service.ts`, `customer-lifecycle-notifications.ts`) — grepped for `latitude`/`longitude`/`lastLocation`/`coord`: zero matches. No notification payload (push, email, or the `auth-send-email` Supabase Edge Function) carries a coordinate.
+- Backend analytics (`backend/src/routes/analytics.ts`, `admin-analytics.ts`) — event schema is closed-enum (`session_start`/`signup_completed`/`policy_created`/`asset_registered`-class events per `product-events.ts`); no coordinate field exists in the schema.
+
+**Client (`mobile/`):**
+- `mobile/src/location/requestForegroundLocation.ts` (reads `expo-location`'s coords) and `mobile/src/location/useLocationReporter.ts` (the capture-and-report hook) — grepped for `console.*`/`Sentry`/`Bugsnag`/`crashlytics`/`breadcrumb`/`analytics.`/`track(`: **zero matches in either file, and zero in `mobile/src/location/` or `mobile/src/api/asset-location.ts` generally.** No local console log, no crash-reporter breadcrumb is emitted when a coordinate is read, independent of and prior to whatever the server does with the subsequent network call — this directly answers the "does the client log anything locally even if the server rejects it" question: **no, it does not.**
+- No crash-reporting/APM SDK (Sentry, Bugsnag, Crashlytics, etc.) is an actual dependency of the mobile app — `mobile/package.json` has no `sentry`/`@sentry`/`bugsnag`/`crashlytics` package; the only string match anywhere in the repo is a `sentry-expo` module-name pattern inside Jest's `transformIgnorePatterns` regex (`mobile/package.json:70`), which is boilerplate for a package that is not installed, not an active integration. There is no APM payload for a coordinate to reach.
+- `mobile/src/api/analytics.ts` — `recordAnalyticsEvents()` accepts only the closed union `'session_start' | 'signup_completed' | 'policy_created' | 'asset_registered'` with a `properties: Record<string, string | number | boolean>` bag; no call site in `mobile/src/location/` or `mobile/src/tracking/` calls it, and no coordinate is ever passed into a `properties` bag anywhere in the tree (grepped `mobile/src/analytics/`, `mobile/src/api/analytics.ts`, all call sites of `recordAnalyticsEvents`).
+- `mobile/src/api/client.ts` (`rawRequest`) — the shared fetch wrapper has no logging of `body` on request or response; on non-2xx it throws `ApiError(response.status, json)` which is only ever caught by callers, never itself logged client-side in the location path (`useLocationReporter.ts:54-56,61-63` swallows the error silently, no `console.*`).
+- Web (`src/`) — `src/pages/customer/CustomerProtectionMapPage.tsx`, `src/customer/map/ProtectionMapCanvas.tsx`, `src/customer/api/asset-location.ts` are the only files with `latitude`/`longitude`; grepped for `console.*`/`Sentry`/`analytics`/`track(`: zero matches.
+
+**INC-002 exposure-window scoping, explicitly.** The above is a review of the code as it stands (`EXPO_PUBLIC_FEATURE_LOCATION_TRACKING="false"` reverted in `mobile/eas.json`), which is the same client-capture and reporting code path that was live during the `playInternal` window — INC-002 changed only the build-time flag gating whether `useLocationReporter`/`requestForegroundLocation` were reachable at all, not what those functions do once reached. Since neither function logs, breadcrumbs, or emits an analytics/APM event on a coordinate read regardless of the flag, the exposure-window build carried the identical (clean) egress behavior for any tester who granted permission and triggered a report — the only material difference during that window was that the write to the backend depended on `LOCATION_INGESTION_ENABLED` (INC-001-C-1/INC-002 D-1, not this condition).
+
+**INC-001-C-4: CLOSED**, including the INC-002 `playInternal` window, subject to: this is a static/grep review of the current tree, not a runtime capture (packet trace) of the actual `playInternal` build artifact — I have no access to that binary or to Play Console. If `mobile-architect`/`devops-engineer` (INC-002 D-6) or `database-architect` (§9.1/INC-002 D-4) surface evidence of an actual network call or log entry from that build not reflected in source, this closure should be revisited.
+
 ---
 
 ## 10. What must go to admitted legal counsel, not be decided by an AI compliance review
@@ -493,6 +540,169 @@ C-12 (tabletop) are entirely untouched by a zero row count.**
 
 ---
 
-**Filed by:** `compliance-specialist`, 2026-08-25; §13 appended 2026-09-02.
+## 14. Cross-reference — INC-002, appended 2026-09-21 by `cto`
+
+**Appended, not rewritten.** §0–§13 stand exactly as filed by `compliance-specialist`; nothing above
+is amended, released or reinterpreted by this section.
+
+On 2026-09-21 the mobile client half of this pipeline was re-enabled in a **distributed** build:
+`mobile/eas.json` `playInternal` was set to `EXPO_PUBLIC_FEATURE_LOCATION_TRACKING="true"` and that
+build went live on the Google Play internal-testing track. `LOCATION_INGESTION_ENABLED` was **not**
+touched in that session, and its current live value is unverified from the repository.
+
+I read this register before acting and record the status I found, so it is on the file:
+**INC-001-C-1, C-3 and C-4 carry no closure marker and are open** (C-1 corroborated open at
+`INC-001-location-events-inventory.md:127`; C-3 at `10-data-protection-contract-obligations.md:62,193`;
+C-4 at inventory §297). C-2 returned 2026-09-02 per §13. **The §8.5 precondition for re-enabling any
+part of this pipeline was and is unmet.**
+
+Decision, dispatches (D-1…D-6, including hard re-dates on C-1/C-3/C-4), and the Play Data safety
+consequence are recorded once, at
+[`INC-002-play-internal-location-reenablement.md`](./INC-002-play-internal-location-reenablement.md).
+They are not restated here. `compliance-specialist` is asked at INC-002 §5 D-5 to rule on whether
+§8.5's "fresh, knowing contravention" characterisation attaches to this event and whether §6.6's
+final-negative s22 determination re-arms; **that ruling is theirs, not mine, and I have not made it.**
+
+---
+
+---
+
+## 15. INC-001-C-1 / INC-002 D-1 return — `devops-engineer`, appended 2026-09-21
+
+**Appended, not rewritten.** §0–§14 stand as filed. This is the D-1 return dispatched by
+INC-002 §5.
+
+**Cannot confirm the live value of `LOCATION_INGESTION_ENABLED`. This environment has no
+Render CLI, no Render API token, and no other credential or channel to query the live
+service's actual environment configuration.** `which render` returns nothing; `env | grep -i
+render` returns nothing; no `.env`/secrets file in this tree carries a Render token. That
+absence of access is itself the finding this condition has been waiting on for 25+ days, and I
+am recording it plainly rather than inferring a safe state from `render.yaml`'s silence.
+
+What I *can* confirm from the repository, none of which settles the live value:
+
+- `render.yaml` (production blueprint) declares no `LOCATION_INGESTION_ENABLED` key at all —
+  confirmed by direct read, matching the prior finding at
+  `INC-001-location-events-inventory.md:124`. Absence from the blueprint means: if the variable
+  exists on the live Render service, it was set manually in the Render dashboard, outside
+  version control, and would not be visible, reviewable, or reproducible from this repo. That is
+  itself a gap — a kill switch's live state should not depend on an unaudited dashboard
+  click — flagged as a new sub-item below.
+- `render-staging.yaml` (not auto-wired; a documented blueprint for a staging service that per
+  `docs/DEPLOY.md`/`mongo-database-naming-remediation.md` appears not to be provisioned yet)
+  also declares no `LOCATION_INGESTION_ENABLED` key.
+- The application default is fail-closed: `backend/src/config/env.ts:316-317` treats anything
+  other than the exact string `"true"` as disabled, including unset. So *if no one has ever set
+  the variable on the live Render dashboard*, production is off by construction. But per D-1's
+  own instruction, this is exactly the inference INC-001-C-1 exists to not accept on faith — a
+  dashboard variable can exist and diverge from the blueprint with no trace in this repository,
+  and neither MP-8's shared-cluster dev environment nor any other environment reaching the same
+  Atlas cluster is visible from here at all.
+
+**Status: INC-001-C-1 remains OPEN. Not closed by this return — narrowed to a single
+concrete blocker: someone with Render dashboard/API access must read the live env var directly
+(Render dashboard → td-it-solution-insurance service → Environment tab, or `render` CLI /
+Dashboard API with a token) and report the literal value, for the production service and for
+every other environment (including any local/dev process) pointed at the same Atlas cluster
+per MP-8. I have no path to obtain that credential from this session; it must come from
+whoever holds Render account access (`cto` or the account owner) either granting it or running
+the check themselves and returning the value here.**
+
+**On "hard-disable in code, not only by env" (INC-001-C-1's second clause):** checked
+`backend/src/config/env.ts` and `backend/src/routes/assets.ts:101-183` directly. There is
+currently exactly **one** control gating the write path — the single env var, read once at
+startup and checked first in the handler (`assets.ts:117`). There is no second independent
+flag, no build-time constant, no allowlist, and nothing else that would stop the route if that
+one variable were ever flipped to `"true"` by mistake or by a repeat of the INC-002 pattern one
+layer over (an env var instead of an EAS profile flag). Given two live incidents now on
+variants of this exact failure mode — a flag flipped without the gate that should have stopped
+it — a single env var is a thinner control than the risk warrants. **Recommendation: add a
+second, independent code-level gate on this route** — e.g. `LOCATION_INGESTION_ENABLED === 'true'`
+AND `NODE_ENV/RENDER_SERVICE_NAME` matching an explicit allowlist of environments authorized to
+receive Feature 008 traffic (so a stray var set in a dev/staging environment sharing the Atlas
+cluster can't alone re-open it), or a source-level hard block (route registration itself
+commented out / behind a compile-time constant) that requires a code change and code review to
+lift, not just a dashboard edit. This is a proposal, not a unilateral change to a security
+control owned by `cybersecurity-architect`/`compliance-specialist` (§8.5 reserves release of
+C-008 conditions to `compliance-specialist`) — routed here for their sign-off before
+implementation.
+
+**Also flagged, new:** the fact that a kill switch's live value can only be set and read via
+an unaudited Render dashboard click, with no blueprint record and no read access from this
+environment, is itself a gap worth its own remediation — either commit `LOCATION_INGESTION_ENABLED:
+value: "false"` explicitly into `render.yaml` (so its state is version-controlled and reviewable,
+even though the app default is already fail-closed) or provision least-privilege, read-only
+Render API access for verification tooling/CI so this condition can be closed mechanically
+instead of narratively next time. Both are cheap and I did not implement either without asking,
+per this role's "propose, don't mandate" boundary on security controls.
+
+**Filed by:** `devops-engineer`, 2026-09-21, in response to INC-002 §5 D-1.
+
+---
+
+## 16. INC-001-C-3 / CT-2 return — `cloud-infrastructure-architect`, appended 2026-09-21
+
+**Appended, not rewritten.** §0–§15 stand as filed. This is the `cloud-infrastructure-architect`
+return on INC-001-C-3 (deadline 2026-08-28, then rolled up as CT-2 in
+`10-data-protection-contract-obligations.md`, deadline 2026-08-31 — **both overdue, 21+ days,
+at time of this return**).
+
+**The live MongoDB Atlas region cannot be determined from this repository, and I am not
+inferring one.** Checked directly:
+
+- `backend/src/config/env.ts` reads `MONGODB_URI` via `requireEnv('MONGODB_URI')` — a fail-fast
+  required variable, correctly **not committed** to source (no `.env`/secrets file in this tree
+  carries it). A connection string, if present, would not reliably disclose region either: Atlas
+  SRV-style URIs (`mongodb+srv://cluster0.xxxxx.mongodb.net/...`) do not encode region in the
+  hostname the way some other providers' do — region is a cluster-configuration attribute visible
+  only in the Atlas UI/API, not derivable from the URI even if one were in hand.
+- `render.yaml` / `render-staging.yaml` declare `region: frankfurt` for the **Render-hosted
+  compute** (backend API, web static site) — this is the compute region, not the Atlas region,
+  and must not be conflated with it. No Atlas resource is provisioned or referenced by either
+  blueprint; Atlas is external to Render's IaC entirely.
+- ADR-0002 (polyglot persistence) discusses *why* MongoDB was chosen for domain data but contains
+  no region/hosting-topology decision. ADR-0008 (MongoDB schema provisioning) explicitly places
+  "cross-region" and "multi-region Atlas requirement" **out of scope** (§ "Not in this ADR" /
+  ratification §"What is not ratified here") — confirming no region decision has ever been made
+  in this repo's governance record, not merely that it's undocumented.
+- `docs/DEPLOY.md` treats `MONGODB_URI` purely as a secret to paste into Render's dashboard
+  (`sync: false`), with an open owner checklist item ("Atlas IP allowlist includes Render
+  egress") — consistent with no region commitment having been recorded anywhere reachable from
+  code.
+- Prior finding at `10-data-protection-contract-obligations.md:62` (2026-08-28) and its CT-2/CT-1c
+  follow-ups reach the identical conclusion independently: **UNKNOWN, unconfirmed anywhere in
+  repo, treat as outside South Africa until evidenced.** That document also already surfaced, and
+  I confirm rather than re-derive, the one fact relevant to remediation: **Atlas does support
+  AWS `af-south-1` (Cape Town) on dedicated M10+ paid tiers** — the only platform component of
+  the five in that document's §2 table for which in-region hosting is technically available at
+  all (Render and Supabase both lack any African region).
+
+**This absence of a determinable region is itself the finding**, matching this condition's
+21-day-overdue-open status: it is not that the region is undocumented by oversight, it is that
+nobody with Atlas console/API access has performed the one-step read this condition has always
+required.
+
+**Real-world step that closes this — nothing else will:** someone holding MongoDB Atlas
+project access must open the Atlas dashboard (Project → Database → cluster → Overview, or
+`atlas clusters describe <name> --output json` / Atlas Administration API
+`GET /groups/{groupId}/clusters/{clusterName}`) and read the cluster's configured region(s)
+directly, then report the literal region code (e.g. `AWS: eu-west-1`, `AWS: af-south-1`) here. I
+have no Atlas credential, API token, or other channel in this session to obtain that value
+myself — the same access gap `devops-engineer` recorded for Render at §15 applies here for
+Atlas. **If the returned region is outside South Africa** (the default assumption per
+`10-data-protection-contract-obligations.md` until evidenced otherwise), **s72 cross-border
+analysis applies to every record written to that cluster** — this is a flag only; the s72
+analysis itself is `compliance-specialist`'s, not mine, and is already scoped at
+`10-data-protection-contract-obligations.md` §9 pending exactly this return.
+
+**Status: INC-001-C-3 / CT-2 remains OPEN.** Narrowed to the single concrete blocker above —
+Atlas console/API access, held by whoever provisioned the cluster (`cto` or the account owner),
+either granting read access or running the check and returning the literal region value here.
+
+**Filed by:** `cloud-infrastructure-architect`, 2026-09-21, in response to INC-001-C-3 / CT-2.
+
+---
+
+**Filed by:** `compliance-specialist`, 2026-08-25; §13 appended 2026-09-02; §14 appended by `cto` 2026-09-21; §15 appended by `devops-engineer` 2026-09-21; §16 appended by `cloud-infrastructure-architect` 2026-09-21.
 **Discharges:** ADR-0009 §16 (`compliance-specialist` concurrence), subject to the conditions at §8.5.
 **Does not discharge:** ADR-0009 §15 (`security-engineer`) · Feature 008 Stage 8 · C-008-1 … C-008-12 · legal sign-off.
