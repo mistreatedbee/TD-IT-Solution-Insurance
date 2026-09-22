@@ -261,6 +261,15 @@ export function createRecoveryRouter(ctx: AppContext): Router {
     createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `recovery-location:${req.auth!.accountId}`),
     async (req, res, next) => {
       try {
+        // INC-002 kill switch: mirrors assets.ts:117's INC-001 pattern exactly.
+        // Fail-closed — checked first, before params validation, ownership lookup,
+        // or any DB work, so this read path is unreachable while ingestion is off
+        // regardless of request contents. Only the exact value `true` enables it.
+        if (ctx.env.locationIngestionEnabled !== true) {
+          next(apiError('UPSTREAM_UNAVAILABLE', undefined, 3600));
+          return;
+        }
+
         const parsed = caseIdParamsSchema.safeParse(req.params);
         if (!parsed.success) {
           next(apiError('VALIDATION_ERROR'));

@@ -172,6 +172,27 @@ function createHarness(opts: {
   });
 
   const storedEvents: LocationEventDocument[] = [];
+  const storedConsentWithdrawals: Array<{
+    id: string;
+    accountId: string;
+    assetId: string;
+    eventType: 'withdrawn';
+    purgedEventCount: number;
+    actorSessionId: string | null;
+    ipAddress: string | null;
+    userAgent: string | null;
+    createdAt: Date;
+  }> = [];
+  const storedConsentGrants: Array<{
+    id: string;
+    accountId: string;
+    assetId: string;
+    eventType: 'granted';
+    actorSessionId: string | null;
+    ipAddress: string | null;
+    userAgent: string | null;
+    createdAt: Date;
+  }> = [];
 
   const ctx = {
     env,
@@ -201,6 +222,19 @@ function createHarness(opts: {
       },
       async listLocationSummaryByAccount(acctId: string) {
         return [...storedAssets.values()].filter((a) => a.accountId === acctId && a.status !== 'removed');
+      },
+      async clearLocationForAccount(acctId: string, assetId: string) {
+        const existing = storedAssets.get(assetId);
+        if (!existing || existing.accountId !== acctId || existing.status === 'removed') return null;
+        const updated: AssetDocument = {
+          ...existing,
+          locationSource: null,
+          reportingDeviceId: null,
+          lastLocation: null,
+          updatedAt: new Date(),
+        };
+        storedAssets.set(assetId, updated);
+        return updated;
       },
       async reportSelfDeviceLocation(
         acctId: string,
@@ -271,6 +305,58 @@ function createHarness(opts: {
         }
         return rows.slice(0, limit);
       },
+      async deleteByAsset(acctId: string, assetId: string) {
+        const before = storedEvents.length;
+        for (let i = storedEvents.length - 1; i >= 0; i -= 1) {
+          const e = storedEvents[i];
+          if (e && e.accountId === acctId && e.assetId === assetId) storedEvents.splice(i, 1);
+        }
+        return before - storedEvents.length;
+      },
+    },
+    locationConsentLog: {
+      async recordGrant(input: {
+        accountId: string;
+        assetId: string;
+        actorSessionId?: string | null;
+        ipAddress?: string | null;
+        userAgent?: string | null;
+      }) {
+        const record = {
+          id: `consent-grant-${storedConsentGrants.length + 1}`,
+          accountId: input.accountId,
+          assetId: input.assetId,
+          eventType: 'granted' as const,
+          actorSessionId: input.actorSessionId ?? null,
+          ipAddress: input.ipAddress ?? null,
+          userAgent: input.userAgent ?? null,
+          createdAt: new Date(),
+        };
+        storedConsentGrants.push(record);
+        return record;
+      },
+      async recordWithdrawal(input: {
+        accountId: string;
+        assetId: string;
+        purgedEventCount: number;
+        actorSessionId?: string | null;
+        ipAddress?: string | null;
+        userAgent?: string | null;
+      }) {
+        const record = {
+          id: `consent-${storedConsentWithdrawals.length + 1}`,
+          accountId: input.accountId,
+          assetId: input.assetId,
+          eventType: 'withdrawn' as const,
+          purgedEventCount: input.purgedEventCount,
+          actorSessionId: input.actorSessionId ?? null,
+          ipAddress: input.ipAddress ?? null,
+          userAgent: input.userAgent ?? null,
+          createdAt: new Date(),
+        };
+        storedConsentWithdrawals.push(record);
+        return record;
+      },
     },
     policies: {
       async listByAccount() {
@@ -312,7 +398,7 @@ function createHarness(opts: {
   app.use(createAssetsRouter(ctx));
   app.use(errorHandler);
 
-  return { app, accountId, sessionId, env, storedAssets, storedEvents };
+  return { app, accountId, sessionId, env, storedAssets, storedEvents, storedConsentWithdrawals, storedConsentGrants };
 }
 
 async function listen(app: Express): Promise<{ server: Server; baseUrl: string }> {
@@ -545,6 +631,108 @@ describe('POST /assets/:assetId/location-report', () => {
     expect(response.status).toBe(403);
     const body = (await response.json()) as { error: { code: string } };
     expect(body.error.code).toBe('DEVICE_MISMATCH');
+  });
+});
+
+describe('POST /assets/:assetId/location-consent', () => {
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    if (server) {
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+      server = undefined;
+    }
+  });
+
+  it('records a granted consent event for an owned asset', async () => {
+    const accountId = randomUUID();
+    const phone = sampleSmartphone(accountId);
+    const { app, sessionId, env, storedConsentGrants } = createHarness({ accountId, assets: [phone] });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/assets/${phone.id}/location-consent`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${customerToken(env, accountId, sessionId)}` },
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { assetId: string; eventType: string; createdAt: string };
+    expect(body.assetId).toBe(phone.id);
+    expect(body.eventType).toBe('granted');
+    expect(storedConsentGrants).toHaveLength(1);
+    expect(storedConsentGrants[0]?.accountId).toBe(accountId);
+    expect(storedConsentGrants[0]?.assetId).toBe(phone.id);
+  });
+
+  it('is not gated by locationIngestionEnabled', async () => {
+    const accountId = randomUUID();
+    const phone = sampleSmartphone(accountId);
+    const { app, sessionId, env, storedConsentGrants } = createHarness({
+      accountId,
+      assets: [phone],
+      envOverrides: { locationIngestionEnabled: false },
+    });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/assets/${phone.id}/location-consent`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${customerToken(env, accountId, sessionId)}` },
+    });
+
+    expect(response.status).toBe(200);
+    expect(storedConsentGrants).toHaveLength(1);
+  });
+
+  it('records a fresh event on a repeat grant call (idempotent, not upserted)', async () => {
+    const accountId = randomUUID();
+    const phone = sampleSmartphone(accountId);
+    const { app, sessionId, env, storedConsentGrants } = createHarness({ accountId, assets: [phone] });
+    const listened = await listen(app);
+    server = listened.server;
+
+    for (let i = 0; i < 2; i += 1) {
+      const response = await fetch(`${listened.baseUrl}/assets/${phone.id}/location-consent`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${customerToken(env, accountId, sessionId)}` },
+      });
+      expect(response.status).toBe(200);
+    }
+
+    expect(storedConsentGrants).toHaveLength(2);
+    expect(storedConsentGrants[0]?.id).not.toBe(storedConsentGrants[1]?.id);
+  });
+
+  it('returns 404 for an asset owned by another account', async () => {
+    const accountId = randomUUID();
+    const otherAccountId = randomUUID();
+    const phone = sampleSmartphone(otherAccountId);
+    const { app, sessionId, env, storedConsentGrants } = createHarness({ accountId, assets: [phone] });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/assets/${phone.id}/location-consent`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${customerToken(env, accountId, sessionId)}` },
+    });
+
+    expect(response.status).toBe(404);
+    expect(storedConsentGrants).toHaveLength(0);
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    const accountId = randomUUID();
+    const phone = sampleSmartphone(accountId);
+    const { app } = createHarness({ accountId, assets: [phone] });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const response = await fetch(`${listened.baseUrl}/assets/${phone.id}/location-consent`, {
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(401);
   });
 });
 

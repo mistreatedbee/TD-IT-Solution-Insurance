@@ -88,6 +88,10 @@ import {
   createLocationEventsRepo,
   type LocationEventsRepo,
 } from './repositories/location-events.js';
+import {
+  createLocationConsentLogRepo,
+  type LocationConsentLogRepo,
+} from './repositories/location-consent-log.js';
 import { createAlertsRepo, type AlertsRepo } from './repositories/alerts.js';
 import { createProductEventsRepo, type ProductEventsRepo } from './repositories/product-events.js';
 import { createSupportCasesRepo, type SupportCasesRepo } from './repositories/support-cases.js';
@@ -125,6 +129,7 @@ export interface AppContext {
   customerProfilePictures: CustomerProfilePicturesRepo;
   trackingDevices: TrackingDevicesRepo;
   locationEvents: LocationEventsRepo;
+  locationConsentLog: LocationConsentLogRepo;
   alerts: AlertsRepo;
   productEvents: ProductEventsRepo;
   supportCases: SupportCasesRepo;
@@ -214,6 +219,7 @@ export function buildAppContext(env: Env): AppContext {
     customerProfilePictures: createCustomerProfilePicturesRepo(getDb()),
     trackingDevices: createTrackingDevicesRepo(getDb()),
     locationEvents: createLocationEventsRepo(getDb()),
+    locationConsentLog: createLocationConsentLogRepo(getDb()),
     alerts: createAlertsRepo(getDb()),
     productEvents: createProductEventsRepo(getDb()),
     supportCases: createSupportCasesRepo(getDb()),

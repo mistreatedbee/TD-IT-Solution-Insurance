@@ -107,6 +107,19 @@ export function createLocationEventsRepo(db: Db) {
 
       return rows.map(toDocument);
     },
+
+    /**
+     * INC-002 §9.6 C-5 — POPIA s18 withdrawal. Purges this asset's ping
+     * history on the owning account and returns the number of records
+     * removed (including zero — an idempotent re-call with nothing left to
+     * purge is a valid, non-error outcome). Scoped by both `accountId` and
+     * `assetId` so a withdrawal request can never purge another account's
+     * history via a guessed asset id.
+     */
+    async deleteByAsset(accountId: string, assetId: string): Promise<number> {
+      const result = await collection().deleteMany({ accountId, assetId });
+      return result.deletedCount ?? 0;
+    },
   };
 }
 

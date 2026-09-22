@@ -125,6 +125,24 @@ export const ASSET_LOCATION_REPORT_LIMIT = {
   windowSeconds: 15 * 60,
 } as const;
 
+/** INC-002 §9.6 C-5 remediation — POPIA s18 withdrawal endpoint. Deliberately
+ * generous relative to ASSET_LOCATION_REPORT_LIMIT: withdrawing consent must
+ * never be the rate-limited step, and this is a low-volume, idempotent
+ * write/purge, not a write-amplification target. */
+export const ASSET_LOCATION_WITHDRAW_LIMIT = {
+  attempts: 30,
+  windowSeconds: 15 * 60,
+} as const;
+
+/** INC-002 §11.2 SR-INC002-W1 remediation — records that consent was granted.
+ * Same generosity reasoning as ASSET_LOCATION_WITHDRAW_LIMIT: this is a
+ * low-volume, idempotent evidentiary write, and never the rate-limited step
+ * in a consent flow the customer is actively completing. */
+export const ASSET_LOCATION_GRANT_LIMIT = {
+  attempts: 30,
+  windowSeconds: 15 * 60,
+} as const;
+
 /** SR-1: enrollment ticket, and SR-6's mfaVerificationToken, both minted with this TTL
  * unless a more specific constant above overrides it. Enrollment ticket TTL is 10
  * minutes per SR-1's own text. */

@@ -264,6 +264,32 @@ export function createAssetsRepo(db: Db) {
       return rows.map(toAsset);
     },
 
+    /**
+     * INC-002 §9.6 C-5 — POPIA s18 withdrawal. Clears `locationSource`,
+     * `reportingDeviceId` and `lastLocation` on the owning account's asset.
+     * Idempotent: succeeds (returns the asset) whether or not those fields
+     * were already clear, so a repeat withdrawal call is not an error.
+     * Ownership-scoped by `accountId` in the filter, same as every other
+     * mutator in this repo — a non-owned or non-existent asset returns null.
+     */
+    async clearLocationForAccount(accountId: string, assetId: string): Promise<AssetDocument | null> {
+      if (!ObjectId.isValid(assetId)) return null;
+      const now = new Date();
+      const row = await collection().findOneAndUpdate(
+        { _id: new ObjectId(assetId), accountId, status: { $ne: 'removed' } },
+        {
+          $set: {
+            locationSource: null,
+            reportingDeviceId: null,
+            lastLocation: null,
+            updatedAt: now,
+          },
+        },
+        { returnDocument: 'after' },
+      );
+      return row ? toAsset(row) : null;
+    },
+
     async linkGpsDevice(
       accountId: string,
       assetId: string,

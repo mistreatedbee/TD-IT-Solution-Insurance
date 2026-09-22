@@ -23,7 +23,7 @@ import { essentialPlanFixture, plusPlanFixture } from '../lib/plan-test-fixtures
 const ESSENTIAL_PLAN_ID = '507f1f77bcf86cd799439088';
 const PLUS_PLAN_ID = '507f1f77bcf86cd799439089';
 
-function fakeEnv(): Env {
+function fakeEnv(overrides?: Partial<Env>): Env {
   return {
     nodeEnv: 'test',
     isProduction: false,
@@ -42,6 +42,7 @@ function fakeEnv(): Env {
     emailVerificationRedirectUrl: 'tditinsurance://verify-email',
     passwordResetRedirectUrl: 'tditinsurance://reset-password',
     invitationAcceptRedirectUrl: 'tditinsurance://invitations/accept',
+    ...overrides,
   };
 }
 
@@ -180,8 +181,9 @@ function createHarness(opts: {
   assets?: AssetDocument[];
   cases?: RecoveryCaseDocument[];
   planCatalogId?: string | null;
+  envOverrides?: Partial<Env>;
 }) {
-  const env = fakeEnv();
+  const env = fakeEnv(opts.envOverrides);
   const kv = new InMemoryKeyValueStore();
   const accountId = opts.accountId ?? randomUUID();
   const sessionId = randomUUID();
@@ -752,6 +754,129 @@ describe('routes/recovery', () => {
       expect(second.status).toBe(200);
       const body = (await second.json()) as { policeReport: { history: unknown[] } };
       expect(body.policeReport.history).toHaveLength(1);
+    });
+  });
+
+  describe('GET /recovery/cases/:caseId/location — INC-002 kill switch', () => {
+    it('INC-002: refuses with 503 UPSTREAM_UNAVAILABLE when LOCATION_INGESTION_ENABLED is unset (fail-closed default)', async () => {
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = {
+        ...sampleCase(accountId, assetId),
+        lastLocation: {
+          latitude: -25.7479,
+          longitude: 28.2293,
+          recordedAt: new Date('2026-08-01T13:00:00.000Z'),
+          accuracyMeters: 12,
+        },
+      };
+      const { app, sessionId, env } = createHarness({
+        accountId,
+        cases: [existing],
+        envOverrides: { locationIngestionEnabled: undefined },
+      });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/location`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('UPSTREAM_UNAVAILABLE');
+    });
+
+    it('INC-002: refuses with 503 UPSTREAM_UNAVAILABLE when LOCATION_INGESTION_ENABLED is explicitly false', async () => {
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = {
+        ...sampleCase(accountId, assetId),
+        lastLocation: {
+          latitude: -25.7479,
+          longitude: 28.2293,
+          recordedAt: new Date('2026-08-01T13:00:00.000Z'),
+          accuracyMeters: 12,
+        },
+      };
+      const { app, sessionId, env } = createHarness({
+        accountId,
+        cases: [existing],
+        envOverrides: { locationIngestionEnabled: false },
+      });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/location`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('UPSTREAM_UNAVAILABLE');
+    });
+
+    it('INC-002: still returns the owning customer\'s case location when LOCATION_INGESTION_ENABLED is explicitly true', async () => {
+      const accountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = {
+        ...sampleCase(accountId, assetId),
+        lastLocation: {
+          latitude: -25.7479,
+          longitude: 28.2293,
+          recordedAt: new Date('2026-08-01T13:00:00.000Z'),
+          accuracyMeters: 12,
+        },
+      };
+      const { app, sessionId, env } = createHarness({
+        accountId,
+        cases: [existing],
+        envOverrides: { locationIngestionEnabled: true },
+      });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, accountId, sessionId);
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/location`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { latitude: number; longitude: number; accuracyMeters: number | null };
+      expect(body.latitude).toBe(-25.7479);
+      expect(body.longitude).toBe(28.2293);
+      expect(body.accuracyMeters).toBe(12);
+    });
+
+    it('INC-002: another account\'s case is not reachable via ownership scoping even when the flag is on', async () => {
+      const ownerAccountId = randomUUID();
+      const callerAccountId = randomUUID();
+      const assetId = '507f1f77bcf86cd799439021';
+      const existing = {
+        ...sampleCase(ownerAccountId, assetId),
+        lastLocation: {
+          latitude: -25.7479,
+          longitude: 28.2293,
+          recordedAt: new Date('2026-08-01T13:00:00.000Z'),
+          accuracyMeters: 12,
+        },
+      };
+      const { app, sessionId, env } = createHarness({
+        accountId: callerAccountId,
+        cases: [existing],
+        envOverrides: { locationIngestionEnabled: true },
+      });
+      const listened = await listen(app);
+      server = listened.server;
+      const token = customerToken(env, callerAccountId, sessionId);
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases/${existing.id}/location`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(res.status).toBe(404);
     });
   });
 });

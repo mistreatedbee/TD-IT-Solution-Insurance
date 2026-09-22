@@ -9,7 +9,12 @@ import { apiError } from '../lib/errors.js';
 import { assertAssetRegistrationAllowed } from '../lib/plan-enforcement.js';
 import { assertPlanEntitlement } from '../lib/plan-entitlements.js';
 import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js';
-import { DEFAULT_AUTHENTICATED_LIMIT, ASSET_LOCATION_REPORT_LIMIT } from '../lib/policy.js';
+import {
+  DEFAULT_AUTHENTICATED_LIMIT,
+  ASSET_LOCATION_REPORT_LIMIT,
+  ASSET_LOCATION_WITHDRAW_LIMIT,
+  ASSET_LOCATION_GRANT_LIMIT,
+} from '../lib/policy.js';
 import type { AssetDocument } from '../repositories/assets.js';
 import {
   serializeAsset,
@@ -28,7 +33,7 @@ import {
 } from '../lib/asset-location-validation.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
-import { createRateLimiter } from '../middleware/rate-limit.js';
+import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 
 const assetIdParamsSchema = z.object({
   assetId: z.string().regex(/^[0-9a-f]{24}$/i),
@@ -176,6 +181,124 @@ export function createAssetsRouter(ctx: AppContext): Router {
         });
 
         res.status(200).json(serializeAssetLocation(result.asset));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.post(
+    '/assets/:assetId/location-consent',
+    authenticate,
+    createRateLimiter(
+      ctx.kv,
+      { attempts: ASSET_LOCATION_GRANT_LIMIT.attempts, windowSeconds: ASSET_LOCATION_GRANT_LIMIT.windowSeconds },
+      (req) => `assets-location-grant:${req.auth!.accountId}`,
+    ),
+    async (req, res, next) => {
+      try {
+        // INC-002 §11.2 SR-INC002-W1: recording that consent was *given* is
+        // not the same as ingesting location data, so — mirroring the
+        // withdrawal handler below — this is deliberately NOT gated behind
+        // ctx.env.locationIngestionEnabled. The kill switch governs whether
+        // new location data may be ingested; it must never also block the
+        // evidentiary record that consent was granted.
+        const parsed = assetIdParamsSchema.safeParse(req.params);
+        if (!parsed.success) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        const accountId = req.auth!.accountId;
+        const assetId = parsed.data.assetId;
+
+        const existing = await ctx.assets.findByIdForAccount(accountId, assetId);
+        if (!existing || existing.status === 'removed') {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        // Idempotent by design, same reasoning as recordWithdrawal: a repeat
+        // grant call (e.g. re-consenting after a re-prompt) still writes a
+        // fresh timestamped record rather than upserting over a prior one —
+        // the *request* to grant is itself the consent artefact.
+        const record = await ctx.locationConsentLog.recordGrant({
+          accountId,
+          assetId,
+          actorSessionId: req.auth!.sessionId,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        res.status(200).json({
+          assetId,
+          eventType: record.eventType,
+          createdAt: record.createdAt.toISOString(),
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.delete(
+    '/assets/:assetId/location',
+    authenticate,
+    createRateLimiter(
+      ctx.kv,
+      { attempts: ASSET_LOCATION_WITHDRAW_LIMIT.attempts, windowSeconds: ASSET_LOCATION_WITHDRAW_LIMIT.windowSeconds },
+      (req) => `assets-location-withdraw:${req.auth!.accountId}`,
+    ),
+    async (req, res, next) => {
+      try {
+        // INC-002 §9.6 C-5 / POPIA s18: withdrawal must always succeed
+        // regardless of ctx.env.locationIngestionEnabled. That flag governs
+        // whether *new* location data may be ingested (fail-closed per
+        // INC-001) — it is not consulted here, deliberately, so the
+        // ingestion kill switch can never also disable a user's right to
+        // withdraw consent already given.
+        const parsed = assetIdParamsSchema.safeParse(req.params);
+        if (!parsed.success) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        const accountId = req.auth!.accountId;
+        const assetId = parsed.data.assetId;
+
+        const existing = await ctx.assets.findByIdForAccount(accountId, assetId);
+        if (!existing || existing.status === 'removed') {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        // Idempotent: proceed identically whether or not there is anything
+        // left to clear/purge. clearLocationForAccount()/deleteByAsset() are
+        // themselves no-ops on already-cleared state, and a repeat call
+        // still writes a fresh withdrawal record (§9.6 C-5 — the *request*
+        // to withdraw is the s18 artefact, not just the first one).
+        const updated = await ctx.assets.clearLocationForAccount(accountId, assetId);
+        if (!updated) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        const purgedEventCount = await ctx.locationEvents.deleteByAsset(accountId, assetId);
+
+        await ctx.locationConsentLog.recordWithdrawal({
+          accountId,
+          assetId,
+          purgedEventCount,
+          actorSessionId: req.auth!.sessionId,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        res.status(200).json({
+          assetId,
+          locationSource: updated.locationSource,
+          purgedEventCount,
+        });
       } catch (err) {
         next(err);
       }
