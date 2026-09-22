@@ -15,6 +15,7 @@ import { bootstrapLocationEventsCollections } from './location-events-collection
 import { bootstrapAlertsCollections } from './alerts-collections.js';
 import { bootstrapProductEventsCollections } from './product-events-collections.js';
 import { bootstrapSupportCaseCollections } from './support-case-collections.js';
+import { bootstrapLocationConsentCollections } from './location-consent-collections.js';
 import { createPlanCatalogRepo } from '../repositories/plan-catalog.js';
 
 export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
@@ -74,6 +75,14 @@ export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
   } catch (err) {
     console.error(
       '[startup] Support case collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+    await bootstrapLocationConsentCollections(db);
+  } catch (err) {
+    console.error(
+      '[startup] Location consent collection bootstrap failed:',
       err instanceof Error ? err.message : err,
     );
   }

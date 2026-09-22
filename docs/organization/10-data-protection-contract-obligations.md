@@ -900,3 +900,39 @@ opened as C-013-9 in the feature review.
 | **CT-11** | **Unchanged — remains CLOSED.** Its *control* is still in force and must not be reverted without CT-15. What is superseded is any reading of it as settling the ID-number cross-border question | — | Closed |
 
 **Filed by:** `compliance-specialist`, 2026-09-21 (§14 appended).
+
+---
+
+## 15. RoPA entry — `location_consent_events` (C-008-12) — draft, technical inventory only
+
+**Filed by:** `database-architect`, 2026-09-22, per INC-002 §13.2
+(`docs/organization/incidents/INC-002-play-internal-location-reenablement.md` §13.2 — handoff
+from `backend-engineer`). This closes the `location-consent-collections.ts`/RoPA/ADR-0008 gap
+that §13.2 identified: `location_consent_events` was created (`backend-engineer`, 2026-09-21)
+with no declarative spec and no RoPA entry, unlike every other Mongo collection in this repo.
+
+**Status: draft.** I (`database-architect`) am recording the technical inventory this new
+collection requires — schema, categories, storage location, and the fact that a retention period
+is not yet decided. **Purpose/lawful-basis wording and, above all, the retention figure are
+`compliance-specialist`'s determination, not mine** — this entry should not be treated as the
+RoPA's final text for C-008-12 until `compliance-specialist` reviews and signs it, per this
+role's charter ("defers to compliance-specialist on regulatory retention minimums/maximums").
+
+| Field | Value |
+|---|---|
+| **Processing activity** | Evidencing a POPIA s18/s11(2)(b) consent action (grant or withdrawal) taken by a customer over self-device location tracking for a specific asset. |
+| **Collection** | `location_consent_events` (MongoDB Atlas — same cluster/region as all other domain-data collections under ADR-0002; region is the standing §19(c)/CT-2 cross-border question already tracked elsewhere in this document, not reopened here). |
+| **Purpose** | Evidentiary record that a customer requested to enable or disable location tracking for an asset, including (for withdrawals) how many prior location records were purged as a result — so the platform can demonstrate, on request, that a consent action was honoured. *(Purpose wording subject to `compliance-specialist` review.)* |
+| **Lawful basis** | Not stated here — depends on the basis already established for the underlying location-tracking consent itself (see `docs/features/008-self-device-gps-tracking/compliance-review.md`); this collection's basis for existing is evidentiary/accountability (POPIA s17/Condition 7-adjacent), which may need to be named explicitly. **`compliance-specialist` call.** |
+| **Data subjects** | Customers who have registered a self-device-tracked asset. |
+| **Categories of personal information** | Account identifier (`accountId`), asset identifier (`assetId`), event type (`granted`/`withdrawn`), count of location records purged on withdrawal, session identifier, **IP address**, **user-agent string**, timestamp. IP address and user-agent are collected deliberately — they are part of the evidentiary content (who took the action, from where), not incidental logging. |
+| **Recipients** | None external. Internal: engineering access only, per the standing `documented-client-instructions` (§19(a)/`11-documented-client-instructions.md`) constraints that already govern all live-data access — no new recipient class introduced by this collection. |
+| **Cross-border transfer** | Same posture as every other domain-data collection under ADR-0002/§2 of this document — no new transfer introduced. |
+| **Retention** | **NOT DECIDED. Placeholder only — see below.** A TTL index exists in code (`backend/src/db/location-consent-collections.ts`, `LOCATION_CONSENT_EVENTS_TTL_SECONDS_PLACEHOLDER`, currently 10 years) so the collection does not silently default to "indefinite" (the INC-001 §4.3 failure mode), but **this number is not a retention decision** — it is a conservative placeholder chosen only so the index has a value to compile against, pending `compliance-specialist`'s determination of the POPIA-complaint prescription window per INC-002 §11.2/§13.2. **This RoPA row is incomplete until that number is supplied and this row is updated to match.** |
+| **Security measures** | Same at-rest/in-transit controls as all other Atlas domain-data collections; no field-level encryption applied (IP/user-agent are not classified as special personal information under POPIA, but flagged here for `cybersecurity-architect`/`compliance-specialist` awareness given they are directly identifying in combination with `accountId`). |
+| **Reference** | INC-002 §11 (W2 finding), §13.2 (handoff); `docs/features/008-self-device-gps-tracking/compliance-review.md` C-008-12 (the condition this entry discharges, once `compliance-specialist` signs it). |
+
+**Action required to close C-008-12:** `compliance-specialist` to (1) confirm or correct the
+purpose/lawful-basis wording above, (2) supply the retention figure, (3) sign this row as final.
+Until then, C-008-12 remains **open**, and the TTL value in code should be read as "a number
+exists so the system doesn't fail open," not as "retention has been decided."

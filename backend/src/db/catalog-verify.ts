@@ -75,6 +75,12 @@ import {
   supportCaseIndexes,
   supportCasesJsonSchemaValidator,
 } from './support-case-collections.js';
+import {
+  LOCATION_CONSENT_EVENTS_COLLECTION,
+  locationConsentEventsIndexes,
+  locationConsentEventsTtlIndex,
+  locationConsentEventsJsonSchemaValidator,
+} from './location-consent-collections.js';
 
 /** One declared collection, as the source-of-truth modules describe it. */
 interface DeclaredCollectionSpec {
@@ -88,7 +94,8 @@ interface DeclaredCollectionSpec {
     | 'location-events'
     | 'alerts'
     | 'product-analytics'
-    | 'support-cases';
+    | 'support-cases'
+    | 'location-consent';
   collection: string;
   /**
    * Validator this module applies via createCollection/collMod. `undefined`
@@ -198,6 +205,18 @@ const DECLARED_CATALOG: DeclaredCollectionSpec[] = [
     collection: SUPPORT_CASES_COLLECTION,
     validator: supportCasesJsonSchemaValidator,
     indexes: supportCaseIndexes,
+  },
+  {
+    module: 'location-consent',
+    collection: LOCATION_CONSENT_EVENTS_COLLECTION,
+    validator: locationConsentEventsJsonSchemaValidator,
+    // TTL index included: `expireAfterSeconds` on the live index will only
+    // match once the placeholder constant is replaced with
+    // compliance-specialist's decided retention value (INC-002 §13.2) — see
+    // location-consent-collections.ts. Until then this module may correctly
+    // report an index_option_mismatch-free PASS today, but the *value* of
+    // expireAfterSeconds is a placeholder, not a verified-correct retention.
+    indexes: [...locationConsentEventsIndexes, locationConsentEventsTtlIndex],
   },
 ];
 

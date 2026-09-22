@@ -101,3 +101,37 @@ This section exists for one reason: condition 1's finding — *"no deploy-time o
 **Minor discrepancy for `devops-engineer`/`database-architect` to correct at their convenience:** `backend/src/index.ts` line ~66 and `backend/src/db/catalog-verify.ts`'s header both attribute this module to "ADR-0008 condition 3" / `§"Consequences" item 1`. It discharges **condition 1 of the ratification section** (Decision item 3 / Consequences item 2). Cosmetic, but cross-references that point at the wrong condition are how a condition gets marked closed by the wrong person.
 
 **Not signed as a closure.** `solution-architect`, 2026-08-28 — factual update only.
+
+---
+
+## Addendum — eighth collection-spec module: `location_consent_events`
+
+**Filed by:** `database-architect`, 2026-09-22, per INC-002 §13.2
+(`docs/organization/incidents/INC-002-play-internal-location-reenablement.md` §13.2). **Append-only** —
+no text above is edited; the ratified decision and its three conditions stand unchanged.
+
+Condition 3's scope note (above) already states that this ADR's rules bind "every subsequent
+[module] added" to the seven named there. This addendum is that registration for the eighth:
+
+- **New module:** `backend/src/db/location-consent-collections.ts` — declares
+  `location_consent_events`, following the same dual-path model (declarative spec + startup
+  bootstrap + catalog-verify entry) as the other seven. Wired into
+  `backend/src/db/mongo-bootstrap.ts` (non-fatal try/catch, matching the existing pattern) and
+  into `backend/src/db/catalog-verify.ts`'s `DECLARED_CATALOG`.
+- **What is new relative to the other seven:** this is the first collection-spec module in the
+  platform to declare a **TTL index**. `expireAfterSeconds` is a named placeholder constant
+  (`LOCATION_CONSENT_EVENTS_TTL_SECONDS_PLACEHOLDER`), explicitly marked in code and in the RoPA
+  entry (§15 of `10-data-protection-contract-obligations.md`) as **not a retention decision** —
+  the real figure is `compliance-specialist`'s determination per INC-002 §13.2, pending as of
+  this filing. `catalog-verify.ts`'s current index-comparison logic does not assert on
+  `expireAfterSeconds`'s value, so a future change to the constant will not itself be caught as
+  drift by that module today — noted for `devops-engineer`/`database-architect` as a possible
+  future enhancement, not a defect blocking this addendum.
+- **Validator tightening note (condition 2):** the validator declared here is the first cut for a
+  brand-new collection, not a tightening of a live one — condition 2's `mongo-migrations/`
+  requirement is not yet triggered by this change.
+- **Not decided here:** the retention figure itself, and therefore RoPA closure for C-008-12
+  (`docs/features/008-self-device-gps-tracking/compliance-review.md`). Both remain open pending
+  `compliance-specialist`.
+
+**Filed by:** `database-architect`, 2026-09-22 — addendum only, does not reopen the ratification.
