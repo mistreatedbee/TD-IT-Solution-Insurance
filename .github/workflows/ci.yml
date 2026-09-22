@@ -81,6 +81,9 @@ jobs:
       - name: Stage 8 manifest coverage (CI-1)
         run: npm run verify:stage8-manifest
 
+      - name: EAS build-profile feature-flag coverage (INC-002)
+        run: npm run verify:eas-feature-flags
+
       - name: ADR prohibition guard (CI-2 partial)
         run: node scripts/check-adr-prohibitions.mjs
 

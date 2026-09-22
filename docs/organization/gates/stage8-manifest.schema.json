@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stage 8 manifest",
+  "description": "Minimal structural schema for docs/organization/gates/stage8-manifest.json (INC-001 §6). Describes the shape actually in use today; not wired into any validator yet — nothing in the repo runs $schema-based validation. Kept intentionally loose (additionalProperties allowed throughout) so it documents structure without becoming a second source of truth that drifts from the manifest's evolving per-entry narrative fields.",
+  "type": "object",
+  "required": ["version", "surfaces"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer" },
+    "description": { "type": "string" },
+    "surfaces": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/surface" }
+    }
+  },
+  "definitions": {
+    "surface": {
+      "type": "object",
+      "required": ["id", "kind", "pattern", "stage8"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "backend_route",
+            "backend_route_group",
+            "mobile_route",
+            "mobile_route_group",
+            "mobile_component_group",
+            "web_route",
+            "web_route_group"
+          ]
+        },
+        "pattern": { "type": "string" },
+        "feature": { "type": "string" },
+        "stage8": { "$ref": "#/definitions/stage8" }
+      }
+    },
+    "stage8": {
+      "type": "object",
+      "description": "Either a filed record (doc/verdict) or an explicit waiver (waived: true), or both. flagEnableApproved is the explicit, positive signal that a reviewer approved enabling a gated flag in a real build — distinct from the mere absence of a waiver.",
+      "properties": {
+        "doc": { "type": "string" },
+        "verdict": { "type": "string" },
+        "waived": { "type": "boolean" },
+        "flagEnableApproved": {
+          "type": "boolean",
+          "description": "True only when a reviewer has explicitly signed off on enabling the surface's gated flag in a real (non-development) build. Must not be inferred from waived being absent or false."
+        },
+        "reason": { "type": "string" },
+        "note": { "type": "string" },
+        "owner": { "type": "string" },
+        "conditions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}
