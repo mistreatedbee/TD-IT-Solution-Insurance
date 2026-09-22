@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert as RNAlert, StyleSheet, Text, View } from 'react-native';
 import {
   useAssetLocationQuery,
+  useGrantAssetLocationConsentMutation,
   useReportAssetLocationMutation,
   useWithdrawAssetLocationMutation,
 } from '../../api/hooks/useAssetLocation';
@@ -75,6 +76,7 @@ export function AssetDetailScreen() {
   } = useAssetLocationQuery(isSmartphone ? id : undefined);
   const reportMutation = useReportAssetLocationMutation();
   const withdrawMutation = useWithdrawAssetLocationMutation();
+  const grantConsentMutation = useGrantAssetLocationConsentMutation();
   const { hasIncidentManagement, changePlanHref } = usePlanEntitlements();
 
   const [linkedAssetId, setLinkedAssetIdState] = useState<string | null>(null);
@@ -126,12 +128,16 @@ export function AssetDetailScreen() {
       // INC-002 §11.3 SR-INC002-M4 / INC-001 §4.2(d): consent must be
       // recorded BEFORE the OS location-permission dialog is requested, and
       // an OS grant is never treated as the consent event itself. This is
-      // the client-side consent record; there is no server-side "granted"
-      // record yet (tracked separately as SR-INC002-W1).
+      // the client-side consent record.
       await setLocationTrackingConsent('granted');
       await setLinkedSmartphoneAssetId(id);
       setConsentGrantedState(true);
       setLinkedAssetIdState(id);
+
+      // INC-002 §12/§13 SR-INC002-W1 — record the server-side consent-grant
+      // artefact at the same point as the local record, still before the OS
+      // permission prompt fires.
+      await grantConsentMutation.mutateAsync(id);
 
       const fix = await requestForegroundLocation();
       await reportMutation.mutateAsync({
@@ -152,7 +158,7 @@ export function AssetDetailScreen() {
     } finally {
       setActionLoading(false);
     }
-  }, [id, locationSummary, reportMutation, refetchLocation]);
+  }, [id, locationSummary, reportMutation, refetchLocation, grantConsentMutation]);
 
   const handleConsentDecline = useCallback(async () => {
     await setLocationTrackingConsent('denied');

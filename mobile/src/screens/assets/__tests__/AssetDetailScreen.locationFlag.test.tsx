@@ -41,6 +41,7 @@ jest.mock('../../../api/hooks/useAssetLocation', () => ({
   }),
   useReportAssetLocationMutation: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useWithdrawAssetLocationMutation: () => ({ mutateAsync: jest.fn(), isPending: false }),
+  useGrantAssetLocationConsentMutation: () => ({ mutateAsync: jest.fn(), isPending: false }),
 }));
 
 jest.mock('../../../api/hooks/useAssetTrackingProfile', () => ({

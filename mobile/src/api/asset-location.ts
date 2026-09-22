@@ -90,6 +90,27 @@ export function withdrawAssetLocation(assetId: string) {
   );
 }
 
+export interface GrantAssetLocationConsentResponse {
+  assetId: string;
+  eventType: 'granted';
+  createdAt: string;
+}
+
+/**
+ * INC-002 §12/§13 SR-INC002-W1 — server-side half of consent *grant*.
+ * Mirrors `withdrawAssetLocation`: idempotent (a repeat call writes a fresh
+ * timestamped record, not an upsert), and callers must still record the
+ * device-local consent state (`setLocationTrackingConsent`/
+ * `setLinkedSmartphoneAssetId`) themselves — this endpoint alone does not
+ * make the device believe it has consent.
+ */
+export function grantAssetLocationConsent(assetId: string) {
+  return apiFetch<GrantAssetLocationConsentResponse>(
+    `/assets/${encodeURIComponent(assetId)}/location-consent`,
+    { method: 'POST' },
+  );
+}
+
 export function listAssetLocationSummary() {
   return apiFetch<AssetLocationSummaryPage>('/assets/location-summary', { method: 'GET' });
 }

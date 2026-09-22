@@ -4,6 +4,7 @@
 import { useSessionStore } from '../../auth/session-store';
 import {
   getAssetLocation,
+  grantAssetLocationConsent,
   listAssetLocationSummary,
   reportAssetLocation,
 } from '../asset-location';
@@ -65,6 +66,26 @@ describe('api/asset-location', () => {
 
     const [url] = fetchMock.mock.calls[0]!;
     expect(url).toBe('http://localhost:3000/api/v1/assets/507f1f77bcf86cd799439011/location');
+  });
+
+  it('POST /assets/:id/location-consent records a server-side consent grant', async () => {
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(200, {
+        assetId: '507f1f77bcf86cd799439011',
+        eventType: 'granted',
+        createdAt: '2026-09-22T08:00:00.000Z',
+      }),
+    );
+
+    const result = await grantAssetLocationConsent('507f1f77bcf86cd799439011');
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(
+      'http://localhost:3000/api/v1/assets/507f1f77bcf86cd799439011/location-consent',
+    );
+    expect(init?.method).toBe('POST');
+    expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer access-token');
+    expect(result).toMatchObject({ assetId: '507f1f77bcf86cd799439011', eventType: 'granted' });
   });
 
   it('GET /assets/location-summary returns all assets', async () => {

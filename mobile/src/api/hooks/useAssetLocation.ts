@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
 import {
   getAssetLocation,
+  grantAssetLocationConsent,
   listAssetLocationSummary,
   reportAssetLocation,
   withdrawAssetLocation,
@@ -54,6 +55,20 @@ export function useReportAssetLocationMutation() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: LOCATION_SUMMARY_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: assetLocationQueryKey(variables.assetId) });
+    },
+  });
+}
+
+// INC-002 §12/§13 SR-INC002-W1 — records consent GRANT server-side. Must be
+// called at the same point in the flow device-local consent is recorded
+// (before the OS permission prompt) — see AssetDetailScreen.handleConsentAccept.
+export function useGrantAssetLocationConsentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (assetId: string) => grantAssetLocationConsent(assetId),
+    onSuccess: (_data, assetId) => {
+      queryClient.invalidateQueries({ queryKey: LOCATION_SUMMARY_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: assetLocationQueryKey(assetId) });
     },
   });
 }

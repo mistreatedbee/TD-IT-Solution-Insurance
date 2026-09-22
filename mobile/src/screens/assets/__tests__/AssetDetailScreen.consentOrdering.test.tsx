@@ -34,6 +34,13 @@ jest.mock('../../../api/hooks/useAssetLocation', () => ({
   useAssetLocationSummaryQuery: () => ({ data: { data: [] }, refetch: jest.fn() }),
   useReportAssetLocationMutation: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useWithdrawAssetLocationMutation: () => ({ mutateAsync: jest.fn(), isPending: false }),
+  useGrantAssetLocationConsentMutation: () => ({
+    mutateAsync: jest.fn(async () => {
+      callOrder.push('server-consent-grant-recorded');
+      return { assetId: 'asset-1', eventType: 'granted', createdAt: '2026-01-01T00:00:00.000Z' };
+    }),
+    isPending: false,
+  }),
 }));
 
 jest.mock('../../../api/hooks/useAssetTrackingProfile', () => ({
@@ -90,11 +97,15 @@ describe('AssetDetailScreen — consent-before-OS-permission ordering', () => {
       fireEvent.press(enableButton);
     });
 
-    const continueButton = await screen.findByText('Continue');
+    const continueButton = await screen.findByText('Turn on location');
     await act(async () => {
       fireEvent.press(continueButton);
     });
 
-    expect(callOrder).toEqual(['consent-recorded', 'os-permission-requested']);
+    expect(callOrder).toEqual([
+      'consent-recorded',
+      'server-consent-grant-recorded',
+      'os-permission-requested',
+    ]);
   });
 });
