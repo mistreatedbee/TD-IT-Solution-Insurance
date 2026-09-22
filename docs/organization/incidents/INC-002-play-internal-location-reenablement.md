@@ -465,6 +465,675 @@ C-008 condition.
 
 ---
 
+## 10. `authentication-engineer` return — INC-002-C-8
+
+**Scope:** INC-002-C-8 (§9.6) asks (a) how `partnerOrganizationId` is granted to an account, and
+(b) whether any internal tester account holds one. I do not amend §1–§9; this section answers C-8
+only, reading the auth/RBAC code fresh (not on trust from §9.1 V-6, which I independently confirm
+below).
+
+### 10.1 How `partnerOrganizationId` is granted — admin-only, invitation-time, non-self-service
+
+- **Issuance path:** `POST /v1/invitations` is the only place `partnerOrganizationId` is ever
+  written for a new account. It is `requireUserType('admin')`-gated
+  (`backend/src/routes/invitations.ts:34`), requires a **step-up MFA check no older than 15
+  minutes**, re-read live from `app.sessions.mfaVerifiedAt` rather than trusted from the access
+  token (`invitations.ts:46-51`), and is validated `z.string().uuid().nullable().optional()`
+  (`invitations.ts:30`). For `userType === 'security_company_operator'`, a non-null
+  `partnerOrganizationId` is **mandatory** — the request is rejected `VALIDATION_ERROR` otherwise
+  (`invitations.ts:55-58`). For every other `userType` (`admin`, `support_agent`) it is not
+  accepted as meaningful and stays `null` in practice — there is no `customer` invitation path at
+  all (`createSchema`'s `userType` enum excludes `customer`; customers self-register).
+- **No self-service or client-controlled path.** The invitee's acceptance flow
+  (`invitations.ts` accept handler, unread further below the create handler) only ever copies the
+  `partnerOrganizationId` fixed at invitation-creation time onto the new account row — the
+  accepting user never supplies or can change it.
+- **Persistence:** `repositories/accounts.ts:211-219` writes `partner_organization_id` at account
+  creation from the invitation record only; `repositories/invitations.ts:56-69` stores it on the
+  invitation itself, set only by the admin-only create path above.
+- **Token minting — server-derived, not client-supplied, confirming §9.1 V-6 independently:**
+  `routes/session.ts:141` (refresh) and the login path both call `ctx.accounts.getAccountStatus()`
+  — a live Postgres read — and place its `partnerOrganizationId` into the signed JWT as
+  `partner_organization_id`. `middleware/authenticate.ts:73,124` reads that claim back off the
+  **verified, backend-signed** JWT into `req.auth.partnerOrganizationId`. There is no code path
+  where a request body, query param, or header can set or override this claim — it is signed
+  server-side from the database value at token-issuance time, exactly the "claims scoped at
+  issuance, not just at query time" discipline this role's best-practices require.
+
+### 10.2 Whether any internal tester account holds one
+
+**I cannot inspect the live Supabase/Postgres `accounts` table from this environment** (no DB
+credentials in this session), so I cannot give a queried "zero rows" answer the way `database-
+architect` could for Mongo. What I *can* confirm from the repository, which bounds the risk
+tightly:
+
+- The **only** mechanism that produces a non-null `partnerOrganizationId` is the admin-invitation
+  path at §10.1 — there is no seed script, fixture loader, or test-account bootstrap in
+  `backend/src/` or `supabase/` that assigns `partnerOrganizationId` outside that path. Grepped
+  every file referencing `partnerOrganizationId` (`grep -rln` across `backend/src`) — all
+  non-test hits are the invitation/account/session/middleware files already cited; no seed data.
+- The `@tditsolutions.dev` fixture accounts referenced elsewhere in this incident family
+  (`test.security@…`) are **backend integration-test fixtures constructed in-process by test
+  harnesses** (e.g. `security-cases.test.ts`'s `createHarness()` signs its own JWT claims
+  directly, bypassing the invitation flow entirely) — they exist only inside `vitest` runs, are
+  never persisted to the Supabase project the mobile Play build talks to, and are not reachable
+  from a distributed app build at all.
+- Therefore: for a `playInternal` tester account to hold `partnerOrganizationId`, an admin would
+  have had to explicitly issue them a `security_company_operator` invitation through
+  `POST /v1/invitations`, with step-up MFA, naming a specific partner org UUID. **I have no
+  evidence this occurred**, and it is not the kind of action that happens by accident (unlike the
+  `eas.json` flag flip) — it requires a deliberate admin API call. I cannot rule it out with
+  certainty without a live account-table query, which is why I report this as bounded-but-
+  unconfirmed rather than closed.
+
+### 10.3 Answer to §4(4)/§9.6a's substantive question, independently reached
+
+Consistent with §9.1 V-6 and §9.6a: **the server-side authorization boundary does not depend on
+which screens a build renders or which feature flags are set.** Even if a `_SECURITY_OPERATOR`
+tester build were installed by an account that happened to hold a `partnerOrganizationId`, every
+`/v1/security/cases*` route re-derives `orgId` from the signed JWT (§10.1) and every repository
+query scopes on it server-side (`backend/src/repositories/recovery-cases.ts:262-326`,
+`buildPartnerOrgQuery` at :192-204). The client flag is not a security boundary here; the
+`partnerOrganizationId` claim is, and it can only reach a non-null value through the admin-gated
+path in §10.1.
+
+**One adjacent, out-of-scope-for-C-8 observation worth flagging for the record (not a new
+condition, not mine to open):** `buildPartnerOrgQuery` and `findByIdForPartnerOrg` deliberately
+match `partnerOrganizationId: null` (unclaimed, `status: 'open'`) cases for **every** operator
+regardless of org — an intentional shared "open case pool" design so any partner org can claim an
+unassigned case, not an IDOR gap (claimed cases assigned to org B are structurally unreachable by
+org A's query, §10.4). But it does mean an unclaimed open case's `lastLocation` field, if
+populated, is visible to any operator account of any org before anyone claims it. This is a
+pre-existing design property, not introduced by INC-002, and is noted here only because C-8 asks
+about location-data exposure through this exact relationship.
+
+### 10.4 IDOR check on `GET/PATCH/POST /security/cases/:caseId`
+
+Confirmed by reading the Mongo query, not by trusting the route: `findByIdForPartnerOrg` filters
+`{ _id: caseId, $or: [{ partnerOrganizationId: callerOrgId }, { partnerOrganizationId: null }] }`
+(`recovery-cases.ts:312-326`). A case already claimed by org B (`partnerOrganizationId: 'org-B'`)
+fails both arms of that `$or` for a caller whose `orgId` is `'org-A'`, so `findOne` returns `null`
+and the route responds `404 NOT_FOUND` (`security-cases.ts:131-135`) — **not a 403 that would
+confirm existence, and not a leaked payload.** Same construction for `claimForPartnerOrg` (only
+matches `partnerOrganizationId: null`, so a case already claimed by another org cannot be
+re-claimed — :304-309) and `updateStatusForPartnerOrg` (matches only the caller's own org exactly,
+no null branch — :375-380, with an explicit code comment at :334-339 recording why the null branch
+was deliberately excluded from PATCH). No client-suppliable ID lets an operator read or write
+another org's claimed case.
+
+### 10.5 Disposition — INC-002-C-8
+
+**Server-side scoping mechanism: solid.** `partnerOrganizationId` is admin-issued, MFA-step-up
+gated, non-self-service, signed into the JWT at token-issuance from a live DB read, and every
+`/v1/security/cases*` handler and repository query enforces it — confirmed at file:line across
+`invitations.ts`, `accounts.ts`, `session.ts`, `authenticate.ts`, `security-cases.ts`, and
+`recovery-cases.ts`. **The "no internal tester account holds one" half of C-8 is bounded but not
+fully closed** — I can show the only path to acquiring it requires a deliberate admin action with
+no evidence it was taken, but I cannot produce a queried negative from the live account table in
+this environment. **Recommend:** whoever holds Supabase Postgres access run
+`select id, email, partner_organization_id from app.accounts where partner_organization_id is not
+null` and cross-reference against the Play tester roster (already an open gap at §9.6/INC-002-C-9)
+to close this with certainty.
+
+**Filed by:** `authentication-engineer`, 2026-09-21.
+
+---
+
+## 11. `cybersecurity-architect` — Stage 8 dispositions: consent withdrawal (C-5) and the INC-002-B flag families
+
+**Appended 2026-09-22. §1–§10 are `cto`'s, `mobile-architect`'s, `compliance-specialist`'s and
+`authentication-engineer`'s respectively; none is amended, edited or reinterpreted here.** This
+section discharges two things: (A) the Stage 8 ruling on the `LocationConsentModal` withdrawal
+promise and the endpoint built to make it true, and (B) dispositions for the seven manifest entries
+whose waivers INC-002-B invalidated. Every factual claim below was verified in code in this
+session at the file:line cited; nothing is adopted on trust from §1–§10 except where I say so.
+
+### 11.1 Recount of the INC-002-B affected entries — seven, confirmed
+
+The dispatch listed six and flagged that it was probably seven. Counted against
+`docs/organization/gates/stage8-manifest.json` directly, it is **seven**, and the dispatch's list is
+correct:
+
+| Flag | Manifest entries whose waiver text is premised on it |
+|---|---|
+| `EXPO_PUBLIC_FEATURE_ALERTS` | `backend-alerts`, `mobile-alerts`, `mobile-tab-alerts` (3) |
+| `EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR` | `backend-security-cases`, `mobile-security-app` (2) |
+| `EXPO_PUBLIC_FEATURE_THEFT_REPORTING` | `backend-recovery`, `mobile-report-theft` (2) |
+
+**One entry that looks like an eighth and is not, and the reason matters:** `web-security-cases`
+mentions `FEATURE_SECURITY_OPERATOR`, but only to say the *mobile* portal has that gate and this web
+dashboard has **none**. `verify-eas-feature-flags.mjs`'s discovery regex matches the literal
+`gated via FEATURE_X` and that entry says `gated behind` — so the script would not have picked it up
+even if the phrasing had been identical in meaning. See §11.4.4.
+
+**A defect in the new CI gate itself, which I am flagging now because it will bite quietly.**
+`verify-eas-feature-flags.mjs:148` computes `unconditional: stage8.waived !== true`. That means the
+moment any of these seven entries is converted from `waived: true` to a `doc`/`verdict` entry — for
+*any* reason, including a partial or joint-gate-incomplete conditional sign-off of the kind this
+manifest already contains a dozen of — the script will silently treat it as unconditional coverage
+and permit the flag to be flipped `"true"` in a distributed build. The absence of a `waived` key is
+not an affirmative decision by anyone. **Required fix (owner `security-engineer` + `devops-engineer`,
+due 2026-09-28, folding into INC-002-C-3): key the check on an explicit affirmative marker —
+`stage8.flagEnableApproved === true`, written only by me — rather than on the absence of `waived`.**
+This is the same fail-open shape `compliance-specialist` identified at §9.1 V-5, now in the control
+built to prevent V-5. Until that fix lands I have deliberately kept `waived: true` on all seven
+entries even where I am recording a substantive disposition, so the gate keeps holding.
+
+The `$schema` key at the manifest's head points at `./stage8-manifest.schema.json`, which **does not
+exist** in this repo. Nothing validates this file's shape. Minor, but worth one line to
+`devops-engineer`.
+
+### 11.2 Part A(1) — ruling on `DELETE /v1/assets/:assetId/location` and the consent-withdrawal record
+
+I reviewed `backend/src/routes/assets.ts:185-247` and
+`backend/src/repositories/location-consent-log.ts` in full. **`backend-engineer` built substantially
+what I would have specified, and got the hardest call right without being told.** Recorded
+affirmatively, because a review that only lists gaps mis-states the work:
+
+1. **Independence from the kill switch is correct and is the single most important property here.**
+   `ctx.env.locationIngestionEnabled` is consulted at exactly one place in the entire backend —
+   `assets.ts:117`, the ingestion `POST` — and deliberately not in this handler, with the reasoning
+   written into the code at `:195-200`. Had withdrawal been gated on the same flag, INC-001's
+   containment would have *disabled the data subject's s11(2)(b) right as a side effect of
+   protecting them*. That is a trap I have seen shipped elsewhere and it was avoided.
+2. **Ownership scoping and error shape.** `findByIdForAccount` + `404` (not `403`) on a foreign or
+   `removed` asset — no existence oracle, consistent with `security-cases.ts`'s construction at §10.4.
+3. **Idempotency with a fresh record on every call.** `:216-236` — a repeat withdrawal still writes an
+   event. Correct: the *request* to withdraw is the s18/s11(2)(b) artefact, not merely the first
+   state transition. The repository header says this in terms.
+4. **`purgedEventCount` always recorded, including zero** — so the record remains self-describing
+   after the history it purged is gone. This is the provability property I would have asked for and
+   I did not have to.
+5. **Its own rate-limiter bucket** (`assets-location-withdraw:*`), not the shared authenticated
+   limiter — and sized so that a user can always get through to withdraw.
+
+**What it does not yet do — five gaps, two of them blocking before real customer data:**
+
+- **SR-INC002-W1 (BLOCKING). There is no `granted` counterpart.** `LocationConsentEventType` is
+  `'withdrawn'` only; consent *given* is still a `SecureStore` key on the customer's own handset.
+  **This endpoint therefore does not close INC-001 §4.2(c)** — the platform can now prove a customer
+  withdrew, and still cannot prove any customer ever consented. A withdrawal log without a grant log
+  evidences the negative and not the basis. `compliance-specialist`'s *"a consent basis that cannot
+  be evidenced is not a basis"* is untouched by this work.
+- **SR-INC002-W2 (BLOCKING). No retention, no TTL index, no RoPA line, no ADR-0008 provisioning
+  entry.** `location_consent_events` is a **new Mongo collection holding `accountId`, `assetId`, IP
+  address and user-agent** — personal information collected in order to evidence a privacy action.
+  That is proportionate and I approve collecting it, but it must be *declared*: an evidentiary record
+  may legitimately outlive the data it describes, yet "indefinite because nobody specified" is
+  precisely the s14 failure INC-001 §4.3 already found once. Specify a period (my recommendation:
+  retain for the prescription window applicable to a POPIA complaint, stated explicitly), add the TTL
+  index, add the RoPA entry under C-008-12, and register the collection with `database-architect`.
+- **SR-INC002-W3. The purge is per-collection, not per-data-class.** `deleteByAsset` clears
+  `location_events` and `clearLocationForAccount` clears the asset document — but a coordinate copied
+  into a recovery case survives both (see §11.4.2). A withdrawal that leaves a copy standing is not a
+  withdrawal. Couples to SR-INC002B-T2.
+- **SR-INC002-W4. Provability is bounded.** The record is written to a store the same service can
+  delete, with no ADR-0006 Trail A/B integration. The repository header records this deferral
+  honestly and the `push-token-security-log.ts` precedent it cites is real. Acceptable as an interim;
+  not acceptable as the permanent shape once this event type earns an `app.audit_event_type`
+  migration slot.
+- **SR-INC002-W5. No notice-version stamp.** The record does not capture *which* consent text the
+  user was shown. Once SR-INC002-M3 rewrites the primer there will be more than one version in the
+  wild, and "what were they told" becomes unanswerable retrospectively — the same version-stamp gap
+  `web-legal-static` already records for `/terms` and `/privacy`.
+
+> **Ruling (A)(1): the endpoint is APPROVED as designed, with the five conditions above, and is
+> recorded as `backend-asset-location-withdraw` in the Stage 8 manifest with a conditional sign-off
+> (joint gate incomplete — `security-engineer` and `compliance-specialist` concurrence not yet
+> recorded). It is the server half of INC-002-C-5. It does NOT discharge C-5, because C-5 is about a
+> sentence in the client, and that sentence is still false today.**
+
+### 11.3 Part A(2) — Stage 8 disposition for `LocationConsentModal.tsx` / `AssetDetailScreen.tsx`
+
+**No entry existed for these two files.** They were absorbed incidentally by `mobile-policy-assets`
+and `mobile-tab-assets`, **both of which carry a Feature 004 `sign-off-granted-with-changes`
+verdict** for an asset registry whose review never examined a consent primer, an OS-permission
+trigger, or a location control. That is the SH-1a / SR-011-6 absorption defect for the third time,
+and on the most sensitive data class we hold. I have added a dedicated entry,
+`mobile-asset-detail-location-consent`.
+
+**Verified in code 2026-09-22 (not adopted from §9.1 V-3 — re-read):**
+
+- `LocationConsentModal.tsx:42-44` still renders *"You can turn this off anytime from the asset
+  detail screen."*
+- `AssetDetailScreen.tsx:301-308` still renders only **"Update location now"** when `trackingActive`
+  (`:106`). No withdrawal affordance of any kind.
+- `handleConsentAccept` (`:117-145`) still calls `requestForegroundLocation()` **before**
+  `setLocationTrackingConsent('granted')` — the OS dialog still fires first.
+
+> **Ruling (A)(2): BLOCKED. No Stage 8 clearance, and this is not a waiver of convenience — it is a
+> recorded block on a surface with a known-false notice.** The copy cannot clear while it names a
+> control that does not exist. `backend-engineer`'s endpoint does not cure it: **a server endpoint
+> that no button reaches does not make the sentence true.** The promise is a statement about the user
+> interface, and it is falsified by the user interface.
+
+Five conditions are recorded on the manifest entry; **four are blocking** and they are, in order of
+what actually unblocks `mobile-engineer`:
+
+- **SR-INC002-M1** — wire a visible withdrawal control that calls the endpoint **and** clears the
+  device-local `SecureStore` consent + linked-asset keys. Server-side withdrawal alone leaves the
+  device believing it still holds consent; `trackingActive` would stay `true` and the UI would
+  contradict the server. This is the one people get wrong.
+- **SR-INC002-M2** — the control must sit on the screen the copy names, **or** the copy must be
+  changed to name where it actually is. Either closes INC-002-C-5. Doing neither does not.
+- **SR-INC002-M3** — the primer must carry all eight s18 elements. Copy is
+  `compliance-specialist`'s, not engineering's.
+- **SR-INC002-M4** — record consent *before* requesting the OS permission (INC-001 §4.2(d)), pairing
+  with SR-INC002-W1's server-side `granted` record.
+- SR-INC002-M5 (non-blocking) — show the returned `purgedEventCount` to the user. It is the only
+  user-visible evidence the withdrawal did anything, and it is nearly free.
+
+**To `mobile-engineer`, since this ruling was what blocked you: proceed on M1/M2/M4/M5 now.** M3's
+copy is not yours to write and should not hold up the wiring. Nothing here changes INC-002 §4(3) —
+`EXPO_PUBLIC_FEATURE_LOCATION_TRACKING` stays `"false"` in every distributed profile regardless, and
+this section does not reopen that.
+
+### 11.4 Part B — dispositions for the seven INC-002-B entries
+
+**Standing position, applied to all seven: a feature flag is a rendering decision, not a trust
+boundary.** Every one of these waivers said, in substance, "this surface is unreviewed but harmless
+because a string is `"false"`." INC-002 and INC-002-B are the same event twice: the string changed.
+I am not relabelling them — each gets a real re-enablement path below — but I am also not pretending
+the flag was ever the control.
+
+#### 11.4.1 `ALERTS` — `backend-alerts`, `mobile-alerts`, `mobile-tab-alerts` — waiver stands, **review commissioned, clearable this cycle**
+
+I agree with `cto` that this is the cheapest to clear for real, and I have commissioned it rather
+than deferring it — a waiver nobody intends to ever lift is a permanent exception wearing a
+temporary label. Having read `backend/src/routes/alerts.ts` in full, the surface is small and
+mostly sound: both routes are `authenticate`d, every repository call is `accountId`-scoped
+(`listActive`, `findByIdForAccount`, `dismiss`, `markRead`), `alertId` is regex-validated to a
+24-hex ObjectId, and each route has its own rate-limiter bucket.
+
+The one thing standing between this and an unconditional sign-off is **content, not access**: an
+alert carries `title`, `body`, `href` and a `category` that includes `'tracking'` and `'device'`.
+If any synthesised alert body ever contains a coordinate, a place name, or a reverse-geocoded
+string, this surface is a location-egress path wearing a notifications label, and SDL-6 /
+INC-001-C-4 attach to it. That is a grep, not a project. Note also that the plan-entitlement filter
+at `:61-63` strips `tracking`/`device` categories for non-entitled plans **after** the rows are
+read — fine as a product rule, but it is not a tenancy control and must not be mistaken for one.
+
+> **Disposition: waiver STANDS, `EXPO_PUBLIC_FEATURE_ALERTS` stays `"false"` — and a scoped Stage 8
+> pass is commissioned under SR-INC002B-A1…A4, target 2026-09-29, with `security-engineer` and
+> `compliance-specialist` concurrence. On clean return I will issue an unconditional disposition and
+> the flag may be flipped.** This is the only one of the three families I expect to clear in this
+> cycle.
+
+#### 11.4.2 `THEFT_REPORTING` — `backend-recovery`, `mobile-report-theft` — waiver stands, **blocked, and I re-rank it upward**
+
+**New material finding, not known when these waivers were written and not in §1–§10:**
+`GET /recovery/cases/:caseId/location` (`backend/src/routes/recovery.ts:257-281`) **returns raw
+`latitude`/`longitude`**. And as established at §11.2, `ctx.env.locationIngestionEnabled` is
+consulted in exactly one place in the whole backend — the ingestion `POST` at `assets.ts:117`.
+
+The consequence: **this coordinate *read* path is not behind the INC-001 kill switch, and it was
+reachable in the shipped `playInternal` build through `THEFT_REPORTING` even after
+`LOCATION_TRACKING` was reverted to `"false"`.** The two flags were treated as independent; the data
+class is not. Any coordinate already in the store for a case was readable by an authenticated owner
+of that case, with the location flag off and the kill switch closed. INC-001's containment has a
+hole in it on the read limb, and `backend-location-reads`' waiver does not cover it — that entry's
+pattern is `/assets/*/location*`, which does not match `/recovery/*`.
+
+This is **squarely within `security-engineer`'s open D-2 / INC-001-C-4 (F-2, client limb)** and I am
+routing it there rather than opening a parallel condition: **`security-engineer`, add
+`GET /recovery/cases/:caseId/location` to D-2's scope explicitly.** It also bears on
+`compliance-specialist`'s §9.3 s22 analysis for the INC-002 window — the reachable read surface
+during the window was wider than the location flag alone implied. I am flagging that to them without
+presuming to re-rule; §9.3's flip conditions are theirs.
+
+> **Disposition: waiver STANDS, `EXPO_PUBLIC_FEATURE_THEFT_REPORTING` stays `"false"`, and I
+> RE-RANK this family as EQUAL-WORST with `SECURITY_OPERATOR`, above `cto`'s ordering.** The dispatch
+> characterised this as "recovery-case PII". It is not only PII: it is a precise-geolocation egress
+> path outside the kill switch, which is the exact data class and the exact control gap INC-001
+> exists about. Blocking conditions SR-INC002B-T1 (gate the read path fail-closed, at least as
+> strongly as ingestion) and SR-INC002B-T2 (prove the withdrawal purge reaches recovery-case
+> location copies — this is also SR-INC002-W3) are recorded on the manifest entry. **Not clearable
+> this cycle.**
+
+#### 11.4.3 `SECURITY_OPERATOR` — `backend-security-cases`, `mobile-security-app` — waiver stands, **blocked longest**
+
+I concur with `cto`'s ranking of this as worst-in-class **on distribution grounds**, and I record
+the countervailing fact plainly because it changes what the remedy is: **the server-side control
+held.** `authentication-engineer`'s §10 independently verified that `partner_organization_id` is
+admin-issued, step-up-MFA-gated at 15 minutes re-read live from `app.sessions`, non-self-service,
+signed into the JWT from a live DB read, enforced in every `/security/cases*` handler and repository
+query, with no client-suppliable override and no IDOR on `:caseId` (§10.4). I have no basis to
+disturb that and I adopt it.
+
+So the exposure during the window was **of the surface, not — on present evidence — of the data**.
+That distinction does not clear it, for the reason at the head of §11.4: a consumer-distributed
+artifact should not *contain* a privileged third-party-operator portal at all. My standing
+assumption for this surface is that it will eventually be operated by a compromised or malicious
+insider at a partner org; an attacker who obtains any account with a `partnerOrganizationId` and a
+consumer handset should not also be handed the operator UI. **The durable fix is not a better flag,
+it is a separate build identity — R-INC002B-1.** I am recording that as an architecture
+recommendation rather than a precondition, because it is a larger change than this incident should
+force, but I want it on the record now rather than discovered at the next flag flip.
+
+Two blockers beyond `cto`'s framing, both inherited from open work: **SR-INC002B-S1** is
+INC-002-C-8's unclosed half — §10.5 bounds the risk tightly but could not produce a queried negative
+from the live `accounts` table, and that query must be run. **SR-INC002B-S3** is
+`authentication-engineer`'s §10.3 observation, which they correctly declined to open as a condition
+since it was outside C-8: `buildPartnerOrgQuery` matches `partnerOrganizationId: null` for **every**
+operator org, so an unclaimed open case's `lastLocation` is visible to any operator of any partner
+org before anyone claims it. **That is mine to dispose of, and I open it as a condition now.** It is
+a deliberate shared-dispatch-pool design and I am not calling it a vulnerability — but it is
+precise location crossing an organisational trust boundary before any org has been assigned the
+case, and per this role's standing rule it is either scoped (region/dispatch assignment) or
+explicitly accepted, dated, with a named owner. Silent acceptance is not available.
+
+> **Disposition: waiver STANDS, `EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR` stays `"false"`, blocked on
+> SR-INC002B-S1…S3 with R-INC002B-1 recommended. Longest-lived of the three holds; do not expect it
+> to clear this cycle.** `SR-INC002B-S2` (a signed partner-operator data-sharing agreement) is not in
+> engineering's gift at all, and until it exists `compliance-specialist`'s Play "shared"
+> determination at §9.6a cannot be answered either.
+
+#### 11.4.4 `web-security-cases` — `cto`'s separate observation: **CONFIRMED HOLE**
+
+Verified this session: **no `import.meta.env` / `VITE_FEATURE_*` check exists anywhere under
+`src/security/`.** The web operator dashboard at `/security/cases*` is reachable today with no
+client-side gate of any kind, while its mobile twin is flag-gated — and, worse for our purposes,
+**`verify-eas-feature-flags.mjs` reads `mobile/eas.json` only, so the web surface sits entirely
+outside the CI net INC-002 just built.** The gate we built to stop this class of failure cannot see
+one of the two surfaces it exists to protect.
+
+Mitigation, stated so this is not over-read: the routes are behind the privileged login and the
+backend re-derives `partner_organization_id` server-side (§10), so this is surface exposure, not
+data exposure — the same characterisation as §11.4.3.
+
+> **Directed: add a build-time `VITE_FEATURE_SECURITY_OPERATOR` gate on the `/security/cases*` route
+> registration, fail-closed (`=== "true"` enables, per INC-002-C-4's discipline — do not repeat
+> V-5), and extend the CI verifier to cover the web build env. Owner `frontend-engineer` +
+> `devops-engineer`, due 2026-09-29.** Appended to the `web-security-cases` manifest entry. The
+> waiver is not lifted by this.
+
+### 11.5 What this section does and does not do
+
+- **Does not** clear any of the seven entries, lift any INC-001 or INC-002 condition, or authorise
+  any flag flip. All seven stay `waived: true` and all seven flags stay `"false"`.
+- **Does not** disturb §9.3's s22 determination, §9.4's Play ruling, or §10's auth findings. §11.4.2
+  hands `compliance-specialist` a fact bearing on the §9.3 window; the ruling remains theirs.
+- **Does** add three manifest entries (`backend-asset-location-withdraw`,
+  `mobile-asset-detail-location-consent`, and dispositions on the seven) and one CI defect
+  (§11.1) that must fold into INC-002-C-3 before that gate can be relied on.
+- **Residual risks explicitly accepted by me, dated 2026-09-22, review 2026-10-20:** (1) all seven
+  surfaces remain unreviewed while off — accepted, because off is a real reduction even though it is
+  not a control; (2) `location_consent_events` runs without stated retention until SR-INC002-W2 —
+  accepted *only* while no real customer data is in scope, and it becomes blocking the moment it is.
+
+**Filed by:** `cybersecurity-architect`, 2026-09-22. **Discharges:** the Part A ruling on
+INC-002-C-5's server half and the Stage 8 disposition on the consent client (as a recorded BLOCK),
+and the INC-002-B dispositions for all seven entries. **Does not discharge:** INC-002-C-5 (client
+copy — SR-INC002-M1/M2), INC-002-C-8 (SR-INC002B-S1), INC-002-C-3 (now widened by §11.1), or any
+INC-001 condition.
+
+---
+
+## 12. `compliance-specialist` — SR-INC002-M3 deliverable: the eight s18 elements and the primer copy
+
+**Appended 2026-09-22 by `compliance-specialist`. §1–§11 are `cto`'s, `mobile-architect`'s, my own
+§9, `authentication-engineer`'s and `cybersecurity-architect`'s respectively; none is amended,
+edited or reinterpreted here.** This section discharges **SR-INC002-M3** on the
+`mobile-asset-detail-location-consent` manifest entry — *"rewrite the primer to carry all eight s18
+elements … copy owned by `compliance-specialist`, not by engineering."* It supplies copy only. It
+does **not** discharge SR-INC002-M1/M2/M4 (`mobile-engineer`'s wiring), INC-002-C-5, or any INC-001
+condition, and it does **not** authorise flipping `EXPO_PUBLIC_FEATURE_LOCATION_TRACKING`.
+
+### 12.1 The eight elements — read from s18 and from this org's established reading, not re-derived
+
+POPIA **s18(1)(a)–(h)** requires a responsible party collecting personal information to take
+reasonably practicable steps to make the data subject aware of: the information being collected and
+its source; the name and address of the responsible party; the **purpose**; whether supply is
+voluntary or mandatory and the **consequences of failure to supply**; any legal basis for the
+collection; **the recipient(s)**; **the country and level of protection where information will be
+transferred** across borders (s18(1)(g), reading with s72); and **the nature and category of the
+information plus the data subject's s23/s24 rights of access and correction** — with s18(1)(h)(iii)
+carrying the right to object and the right to lodge a complaint with the Information Regulator.
+
+This organisation already worked those statutory heads into an eight-element operational list for
+this exact feature at
+[`008/compliance-review.md` §8.1](../../features/008-self-device-gps-tracking/compliance-review.md)
+(2026-08-14, mine), and INC-001 §2.6 scored the shipped modal against it at **2 of 8**. **I adopt
+that list unchanged** — re-deriving it would fork the org's reading of s18 for no benefit, and the
+scoring at INC-001 §2.6 and §9.1 V-3 is keyed to its numbering. The eight, as they bind here:
+
+| # | Element | s18 head | Where it lives in the copy below |
+|---|---|---|---|
+| 1 | What is collected — this phone's **precise GPS** position **and its accuracy** | s18(1)(a) + (h)(i) | `PRIMER_WHAT_WHEN` |
+| 2 | **When** — app-open / manual tap only, never background, never app-closed | s18(1)(a) | `PRIMER_WHAT_WHEN` |
+| 3 | **Purpose** (also s13) | s18(1)(c) | `PRIMER_WHY` |
+| 4 | **Voluntary**, and declining costs you **nothing** | s18(1)(d) | `PRIMER_YOUR_CHOICE` |
+| 5 | **Recipients**, and the **country** the data sits in (s72) | s18(1)(f) + (g) | `DETAIL_WHO_SEES_IT` |
+| 6 | **How long** it is kept, and deletion on opt-out | s14 read into s18(1)(c) purpose-limitation | `DETAIL_HOW_LONG` |
+| 7 | **Withdrawable at any time, as easily as given** | s11(2)(b), notice of it under s18(1)(d) | `PRIMER_TURNING_IT_OFF` |
+| 8 | **s23/s24 access & correction rights + right to complain to the Information Regulator** | s18(1)(h)(ii)–(iii) | `DETAIL_YOUR_RIGHTS` |
+
+**The responsible party's name (s18(1)(b))** is carried by the modal's existing product chrome and by
+the linked Privacy Notice; I am not spending a line of a mobile modal on an address that is a tap
+away. Noted so it is a decision and not an omission.
+
+### 12.2 Structure — two layers in one modal, not eight paragraphs, and not a link-out
+
+§8.1 of the 008 review is explicit that these must appear **"in the primer screen itself, not in the
+privacy policy, not in a tooltip."** That rule stands. The condensation I authorise is therefore
+**in-modal progressive disclosure**, not deferral:
+
+- **Layer 1 — always visible, no interaction required.** Elements **1, 2, 3, 4, 7**. These are the
+  five that bear directly on whether the expression of will is *voluntary, specific and informed* at
+  the moment of tapping. They are never behind a tap.
+- **Layer 2 — a single in-modal expander**, labelled `PRIMER_DETAILS_TOGGLE`, containing elements
+  **5, 6, 8** plus the honest-limitations and other-assets text. One tap, **no navigation away, no
+  dismissal of the modal, no scroll-jacking.** Follow the expand/collapse accessibility pattern
+  already used at `mobile/src/screens/home/ProtectionMapScreen.tsx:313-321`
+  (`accessibilityState={{ expanded }}`, explicit expand/collapse `accessibilityLabel`) — there is no
+  shared Collapsible primitive in `mobile/src/theme/primitives`, and per the house rule a new one
+  needs `design-system-manager` sign-off; reuse before you build.
+
+This is the balance the codebase already strikes elsewhere between completeness and a phone screen,
+and it keeps all eight elements on the one screen, before the OS dialog, which is what s18 and
+SR-INC002-M4 together require.
+
+### 12.3 The copy — exact strings
+
+Use these verbatim. Bold markers are emphasis within the string, to be rendered with the existing
+`styles.body` weight variants — **do not down-weight any of Layer 2 relative to Layer 1**
+(prominence rule, 008 §8.2's closing note). Do not paraphrase, shorten or "tighten" these; if a
+string does not fit the layout, tell me and I will re-cut it.
+
+```
+PRIMER_TITLE
+  Let this phone report its own location?
+
+PRIMER_WHAT_WHEN                                             [elements 1, 2]
+  What and when. We collect this phone's precise GPS position and how accurate that
+  reading is — only while you have the app open, or when you tap "Update location".
+  Never in the background. Never while the app is closed.
+
+PRIMER_WHY                                                   [element 3]
+  Why. So that if this phone is lost or stolen, you can see where it last reported
+  from. This is not a live tracker, and it cannot find a phone that has been switched
+  off, reset, or put in airplane mode.
+
+PRIMER_YOUR_CHOICE                                           [element 4]
+  Your choice. This is optional. If you tap "Not now", nothing changes — your cover,
+  your premium, your policy and your registered assets all stay exactly the same. Only
+  turn this on for a phone you own and carry yourself.
+
+PRIMER_TURNING_IT_OFF                                        [element 7]
+  Turning it off. You can switch this off at any time from this asset's screen, under
+  "Location" — it takes the same one tap it took to turn on. When you do, we delete the
+  locations this phone has reported and tell you how many we deleted.
+
+PRIMER_DETAILS_TOGGLE                                        [Layer 2 control]
+  The full details
+
+DETAIL_WHO_SEES_IT                                           [element 5]
+  Who can see it. You, and the TD IT Solution staff who need it to help you. We never
+  sell it and never give it to advertisers. It is not sent to a security company
+  automatically — if you open a theft-recovery case and we need to share your last known
+  location with a recovery partner, we will ask you at that point, separately. Your
+  location is stored on our service providers' servers in {{STORAGE_REGION}}.
+
+DETAIL_HOW_LONG                                              [element 6]
+  How long we keep it. We keep the most recent position, and the reports from the last
+  30 days. Anything older is deleted automatically. If you switch this off, we delete
+  this phone's stored locations within 7 days — unless you have a theft-recovery case
+  open, in which case we keep them until that case closes and for 12 months afterwards,
+  so they can be used as evidence.
+
+DETAIL_YOUR_RIGHTS                                           [element 8]
+  Your rights. You can ask us what location information we hold about you, ask us to
+  correct it, or ask us to delete it — contact us from the Account screen. If you are
+  not happy with how we handle it, you can complain to South Africa's Information
+  Regulator at inforegulator.org.za.
+
+DETAIL_OTHER_ASSETS                                          [carried over, still true]
+  Other assets. Laptops, vehicles and other items need separate GPS hardware, which we
+  do not offer yet. This setting only affects this phone. You can still see any
+  last-known locations we already hold for your other assets.
+
+PRIMER_OS_PROMPT_NOTE                                        [supports SR-INC002-M4]
+  If you continue, we record your choice first, and then your phone will ask you for
+  location permission. You can say no there too.
+
+PRIMER_BTN_ACCEPT
+  Turn on location
+
+PRIMER_BTN_DECLINE
+  Not now
+```
+
+**Deleted, not rewritten:** the current `styles.note` string *"You can turn this off anytime from the
+asset detail screen."* (`LocationConsentModal.tsx:42-44`) is replaced by `PRIMER_TURNING_IT_OFF`,
+which is a Layer 1 body string, not a de-emphasised footnote. The single most concrete thing this
+platform got wrong (INC-001 §2.6 element 7; §9.5's mandatory-content bullet) does not go back in at
+`typography.sizes.xs` in `slate[500]`.
+
+### 12.4 Conditions on this copy — mine, blocking where marked
+
+| ID | Condition | Owner | Due |
+|---|---|---|---|
+| **CS-INC002-N1 (BLOCKING)** | `{{STORAGE_REGION}}` is a **placeholder and must not ship as one, and must not be guessed.** The Atlas region is INC-001-C-3 / INC-002 D-3 and is still open (`10-data-protection-contract-obligations.md:62` records it UNKNOWN). On D-3's return I supply the literal string. **If the answer is outside South Africa, element 5 is not satisfied by naming the country alone** — the s72(1)(a) binding-agreement basis applies (`compliance-review-supabase.md` §4.3, which rejected consent as a transborder basis) and I will issue an additional sentence. A build with the placeholder rendered, or with a region I have not confirmed, is a false s18 notice and is exactly the defect this section exists to fix | me, on `cloud-infrastructure-architect`'s return | with D-3 |
+| **CS-INC002-N2 (BLOCKING)** | `DETAIL_HOW_LONG` states 30-day rolling, 7-day post-withdrawal and case+12-month periods. Those are my rulings at `008/compliance-review.md` §6.1 and they are **currently unenforced** — `location_events` has no TTL index (INC-001 §2.2) and C-008-5's automated purge does not exist. **This string may not ship until an automated, auditable purge job enforces all three numbers.** I am issuing **no interim variant**: element 6 cannot be satisfied truthfully by a notice that states a period nothing enforces, and a vaguer sentence would fail element 6 outright. This is not a new blocker on `mobile-engineer` — the flag is `"false"` regardless — but it is a real precondition on ever flipping it | `database-architect` + `backend-engineer` (C-008-5) | before flag enablement |
+| **CS-INC002-N3** | Stamp this notice version — **`location-consent-notice@2026-09-22.v1`** — into both the server-side `granted` record (SR-INC002-W1) and the `location_consent_events` withdrawal record. This is `cybersecurity-architect`'s SR-INC002-W5 and I concur: once this copy lands there are two versions in the wild and *"what were they told"* becomes unanswerable without the stamp. Any change to any string above increments the version | `backend-engineer` + `mobile-engineer` | with M1–M4 |
+| **CS-INC002-N4** | Layer 2 must expand **in place**: no `router.push`, no external link, no modal dismissal, and `PRIMER_DETAILS_TOGGLE` must be visible without scrolling on the smallest supported viewport. If the expander is not reachable without scrolling past the action buttons, the notice is not "made aware" under s18 and I withdraw approval of the two-layer structure for that layout | `mobile-engineer` | with M3 |
+| **CS-INC002-N5** | `PRIMER_TURNING_IT_OFF` names *"this asset's screen, under 'Location'"*. That is a **factual claim about your UI** and it is the sentence INC-002-C-5 exists about. If SR-INC002-M1's control lands anywhere else, or is labelled anything else, **tell me and I will re-cut the string — do not edit it in the file.** A second inaccurate withdrawal promise on the same surface would be the third materialisation of this defect | `mobile-engineer` | with M1/M2 |
+| **CS-INC002-N6** | `mobile/app/(auth)/privacy.tsx` is a placeholder that says a real notice *"will be published before public app-store release"* and describes location as *"a future release"* — **it is now inaccurate on its own terms and it does not carry any of the eight elements.** Nothing in this section may be read as satisfied by it, and no link from the primer to it may be treated as delivering elements 5, 6 or 8 | me (copy), `technical-writer` | 2026-10-05 |
+| **CS-INC002-N7** | `PRIMER_YOUR_CHOICE`'s final sentence (*"Only turn this on for a phone you own and carry yourself"*) is the **C-008-4 attestation** in its minimum form. It is a disclosure, not a control. It does not resolve the family-phone / employee-phone / child's-phone problem at `008/compliance-review.md` §5.4, and C-008-4 stays open on `business-analyst` + `product-manager` | unchanged | unchanged |
+
+### 12.5 Self-scoring against INC-001 §2.6, for comparability
+
+| Element | Shipped modal (INC-001 §2.6) | This copy |
+|---|---|---|
+| 1 What | Partial | **Yes** — "precise GPS position and how accurate that reading is" |
+| 2 When | Yes | **Yes**, unchanged in substance and still exactly true |
+| 3 Purpose | No | **Yes**, with the honest limitation in the same weight |
+| 4 Voluntary / no cost | No | **Yes**, consequences named specifically (cover, premium, policy, assets) |
+| 5 Recipients + country | No | **Yes, subject to CS-INC002-N1** |
+| 6 Retention | No | **Yes, subject to CS-INC002-N2** |
+| 7 Withdrawal | Stated and **false** | **Yes, and true once SR-INC002-M1/M2 land** — and promoted out of the footnote |
+| 8 s23/s24 + Regulator | No | **Yes** |
+
+**Eight of eight, two of them conditionally.** The two conditions are not drafting gaps — they are
+facts the organisation does not yet hold (the Atlas region) and a control it has not yet built (the
+purge job). Writing around either would produce a notice that is complete and untrue, which is the
+INC-001 §2.6 element-7 failure in a different place.
+
+**Filed by:** `compliance-specialist`, 2026-09-22. **Discharges:** SR-INC002-M3 as a copy
+deliverable, conditional on CS-INC002-N1/N2. **Does not discharge:** SR-INC002-M1, M2, M4, M5,
+INC-002-C-5, INC-002-C-6, INC-002-C-7, C-008-4, C-008-5, or any INC-001 condition. **Does not
+authorise** any change to `EXPO_PUBLIC_FEATURE_LOCATION_TRACKING`, which stays `"false"` in every
+distributed profile per §4(3).
+
+---
+
+## 13. `backend-engineer` — SR-INC002-W1 closure, SR-INC002-W2 handoff to `database-architect`
+
+### 13.1 SR-INC002-W1 (blocking) — closed
+
+Added a `'granted'` `LocationConsentEventType` and `recordGrant()` to
+`backend/src/repositories/location-consent-log.ts` (mirrors `recordWithdrawal()`'s shape, minus
+`purgedEventCount`, which does not apply to a grant — that field is now `number | null` on the
+document, `null` for `'granted'` rows). New endpoint `POST /v1/assets/:assetId/location-consent`
+in `backend/src/routes/assets.ts`, placed immediately before the `DELETE .../location` handler it
+mirrors:
+
+- **Not gated by `ctx.env.locationIngestionEnabled`** — same reasoning §11.2(1) gives for
+  withdrawal: recording that consent was given is not the same as ingesting location data, and the
+  kill switch must never also block the evidentiary record of a grant.
+- **Ownership-scoped, `404` (not `403`)** on a foreign or `removed` asset — same as withdrawal.
+- **Idempotent with a fresh record on every call**, not an upsert — a repeat grant (e.g.
+  re-consenting after a re-prompt) writes a new timestamped row rather than overwriting a prior
+  one, for the same reason §11.2(3) gives for withdrawal: the *request* is itself the consent
+  artefact.
+- **Own rate-limiter bucket**, `ASSET_LOCATION_GRANT_LIMIT` (`backend/src/lib/policy.ts`) —
+  30/15 min, same generosity as `ASSET_LOCATION_WITHDRAW_LIMIT`, not the shared authenticated
+  limiter.
+
+This is the server-side counterpart mobile-engineer's M4 fix still needs to call from
+`handleConsentAccept` — that wiring is out of this scope, tracked as a follow-up.
+
+Five tests added to `backend/src/routes/asset-location.test.ts`
+(`describe('POST /assets/:assetId/location-consent')`): records a grant for an owned asset; not
+gated by `locationIngestionEnabled` off; writes a fresh (not upserted) row on a repeat call; `404`
+on a foreign asset; `401` unauthenticated. Full suite: **375/375 passing** (`cd backend && npm
+test`), `tsc --noEmit` clean.
+
+**INC-001 §4.2(c) is now closable in principle** — the platform can evidence both that consent was
+given and that it was withdrawn — but only once mobile wires the client call; until then this is
+dead code from the customer's perspective and §4.2(c) should stay open on the register.
+
+### 13.2 SR-INC002-W2 (blocking) — handoff, not resolved here
+
+Per this task's own instruction and my role's escalation boundary (new collections /
+indexing-strategy changes go to `database-architect`; retention periods are compliance-specialist's
+policy call, not mine to invent), I did **not** create a `location-consent-collections.ts`
+bootstrap file, add a TTL index, or write RoPA/ADR-0008 text. `location_consent_events` currently
+has **no declarative spec** at all — unlike every other Mongo collection in this repo (see
+`backend/src/db/*-collections.ts` + `backend/src/db/mongo-bootstrap.ts`, ADR-0008 §"Decision"),
+it was never given one when it was created yesterday. That gap is itself worth noting to
+`database-architect`, independent of retention.
+
+**What `database-architect` needs to produce, using the existing `*-collections.ts` pattern
+(`backend/src/db/location-events-collections.ts` is the closest sibling — same
+`accountId`/`assetId` shape) as the template:**
+
+1. `backend/src/db/location-consent-collections.ts` — JSON-schema validator for the six fields in
+   `LocationConsentEventDocument` (`accountId`, `assetId`, `eventType: 'granted'|'withdrawn'`,
+   `purgedEventCount: number|null`, `actorSessionId`, `ipAddress`, `userAgent`, `createdAt`), plus
+   non-TTL query indexes — at minimum `{ accountId: 1, assetId: 1, createdAt: -1 }` to match
+   `listByAsset()`'s query shape in `location-consent-log.ts`.
+2. **A TTL index on `createdAt`**, `expireAfterSeconds` **left as a named constant to be filled
+   in** — I have not set a number. §11.2's own recommendation is "retain for the prescription
+   window applicable to a POPIA complaint, stated explicitly" — that is a `compliance-specialist`
+   call (statutory prescription period lookup), not an engineering one, and `database-architect`
+   is named in §11.2 as the party to register the collection with.
+3. **RoPA entry under C-008-12** (§11.2's reference) — purpose (evidencing a privacy-law consent
+   action), lawful basis, data subjects, categories (IP address, user-agent, session id — the PII
+   this collection deliberately holds), retention, and cross-reference to this incident.
+4. **ADR-0008 addendum** (targeted append, not rewrite — ADR-0008 is Ratified) registering
+   `location_consent_events` alongside the Feature 004 collections it already lists, once the
+   above is decided.
+5. Wire `bootstrapLocationConsentCollections()` into `backend/src/db/mongo-bootstrap.ts` the same
+   way the other seven bootstraps are wired (non-fatal try/catch, per the existing pattern) —
+   mechanical, I would have done this part too, but it depends on (1) existing first.
+
+I did not add a stub with an arbitrary TTL number because a wrong number here is worse than no
+number — it would look decided when it isn't, and `compliance-specialist` flagged exactly that
+failure mode in §11.2("‘indefinite because nobody specified' is precisely the s14 failure INC-001
+§4.3 already found once") for the *absence* of a period; inventing one unilaterally would trade
+that failure for a different, unreviewed one.
+
+**Filed by:** `backend-engineer`, 2026-09-22. Closes SR-INC002-W1. Does not close SR-INC002-W2 —
+that remains open pending `database-architect`'s §13.2 deliverables (and `compliance-specialist`'s
+retention-period input within them). Does not touch SR-INC002-W3/W4/W5, which are out of this
+task's scope.
+
+---
+
 **Filed by:** `cto`, 2026-09-21. §8 (D-6 return) appended by `mobile-architect`, 2026-09-21.
-§9 appended by `compliance-specialist`, 2026-09-21.
+§9 appended by `compliance-specialist`, 2026-09-21. §10 appended by `authentication-engineer`,
+2026-09-21. §11 appended by `cybersecurity-architect`, 2026-09-22. §13 appended by
+`backend-engineer`, 2026-09-22.
 **§8 filed by:** `mobile-architect`, 2026-09-21.
+§12 appended by `compliance-specialist`, 2026-09-22.

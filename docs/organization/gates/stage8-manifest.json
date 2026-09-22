@@ -94,6 +94,26 @@
       }
     },
     {
+      "id": "backend-asset-location-withdraw",
+      "kind": "backend_route",
+      "pattern": "DELETE /assets/:assetId/location",
+      "feature": "008",
+      "stage8": {
+        "doc": "docs/organization/incidents/INC-002-play-internal-location-reenablement.md",
+        "verdict": "conditional-sign-off",
+        "note": "2026-09-22 Stage 8 review by cybersecurity-architect, recorded at INC-002 §11.2-§11.3. Distinct entry — NOT absorbed into backend-assets-customer: that entry's Feature 004 sign-off predates this route and reviewed an asset registry, not a POPIA s11(2)(b) consent-withdrawal path. Reviewed in code at backend/src/routes/assets.ts:185-247 and backend/src/repositories/location-consent-log.ts. APPROVED as designed on the four properties that matter: (1) deliberately NOT gated on ctx.env.locationIngestionEnabled, so the ingestion kill switch can never also disable withdrawal; (2) ownership-scoped via findByIdForAccount with 404 (not 403) on a foreign/removed asset; (3) idempotent, and a repeat call still writes a fresh withdrawal record — the request to withdraw is the artefact; (4) purgedEventCount recorded including zero, with actorSessionId/ipAddress/userAgent, so the record is self-describing after the history it purged is gone. Conditional on the conditions below; does NOT close INC-002-C-5 (the false modal copy is client-side and still unfixed) and does NOT close INC-001 §4.2(c) — there is still no server-side record of consent being GIVEN, only of it being withdrawn.",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "SR-INC002-W1 (BLOCKING before real customer data): a 'granted' counterpart event. LocationConsentEventType is 'withdrawn' only; consent given is still device-local SecureStore (INC-001 §4.2(c)). A withdrawal log without a grant log evidences the negative and not the basis.",
+          "SR-INC002-W2 (BLOCKING before real customer data): documented retention and a TTL index for location_consent_events. It is a NEW collection holding accountId, assetId, IP and user-agent with no stated retention, no index, no ADR-0008 provisioning entry and no RoPA line (C-008-12). An evidentiary record may legitimately outlive the data it describes, but 'indefinite by default' is the s14 failure INC-001 already found once.",
+          "SR-INC002-W3: the withdrawal purge must be proven to reach every derived copy of the coordinate, not just location_events + the asset document — see SR-INC002B-T2 on backend-recovery (recovery-case location snapshots).",
+          "SR-INC002-W4: ADR-0006 Trail A/B integration once this event type earns an app.audit_event_type migration slot. The repository header already records this deferral; today the record is written to a store the same service can delete, which bounds its provability.",
+          "SR-INC002-W5: capture a notice-version stamp on the consent event — once the primer is rewritten (SR-INC002-M3) more than one consent text will exist in the wild and 'what was this person told' becomes unanswerable retrospectively.",
+          "Joint gate incomplete: security-engineer and compliance-specialist concurrence is NOT yet recorded — this is a conditional sign-off by the chair alone."
+        ]
+      }
+    },
+    {
       "id": "backend-location-report",
       "kind": "backend_route",
       "pattern": "POST /assets/:assetId/location-report",
@@ -133,8 +153,16 @@
       "feature": "009",
       "stage8": {
         "waived": true,
-        "reason": "Feature 009 Stage 8 pending A-1; mobile gated via FEATURE_ALERTS (INC-001 A-12)",
-        "owner": "cybersecurity-architect"
+        "verdict": "waived-conditional-flag-must-stay-false-review-commissioned",
+        "reason": "Feature 009 Stage 8 pending A-1; mobile gated via FEATURE_ALERTS (INC-001 A-12). [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.1. The waiver premise above ('gated via FEATURE_ALERTS') was FALSE between 2026-09-21 and 2026-09-22: playInternal had EXPO_PUBLIC_FEATURE_ALERTS=\"true\" in a live Play internal-testing build. Flag reverted to false in every profile 2026-09-22; mobile/scripts/verify-eas-feature-flags.mjs now enforces it. DISPOSITION: waiver STANDS, flag STAYS FALSE, and this entry does NOT clear the surface. Ranked lowest severity of the three INC-002-B flag families and designated the cheapest to clear for real — a scoped Stage 8 pass is commissioned, not deferred indefinitely.]",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "EXPO_PUBLIC_FEATURE_ALERTS must remain \"false\" in every non-development eas.json profile until a Stage 8 record for this surface exists and this entry is replaced with a doc/verdict entry.",
+          "SR-INC002B-A1: grep-verified that no alert title/body/href ever carries a coordinate, place name, or reverse-geocoded string (SDL-6 / INC-001-C-4), specifically for category 'tracking' and 'device' — including everything syncAccountAlerts() can synthesise.",
+          "SR-INC002B-A2: confirm the plan-entitlement filter at routes/alerts.ts:61-63 is a defence-in-depth layer and not the only tenancy control — listActive/findByIdForAccount/dismiss/markRead must all be accountId-scoped server-side.",
+          "SR-INC002B-A3: confirm alert rows carry no other data class beyond Feature 009's declared set, and that the Play Data safety declaration matches whatever the feed can contain, before any flag flip (INC-002-C-2).",
+          "Target: 2026-09-29, owner cybersecurity-architect with security-engineer + compliance-specialist concurrence (joint gate)."
+        ]
       }
     },
     {
@@ -144,8 +172,17 @@
       "feature": "009",
       "stage8": {
         "waived": true,
-        "reason": "Feature 009 Stage 8 pending A-1; mobile theft reporting gated via FEATURE_THEFT_REPORTING",
-        "owner": "cybersecurity-architect"
+        "verdict": "waived-conditional-blocked-location-egress-path",
+        "reason": "Feature 009 Stage 8 pending A-1; mobile theft reporting gated via FEATURE_THEFT_REPORTING. [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.2. Premise invalidated (playInternal had the flag \"true\" in a live Play build); reverted 2026-09-22. NEW MATERIAL FINDING recorded in INC-002 §11.4.2 and NOT known when this waiver was written: this router is not a PII-only surface. GET /recovery/cases/:caseId/location (routes/recovery.ts:257-281) returns raw latitude/longitude, and ctx.env.locationIngestionEnabled is consulted at exactly one place in the whole backend (routes/assets.ts:117, the ingestion POST) — so this coordinate READ path is not behind the INC-001 kill switch and was reachable in the shipped build via THEFT_REPORTING even after LOCATION_TRACKING was reverted to false. I therefore RE-RANK this family as equal-worst with SECURITY_OPERATOR, above cto's ordering. Waiver STANDS, flag STAYS FALSE, and this is now an INC-001-C-4-coupled item, not a Feature 009 backlog item.]",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "EXPO_PUBLIC_FEATURE_THEFT_REPORTING must remain \"false\" in every non-development eas.json profile until every condition below is closed.",
+          "SR-INC002B-T1 (BLOCKING): GET /recovery/cases/:caseId/location must be brought under an explicit server-side gate of at least the strength of LOCATION_INGESTION_ENABLED (fail-closed, literal 'true' to enable) — a coordinate read path must not outlive the kill switch that governs writing the same coordinate. Owner backend-engineer + security-engineer.",
+          "SR-INC002B-T2 (BLOCKING): prove that DELETE /v1/assets/:assetId/location's purge reaches every derived copy of the coordinate, including any recovery-case location snapshot reachable via getLocationForCase(). A per-collection purge is not a per-data-class erasure.",
+          "SR-INC002B-T3: INC-001-C-4 (F-2 client limb, security-engineer) closed with the recovery/report-theft screens explicitly in scope.",
+          "SR-INC002B-T4: compliance-specialist confirms the Play Data safety declaration covers a recovery-case surface that can return precise location, before any flag flip (INC-002-C-2).",
+          "Review date 2026-10-06 or on first change to routes/recovery.ts, whichever is sooner."
+        ]
       }
     },
     {
@@ -178,8 +215,17 @@
       "feature": "009",
       "stage8": {
         "waived": true,
-        "reason": "Feature 009 operator surface — mobile security-app gated via FEATURE_SECURITY_OPERATOR",
-        "owner": "cybersecurity-architect"
+        "verdict": "waived-conditional-blocked-third-party-trust-boundary",
+        "reason": "Feature 009 operator surface — mobile security-app gated via FEATURE_SECURITY_OPERATOR. [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.3. Premise invalidated (playInternal had the flag \"true\" in a live Play build); reverted 2026-09-22. I concur with cto's ranking of this family as worst-in-class on distribution grounds, while recording that the server-side control held: INC-002 §10 (authentication-engineer) independently verified partner_organization_id is admin-issued, step-up-MFA-gated, non-self-service, signed into the JWT from a live DB read, and enforced in every /security/cases* handler and repository query, with no client-suppliable override and no IDOR on :caseId. The exposure was therefore of the SURFACE, not (on present evidence) of the DATA. That distinction does not clear it — a privileged third-party-operator portal must not be compiled into a consumer-distributed artifact at all, flag or no flag. Waiver STANDS, flag STAYS FALSE.]",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR must remain \"false\" in every non-development eas.json profile. This is the longest-lived of the three INC-002-B holds — do not expect to clear it in this cycle.",
+          "SR-INC002B-S1 (BLOCKING): INC-002-C-8's queried negative — 'select id, email, partner_organization_id from app.accounts where partner_organization_id is not null' cross-referenced against the Play tester roster. §10.5 bounds this risk but could not close it from the repository.",
+          "SR-INC002B-S2 (BLOCKING): a signed partner-operator data-sharing agreement exists before any real partner org holds a claim. Until then the Play 'shared' determination (declaration §4(3)) cannot be answered and compliance-specialist's §9.6a referral stays open.",
+          "SR-INC002B-S3 (BLOCKING): disposition of INC-002 §10.3's open-case-pool property — buildPartnerOrgQuery matches partnerOrganizationId:null for EVERY operator org, so an unclaimed open case's lastLocation is visible to any operator of any org before anyone claims it. Either scope the pool (region/dispatch assignment) or record it as a dated risk acceptance with a named accountable owner. Silent acceptance is not permitted.",
+          "R-INC002B-1 (architecture recommendation, not a precondition to the flag but the durable fix): ship the operator portal as a separate application/build identity rather than a flag-gated route group inside the consumer app. A feature flag is a rendering decision; it is not a trust boundary, and treating it as one is what made INC-002-B possible.",
+          "Review date 2026-10-20, owner cybersecurity-architect."
+        ]
       }
     },
     {
@@ -343,7 +389,8 @@
       "feature": "009",
       "stage8": {
         "waived": true,
-        "reason": "INC-001 A-12 — gated via FEATURE_ALERTS",
+        "verdict": "waived-conditional-flag-must-stay-false-review-commissioned",
+        "reason": "INC-001 A-12 — gated via FEATURE_ALERTS. [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.1. Premise invalidated the same way backend-alerts' was (playInternal had the flag \"true\" in a live Play build). Waiver STANDS, flag STAYS FALSE. Clears together with backend-alerts under SR-INC002B-A1..A3 — the client half adds one condition: SR-INC002B-A4, confirm the alerts list/detail screens render no coordinate or map affordance derived from a 'tracking' alert's href.]",
         "owner": "cybersecurity-architect"
       }
     },
@@ -354,7 +401,8 @@
       "feature": "009",
       "stage8": {
         "waived": true,
-        "reason": "INC-001 A-12 — gated via FEATURE_THEFT_REPORTING",
+        "verdict": "waived-conditional-blocked-location-egress-path",
+        "reason": "INC-001 A-12 — gated via FEATURE_THEFT_REPORTING. [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.2. Same premise invalidation and same blocking conditions as backend-recovery (SR-INC002B-T1..T4): this is the client half of a surface that can surface raw coordinates from a recovery case. Waiver STANDS, flag STAYS FALSE. Note the adjacent, separately-tracked mobile-live-tracking-police-report entry — its conditional-sign-off is Feature 011 SAPS-scoped and does NOT clear the theft-reporting flow that reaches it.]",
         "owner": "cybersecurity-architect"
       }
     },
@@ -376,7 +424,8 @@
       "feature": "009",
       "stage8": {
         "waived": true,
-        "reason": "INC-001 A-12 — gated via FEATURE_SECURITY_OPERATOR",
+        "verdict": "waived-conditional-blocked-third-party-trust-boundary",
+        "reason": "INC-001 A-12 — gated via FEATURE_SECURITY_OPERATOR. [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.3. This is the entry cto ranked worst and it is the one the ranking is actually about: (security-app)* is an entire third-party-operator portal compiled into the consumer mobile artifact, reachable on a consumer install the moment one env string changes. Same blocking conditions as backend-security-cases (SR-INC002B-S1..S3) plus R-INC002B-1, which targets this entry specifically: the portal should not live in this binary. Waiver STANDS, flag STAYS FALSE.]",
         "owner": "cybersecurity-architect"
       }
     },
@@ -441,7 +490,8 @@
       "feature": "009",
       "stage8": {
         "waived": true,
-        "reason": "INC-001 A-12 — gated via FEATURE_ALERTS. Relocated from (app)/alerts* (mobile-alerts) by the (tabs) navigation restructuring — same screen, same waiver, new path only.",
+        "verdict": "waived-conditional-flag-must-stay-false-review-commissioned",
+        "reason": "INC-001 A-12 — gated via FEATURE_ALERTS. Relocated from (app)/alerts* (mobile-alerts) by the (tabs) navigation restructuring — same screen, same waiver, new path only. [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.1: same premise invalidation, same disposition and same clearance conditions as mobile-alerts; recorded here explicitly because this is a separately-discoverable manifest surface and a reader must not have to infer its status from the entry it was relocated from.]",
         "owner": "cybersecurity-architect"
       }
     },
@@ -454,6 +504,27 @@
         "doc": "docs/features/004-policy-asset-management/security-review.md",
         "verdict": "sign-off-granted-with-changes",
         "note": "Covers (tabs)/assets, (tabs)/assets/[id], and (tabs)/assets/register. Relocated from (app)/assets* (mobile-policy-assets) by the (tabs) navigation restructuring — same screens, same review coverage, new path only."
+      }
+    },
+    {
+      "id": "mobile-asset-detail-location-consent",
+      "kind": "mobile_component_group",
+      "pattern": "src/location/LocationConsentModal.tsx + src/screens/assets/AssetDetailScreen.tsx (tracking controls)",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "verdict": "BLOCKED-no-sign-off-known-defective-notice",
+        "reason": "2026-09-22 disposition, cybersecurity-architect — INC-002 §11.3. Distinct entry: these two files carry the Feature 008 location-consent flow but were only ever absorbed incidentally by mobile-policy-assets / mobile-tab-assets, both of which hold a Feature 004 'sign-off-granted-with-changes' verdict for an asset registry that never examined a consent primer or an OS-permission trigger. Same absorption defect as SH-1a and SR-011-6. THIS IS A BLOCK, NOT A WAIVER OF CONVENIENCE. Verified in code this session, not inferred: LocationConsentModal.tsx:42-44 still states 'You can turn this off anytime from the asset detail screen'; AssetDetailScreen.tsx:301-308 still renders only 'Update location now' when trackingActive, and clearLocationTrackingConsent() is called from no screen. The statement is therefore still FALSE IN THE SHIPPED CLIENT as at 2026-09-22, notwithstanding that DELETE /v1/assets/:assetId/location now exists server-side (see backend-asset-location-withdraw) — a server endpoint no button reaches does not make the sentence true. The flow also still fires the OS permission dialog before recording consent (AssetDetailScreen.tsx:122-124), which is the exact sequencing INC-001 §4.2(d) ruled invalid, and the primer still carries 2 of 8 POPIA s18 elements.",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "EXPO_PUBLIC_FEATURE_LOCATION_TRACKING stays \"false\" in every non-development profile regardless of this entry (INC-002 §4(3) — unaffected and not reopened here).",
+          "SR-INC002-M1 (BLOCKING): wire a visible withdrawal control on AssetDetailScreen that calls DELETE /v1/assets/:assetId/location AND clears the device-local SecureStore consent + linked-asset keys. Server withdrawal without local clearing leaves the device believing it still has consent. Owner mobile-engineer.",
+          "SR-INC002-M2 (BLOCKING): the withdrawal control must be reachable on the exact screen the copy names, or the copy must be changed to name where it actually is. Either fix closes INC-002-C-5; leaving both unchanged does not.",
+          "SR-INC002-M3 (BLOCKING): rewrite the primer to carry all eight s18 elements — purpose, retention, recipients, cross-border/region, voluntariness and no-cost declining, the data subject's s23/s24 rights — copy owned by compliance-specialist, not by engineering.",
+          "SR-INC002-M4 (BLOCKING): record consent BEFORE requesting the OS permission, and never treat an OS grant as the consent event (INC-001 §4.2(d)). Pairs with SR-INC002-W1's server-side 'granted' record.",
+          "SR-INC002-M5: surface the endpoint's purgedEventCount to the user as confirmation of what was erased — cheap, and it is the only user-visible evidence the withdrawal did anything.",
+          "Re-review on completion of SR-INC002-M1..M4 as a single Stage 8 pass; this entry is then replaced by a doc/verdict entry. Until then no build with the location flag on may be distributed, and this surface is not cleared."
+        ]
       }
     },
     {
@@ -754,7 +825,7 @@
       "feature": "009",
       "stage8": {
         "waived": true,
-        "reason": "SH-1a backfill (2026-09-03) — src/security/pages/SecurityCasePages.tsx. INC-001 §7 lists this surface as having no Stage 8 record. Unlike the mobile (security-app) portal (gated behind FEATURE_SECURITY_OPERATOR), this web dashboard has no client-side feature flag of any kind — it is reachable today with no gate at all. Mirrors backend-security-cases.",
+        "reason": "SH-1a backfill (2026-09-03) — src/security/pages/SecurityCasePages.tsx. INC-001 §7 lists this surface as having no Stage 8 record. Unlike the mobile (security-app) portal (gated behind FEATURE_SECURITY_OPERATOR), this web dashboard has no client-side feature flag of any kind — it is reachable today with no gate at all. Mirrors backend-security-cases. [2026-09-22 addition by the same author, cybersecurity-architect — INC-002 §11.4.4: cto asked me to confirm this hole and I do. Verified this session: no VITE_/import.meta.env feature check exists on src/security/pages/SecurityCasePages.tsx or SecurityRoutes.tsx, and mobile/scripts/verify-eas-feature-flags.mjs cannot see it — that script reads mobile/eas.json only, so the web operator dashboard sits entirely outside the CI net INC-002 just built. CONFIRMED HOLE. Directed fix: add a build-time flag (e.g. VITE_FEATURE_SECURITY_OPERATOR, fail-closed on ===\"true\" per INC-002-C-4's discipline) gating the /security/cases* route registration, owner frontend-engineer + devops-engineer, due 2026-09-29, and extend the CI verifier to cover web build env. This is mitigated but not cured by the privileged-login boundary: the routes are behind auth and the backend re-derives partner_organization_id server-side (INC-002 §10), so this is surface exposure, not data exposure — the same characterisation as mobile-security-app, and it does not lift this waiver.]",
         "owner": "cybersecurity-architect"
       }
     },
