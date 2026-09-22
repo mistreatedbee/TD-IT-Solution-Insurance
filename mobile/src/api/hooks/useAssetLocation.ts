@@ -4,6 +4,7 @@ import {
   getAssetLocation,
   listAssetLocationSummary,
   reportAssetLocation,
+  withdrawAssetLocation,
   type AssetLocationSummaryPage,
   type LocationReportRequest,
 } from '../asset-location';
@@ -53,6 +54,20 @@ export function useReportAssetLocationMutation() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: LOCATION_SUMMARY_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: assetLocationQueryKey(variables.assetId) });
+    },
+  });
+}
+
+// INC-002 §11.3 SR-INC002-M1 — withdraws consent server-side (clears stored
+// location, purges history). Screens using this must also clear the
+// device-local consent/linked-asset SecureStore keys themselves.
+export function useWithdrawAssetLocationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (assetId: string) => withdrawAssetLocation(assetId),
+    onSuccess: (_data, assetId) => {
+      queryClient.invalidateQueries({ queryKey: LOCATION_SUMMARY_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: assetLocationQueryKey(assetId) });
     },
   });
 }

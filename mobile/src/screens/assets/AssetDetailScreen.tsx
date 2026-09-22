@@ -3,10 +3,11 @@
  */
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert as RNAlert, StyleSheet, Text, View } from 'react-native';
 import {
   useAssetLocationQuery,
   useReportAssetLocationMutation,
+  useWithdrawAssetLocationMutation,
 } from '../../api/hooks/useAssetLocation';
 import { useAssetQuery } from '../../api/hooks/useAssets';
 import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
@@ -19,6 +20,8 @@ import {
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import {
   LocationConsentModal,
+  clearLinkedSmartphoneAssetId,
+  clearLocationTrackingConsent,
   formatRelativeTime,
   getLinkedSmartphoneAssetId,
   getLocationTrackingConsent,
@@ -71,6 +74,7 @@ export function AssetDetailScreen() {
     refetch: refetchLocation,
   } = useAssetLocationQuery(isSmartphone ? id : undefined);
   const reportMutation = useReportAssetLocationMutation();
+  const withdrawMutation = useWithdrawAssetLocationMutation();
   const { hasIncidentManagement, changePlanHref } = usePlanEntitlements();
 
   const [linkedAssetId, setLinkedAssetIdState] = useState<string | null>(null);
@@ -119,11 +123,17 @@ export function AssetDetailScreen() {
     setActionLoading(true);
     setActionError(null);
     try {
-      const fix = await requestForegroundLocation();
+      // INC-002 §11.3 SR-INC002-M4 / INC-001 §4.2(d): consent must be
+      // recorded BEFORE the OS location-permission dialog is requested, and
+      // an OS grant is never treated as the consent event itself. This is
+      // the client-side consent record; there is no server-side "granted"
+      // record yet (tracked separately as SR-INC002-W1).
       await setLocationTrackingConsent('granted');
       await setLinkedSmartphoneAssetId(id);
       setConsentGrantedState(true);
       setLinkedAssetIdState(id);
+
+      const fix = await requestForegroundLocation();
       await reportMutation.mutateAsync({
         assetId: id,
         body: {
@@ -148,6 +158,53 @@ export function AssetDetailScreen() {
     await setLocationTrackingConsent('denied');
     setShowConsentModal(false);
   }, []);
+
+  const performDisableTracking = useCallback(async () => {
+    if (!id) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      // SR-INC002-M1: both halves of withdrawal — server record cleared AND
+      // device-local consent/linked-asset state cleared. Doing only one
+      // leaves the other side believing consent is still active.
+      const result = await withdrawMutation.mutateAsync(id);
+      await clearLocationTrackingConsent();
+      await clearLinkedSmartphoneAssetId();
+      setConsentGrantedState(false);
+      setLinkedAssetIdState(null);
+      await refetchLocation();
+      await locationSummary.refetch();
+      // SR-INC002-M5: surface what was actually erased.
+      RNAlert.alert(
+        'Tracking turned off',
+        result.purgedEventCount > 0
+          ? `Location tracking is off for this phone. ${result.purgedEventCount} stored location ${
+              result.purgedEventCount === 1 ? 'record was' : 'records were'
+            } deleted.`
+          : 'Location tracking is off for this phone.',
+      );
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'location' }));
+    } finally {
+      setActionLoading(false);
+    }
+  }, [id, withdrawMutation, refetchLocation, locationSummary]);
+
+  const handleDisableTracking = useCallback(() => {
+    if (!id) return;
+    RNAlert.alert(
+      'Turn off location tracking?',
+      'This stops this phone from reporting location for this asset and deletes the location history already recorded for it. You can turn tracking back on later.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Turn off tracking',
+          style: 'destructive',
+          onPress: () => void performDisableTracking(),
+        },
+      ],
+    );
+  }, [id, performDisableTracking]);
 
   const handleUpdateLocation = useCallback(async () => {
     if (!id || !FEATURE_LOCATION_TRACKING_ENABLED) return;
@@ -299,14 +356,24 @@ export function AssetDetailScreen() {
               Phone-based location tracking is not available in this build.
             </Alert>
           ) : trackingActive ? (
-            <Button
-              variant="secondary"
-              fullWidth
-              loading={actionLoading || reportMutation.isPending}
-              onPress={handleUpdateLocation}
-            >
-              Update location now
-            </Button>
+            <View style={styles.trackingActiveActions}>
+              <Button
+                variant="secondary"
+                fullWidth
+                loading={actionLoading || reportMutation.isPending}
+                onPress={handleUpdateLocation}
+              >
+                Update location now
+              </Button>
+              <Button
+                variant="secondary"
+                fullWidth
+                loading={actionLoading || withdrawMutation.isPending}
+                onPress={handleDisableTracking}
+              >
+                Turn off tracking
+              </Button>
+            </View>
           ) : linkedAssetId && !isThisPhoneLinked ? (
             <Alert tone="info">
               Another smartphone asset is linked to this phone. Disable tracking there first.
@@ -598,6 +665,9 @@ const styles = StyleSheet.create({
   },
   actionAlert: {
     marginBottom: spacing.md,
+  },
+  trackingActiveActions: {
+    gap: spacing.sm,
   },
   row: {
     marginBottom: spacing.md,

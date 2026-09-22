@@ -70,6 +70,26 @@ export function getAssetLocation(assetId: string) {
   );
 }
 
+export interface WithdrawAssetLocationResponse {
+  assetId: string;
+  locationSource: string | null;
+  purgedEventCount: number;
+}
+
+/**
+ * INC-002 §11.3 SR-INC002-M1 — server-side half of consent withdrawal.
+ * Clears the asset's stored last-known location and purges its location
+ * history. Callers must also clear device-local consent/linked-asset state
+ * (`clearLocationTrackingConsent`/`clearLinkedSmartphoneAssetId`) — this
+ * endpoint alone does not make the device stop believing it has consent.
+ */
+export function withdrawAssetLocation(assetId: string) {
+  return apiFetch<WithdrawAssetLocationResponse>(
+    `/assets/${encodeURIComponent(assetId)}/location`,
+    { method: 'DELETE' },
+  );
+}
+
 export function listAssetLocationSummary() {
   return apiFetch<AssetLocationSummaryPage>('/assets/location-summary', { method: 'GET' });
 }
