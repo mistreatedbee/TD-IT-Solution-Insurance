@@ -3,9 +3,51 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SecurityRoutes from './SecurityRoutes';
 
+const mutableEnv = import.meta.env as unknown as Record<string, string | undefined>;
+
+describe('SecurityRoutes feature flag gate (INC-002)', () => {
+  const originalFlag = mutableEnv.VITE_FEATURE_SECURITY_OPERATOR;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    mutableEnv.VITE_FEATURE_SECURITY_OPERATOR = originalFlag;
+  });
+
+  it('blocks /security/login and shows an unavailable state when the flag is unset (default off)', async () => {
+    delete mutableEnv.VITE_FEATURE_SECURITY_OPERATOR;
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no network call expected when flag is off')));
+
+    render(
+      <MemoryRouter initialEntries={['/security/login']}>
+        <SecurityRoutes />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Security partner dashboard unavailable' })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('heading', { name: 'Security partner sign in' })).not.toBeInTheDocument();
+  });
+
+  it('blocks a deep /security/cases path when the flag is explicitly false', async () => {
+    mutableEnv.VITE_FEATURE_SECURITY_OPERATOR = 'false';
+
+    render(
+      <MemoryRouter initialEntries={['/security/cases']}>
+        <SecurityRoutes />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Security partner dashboard unavailable' })).toBeInTheDocument(),
+    );
+  });
+});
+
 describe('SecurityRoutes index route (Feature 012 AC-1, AC-7)', () => {
   beforeEach(() => {
     sessionStorage.clear();
+    mutableEnv.VITE_FEATURE_SECURITY_OPERATOR = 'true';
   });
 
   afterEach(() => {
