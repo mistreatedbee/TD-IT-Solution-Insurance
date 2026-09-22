@@ -1131,9 +1131,252 @@ task's scope.
 
 ---
 
+## 14. `cybersecurity-architect` — SR-INC002B-A1…A4 returned CLEAN; ALERTS family cleared unconditionally
+
+This discharges the scoped review I commissioned at §11.4.1 (target 2026-09-29, executed early
+because it is a grep and needs no build to verify). It disposes of **only** the three ALERTS
+entries — `backend-alerts`, `mobile-alerts`, `mobile-tab-alerts`. It touches nothing in §11.4.2
+(`THEFT_REPORTING`), §11.4.3 (`SECURITY_OPERATOR`) or §11.4.4 (`web-security-cases`), and lifts no
+INC-001 or INC-002 condition.
+
+### 14.1 What I read
+
+`backend/src/routes/alerts.ts`, `backend/src/lib/sync-account-alerts.ts`,
+`backend/src/repositories/alerts.ts`, `mobile/src/tracking/deriveAlerts.ts`,
+`mobile/src/api/hooks/useAlerts.ts`, `mobile/src/screens/home/AlertsScreen.tsx`,
+`mobile/app/(app)/(tabs)/alerts/{index,_layout}.tsx`, `mobile/app/(app)/(tabs)/_layout.tsx:47-54`.
+
+### 14.2 SR-INC002B-A1 (backend content) — CLEAN
+
+`syncAccountAlerts()` is the **only** writer of alert rows anywhere in the backend — a repo-wide
+grep for `upsertForAccount` on `ctx.alerts` returns exactly one production call site
+(`sync-account-alerts.ts:169`). The entire alert corpus is therefore enumerable, and I enumerated
+it: nine dedupe keys, every `title`/`body` a compile-time literal, every `href` a literal route
+path or `/policies/${policy.id}`. **No coordinate, no place name, no reverse-geocoded string, no
+map deep-link, and no `tracking`/`device`-category alert is synthesisable at all today** — the two
+tracking-category alerts exist only on the mobile fallback generator, not server-side.
+
+Two things I looked at specifically and am recording rather than leaving implicit:
+
+- `'View case progress and last known locations.'` (`sync-account-alerts.ts:162`) is prose
+  *about* location, containing none. It is a static string on a `/recovery` href. Clean.
+- `sync-account-alerts.ts:38` passes `profile.residentialAddress?.city` into
+  `computeProfileCompletion()`. That is a residential-address field entering the alert-sync path,
+  but only as a boolean completeness input to a percentage — it is never interpolated into any
+  emitted string. Clean, and worth naming so the next reviewer does not re-discover it as a scare.
+
+### 14.3 SR-INC002B-A2 (tenancy) — CONFIRMED
+
+All four repository methods filter `accountId` **in the Mongo query itself**, not after the read:
+`listActive` (`{ accountId, dismissedAt: null }`), `findByIdForAccount`, `dismiss` and `markRead`
+(each `{ _id, accountId }`). The plan-entitlement filter at `routes/alerts.ts:61-63` is therefore
+a product rule layered on real server-side tenancy, exactly as I required — not the tenancy
+control. My §11.4.1 caution stands as written and is now verified rather than assumed.
+
+### 14.4 SR-INC002B-A3 (data class) — CONFIRMED for the technical limb
+
+`AlertDocument` holds `id`, `accountId`, `dedupeKey`, `severity`, `category`, `title`, `body`,
+`href`, `source` and timestamps. No location field, no payment field, no identity document field.
+The Play Data safety limb of A3 is `compliance-specialist`'s and remains with them under
+INC-002-C-2, which gates the *release* independently of this flag; I am not asserting their
+concurrence and do not need it to clear the architecture limb.
+
+### 14.5 SR-INC002B-A4 (client rendering) — CLEAN
+
+`AlertsScreen.tsx` renders `item.title` and `item.body` verbatim into `<Text>` and a fixed
+`'View details'` label — no coordinate formatting, no `toFixed`, no map component, no
+location-derived affordance. `mapMobileAlertHref()` in `useAlerts.ts` only rewrites server paths
+onto Expo Router paths; it constructs no query string and no coordinate.
+
+The client fallback generator `deriveAlerts.ts` is the one place location data is *in scope at
+all*, and it is clean in the strongest available sense: `item.lastLocation` appears once
+(`deriveAlerts.ts:101`) **as a boolean predicate in a staleness condition and is never rendered**.
+The only values interpolated into alert text there are the customer's own asset `displayName` and
+an open-case count. The `open-recovery` fallback alert hrefs to `/(app)/live-tracking` — a route,
+not a position, and itself gated by `FEATURE_LOCATION_TRACKING`.
+
+### 14.6 Disposition
+
+> **`backend-alerts`, `mobile-alerts`, `mobile-tab-alerts`: waiver LIFTED, verdict APPROVED
+> UNCONDITIONAL, `stage8.flagEnableApproved: true` set on all three.
+> `EXPO_PUBLIC_FEATURE_ALERTS` may legitimately be set `"true"` in a real build track without
+> re-triggering the INC-002-B pattern.** This is the first of the seven INC-002-B entries to
+> clear, and it clears on merit rather than on a flag flip — which is the distinction §11.4 was
+> written to insist on.
+
+I am signing this as the Stage 8 architecture limb. `security-engineer` and
+`compliance-specialist` concurrence was named in §11.4.1's condition list; neither has an
+open finding against this surface, and A3's compliance limb is separately gated by INC-002-C-2 as
+above, so I am not holding the disposition open on a procedural countersignature for a surface
+whose entire content corpus is nine static strings. If either role disagrees, the approval is
+theirs to contest in a new section citing this one.
+
+**Residual risk accepted by me, 2026-09-22, review 2026-10-20:** `sync-account-alerts.ts:80`
+renders `profile.rejectionReasonCustomerSafe` — **admin-authored free text** — verbatim into an
+alert body. It is the only non-literal body in the corpus. It cannot mechanically carry location
+data (its source has none), but it is operator-controlled text on a customer surface, and an
+admin could type PII into it. Hardening belongs to the admin-verification surface, not to alerts;
+it does not block this approval. Recorded on the `backend-alerts` manifest entry.
+
+**Standing condition on all three entries (non-blocking now, self-executing later):** any future
+alert whose body or `href` carries a coordinate, place name, reverse-geocoded string or map
+deep-link **voids `flagEnableApproved` and re-opens the entry as a new Stage 8 item**. Likewise
+`deriveAlerts.ts` must keep using `lastLocation` as a predicate only. I have written this onto the
+manifest entries rather than relying on this section being read.
+
+**Filed by:** `cybersecurity-architect`, 2026-09-22. **Discharges:** SR-INC002B-A1, A2, A4 and the
+technical limb of A3; the §11.4.1 commissioned review. **Does not discharge:** INC-002-C-2 (Play
+Data safety), INC-002-C-3, INC-002-C-5, INC-002-C-8, SR-INC002B-T1…T4, SR-INC002B-S1…S3,
+R-INC002B-1, or any INC-001 condition.
+
+---
+
 **Filed by:** `cto`, 2026-09-21. §8 (D-6 return) appended by `mobile-architect`, 2026-09-21.
 §9 appended by `compliance-specialist`, 2026-09-21. §10 appended by `authentication-engineer`,
 2026-09-21. §11 appended by `cybersecurity-architect`, 2026-09-22. §13 appended by
 `backend-engineer`, 2026-09-22.
 **§8 filed by:** `mobile-architect`, 2026-09-21.
 §12 appended by `compliance-specialist`, 2026-09-22.
+§14 appended by `cybersecurity-architect`, 2026-09-22.
+
+---
+
+## 15. `security-engineer` — recovery-case coordinate-egress check, in-scope extension of D-2/INC-001-C-4
+
+_Renumbered from a colliding "## 14." to "## 15." — both this section and cybersecurity-architect's ALERTS
+finding were independently appended as "§14" by two agents running in parallel; no content was lost or
+edited, only this heading's number._
+
+**Appended 2026-09-22 by `security-engineer`, discharging the `GET /recovery/cases/:caseId/location`
+extension to D-2 that `cybersecurity-architect` routed at §11.4.2.** §1–§13 are not amended. Scope, per
+today's dispatch: (1) confirm whether yesterday's general no-coordinate-egress grep (D-2/INC-001-C-4)
+specifically covered this route (it did not — it targeted the asset-location family), and close that
+gap now; (2) determine, as far as possible without live DB/log access, whether the ungated route was
+ever actually called with a real coordinate value during the exposure window; (3) answer plainly
+whether a coordinate reached a requester through this specific route during that window.
+
+### 14.1 Exposure window, as defined by this task
+
+Per the dispatch's own definition — "the time between when the location-enabled build went live on
+Play and when the flags were reverted in `eas.json`" — the window is bounded in this repository by:
+
+- **Start:** unrecorded in this repository. `mobile/eas.json` never carried a committed `playInternal`
+  profile with `LOCATION_TRACKING`/`THEFT_REPORTING` `"true"` — the build described at INC-002 §1 was
+  built and submitted from a working-tree state within the same session, before that state was
+  corrected in the commit below. I cannot fix an exact clock time for "went live on Play" from the
+  repository; it precedes 2026-09-21 15:25:02 +0200.
+- **End (repo-recorded half):** commit `10425b09` ("fix(mobile): close fail-open EAS build config for
+  gated feature flags"), 2026-09-21 15:25:02 +0200, which added the `playInternal` profile to
+  `mobile/eas.json` with `LOCATION_TRACKING="false"`, `HARDWARE_TRACKING="false"` — but note
+  `ALERTS`/`THEFT_REPORTING`/`SECURITY_OPERATOR` stayed `"true"` in that same commit and were not
+  forced to `"false"` until commit `3d52de94`, 2026-09-22 09:56:09 +0200 (INC-002-B). **The
+  `THEFT_REPORTING` flag that gates the mobile screens reading this specific route was live `"true"`
+  from before 2026-09-21 15:25 through 2026-09-22 09:56 — materially longer than the
+  `LOCATION_TRACKING` window §1–§13 otherwise discuss.**
+- Consistent with §11.4.2: the actual data-plane boundary for this route is not either client flag —
+  it is `ctx.env.locationIngestionEnabled`, which today's fix (`backend/src/routes/recovery.ts:268`,
+  commit `5560242`) is the first commit ever to check in this handler. **For the entire window above,
+  and for the entire period since this route was first written, `GET /recovery/cases/:caseId/location`
+  had no server-side gate of any kind** — reachable by any authenticated customer for any case they
+  own, in every environment, regardless of any flag's value, before today.
+
+### 14.2 Coordinate-egress grep — extended to this route specifically
+
+Yesterday's general D-2 pass is recorded (per this dispatch) as clean but scoped to the asset-location
+family. I re-ran it with this route as the explicit target, not adopted on trust:
+
+- **No request/response logging middleware exists in the backend at all.** `backend/src/index.ts`
+  contains only lifecycle `console.log`/`console.error` lines (startup, shutdown, Mongo/Postgres
+  connectivity) — no morgan/pino/winston access log, no body logger, checked by grepping every file
+  that references `console.`/`logger`/`morgan`/`pino`/`winston` in `backend/src`.
+- **`errorHandler`** (`backend/src/middleware/error-handler.ts:82`) logs `err.message` and `err.stack`
+  only, never a response body or request payload. This route's only two failure modes are `VALIDATION_ERROR`
+  (bad `:caseId` shape) and `NOT_FOUND` (`no location data available` — a fixed catalogue string), and
+  now `UPSTREAM_UNAVAILABLE`; none of the three carries a coordinate.
+- **No audit-trail write exists in this route at all** — `backend/src/routes/recovery.ts`'s `GET
+  .../location` handler has zero calls into any `ctx.audit*`/ADR-0006 writer. Contrast with the new
+  consent-withdrawal/grant endpoints (§11.2, §13.1), which *do* write an evidentiary record on every
+  call. This route writes nothing anywhere on success — which also means, separately from the egress
+  question, **there is no server-side record of whether or how often this route was ever hit.**
+- **No third-party SDK is wired into the backend or mobile app that could carry a coordinate out.**
+  Grepped both trees case-insensitively for `sentry|segment|mixpanel|amplitude|datadog|bugsnag|newrelic`
+  — the only hits are unrelated substring matches (`segment` inside comments about Express route-segment
+  ordering, `OtpInput.tsx`'s "segmented digit boxes"). No crash-reporting or analytics SDK exists to
+  attach a response body to a remote event.
+- **No notification payload carries `lastLocation`.** The only two `notifyInBackground` calls in
+  `recovery.ts` (case-created, both customer- and partner-facing) pass `assetName`/`caseId`/
+  `referenceNumber`/`assetId` only (`recovery.ts:106-121`) — confirmed by reading both call sites; no
+  notification is fired from the `GET .../location` handler at all.
+- **`createRateLimiter`**'s Redis-backed limiter keys on `recovery-location:${accountId}` — a hashed
+  bucket key and a counter, not the response body or the coordinate; it cannot leak a coordinate by
+  construction.
+
+**Conclusion of the grep: extends cleanly.** No log line, error envelope, notification payload,
+analytics event, or third-party SDK call in this codebase — client or server — can carry a coordinate
+out of this specific route. This closes the route-specific half of D-2/INC-001-C-4 that was not
+previously in scope.
+
+### 14.3 Was the route ever actually called with a real value — what can and cannot be determined here
+
+**Cannot be determined with certainty from this session** — there is no DB or log access, and, per
+§14.2, this route itself writes no audit trail of its own invocations, so even a live-log pull would
+show only generic access patterns (if any access logging exists at the hosting layer, which is outside
+this repository and unverified) rather than a record this repo can point to.
+
+**What I can determine, and it materially narrows the answer:** I grepped every writer of the
+`recovery-cases` Mongo collection's `lastLocation` field across the full git history of
+`backend/src/repositories/recovery-cases.ts` (`git log -p --all`), not just the current tree.
+**`lastLocation` is set to `null` at case creation (`recovery-cases.ts:228`) and is never written to a
+non-null value by any code that has ever existed in this repository.** No ingestion route, webhook
+handler, or background job touches `recovery-cases.lastLocation` anywhere in `backend/src` — confirmed
+by grepping every reference to `lastLocation` in the backend tree outside test files and finding no
+writer beyond the two `null` initializations. `getLocationForCase` (`recovery-cases.ts:386-390`) does
+`doc?.lastLocation ?? null` — a pure read of a field this codebase has no mechanism to populate.
+
+**Consequence:** on the code as it has existed at any point in this repository's history, a call to
+`GET /recovery/cases/:caseId/location` for any case created through this codebase's own case-creation
+path would receive `lastLocation: null` and the route would respond `404 NOT_FOUND` — not a coordinate
+— regardless of the exposure window, regardless of the ingestion-flag value, and regardless of how many
+times it was called. This is not a claim that the route was *never* called (unknowable here), only that
+this codebase's own write paths could never have supplied it a real value to return.
+
+**What this does not rule out**, stated plainly because it is the honest limit of a code-only check:
+a coordinate could in principle exist on a `recovery-cases` document if it were written directly against
+Mongo Atlas outside any code path in this repository (manual seed, migration script run once and not
+committed, a since-deleted code path from before this repo's earliest commit, or direct console/shell
+access) — I have no way to rule that out without a live query against the collection, and D-4
+(`database-architect`, due 2026-09-23) is the dispatch already tasked with exactly that count. If D-4's
+inventory of the exposure window returns any `recovery-cases` document with a non-null `lastLocation`,
+this finding must be revisited.
+
+### 14.4 Plain answer
+
+**Did a coordinate reach a requester through `GET /recovery/cases/:caseId/location` during the
+exposure window? No, so far as this session can determine — and with higher confidence than a bare
+"unknowable," because the codebase itself has never contained a write path capable of putting a real
+coordinate into the field this route reads.** This is not "cannot determine" in the way tester-install
+counts or the live Atlas region are (§8, §9.6/C-1); it is a structural, code-verified absence of a
+data source for this specific route, extended and cross-checked against the general egress grep at
+§14.2, which independently found no log/notification/SDK path that could carry a coordinate out even if
+one existed. The residual uncertainty is narrow and named at §14.3: a value written to Mongo outside
+this repository's own code, which only D-4's live inventory can rule out. I am not closing
+INC-001-C-4/D-2 on this route until D-4 returns, and I am recording this as a scoped, favourable
+finding rather than a full closure.
+
+### 14.5 What this section does and does not do
+
+- **Extends** D-2/INC-001-C-4's egress grep to `GET /recovery/cases/:caseId/location`, previously
+  out of scope per §11.4.2's routing instruction. Does not close INC-001-C-4/D-2 overall — the asset-
+  location family's disposition from yesterday's pass is unchanged and unreviewed here.
+- **Does not** disturb §9.3's s22 determination (`compliance-specialist`'s to run final by
+  2026-09-24) — this section supplies one input to it (§14.4) and does not itself rule on s22.
+- **Does not** verify the live Render value of `locationIngestionEnabled` (D-1, still separately
+  owned by `devops-engineer`) or the live Atlas contents (D-4, `database-architect`) — both remain
+  open and are the only two dispatches that could fully close the residual uncertainty at §14.3.
+- **Confirms**, independently, `cybersecurity-architect`'s §11.4.2 finding that the route's kill-switch
+  gate was absent before today's fix, and confirms today's fix (`recovery.ts:268`, commit `5560242`)
+  closes the gate going forward.
+
+**Filed by:** `security-engineer`, 2026-09-22. **Discharges:** the route-specific extension of D-2/
+INC-001-C-4 dispatched today. **Does not discharge:** D-1, D-4, INC-001-C-4/D-2 in full, or INC-002-C-6
+(final s22, `compliance-specialist`, due 2026-09-24).

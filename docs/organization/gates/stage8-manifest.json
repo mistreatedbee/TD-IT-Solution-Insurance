@@ -152,12 +152,15 @@
       "pattern": "/alerts*",
       "feature": "009",
       "stage8": {
-        "waived": true,
-        "verdict": "waived-conditional-flag-must-stay-false-review-commissioned",
-        "reason": "Feature 009 Stage 8 pending A-1; mobile gated via FEATURE_ALERTS (INC-001 A-12). [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.1. The waiver premise above ('gated via FEATURE_ALERTS') was FALSE between 2026-09-21 and 2026-09-22: playInternal had EXPO_PUBLIC_FEATURE_ALERTS=\"true\" in a live Play internal-testing build. Flag reverted to false in every profile 2026-09-22; mobile/scripts/verify-eas-feature-flags.mjs now enforces it. DISPOSITION: waiver STANDS, flag STAYS FALSE, and this entry does NOT clear the surface. Ranked lowest severity of the three INC-002-B flag families and designated the cheapest to clear for real — a scoped Stage 8 pass is commissioned, not deferred indefinitely.]",
+        "waived": false,
+        "flagEnableApproved": true,
+        "verdict": "approved-unconditional-2026-09-22-alerts-content-review-clean",
+        "reason": "Feature 009 Stage 8 pending A-1; mobile gated via FEATURE_ALERTS (INC-001 A-12). [SUPERSEDED 2026-09-22 by the §14 disposition recorded at the end of this reason string; the text between this marker and that disposition is retained verbatim for audit and is VOID as a current statement of status.] [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.1. The waiver premise above ('gated via FEATURE_ALERTS') was FALSE between 2026-09-21 and 2026-09-22: playInternal had EXPO_PUBLIC_FEATURE_ALERTS=\"true\" in a live Play internal-testing build. Flag reverted to false in every profile 2026-09-22; mobile/scripts/verify-eas-feature-flags.mjs now enforces it. DISPOSITION: waiver STANDS, flag STAYS FALSE, and this entry does NOT clear the surface. Ranked lowest severity of the three INC-002-B flag families and designated the cheapest to clear for real — a scoped Stage 8 pass is commissioned, not deferred indefinitely.] [2026-09-22 DISPOSITION — cybersecurity-architect, INC-002 §14. SR-INC002B-A1 executed and CLEAN: syncAccountAlerts() (lib/sync-account-alerts.ts) is the ONLY writer of alert rows in the backend, every title/body/href it emits is a compile-time literal or a route path, and no coordinate, place name, reverse-geocoded string or map deep-link appears anywhere in the alert corpus. The alert document itself (repositories/alerts.ts) has no location field. SR-INC002B-A2 CONFIRMED: all four repository methods filter on accountId in the Mongo query, so the plan-entitlement filter at routes/alerts.ts:61-63 is a product rule layered on top of real server-side tenancy, not the tenancy control. SR-INC002B-A3 CONFIRMED for data class (the row holds only severity/category/title/body/href/source/timestamps); its Play Data safety limb stays with compliance-specialist under INC-002-C-2, which gates the release independently of this flag. WAIVER LIFTED, verdict APPROVED UNCONDITIONAL, flagEnableApproved: true — EXPO_PUBLIC_FEATURE_ALERTS may legitimately be set \"true\" in a real build track.]",
         "owner": "cybersecurity-architect",
         "conditions": [
-          "EXPO_PUBLIC_FEATURE_ALERTS must remain \"false\" in every non-development eas.json profile until a Stage 8 record for this surface exists and this entry is replaced with a doc/verdict entry.",
+          "[CLOSED 2026-09-22 — superseded by the approval above; retained for audit] EXPO_PUBLIC_FEATURE_ALERTS must remain \"false\" in every non-development eas.json profile until a Stage 8 record for this surface exists and this entry is replaced with a doc/verdict entry.",
+          "STANDING (non-blocking, architecture): alert title/body/href must remain literal, non-location strings. Any future alert whose body or href carries a coordinate, place name, reverse-geocoded string or map deep-link re-opens this entry and voids flagEnableApproved — that change is a new Stage 8 item, not a content tweak. Applies in particular to categories 'tracking' and 'device'.",
+          "NOTED RESIDUAL (accepted 2026-09-22 by cybersecurity-architect, review 2026-10-20): lib/sync-account-alerts.ts:80 renders profile.rejectionReasonCustomerSafe — admin-authored free text — verbatim into an alert body. It is the only non-literal body in the corpus. It cannot mechanically contain location data, but it is operator-controlled text on a customer surface; hardening belongs to the admin-verification surface, not to alerts, and does not block this approval.",
           "SR-INC002B-A1: grep-verified that no alert title/body/href ever carries a coordinate, place name, or reverse-geocoded string (SDL-6 / INC-001-C-4), specifically for category 'tracking' and 'device' — including everything syncAccountAlerts() can synthesise.",
           "SR-INC002B-A2: confirm the plan-entitlement filter at routes/alerts.ts:61-63 is a defence-in-depth layer and not the only tenancy control — listActive/findByIdForAccount/dismiss/markRead must all be accountId-scoped server-side.",
           "SR-INC002B-A3: confirm alert rows carry no other data class beyond Feature 009's declared set, and that the Play Data safety declaration matches whatever the feed can contain, before any flag flip (INC-002-C-2).",
@@ -388,10 +391,14 @@
       "pattern": "(app)/alerts*",
       "feature": "009",
       "stage8": {
-        "waived": true,
-        "verdict": "waived-conditional-flag-must-stay-false-review-commissioned",
-        "reason": "INC-001 A-12 — gated via FEATURE_ALERTS. [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.1. Premise invalidated the same way backend-alerts' was (playInternal had the flag \"true\" in a live Play build). Waiver STANDS, flag STAYS FALSE. Clears together with backend-alerts under SR-INC002B-A1..A3 — the client half adds one condition: SR-INC002B-A4, confirm the alerts list/detail screens render no coordinate or map affordance derived from a 'tracking' alert's href.]",
-        "owner": "cybersecurity-architect"
+        "waived": false,
+        "flagEnableApproved": true,
+        "verdict": "approved-unconditional-2026-09-22-alerts-content-review-clean",
+        "reason": "INC-001 A-12 — gated via FEATURE_ALERTS. [SUPERSEDED 2026-09-22 by the disposition at the end of this string; intervening text retained verbatim for audit and VOID as a statement of current status.] [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.1. Premise invalidated the same way backend-alerts' was (playInternal had the flag \"true\" in a live Play build). Waiver STANDS, flag STAYS FALSE. Clears together with backend-alerts under SR-INC002B-A1..A3 — the client half adds one condition: SR-INC002B-A4, confirm the alerts list/detail screens render no coordinate or map affordance derived from a 'tracking' alert's href.] [2026-09-22 DISPOSITION — cybersecurity-architect, INC-002 §14. SR-INC002B-A4 executed and CLEAN: AlertsScreen.tsx renders item.title/item.body verbatim and a fixed 'View details' label, with no coordinate formatting, no map component and no location-derived affordance; useAlerts.ts mapMobileAlertHref() only rewrites server paths onto Expo Router paths and constructs no coordinate query. The client-side fallback generator mobile/src/tracking/deriveAlerts.ts is likewise clean — it reads item.lastLocation only as a boolean staleness predicate (deriveAlerts.ts:101) and never renders it; the only interpolations into alert text are the user's own asset displayName and an open-case count. WAIVER LIFTED, verdict APPROVED UNCONDITIONAL, flagEnableApproved: true.]",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "STANDING (non-blocking, architecture): the alerts screens must keep rendering alert text verbatim with no location formatting or map affordance. Introducing a coordinate, place name or map deep-link into an alert row re-opens this entry and voids flagEnableApproved. deriveAlerts.ts must continue to use lastLocation only as a predicate, never as rendered content."
+        ]
       }
     },
     {
@@ -489,10 +496,14 @@
       "pattern": "(app)/(tabs)/alerts",
       "feature": "009",
       "stage8": {
-        "waived": true,
-        "verdict": "waived-conditional-flag-must-stay-false-review-commissioned",
-        "reason": "INC-001 A-12 — gated via FEATURE_ALERTS. Relocated from (app)/alerts* (mobile-alerts) by the (tabs) navigation restructuring — same screen, same waiver, new path only. [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.1: same premise invalidation, same disposition and same clearance conditions as mobile-alerts; recorded here explicitly because this is a separately-discoverable manifest surface and a reader must not have to infer its status from the entry it was relocated from.]",
-        "owner": "cybersecurity-architect"
+        "waived": false,
+        "flagEnableApproved": true,
+        "verdict": "approved-unconditional-2026-09-22-alerts-content-review-clean",
+        "reason": "INC-001 A-12 — gated via FEATURE_ALERTS. Relocated from (app)/alerts* (mobile-alerts) by the (tabs) navigation restructuring — same screen, same waiver, new path only. [SUPERSEDED 2026-09-22 by the disposition at the end of this string; intervening text retained verbatim for audit and VOID as a statement of current status.] [2026-09-22 INC-002-B disposition, cybersecurity-architect — INC-002 §11.4.1: same premise invalidation, same disposition and same clearance conditions as mobile-alerts; recorded here explicitly because this is a separately-discoverable manifest surface and a reader must not have to infer its status from the entry it was relocated from.] [2026-09-22 DISPOSITION — cybersecurity-architect, INC-002 §14. Same clean SR-INC002B-A4 result as mobile-alerts, verified on this path specifically: app/(app)/(tabs)/alerts/index.tsx is a bare re-export of src/screens/home/AlertsScreen, app/(app)/(tabs)/alerts/_layout.tsx is the fail-closed FEATURE_ALERTS guard, and the tab's own href in app/(app)/(tabs)/_layout.tsx:47-54 is the literal route name with no location parameter. WAIVER LIFTED, verdict APPROVED UNCONDITIONAL, flagEnableApproved: true.]",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "STANDING (non-blocking, architecture): inherits mobile-alerts' standing condition — this path is a re-export of the same screen, so any content change that voids mobile-alerts' approval voids this entry's too."
+        ]
       }
     },
     {
