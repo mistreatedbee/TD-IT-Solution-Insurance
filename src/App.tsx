@@ -21,6 +21,7 @@ import { CustomerLoginPage } from './pages/CustomerLoginPage';
 import { CustomerResetPasswordPage } from './pages/CustomerResetPasswordPage';
 import { CustomerOnboardingPage } from './pages/onboarding/CustomerOnboardingPage';
 import { LandingPage } from './pages/LandingPage';
+import { InvitationAcceptPage } from './invitations/InvitationAcceptPage';
 import { DeleteAccountPage } from './pages/DeleteAccountPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsOfServicePage } from './pages/TermsOfServicePage';
@@ -66,6 +67,11 @@ export function App() {
           
           <Routes>
             <Route path="/" element={<LandingPage />} />
+            {/* Feature 017 D-1: public, unauthenticated — outside /admin/*,
+                /security/*, and CustomerAuthProvider's guarded tree. Query-param
+                token (`?token=…`), not a path param — mirrors the URL the
+                backend already builds in invitations.ts. */}
+            <Route path="/invitations/accept" element={<InvitationAcceptPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/delete-account" element={<DeleteAccountPage />} />
             <Route path="/terms" element={<TermsOfServicePage />} />
