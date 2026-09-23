@@ -1,6 +1,6 @@
 # ADR-0012: Step-Up Authentication for Privileged Actions
 
-Status: **Proposed** — awaiting `cto` ratification. Security design owned by `cybersecurity-architect`.
+Status: **Accepted** — ratified by `cto` 2026-09-23 (see §8). Security design owned by `cybersecurity-architect`.
 Date: 2026-09-23
 Deciders: `cybersecurity-architect` (author, SR-11 control owner), `authentication-engineer` (co-owner
 of the mechanism), `backend-architect` (contract), ratified by `cto`.
@@ -382,3 +382,48 @@ privileged accounts (RR-3 → step-up becomes phishing-resistant and the window 
 security-company operators gain any privilege-minting or precise-location-revealing action (Tier A
 re-classification); or the customer tier gains a Tier A action, which forces the MFA-not-enrolled
 fallback question this ADR deliberately leaves open.
+
+---
+
+## 8. Ratification record (`cto`, 2026-09-23)
+
+**Status: Accepted as written.** No change requested to §§1–7; the text above is ratified verbatim
+and is now the binding definition of step-up for this platform. Feature 017 D-2 may proceed on this
+contract.
+
+### 8.1 What was verified before ratifying (code, not claim)
+
+- `backend/src/lib/step-up.ts` — `requireStepUp` performs the INV-3 live `ctx.sessions.findById`
+  read, writes nothing, and fails closed on a missing/revoked session. `STEP_UP_ACTIONS` carries all
+  four §3 Tier A rows including the three `status: 'gap'` entries, so the table is honest in code.
+- `backend/src/routes/step-up.ts` — challenge/verify match §2.2: principal from token only
+  (`z.object({})` body), session-bound and re-checked live at verify, dual rate-limit keying on
+  challenge token **and** account, exhaustion invalidates only the challenge, single-use on success,
+  audit on both outcomes, and the sole write is `touchMfaVerifiedAt`.
+- `backend/src/repositories/sessions.ts:147` — `update app.sessions set mfa_verified_at = $2 where
+  id = $1 and revoked_at is null`. Single column. §2.2.2 holds at the SQL level, not just by
+  convention.
+- `backend/migrations/035_adr0012_step_up_audit_event_types.sql` exists.
+- `backend/src/routes/step-up.test.ts` covers C-3 (i) INV-2 copy-forward regression, (ii) `expires_at`
+  /`absolute_expires_at` unchanged, (iii) cross-session challenge rejection, (v) exhaustion does not
+  revoke, (vi) blocked → step-up → retry end-to-end.
+
+### 8.2 Residual risks — explicit acceptance (per §6.2's requirement)
+
+RR-1, RR-2, RR-3 **accepted as stated**, owners as listed. RR-4 accepted **time-boxed**: SU-FU-1
+must land within two sprints of this date. `technical-project-manager` to schedule; if it slips past
+that box, it returns to `cto` as an explicit risk-extension decision, not a silent carry-over.
+
+### 8.3 Conditions — disposition at ratification
+
+C-1, C-2 closed (commit `2dd6a3f`). C-3 closed for (i),(ii),(iii),(v),(vi); **(iv) step-up on a
+revoked session fails** is not distinctly asserted — `automation-qa-engineer` to add. C-4, C-5 remain
+open and are **not** blockers for Feature 017 D-2 build; they **are** blockers for D-2's Stage 8
+sign-off. SU-FU-1 open per §8.2. Scope-note R-5 (no `invitations.test.ts`) stands — `qa-architect` to
+confirm coverage before a second consumer ships.
+
+### 8.4 Ruling on §4.3 — Feature 008's `stepUp` sketch
+
+Confirmed void for privileged actions, as §4.3 states. Password re-entry never satisfies step-up.
+`integration-architect` to amend `docs/features/008-*/api-design.md:208` rather than leave a
+contradicting contract in the tree.
