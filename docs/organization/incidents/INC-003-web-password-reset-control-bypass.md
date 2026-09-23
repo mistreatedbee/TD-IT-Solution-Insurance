@@ -438,6 +438,176 @@ already shipped), F-8 (Supabase project floor — `devops-engineer`), A-5/A-6
 
 ---
 
+## 9. A-7 independent verification (`security-engineer`, 2026-09-23)
+
+Independent verification per §5's routing ("Implementation verification is `security-engineer`'s,
+not mine — I designed it, they confirm the shipped code matches") and A-7's closure condition
+(does not close on the implementers' self-certification). This section verifies §8a and §8b by
+reading the shipped code myself, not by trusting either report's prose. Citing §5 (spec), §8a
+(backend record), §8b (frontend record).
+
+**Verdict: A-7 PASSES. SR-6 can be marked satisfied on the web surface. No fix reopen required.**
+No discrepancy found between the implementation reports and the shipped code on any of the seven
+items I was asked to check.
+
+### 9.1 `backend/src/routes/auth.ts` (verifies §8a, checks against F-2/F-3/F-4)
+
+- `POST /auth/reset-password/request`: `resetRequestSchema = z.object({ email: z.string().email(),
+  client: z.enum(['web','mobile']).optional().default('mobile') })` (read at `auth.ts` ~L723-726).
+  `validateBody` (`backend/src/lib/validation.ts:9-19`) does `schema.safeParse(req.body)` then
+  `req.body = result.data` — Zod's `z.object` default (non-`.passthrough()`) strips any key not in
+  the schema, so `redirectUrl`/`redirectTo`/`continueUrl`/anything else supplied by a caller never
+  survives into `req.body`. Confirmed by reading the handler itself: the only two identifiers read
+  out of `req.body` are `email` and `client` — no other field is referenced anywhere in the
+  handler. The redirect string is built exclusively from `ctx.env.passwordResetRedirectUrlWeb ??
+  ctx.env.passwordResetRedirectUrl` or `ctx.env.passwordResetRedirectUrl`, both of which are
+  `Env` fields populated only from `loadEnv()`/environment variables (`backend/src/config/env.ts`
+  L103, L120, L340-349, L408-409) — never from `req.body`. §8a's "no request field is ever read
+  into the redirect string" claim is correct. Confirmed the added regression test exists and
+  passes: `describe('POST /auth/reset-password/request — INC-003 F-2 per-client redirect
+  allow-list')` in `backend/src/routes/auth.test.ts` (3 cases, all green — see §9.4).
+- `POST /auth/reset-password/confirm`: read the full handler. Privileged branch (`isPrivilegedUserType`)
+  parks `newPassword` under `reset-mfa-pending:<token>` in KV and returns
+  `{ mfaVerificationRequired: true, mfaVerificationToken }` **without** calling
+  `ctx.supabase.updateUserPassword` — the password is not applied. Only the customer branch calls
+  `updateUserPassword` directly, followed unconditionally by `sessions.revokeAllForAccount(...,
+  'password_reset')` → `revokeJtisInKv` → `pushTokens.disableAllForAccount` → audit
+  `password_reset_completed`. SR-6 gate confirmed intact.
+- `POST /auth/reset-password/mfa-verify`: rate-limited (`RESET_PASSWORD_MFA_VERIFY_LIMIT`),
+  single-use (`consumeResetMfaVerificationToken` + KV `del` on the pending record before password
+  is applied), a real TOTP verify against `ctx.supabase.findVerifiedTotpFactor` /
+  `challengeTotpFactor` / `verifyTotpFactor` using the recovery access token — not a client-supplied
+  flag — gates `ctx.supabase.updateUserPassword(pending.userAccessToken, pending.newPassword)`. Same
+  revoke/disable/audit sequence fires afterward. No path from `mfaVerificationRequired: true` to a
+  changed password other than through a verified TOTP code.
+- `isPasswordValidForUserType` (`backend/src/lib/validation.ts:24-27`) checks
+  `PASSWORD_MIN_LENGTH.privileged = 14` / `.customer = 10` (`backend/src/lib/policy.ts:25-28`,
+  header-commented "tightenable, not loosenable" — unchanged) and is invoked on both the customer
+  and privileged branches of `/confirm` before any password is parked or applied. Confirmed correct
+  per-user-type minimum is enforced server-side on this path, not the client-side hint alone.
+
+### 9.2 Web pages (verifies §8b, checks against F-1/F-3/F-4/F-5/F-6/F-7)
+
+- `src/pages/CustomerForgotPasswordPage.tsx`: only calls `resetPasswordRequest(email)`
+  (`src/customer/api/auth.ts`), which per its own source posts to the backend endpoint. No
+  `import` of `getSupabase`/`../customer/supabase/client` or any Supabase auth call anywhere in
+  this file. Confirmed no direct Supabase SDK usage remains on the request limb.
+- `src/pages/CustomerResetPasswordPage.tsx`: imports `getSupabase` only to read the already
+  -established recovery session's `access_token` (`auth.getSession()`, used purely to obtain a
+  bearer credential to hand the backend) and, in `endAndRedirectToLogin()`, to call
+  `auth.signOut()` for local hygiene after the backend has already revoked everything server-side.
+  No `updateUser`, no `resetPasswordForEmail`, no `signInWithTokens`, no
+  `/auth/supabase/exchange` call anywhere in the file (grepped both terms directly against this
+  file — zero hits). The privileged path's only route from `password` step to `success` step is:
+  `resetPasswordConfirm` → response has `mfaVerificationRequired` → step becomes `'mfa'` →
+  `onSubmitMfa` → `resetPasswordMfaVerify` succeeds → `endAndRedirectToLoginWithSuccess()`. There is
+  no code path from `'mfa'` to `'success'` that does not pass through a successful
+  `resetPasswordMfaVerify` call — confirmed by reading `onSubmitMfa`'s only success branch and
+  finding no other `setStep('success')` call site in the component besides the one inside
+  `endAndRedirectToLoginWithSuccess`, which both the customer branch and the post-MFA branch share.
+  A privileged/staff account genuinely cannot complete a reset on this page without a live TOTP
+  verification against the backend. F-6 confirmed: no `userType` read/inferred anywhere in this
+  file; `PASSWORD_MIN_LENGTH_HINT = 10` only ever produces a client-side early-return, never blocks
+  submission of a 10-13-char password, which is left to the server's `VALIDATION_ERROR`. F-7
+  confirmed: no `signInWithTokens` call remains; both success paths route through
+  `endAndRedirectToLogin()` → `navigate('/login', { replace: true })`.
+
+### 9.3 `src/customer/supabase/auth.ts` (verifies §8b's F-5 claim)
+
+Read the full file. `updatePasswordWithSupabase` does not exist in the file at all — not present,
+not commented-out-but-reachable, actually absent — replaced by an inline comment
+(`// INC-003 F-5: ... was removed entirely, not just unreferenced ...`) pointing at this incident.
+The direct `supabase.auth.resetPasswordForEmail` call referenced by the old `requestPasswordReset`
+helper is likewise absent from the file; the only Supabase Auth calls remaining in this file are
+`signUp`, `signInWithPassword`, `resend` (signup-verification resend), and `verifyOtp`
+(email-link verification) — none of which mutate a password or issue a recovery email.
+Repo-wide grep (`grep -rn "updateUser(" src/ mobile/`) returns only the guard-test file's own
+regex-pattern comments (`src/lib/inc-003-no-direct-password-mutation.test.ts`), confirmed by
+running that guard test directly (passes, see §9.4). Grep for `resetPasswordForEmail` /
+`updatePasswordWithSupabase` across `src/` and `mobile/` returns only the explanatory comment in
+`src/customer/supabase/auth.ts` itself — zero live call sites. F-5 confirmed: deleted, not merely
+unreferenced.
+
+### 9.4 Test suites — actually run, not taken on report
+
+- `npx vitest run` (repo root): **16 test files, 61 tests, all passing.** Matches §8b's claimed
+  count exactly. Includes `src/pages/CustomerResetPasswordPage.test.tsx` (5 tests, including the
+  privileged/mfa-verify path and the rate-limit UI case), `src/pages/CustomerForgotPasswordPage.test.tsx`
+  (3 tests, including the `client: 'web'` body assertion), and
+  `src/lib/inc-003-no-direct-password-mutation.test.ts` (1 test, the structural guard) — all green.
+- `cd backend && npm test`: first run showed **1 failed / 383 total**
+  (`src/routes/session.test.ts > GET /account/me — mfaEnrolled > is false when the account has no
+  verified TOTP factor`, expected 200 got 404). Investigated before accepting either report's
+  green claim: (a) `git log` shows `session.test.ts` was not touched by any INC-003 commit
+  (F-2/F-1/F-3-F-9 commits only touch `auth.ts`, `auth.test.ts`, the web pages/tests, `env.ts`,
+  `render*.yaml`, `.env.example`); (b) running `npx vitest run src/routes/session.test.ts` in
+  isolation passes (3/3); (c) re-running the full `npm test` a second time passes cleanly
+  (**56/56 files, 383/383 tests**). This is a pre-existing cross-test-file ordering/state-leak
+  flake, unrelated to INC-003 and not introduced by F-1…F-9 — flagging for `automation-qa-engineer`
+  as a separate, lower-priority test-isolation issue, not blocking A-7.
+- `cd backend && npx tsc --noEmit`: clean, no errors, on the same pass as the green full suite.
+- The three F-2 backend regression tests referenced in §8a
+  (`describe('POST /auth/reset-password/request — INC-003 F-2 per-client redirect allow-list')`,
+  `backend/src/routes/auth.test.ts`) exist as described and are included in the above green run.
+
+### 9.5 Scope sweep for anything the implementers might have missed
+
+- Repo-wide grep for `changePassword` / `change-password` / `updatePassword\b` across `src/`,
+  `mobile/`, `backend/src` returns **no matches**. There is no "change password while
+  authenticated" account-settings feature built anywhere in this repo yet — INC-003's forgot/reset
+  scope is therefore the entire password-mutation surface today, not a subset of it. Recorded so
+  this isn't silently assumed: if/when such a feature is built, it is a *new* surface requiring its
+  own security review, not something INC-003 already covered or missed.
+- Mobile: `mobile/src/api/auth.ts` sends no `client` field on the reset-request call, confirming
+  §8a's claim that mobile's behaviour is unaffected by F-2's additive schema default
+  (`client` defaults to `'mobile'` server-side when omitted).
+- `render.yaml` / `render-staging.yaml` / `backend/.env.example` all carry
+  `PASSWORD_RESET_REDIRECT_URL_WEB` as claimed in §8a. Confirmed present, not just asserted.
+  F-8 (Supabase project floor = 14 + leaked-password protection, and allow-listing the new web
+  redirect URL in Supabase Auth → URL configuration) remains **outside this repo's reach to
+  verify** — it requires Supabase console access, is owned by `devops-engineer` + the project
+  owner per A-3, and is **not claimed as done** anywhere in §8a/§8b. A-7 does not depend on F-8
+  (it is explicitly a defence-in-depth backstop per §5, not a substitute for F-1…F-7), but F-8's
+  action item (A-3) is separately still OPEN and should not be inferred as closed by this section.
+
+### 9.6 Audit trail (verifies §2.3's "no audit entry" finding is now fixed)
+
+Traced directly in `backend/src/routes/auth.ts`: `POST /auth/reset-password/request` calls
+`ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_requested', ipAddress:
+clientIp(req) })` inside the `if (account)` branch (fires only for a real account, consistent with
+the anti-enumeration posture — the 202 response is generic either way, but the audit event
+correctly only exists when there is an account to attribute it to). Both completion paths —
+the customer branch of `/confirm` and `/mfa-verify`'s privileged completion — call
+`ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_completed', ipAddress:
+clientIp(req) })` unconditionally on success, before the handler returns. Since F-1 routes the web
+request limb through this same backend endpoint (confirmed §9.2) and F-3/F-4 route both confirm
+limbs through the same backend endpoints, a web password reset — including a privileged/staff
+one — now produces both audit events. §3's "no entry in the platform audit log" row is fixed on
+the corrected path; the audit gap identified in §2.2/§3 no longer applies going forward.
+**Historical gap unaffected**: A-6 (checking production Supabase auth logs for prior exploitation
+before this fix shipped) is a separate, still-OPEN action and is not addressed by this section —
+this section only confirms the audit trail is correct *going forward*.
+
+### 9.7 Conclusion
+
+All seven verification items in this session's task, and the two additional cross-checks I ran
+(the flaky test investigation and the audit-trail trace), matched the implementers' claims in §8a
+and §8b exactly. No discrepancy found. The severity ruling in §4 is unaffected — I found nothing
+that would upgrade it — and SR-6 is satisfied on the web surface as of this commit.
+
+**A-7: CLOSED — PASS.** Recommend `cybersecurity-architect` update the Feature 001 gate register
+(§8's cross-reference to `docs/features/001-authentication/security-review.md` §14) to reflect SR-6
+as satisfied on both mobile and web. **Still open and unaffected by this verification:** A-3/F-8
+(Supabase console action, `devops-engineer` + project owner), A-5 (re-threat-model the
+browser-resident Supabase SDK as its own trust boundary, `cybersecurity-architect`), A-6
+(production auth-log check for prior exploitation, `security-engineer` + project owner — I do not
+have Supabase console access in this environment and did not attempt it), and `compliance-specialist`'s
+concurrence on §7. This incident does not fully close until those remaining actions land; A-7
+specifically (implementation verification) is what closes here.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
+
