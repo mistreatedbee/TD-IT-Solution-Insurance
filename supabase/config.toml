@@ -4,5 +4,33 @@
 [project]
 id = "mowaqxfbwqdmjssghpvt"
 
+# INC-003 F-8 (2026-09-23, devops-engineer): raises the GoTrue-level password
+# floor to match backend/src/lib/policy.ts PASSWORD_MIN_LENGTH.privileged (14).
+# This is a floor for ALL account types (customer + staff) — Supabase Auth has
+# no per-user-type policy, so the customer minimum is also raised from the
+# GoTrue default (6) to 14 as a side effect. That is a strict improvement, not
+# a regression, and does not change the backend's own customer minimum (10)
+# enforced in application code on the correct (backend-routed) reset path.
+#
+# THIS SECTION IS DELIBERATELY PARTIAL and must NOT be applied via
+# `supabase config push` without first pulling and diffing the project's full
+# live [auth] configuration (site_url, additional_redirect_urls, SMTP/email
+# provider settings, MFA, external OAuth providers, etc.). This repo's
+# config.toml has never declaratively tracked [auth] before this change —
+# `config push` replaces the linked project's config with what's declared
+# here, and any remote-only setting not mirrored below could be reset to CLI
+# defaults on push. Apply minimum_password_length via the Dashboard instead
+# (see supabase/README.md and INC-003 A-3) until a full [auth] config
+# inventory is done and this fragment is completed to match.
+[auth]
+# Passwords shorter than this value are rejected as weak. Matches
+# backend/src/lib/policy.ts PASSWORD_MIN_LENGTH.privileged.
+minimum_password_length = 14
+
+# Leaked-password (HaveIBeenPwned) protection has NO config.toml key in
+# Supabase CLI 2.109.1 (verified: `supabase init` scaffold's full [auth]
+# block has no hibp/leaked/breach/pwned key) — it is Dashboard/Management-API
+# only. See supabase/README.md and INC-003 A-3 for the manual step.
+
 [functions.auth-send-email]
 verify_jwt = false

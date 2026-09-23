@@ -86,3 +86,30 @@ Mobile / Backend API / Web (Supabase client)
 
 Confirmation links use Supabase's standard verify URL (`/auth/v1/verify?token=…&type=…&redirect_to=…`),
 which redirects to the mobile deep link after token validation.
+
+## Password policy floor (INC-003 F-8) — manual action required
+
+`config.toml`'s `[auth] minimum_password_length = 14` is declared in this repo but is **not**
+synced to the hosted project by anything automated — there is no CI/deploy step that runs
+`supabase config push`, and this file has never before tracked `[auth]`. **Do not run
+`supabase config push` to apply this** until someone with dashboard/API access first pulls and
+diffs the project's *full* live `[auth]` config (site URL, redirect allow-list, SMTP, MFA, OAuth
+providers, etc.) — pushing this partial section as-is risks resetting any of those unmirrored
+settings to CLI defaults.
+
+**Manual steps for whoever holds Supabase project-owner access** (project ref
+`mowaqxfbwqdmjssghpvt`):
+
+1. Dashboard → **Authentication** → **Sign In / Providers** → **Email** → set **Minimum password
+   length** to **14**.
+2. Dashboard → **Authentication** → **Policies** (or **Auth** → **Settings** → **Password
+   Security**, naming varies by dashboard version) → enable **leaked password protection**
+   (HaveIBeenPwned check). This has no `config.toml` key in Supabase CLI 2.109.1 (verified against
+   the CLI's own `supabase init` scaffold) — dashboard/Management API only.
+3. Note: this floor applies to **all** account types (customer and staff) — Supabase Auth has no
+   per-user-type policy. Raising the customer floor from GoTrue's default (6) to 14 is a strict
+   improvement and does not conflict with the backend's own application-level customer minimum
+   (10, `backend/src/lib/policy.ts`), which still governs the correct (backend-routed) reset path.
+
+Tracked under `docs/organization/incidents/INC-003-web-password-reset-control-bypass.md`, action
+A-3.
