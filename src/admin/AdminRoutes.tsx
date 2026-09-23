@@ -15,6 +15,7 @@ import {
 import { VerificationQueuePage, VerificationReviewPage } from './pages/AdminVerificationPages';
 import { PlanEditRoute, PlansListPage } from './pages/AdminPlansPages';
 import { AdminAnalyticsPage } from './pages/AdminAnalyticsPage';
+import { InviteStaffPage } from './pages/InviteStaffPage';
 
 function AccountDetailRoute() {
   const { accountId } = useParams();
@@ -54,6 +55,7 @@ export default function AdminRoutes() {
           <Route element={<AdminLayout />}>
             <Route index element={<AdminHomePage />} />
             <Route path="accounts" element={<AccountsListPage />} />
+            <Route path="accounts/invite" element={<InviteStaffPage />} />
             <Route path="accounts/:accountId" element={<AccountDetailRoute />} />
             <Route path="policies" element={<PoliciesListPage />} />
             <Route path="policies/:policyId" element={<PolicyDetailRoute />} />

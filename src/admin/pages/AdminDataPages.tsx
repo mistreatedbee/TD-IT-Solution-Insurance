@@ -87,7 +87,14 @@ export function AccountsListPage() {
 
   return (
     <Card padding="lg">
-      <SectionHeading as="h1" title="Customers" size="md" className="mb-4" />
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <SectionHeading as="h1" title="Customers" size="md" className="mb-0" />
+        <Link to="/admin/accounts/invite">
+          <Button variant="secondary" size="sm">
+            Invite staff
+          </Button>
+        </Link>
+      </div>
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
       {loading ? (
         <LoadingState />
