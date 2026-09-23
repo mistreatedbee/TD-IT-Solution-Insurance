@@ -5,6 +5,7 @@ import { Button, Card, Input, SectionHeading } from '../../components';
 import { useDashboardAuth } from '../auth/DashboardAuthProvider';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { InlineAlert } from './ui';
+import { MfaEnrollmentStep } from '../../invitations/MfaEnrollmentStep';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   [
@@ -31,6 +32,7 @@ export function PrivilegedLoginPage({
   const [password, setPassword] = useState('');
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
+  const [enrollmentTicket, setEnrollmentTicket] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -50,7 +52,13 @@ export function PrivilegedLoginPage({
         return;
       }
       if (result.kind === 'enrollment') {
-        setError('MFA enrollment is required before you can sign in. Complete enrollment via your invitation link.');
+        // Recovery path (backend/src/routes/auth.ts: mfaRequired && !verifiedFactor):
+        // the account accepted its invitation but never finished MFA enrollment
+        // (e.g. the tab was closed mid-flow). The invitation token itself is
+        // already burned, so login re-issues a fresh enrollmentTicket here rather
+        // than leaving the account permanently locked out. Drop straight into the
+        // same enrollment UI the invitation-accept flow uses.
+        setEnrollmentTicket(result.enrollmentTicket);
         return;
       }
       await finishLogin(result.accessToken, result.refreshToken);
@@ -59,6 +67,23 @@ export function PrivilegedLoginPage({
     } finally {
       setLoading(false);
     }
+  }
+
+  async function onEnrollmentSuccess(tokens: { accessToken: string; refreshToken: string }) {
+    try {
+      await finishLogin(tokens.accessToken, tokens.refreshToken);
+    } catch (err) {
+      setEnrollmentTicket(null);
+      setError(mapUserFacingError(err, { context: 'auth' }));
+    }
+  }
+
+  function onEnrollmentTerminalError(message: string) {
+    // The re-issued ticket itself died (e.g. expired before the user finished
+    // verifying). Send them back to credentials — the next successful login
+    // attempt will mint another fresh ticket via the same recovery path.
+    setEnrollmentTicket(null);
+    setError(message);
   }
 
   async function onSubmitMfa(e: FormEvent) {
@@ -88,7 +113,15 @@ export function PrivilegedLoginPage({
 
         {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
 
-        {mfaToken ? (
+        {enrollmentTicket ? (
+          <div className="mt-4">
+            <MfaEnrollmentStep
+              enrollmentTicket={enrollmentTicket}
+              onSuccess={(tokens) => void onEnrollmentSuccess(tokens)}
+              onTerminalError={onEnrollmentTerminalError}
+            />
+          </div>
+        ) : mfaToken ? (
           <form className="mt-4 space-y-4" onSubmit={onSubmitMfa}>
             <Input
               label="Authentication code"
