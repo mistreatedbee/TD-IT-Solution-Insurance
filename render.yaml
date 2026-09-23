@@ -40,8 +40,11 @@ services:
         value: tditinsurance://verify-email
       - key: PASSWORD_RESET_REDIRECT_URL
         value: tditinsurance://reset-password
+      # Feature 017 C-1: web route, not a mobile deep link — invitations are
+      # only ever issued for privileged user types, which onboard on the web
+      # dashboards. Must be allowlisted in Supabase Auth → URL configuration.
       - key: INVITATION_ACCEPT_REDIRECT_URL
-        value: tditinsurance://invitations/accept
+        value: https://td-it-solution-insurance-alpha.vercel.app/invitations/accept
       # Web is on Vercel — backend normalizes bare hostnames to https:// origins.
       - key: CORS_ALLOWED_ORIGINS
         value: https://td-it-solution-insurance-alpha.vercel.app,http://localhost:5173

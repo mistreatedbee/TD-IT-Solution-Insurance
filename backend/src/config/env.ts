@@ -96,7 +96,17 @@ export interface Env {
   emailVerificationRedirectUrl: string;
   /** Redirect target for password recovery emails (`?email=` appended). */
   passwordResetRedirectUrl: string;
-  /** Base redirect for invitation accept (`?token=` appended). */
+  /**
+   * Base redirect for invitation accept (`?token=` appended).
+   *
+   * Feature 017 C-1: this is a **web** URL, not a mobile deep link. Every
+   * invitation `POST /v1/invitations` can issue is privileged
+   * (`admin` | `security_company_operator` | `support_agent` — see the
+   * createSchema enum in routes/invitations.ts); those accounts work on
+   * src/admin/ and src/security/, which are web-only. There is no customer
+   * invitation path (customer signup uses emailVerificationRedirectUrl), so a
+   * single-valued, user-type-agnostic config is correct here.
+   */
   invitationAcceptRedirectUrl: string;
 
   /** Public app/web base URL for invitation deep links (no trailing slash). */
@@ -307,8 +317,26 @@ export function loadEnv(): Env {
     process.env.EMAIL_VERIFICATION_REDIRECT_URL?.trim() || 'tditinsurance://verify-email';
   const passwordResetRedirectUrl =
     process.env.PASSWORD_RESET_REDIRECT_URL?.trim() || 'tditinsurance://reset-password';
+  // Feature 017 C-1 (2026-09-23): default repointed from the mobile deep link
+  // `tditinsurance://invitations/accept` to the web route `/invitations/accept`
+  // (D-1). Invitations are privileged-only and privileged accounts are web
+  // accounts; the mobile deep link made every invitation unopenable for anyone
+  // without the customer app installed. Overridable per environment — set
+  // INVITATION_ACCEPT_REDIRECT_URL to the web origin actually serving D-1, and
+  // allowlist it in Supabase Auth → URL configuration or GoTrue drops the
+  // redirect and the email link goes to the Supabase site URL instead.
   const invitationAcceptRedirectUrl =
-    process.env.INVITATION_ACCEPT_REDIRECT_URL?.trim() || 'tditinsurance://invitations/accept';
+    process.env.INVITATION_ACCEPT_REDIRECT_URL?.trim() ||
+    'https://td-it-solution-insurance-alpha.vercel.app/invitations/accept';
+  if (!/^https?:\/\//i.test(invitationAcceptRedirectUrl)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] INVITATION_ACCEPT_REDIRECT_URL is not an http(s) URL ` +
+        `("${invitationAcceptRedirectUrl}"). Invitations are issued only for privileged ` +
+        'user types, which onboard on the web dashboards — a custom-scheme deep link here ' +
+        'will dead-end any invitee who does not have the mobile app installed (Feature 017 C-1).',
+    );
+  }
   const expoAccessToken = process.env.EXPO_ACCESS_TOKEN?.trim() || undefined;
 
   // INC-001: fail-closed kill switch — only the exact string "true" enables

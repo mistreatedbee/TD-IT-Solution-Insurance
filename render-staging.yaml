@@ -48,8 +48,9 @@ services:
         value: tditinsurance://verify-email
       - key: PASSWORD_RESET_REDIRECT_URL
         value: tditinsurance://reset-password
+      # Feature 017 C-1: web route (privileged invitees onboard on web).
       - key: INVITATION_ACCEPT_REDIRECT_URL
-        value: tditinsurance://invitations/accept
+        value: https://td-it-insurance-web-staging.onrender.com/invitations/accept
       - key: CORS_ALLOWED_ORIGINS
         value: https://td-it-insurance-web-staging.onrender.com,http://localhost:5173
 
