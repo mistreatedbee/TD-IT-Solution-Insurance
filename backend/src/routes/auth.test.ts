@@ -965,3 +965,137 @@ describe('POST /auth/reset-password/confirm — SR-007-1 push-token regression',
     }
   });
 });
+
+/**
+ * INC-003 F-2 regression: `POST /auth/reset-password/request` must select
+ * the redirect URL from one of two server-configured, allow-listed
+ * constants (`env.passwordResetRedirectUrl` / `...RedirectUrlWeb`) based
+ * only on the closed `client: 'web' | 'mobile'` discriminator — and must
+ * never accept or echo a caller-supplied URL, which would turn this into an
+ * open redirect that exfiltrates the Supabase recovery token
+ * (`docs/organization/incidents/INC-003-web-password-reset-control-bypass.md`
+ * §5, F-2).
+ */
+describe('POST /auth/reset-password/request — INC-003 F-2 per-client redirect allow-list', () => {
+  const requestAccountId = randomUUID();
+  const requestEmail = 'reset-client-select@example.com';
+  const mobileRedirect = 'tditinsurance://reset-password';
+  const webRedirect = 'https://web.example.com/reset-password';
+
+  function createFakeRequestSupabase() {
+    const sendPasswordRecoveryEmailCalls: Array<{ email: string; redirectTo: string }> = [];
+    const notUsed = (name: string) => (): never => {
+      throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+    };
+    const supabase: SupabaseAdmin = {
+      raw: {} as SupabaseAdmin['raw'],
+      createUser: notUsed('createUser'),
+      deleteUser: notUsed('deleteUser'),
+      verifyPassword: notUsed('verifyPassword'),
+      enrollTotpFactor: notUsed('enrollTotpFactor'),
+      challengeTotpFactor: notUsed('challengeTotpFactor'),
+      verifyTotpFactor: notUsed('verifyTotpFactor'),
+      findVerifiedTotpFactor: notUsed('findVerifiedTotpFactor'),
+      updateUserPassword: notUsed('updateUserPassword'),
+      generateEmailVerificationLink: notUsed('generateEmailVerificationLink'),
+      sendSignupConfirmationEmail: notUsed('sendSignupConfirmationEmail'),
+      async sendPasswordRecoveryEmail(email, redirectTo) {
+        sendPasswordRecoveryEmailCalls.push({ email, redirectTo });
+      },
+      sendInvitationEmail: notUsed('sendInvitationEmail'),
+      getUserByEmail: notUsed('getUserByEmail'),
+      getUserFromAccessToken: notUsed('getUserFromAccessToken'),
+      isUserEmailConfirmed: notUsed('isUserEmailConfirmed'),
+      verifySignupToken: notUsed('verifySignupToken'),
+      generatePasswordResetLink: notUsed('generatePasswordResetLink'),
+      verifyRecoveryToken: notUsed('verifyRecoveryToken'),
+      mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+    };
+    return { sendPasswordRecoveryEmailCalls, supabase };
+  }
+
+  function buildRequestCtx() {
+    const accounts = createFakeAccountsRepo({
+      id: requestAccountId,
+      email: requestEmail,
+      userType: 'customer',
+      accountState: 'active',
+      mfaRequired: false,
+      partnerOrganizationId: null,
+    });
+    const supabaseFake = createFakeRequestSupabase();
+    const ctx = buildMinimalCtx({
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase: supabaseFake.supabase,
+      env: {
+        ...fakeEnv(),
+        passwordResetRedirectUrl: mobileRedirect,
+        passwordResetRedirectUrlWeb: webRedirect,
+      },
+    });
+    return { ctx, supabaseFake };
+  }
+
+  it('uses the mobile allow-listed redirect when client is omitted (mobile does not send it today)', async () => {
+    const { ctx, supabaseFake } = buildRequestCtx();
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      const response = await fetch(`${baseUrl}/auth/reset-password/request`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: requestEmail }),
+      });
+      expect(response.status).toBe(202);
+      expect(supabaseFake.sendPasswordRecoveryEmailCalls).toHaveLength(1);
+      expect(supabaseFake.sendPasswordRecoveryEmailCalls[0].redirectTo.startsWith(mobileRedirect)).toBe(true);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('uses the web allow-listed redirect when client is "web"', async () => {
+    const { ctx, supabaseFake } = buildRequestCtx();
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      const response = await fetch(`${baseUrl}/auth/reset-password/request`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: requestEmail, client: 'web' }),
+      });
+      expect(response.status).toBe(202);
+      expect(supabaseFake.sendPasswordRecoveryEmailCalls).toHaveLength(1);
+      expect(supabaseFake.sendPasswordRecoveryEmailCalls[0].redirectTo.startsWith(webRedirect)).toBe(true);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('never echoes a caller-supplied redirect URL into the Supabase call, even if one is smuggled in the body', async () => {
+    const { ctx, supabaseFake } = buildRequestCtx();
+    const { server, baseUrl } = await startTestServer(ctx);
+    const attackerUrl = 'https://attacker.example/steal-token';
+    try {
+      const response = await fetch(`${baseUrl}/auth/reset-password/request`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        // Extra, schema-unrecognized fields attempting to smuggle a redirect
+        // target must have zero effect — the endpoint has no code path that
+        // reads a caller-supplied URL at all.
+        body: JSON.stringify({
+          email: requestEmail,
+          client: 'web',
+          redirectUrl: attackerUrl,
+          redirectTo: attackerUrl,
+          continueUrl: attackerUrl,
+        }),
+      });
+      expect(response.status).toBe(202);
+      expect(supabaseFake.sendPasswordRecoveryEmailCalls).toHaveLength(1);
+      const { redirectTo } = supabaseFake.sendPasswordRecoveryEmailCalls[0];
+      expect(redirectTo.startsWith(webRedirect)).toBe(true);
+      expect(redirectTo).not.toContain('attacker.example');
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+});

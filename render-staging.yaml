@@ -48,6 +48,9 @@ services:
         value: tditinsurance://verify-email
       - key: PASSWORD_RESET_REDIRECT_URL
         value: tditinsurance://reset-password
+      # INC-003 F-2: web-surface redirect for privileged-account resets.
+      - key: PASSWORD_RESET_REDIRECT_URL_WEB
+        value: https://td-it-insurance-web-staging.onrender.com/reset-password
       # Feature 017 C-1: web route (privileged invitees onboard on web).
       - key: INVITATION_ACCEPT_REDIRECT_URL
         value: https://td-it-insurance-web-staging.onrender.com/invitations/accept

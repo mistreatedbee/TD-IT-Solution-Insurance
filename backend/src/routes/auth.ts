@@ -718,14 +718,24 @@ export function createAuthRouter(ctx: AppContext): Router {
   // ---------------------------------------------------------------
   // POST /auth/reset-password/request
   // ---------------------------------------------------------------
-  const resetRequestSchema = z.object({ email: z.string().email() });
+  // INC-003 F-2: `client` is a closed two-way discriminator, never a URL.
+  // The backend maps it to one of two server-configured, allow-listed
+  // redirect targets (ctx.env.passwordResetRedirectUrl /
+  // ...RedirectUrlWeb) — the request body can never supply or influence the
+  // actual redirect URL, which is what makes this safe from an open-redirect
+  // / token-exfiltration angle. Defaults to 'mobile' so the existing mobile
+  // client (which does not send this field) is unaffected.
+  const resetRequestSchema = z.object({
+    email: z.string().email(),
+    client: z.enum(['web', 'mobile']).optional().default('mobile'),
+  });
   router.post(
     '/auth/reset-password/request',
     createRateLimiter(ctx.kv, { attempts: RESET_PASSWORD_REQUEST_LIMIT.perIpAttempts, windowSeconds: RESET_PASSWORD_REQUEST_LIMIT.perIpWindowSeconds }, (req) => `reset-req-ip:${clientIp(req)}`),
     validateBody(resetRequestSchema),
     async (req, res, next) => {
       try {
-        const { email } = req.body as z.infer<typeof resetRequestSchema>;
+        const { email, client } = req.body as z.infer<typeof resetRequestSchema>;
         const normalizedEmail = email.trim().toLowerCase();
 
         // FR-15 anti-enumeration: per-identifier counter fires identically
@@ -737,7 +747,14 @@ export function createAuthRouter(ctx: AppContext): Router {
 
         const account = await ctx.accounts.findByEmail(normalizedEmail);
         if (account) {
-          const redirectTo = `${ctx.env.passwordResetRedirectUrl}?email=${encodeURIComponent(normalizedEmail)}`;
+          // INC-003 F-2: server-side allow-listed lookup only — `client` never
+          // carries or influences an actual URL, just selects which of the two
+          // env-configured constants to use.
+          const redirectBase =
+            client === 'web'
+              ? ctx.env.passwordResetRedirectUrlWeb ?? ctx.env.passwordResetRedirectUrl
+              : ctx.env.passwordResetRedirectUrl;
+          const redirectTo = `${redirectBase}?email=${encodeURIComponent(normalizedEmail)}`;
           await ctx.supabase.sendPasswordRecoveryEmail(normalizedEmail, redirectTo);
           await ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_requested', ipAddress: clientIp(req) });
         }

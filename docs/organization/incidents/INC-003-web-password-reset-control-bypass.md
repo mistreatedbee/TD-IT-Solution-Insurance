@@ -249,6 +249,66 @@ belongs in a new section of this document, not an edit to this one.
 
 ---
 
+## 8a. F-2 implementation record (`backend-architect`, 2026-09-23)
+
+Implemented, not just specced — A-2's contract amendment is closed on the backend side. This section cites
+§5's F-2 and does not restate or alter it.
+
+**Interface shipped:**
+
+- `POST /v1/auth/reset-password/request` body gains an optional `client: 'web' | 'mobile'` field
+  (`z.enum(['web','mobile']).optional().default('mobile')`, `backend/src/routes/auth.ts:728-731`). Default
+  preserves the existing mobile client's behaviour unchanged — `mobile/src/api/auth.ts:131-134` sends no
+  `client` field today and does not need to change for this fix to be safe.
+- The handler (`backend/src/routes/auth.ts:748-758`) does a closed, server-side lookup —
+  `client === 'web' ? ctx.env.passwordResetRedirectUrlWeb ?? ctx.env.passwordResetRedirectUrl :
+  ctx.env.passwordResetRedirectUrl` — and interpolates only that value plus the account's own normalized
+  email into the Supabase redirect URL. **No request field is ever read into the redirect string.** Because
+  `validateBody` replaces `req.body` with the Zod-parsed result (`backend/src/lib/validation.ts:17`, strips
+  unrecognized keys and applies the `client` default), any additional caller-supplied field attempting to
+  smuggle a URL (`redirectUrl`, `redirectTo`, `continueUrl`, etc.) is dropped before the handler ever runs —
+  verified by test, not just by inspection (see below).
+- **New env var:** `PASSWORD_RESET_REDIRECT_URL_WEB`, additive alongside the existing
+  `PASSWORD_RESET_REDIRECT_URL` (kept as-is; it remains the mobile value — renaming it would have forced an
+  update to ~30 existing test fixtures across `backend/src/routes/*.test.ts` and `backend/src/lib/*.test.ts`
+  for zero behavioural gain). `Env.passwordResetRedirectUrlWeb` (`backend/src/config/env.ts`) is typed
+  **optional** for the same reason — every pre-existing hand-built `Env` test fixture compiles unchanged —
+  but `loadEnv()` always populates it (env var or a hardcoded fallback), so production/staging never run
+  without it. Mirrors the existing `INVITATION_ACCEPT_REDIRECT_URL` web/mobile split precedent (Feature 017
+  C-1) rather than inventing a new pattern.
+- **Deploy config:** `PASSWORD_RESET_REDIRECT_URL_WEB` added to `render.yaml` (production, defaults to
+  `https://td-it-solution-insurance-alpha.vercel.app/reset-password`, matching the existing prod web origin)
+  and `render-staging.yaml` (defaults to `https://td-it-insurance-web-staging.onrender.com/reset-password`),
+  plus `backend/.env.example`. **Action required, not yet done here:** this new URL must be allow-listed in
+  Supabase Auth → URL configuration alongside the existing mobile deep link, or GoTrue will silently drop the
+  redirect — same caveat `env.ts` already documents for `INVITATION_ACCEPT_REDIRECT_URL`. Flagging for
+  `devops-engineer` to action alongside A-3.
+
+**F-3 confirmed scope, no change needed.** Re-verified `backend/src/routes/auth.ts:801-818` (now shifted a
+few lines from the pre-implementation line numbers in §5 due to F-2's schema/comment additions, still the
+same `recoveryAccessToken` branch) — the confirm endpoint's contract is unchanged by this work. F-2 is scoped
+entirely to `/request`'s redirect selection, as §5 anticipated.
+
+**F-9(c)-adjacent regression tests added** (not a substitute for `automation-qa-engineer`'s owned F-9, which
+covers the frontend-side (a)/(b)/(c) items against F-1/F-5 — this is the backend contract's own test,
+narrower and specific to F-2): `backend/src/routes/auth.test.ts`, new `describe('POST
+/auth/reset-password/request — INC-003 F-2 per-client redirect allow-list')`, three cases —
+(1) omitted `client` resolves to the mobile constant, (2) `client: 'web'` resolves to the web constant, (3) a
+request smuggling `redirectUrl`/`redirectTo`/`continueUrl` alongside `client: 'web'` still resolves to the
+web constant with the attacker string absent from the value handed to `sendPasswordRecoveryEmail`.
+
+**Verification status:** implemented and unit-tested against fakes (no live Supabase/Postgres/Redis). I do
+not have shell/CI execution in this environment to run `cd backend && npm test` / `npx tsc --noEmit` myself
+this session — the three new tests and the full suite need to be run by `backend-engineer` or CI before this
+sub-item is treated as green, and this remains subject to `security-engineer`'s independent A-7
+implementation-verification pass per §5's routing, same as every other F-item. Not claiming A-7 here.
+
+Routing note: this closes the backend half of A-2. The frontend `client: 'web'` call site
+(`CustomerForgotPasswordPage` per F-1) is `authentication-engineer`/`frontend-architect`'s remaining work —
+not touched here.
+
+---
+
 ## 8. Cross-references
 
 - `docs/features/001-authentication/security-review.md` §2.3 (attack tree), §6 (ratified policy table), §8

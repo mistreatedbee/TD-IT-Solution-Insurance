@@ -94,8 +94,30 @@ export interface Env {
   /** Deep link / web URL Supabase redirects to after signup confirmation
    * (must be allowlisted in Supabase Auth → URL configuration). */
   emailVerificationRedirectUrl: string;
-  /** Redirect target for password recovery emails (`?email=` appended). */
+  /**
+   * Redirect target for password recovery emails when the requesting client
+   * is mobile (`?email=` appended). Historically the only value; kept as the
+   * mobile-specific field name for backward compatibility with every
+   * existing test fixture and deployed env var.
+   */
   passwordResetRedirectUrl: string;
+  /**
+   * INC-003 F-2: redirect target for password recovery emails when the
+   * requesting client is web. Web accounts include privileged user types
+   * (admin / security_company_operator / support_agent), which is exactly
+   * the surface SR-6's MFA-gated reset must protect — routing them to a
+   * `tditinsurance://` mobile deep link (the pre-INC-003 default) would
+   * dead-end every privileged reset. Optional in the `Env` type (not a
+   * required field) so pre-existing hand-built `Env` test fixtures that
+   * predate this addition keep compiling; `loadEnv()` always populates it
+   * with either the env var or a hardcoded fallback, so callers can treat
+   * `ctx.env.passwordResetRedirectUrlWeb ?? ctx.env.passwordResetRedirectUrl`
+   * as safe. **Never derived from a caller-supplied value** — selection is a
+   * two-way `client: 'web' | 'mobile'` discriminator only, never a URL
+   * accepted from the request body (that would be an open redirect that
+   * exfiltrates the recovery token).
+   */
+  passwordResetRedirectUrlWeb?: string;
   /**
    * Base redirect for invitation accept (`?token=` appended).
    *
@@ -317,6 +339,16 @@ export function loadEnv(): Env {
     process.env.EMAIL_VERIFICATION_REDIRECT_URL?.trim() || 'tditinsurance://verify-email';
   const passwordResetRedirectUrl =
     process.env.PASSWORD_RESET_REDIRECT_URL?.trim() || 'tditinsurance://reset-password';
+  // INC-003 F-2 (2026-09-23): web needs its own allow-listed redirect —
+  // privileged accounts (admin / security_company_operator / support_agent)
+  // reset on the web dashboards, not the mobile app, and the mobile deep
+  // link above dead-ends them. Mirrors INVITATION_ACCEPT_REDIRECT_URL's
+  // existing web-vs-mobile split (Feature 017 C-1) rather than inventing a
+  // new pattern. Must be allowlisted in Supabase Auth → URL configuration
+  // alongside the mobile value.
+  const passwordResetRedirectUrlWeb =
+    process.env.PASSWORD_RESET_REDIRECT_URL_WEB?.trim() ||
+    'https://td-it-solution-insurance-alpha.vercel.app/reset-password';
   // Feature 017 C-1 (2026-09-23): default repointed from the mobile deep link
   // `tditinsurance://invitations/accept` to the web route `/invitations/accept`
   // (D-1). Invitations are privileged-only and privileged accounts are web
@@ -374,6 +406,7 @@ export function loadEnv(): Env {
     appPublicUrl,
     emailVerificationRedirectUrl,
     passwordResetRedirectUrl,
+    passwordResetRedirectUrlWeb,
     invitationAcceptRedirectUrl,
     expoAccessToken,
     locationIngestionEnabled,
