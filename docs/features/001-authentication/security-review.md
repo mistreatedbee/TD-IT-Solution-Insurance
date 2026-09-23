@@ -408,3 +408,33 @@ Per this role's standing rule, **silent risk acceptance is not permitted.** Each
 > **Escalated to `cto`:** OI-7 (MFA on the platform accounts that hold every secret — the highest-leverage unverified control on the platform), SR-22 (paid tier with PITR), SR-12(c)/OI-10 (common registrable domain, a decision with DNS lead time), SR-25 (commission the pentest), and ADR-0005's overdue ratification plus the ADR-numbering collision in `architecture-review.md` §7.
 >
 > **Re-threat-model triggers for this feature:** the first operator-facing (partner-org-scoped) endpoint; the first endpoint that returns asset location to any surface; any client-side Supabase SDK proposal (which would reverse FU-18 and make RLS front-line again); a log drain, read replica, Edge Function or Storage bucket; a new MFA factor type; and the introduction of a staging environment or a second engineer with production access.
+
+---
+
+## 14. SR-6 is bypassed on the web surface — INC-003 opened (`cybersecurity-architect`, 2026-09-23)
+
+*Appended section. Nothing above is altered; §8's SR-6 text and §13's gate decision stand exactly as written and remain the governing requirement. This section records that the requirement is not met in deployed code.*
+
+**SR-6 is implemented correctly in the backend and bypassed entirely by the web client.**
+`src/pages/CustomerResetPasswordPage.tsx:46` calls `supabase.auth.updateUser({ password })` directly (via
+`src/customer/supabase/auth.ts:221`) instead of `POST /v1/auth/reset-password/confirm`, so for a privileged
+account the password changes **before any MFA proof is collected** — the precise condition SR-6 says must not
+occur. `src/pages/CustomerForgotPasswordPage.tsx:22` likewise bypasses `POST /auth/reset-password/request`.
+Consequences also include: session revocation and the SR-007-1 push-token sweep never fire;
+`PASSWORD_MIN_LENGTH.privileged = 14` is never enforced server-side on this path; the ratified reset rate
+limits do not apply; and **neither `password_reset_requested` nor `password_reset_completed` is ever written
+to the audit log** for a web reset. `mfaVerificationRequired` appears nowhere under `src/`.
+
+This is reachable by staff in practice, not theoretically: `src/pages/CustomerLoginPage.tsx` is the
+role-agnostic login page for all four user types by its own design comment, and L213-217 links staff straight
+to `/forgot-password`. Mobile is unaffected — it consumes the backend endpoints correctly.
+
+**§13's re-threat-model trigger "any client-side Supabase SDK proposal" fired when web auth was built and was
+never honoured.** That omission is the proximate cause, and it is being discharged now as INC-003 action A-5.
+
+**Disposition:** **SR-6 is reopened as NOT SATISFIED on the web surface.** It remains satisfied on the
+backend and mobile. Severity ruled **High**; full analysis, the binding fix specification (F-1…F-9), the
+actions register and the provisional compliance position are in
+[`docs/organization/incidents/INC-003-web-password-reset-control-bypass.md`](../../organization/incidents/INC-003-web-password-reset-control-bypass.md).
+SR-6 does not return to satisfied until INC-003 A-1 and A-7 close — A-7 being `security-engineer`'s
+independent verification that shipped code matches the specification, not the implementer's self-certification.
