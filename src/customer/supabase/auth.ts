@@ -200,13 +200,6 @@ export async function signInWithSupabase(
   return exchangeSupabaseSession(data.session.access_token);
 }
 
-export async function requestPasswordReset(email: string): Promise<void> {
-  const { error } = await requireSupabase().auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-    redirectTo: supabaseAuthRedirectUrl('recovery'),
-  });
-  if (error) throw error;
-}
-
 export async function resendSignupVerification(email: string): Promise<void> {
   const { error } = await requireSupabase().auth.resend({
     type: 'signup',
@@ -218,17 +211,12 @@ export async function resendSignupVerification(email: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function updatePasswordWithSupabase(newPassword: string): Promise<SupabaseExchangeResult> {
-  const { error } = await requireSupabase().auth.updateUser({ password: newPassword });
-  if (error) throw error;
-
-  const { data, error: sessionError } = await requireSupabase().auth.getSession();
-  if (sessionError) throw sessionError;
-  if (!data.session?.access_token) {
-    throw new Error('Password updated but no active session.');
-  }
-  return exchangeSupabaseSession(data.session.access_token);
-}
+// INC-003 F-5: `updatePasswordWithSupabase` (called `supabase.auth.updateUser({
+// password })` directly, bypassing the backend's SR-6 MFA gate, session
+// revocation, and password-length policy) was removed entirely, not just
+// unreferenced — see docs/organization/incidents/INC-003-web-password-reset-control-bypass.md.
+// Password changes on this path now go exclusively through
+// `resetPasswordConfirm`/`resetPasswordMfaVerify` in `../api/auth`.
 
 type EmailOtpType =
   | 'signup'

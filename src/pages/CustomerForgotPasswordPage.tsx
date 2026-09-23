@@ -4,7 +4,7 @@ import { Button, Input, SectionHeading } from '../components';
 import { ArrowLink } from '../components/ArrowLink';
 import { InlineAlert } from '../dashboard/components/ui';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
-import { requestPasswordReset } from '../customer/supabase/auth';
+import { resetPasswordRequest } from '../customer/api/auth';
 import { mapUserFacingError } from '../lib/user-facing-errors';
 
 export function CustomerForgotPasswordPage() {
@@ -19,16 +19,14 @@ export function CustomerForgotPasswordPage() {
     setNetworkError(null);
     setLoading(true);
     try {
-      await requestPasswordReset(email);
+      // INC-003 F-1: `POST /v1/auth/reset-password/request` returns a
+      // generic 202 body regardless of whether the account exists (FR-15
+      // anti-enumeration) — a thrown error here is a real failure (rate
+      // limit, network, upstream), never "account not found".
+      await resetPasswordRequest(email);
       setSubmitted(true);
     } catch (err) {
-      // Supabase returns success-style flow; show confirmation unless hard failure.
-      const message = mapUserFacingError(err, { context: 'password-reset' });
-      if (message.toLowerCase().includes('rate limit')) {
-        setNetworkError(message);
-      } else {
-        setSubmitted(true);
-      }
+      setNetworkError(mapUserFacingError(err, { context: 'password-reset' }));
     } finally {
       setLoading(false);
     }
@@ -37,9 +35,9 @@ export function CustomerForgotPasswordPage() {
   async function onResend() {
     setCooldown(true);
     try {
-      await requestPasswordReset(email);
+      await resetPasswordRequest(email);
     } catch {
-      /* anti-enumeration posture */
+      /* anti-enumeration posture: never surface resend outcome differently */
     } finally {
       window.setTimeout(() => setCooldown(false), 60_000);
     }
@@ -50,8 +48,8 @@ export function CustomerForgotPasswordPage() {
       <MarketingAuthShell>
         <SectionHeading as="h1" title="Check your email" size="md" className="mb-2" />
         <p className="text-base text-text-secondary">
-          If an account exists for this email, Supabase Auth sent a password reset link. Open it on
-          this device to choose a new password.
+          If an account exists for this email, we sent a password reset link. Open it on this
+          device to choose a new password.
         </p>
         <Button
           variant="secondary"
@@ -75,7 +73,7 @@ export function CustomerForgotPasswordPage() {
     <MarketingAuthShell>
       <SectionHeading as="h1" title="Reset your password" size="md" className="mb-2" />
       <p className="mb-6 text-sm text-text-secondary">
-        Enter the email on your account. Supabase Auth will send a reset link.
+        Enter the email on your account and we will send you a reset link.
       </p>
 
       {networkError ? <InlineAlert tone="danger">{networkError}</InlineAlert> : null}

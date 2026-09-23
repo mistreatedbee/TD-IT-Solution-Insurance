@@ -53,7 +53,13 @@ function looksUserFacing(message: string): boolean {
   return true;
 }
 
-function mapApiErrorByCode(code: string, status: number, message: string, context: UserFacingErrorContext): string {
+function mapApiErrorByCode(
+  code: string,
+  status: number,
+  message: string,
+  context: UserFacingErrorContext,
+  details?: unknown,
+): string {
   switch (code) {
     case 'INVALID_CREDENTIALS':
       return 'Incorrect email or password. Double-check both fields and try again.';
@@ -77,6 +83,13 @@ function mapApiErrorByCode(code: string, status: number, message: string, contex
         ? 'Theft reporting and incident management are included from the Plus plan upward. Upgrade your plan to report a theft.'
         : 'This feature is not included in your current plan. Upgrade to unlock it.';
     case 'VALIDATION_ERROR':
+      // INC-003 F-6: the server is the sole authority on password length
+      // (`PASSWORD_MIN_LENGTH` varies by user type). Render its `details`
+      // verbatim-enough to be actionable — never branch here on user type,
+      // which would be an enumeration oracle (FR-15).
+      if (context === 'password-reset' && Array.isArray(details) && details.length > 0) {
+        return `Some details look incorrect: ${details.map(String).join(', ')}.`;
+      }
       return 'Some details look incorrect. Review the form and try again.';
     case 'NOT_FOUND':
       return context === 'security-case' || context === 'support-case'
@@ -163,7 +176,7 @@ export function mapUserFacingError(err: unknown, options: MapUserFacingErrorOpti
   if (networkMapped) return networkMapped;
 
   if (err instanceof ApiError) {
-    return mapApiErrorByCode(err.code, err.status, err.message, context);
+    return mapApiErrorByCode(err.code, err.status, err.message, context, err.details);
   }
 
   if (err instanceof Error) {

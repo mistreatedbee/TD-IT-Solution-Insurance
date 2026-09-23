@@ -59,7 +59,15 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
     });
   }
 
-  if (!response.ok) throw new ApiError(response.status, json as import('./errors').ApiErrorBody);
+  if (!response.ok) {
+    const retryAfterHeader = response.headers.get('Retry-After');
+    const parsedRetryAfter = retryAfterHeader ? Number(retryAfterHeader) : undefined;
+    throw new ApiError(
+      response.status,
+      json as import('./errors').ApiErrorBody,
+      Number.isFinite(parsedRetryAfter) ? parsedRetryAfter : undefined,
+    );
+  }
 
   return json as T;
 }

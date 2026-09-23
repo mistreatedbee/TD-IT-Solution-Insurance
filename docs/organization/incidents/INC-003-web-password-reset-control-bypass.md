@@ -309,6 +309,125 @@ not touched here.
 
 ---
 
+## 8b. F-1/F-3–F-7 implementation record (`authentication-engineer`, 2026-09-23)
+
+Builds on §5's spec and §8a's shipped `client: 'web'` backend contract. Implemented and tested;
+`security-engineer`'s A-7 verification (§5 routing) still applies and is not claimed here.
+
+**F-1 (request limb).** `src/pages/CustomerForgotPasswordPage.tsx` no longer calls
+`supabase.auth.resetPasswordForEmail` (the removed `requestPasswordReset` helper,
+`src/customer/supabase/auth.ts`). It now calls `resetPasswordRequest(email)`
+(`src/customer/api/auth.ts`), which posts `{ email, client: 'web' }` to
+`POST /v1/auth/reset-password/request` per §8a's contract. On failure the page now surfaces the
+mapped error directly (rate limit, network, upstream) instead of the prior code's "treat as
+submitted unless the message contains 'rate limit'" heuristic — safe to simplify because the
+endpoint's 202 response is unconditionally generic (FR-15), so anything that throws is a real
+failure, never an "account not found" signal.
+
+**F-3 (confirm limb).** `src/pages/CustomerResetPasswordPage.tsx` no longer calls
+`updatePasswordWithSupabase`. The page already established a Supabase recovery session via
+`/auth/callback` (`CustomerAuthCallbackPage.tsx`, unchanged) and reads its `access_token` via
+`getSupabase().auth.getSession()` (same technique the removed helper used, now used only to
+obtain a bearer credential to hand the backend, never to mutate the password itself). It calls
+the new `resetPasswordConfirm({ recoveryAccessToken, newPassword })`
+(`src/customer/api/auth.ts`), which POSTs to `/auth/reset-password/confirm` with an
+`Idempotency-Key` header (`newIdempotencyKey()`, matching `src/customer/api/policies.ts` /
+`assets.ts`'s existing convention). Confirmed against `backend/src/routes/auth.ts:801-818` per
+§8a — no backend contract change needed, matches as specced.
+
+**F-4 (MFA step).** On `{ mfaVerificationRequired: true, mfaVerificationToken }`, the page moves
+to a real `mfa` step (6-digit TOTP input) instead of mobile's error-out pattern
+(`mobile/app/(auth)/reset-password.tsx:50-58`, explicitly not copied per §5). Calls the new
+`resetPasswordMfaVerify({ mfaVerificationToken, code })` against
+`POST /auth/reset-password/mfa-verify` (also `Idempotency-Key`-bearing). User-visible states
+added, not silent failures: a live countdown from `RESET_PASSWORD_MFA_VERIFY_TOKEN_TTL_SECONDS`
+(5 min, mirrored as `MFA_TOKEN_TTL_SECONDS` in the component) that flips to an explicit "expired,
+request a new link" card; and a `RATE_LIMITED` branch that reads the `Retry-After` response
+header (see next paragraph) and renders "try again in N minute(s)", disabling the submit button
+for that window rather than just showing a generic error on every retry.
+
+**Plumbing needed for F-4's rate-limit UI, additive only:**
+- `src/dashboard/api/errors.ts` — `ApiError` gained two optional fields: `details` (captures a
+  catalogue error's `extra` payload, e.g. `VALIDATION_ERROR`'s `details: [...]`) and
+  `retryAfterSeconds` (third constructor arg). Neither is populated unless a caller passes it, so
+  every existing `new ApiError(status, body)` call site (`dashboard/api/client.ts`,
+  `customer/supabase/auth.ts`, `DashboardAuthProvider.tsx`, `InvitationAcceptPage.tsx`)
+  is unaffected — verified by the full suite passing unchanged (see test results below).
+- `src/customer/api/client.ts`'s `rawRequest` now reads the `Retry-After` response header on a
+  non-OK response and threads it into the thrown `ApiError`'s third argument. This is the only
+  place a numeric retry-after reaches the UI; the backend only ever sets it as a header
+  (`backend/src/middleware/error-handler.ts:92-94`), never in the JSON body.
+- `src/lib/user-facing-errors.ts`'s `mapApiErrorByCode` gained an optional `details` parameter,
+  used only for `VALIDATION_ERROR` in the `password-reset` context: when the server's `details`
+  array is present, the array is rendered verbatim-enough (`"...: password does not meet the
+  minimum length requirement."`) instead of the generic "Some details look incorrect" fallback.
+  This is F-6's binding requirement in code: the string never mentions a user-type or a specific
+  number, so a privileged user is told what's wrong without the client ever knowing or branching
+  on which minimum applies — the check that would fail is entirely server-side
+  (`isPasswordValidForUserType`, `backend/src/routes/auth.ts:862`).
+
+**F-6 (no user-type probe).** Confirmed no new code path reads or infers `userType` anywhere in
+this flow. The pre-existing client-side length gate (`PASSWORD_MIN_LENGTH_HINT = 10`, renamed
+from `PASSWORD_MIN_LENGTH` for clarity that it is a hint) is unchanged in effect: it only ever
+rejects locally when `password.length < 10`, so a 10–13-character password from a privileged
+account still round-trips to the server and gets the real `VALIDATION_ERROR`. Verified by test
+(see below) — a 12-char password is submitted, not blocked client-side, and the server's message
+is what's rendered.
+
+**F-7 (no auto-sign-in).** Removed: the `auth.signInWithTokens(...)` call after a successful
+reset, and the `useCustomerAuth()` dependency entirely (the page no longer needs the customer
+auth context). Both the customer-branch success and the post-MFA-verify success now call a single
+`endAndRedirectToLogin()` that (a) best-effort calls `getSupabase().auth.signOut()` to clear the
+local recovery session client-side — hygiene only, since the backend has already revoked every
+server-side session and disabled push tokens (SR-007-1) regardless of what the browser does next
+— and (b) `navigate('/login', { replace: true })`. No call to `/auth/supabase/exchange` remains
+anywhere in this component, closing the §2.4 symptom (staff previously saw a post-reset error
+from that endpoint rejecting non-customer types).
+
+**F-5 (delete, don't just unreference).** `updatePasswordWithSupabase` and the direct-Supabase
+`requestPasswordReset` are both deleted from `src/customer/supabase/auth.ts`, not left dead —
+grep-confirmed zero remaining references anywhere under `src/` or `mobile/`. A code comment is
+left in their place pointing at this incident and at the replacement call sites
+(`resetPasswordConfirm`/`resetPasswordMfaVerify`/`resetPasswordRequest` in
+`src/customer/api/auth.ts`).
+
+**F-9 (this role's share — web-side (a)/(b)/(c), building on §8a's backend-contract tests which
+are narrower and already covered separately):**
+- `src/pages/CustomerResetPasswordPage.test.tsx` (5 tests): no-session state; customer happy path
+  (asserts the exact `/auth/reset-password/confirm` request body and `Idempotency-Key` header,
+  then asserts redirect to `/login` with `auth.signOut()` called and no session-establishing call
+  made — item (a)'s "cannot complete without mfa-verify" is covered from the other direction by
+  the next two cases plus this one proving the *customer* path never even offers an MFA step to
+  skip); F-6's 12-char-password-not-blocked-client-side case; the full privileged/staff path
+  (confirm → `mfaVerificationRequired` → TOTP entry → `mfa-verify` → success → redirect, no
+  auto-sign-in) — this is INC-003 F-9(a)'s direct case: a privileged reset cannot reach the
+  "Password updated"/redirect state without a `mfa-verify` call happening in between, because the
+  component has no other code path from the `mfaVerificationRequired` response to success; and
+  the mfa-verify `RATE_LIMITED` case rendering the real 15-minute window from the `Retry-After`
+  header.
+- `src/pages/CustomerForgotPasswordPage.test.tsx` (3 tests): asserts the request body is
+  `{ email, client: 'web' }` against `/auth/reset-password/request` (item (c)); asserts the
+  identical confirmation UI regardless of account existence; asserts a real `RATE_LIMITED`
+  failure is shown rather than the generic-accepted state.
+- `src/lib/inc-003-no-direct-password-mutation.test.ts` (item (b)): a structural grep-style guard
+  (recursive file walk under `src/`, regex `\.updateUser\(\s*\{\s*password\s*[:,]`) that fails
+  the suite if any file reintroduces a direct `.updateUser({ password ... })` call. This is
+  intentionally a suite-level guard, not a one-off assertion, so it catches a reintroduction in
+  any file, not just the two touched here.
+
+**Verification status:** `cd . && npx vitest run` — **16 test files, 61 tests, all passing**
+(includes the 9 new/changed tests above plus the full pre-existing web suite, confirming no
+regression from the additive `ApiError`/`mapApiErrorByCode` changes). `npm run typecheck`
+(`tsc -p tsconfig.json --noEmit`) — clean, no errors. Both run in this session, not asserted from
+inspection alone. `security-engineer`'s independent A-7 implementation-verification pass per §5's
+routing is still outstanding and is not claimed here.
+
+Not in scope here per the incident's routing and this task's constraints: F-2/backend (§8a,
+already shipped), F-8 (Supabase project floor — `devops-engineer`), A-5/A-6
+(`cybersecurity-architect`/`security-engineer`), mobile app (already correct per §2.1).
+
+---
+
 ## 8. Cross-references
 
 - `docs/features/001-authentication/security-review.md` §2.3 (attack tree), §6 (ratified policy table), §8
