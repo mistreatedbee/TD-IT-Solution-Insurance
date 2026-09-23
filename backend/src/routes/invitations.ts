@@ -12,10 +12,11 @@ import { requireUserType } from '../middleware/require-role.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 import { generateOpaqueToken, sha256Hex } from '../lib/crypto.js';
-import { INVITATIONS_CREATE_LIMIT, INVITATION_TTL_SECONDS, INVITATION_ISSUANCE_STEP_UP_WINDOW_SECONDS } from '../lib/policy.js';
+import { INVITATIONS_CREATE_LIMIT, INVITATION_TTL_SECONDS } from '../lib/policy.js';
 import { issueEnrollmentTicket } from '../lib/enrollment-ticket.js';
 import { storePendingEnrollment } from '../lib/enrollment-pending-store.js';
 import { SupabaseUnavailableError } from '../db/supabase.js';
+import { requireStepUp, STEP_UP_WINDOW_SECONDS } from '../lib/step-up.js';
 
 export function createInvitationsRouter(ctx: AppContext): Router {
   const router = Router();
@@ -35,22 +36,15 @@ export function createInvitationsRouter(ctx: AppContext): Router {
     requireUserType('admin'),
     createRateLimiter(ctx.kv, { attempts: INVITATIONS_CREATE_LIMIT.attempts, windowSeconds: INVITATIONS_CREATE_LIMIT.windowSeconds }, (req) => `invitations-create:${req.auth!.accountId}`),
     requireIdempotencyKey('POST /v1/invitations', ctx.idempotency),
+    // ADR-0012 §2.3: refactored onto the shared requireStepUp middleware —
+    // identical semantics (same 15-minute window, same live app.sessions
+    // read) to the inline SR-11 check this replaces, now reusable by a
+    // second consumer instead of copy-pasted.
+    requireStepUp(ctx, STEP_UP_WINDOW_SECONDS.invitationIssuance),
     validateBody(createSchema),
     async (req, res, next) => {
       try {
         const { email, userType, partnerOrganizationId } = req.body as z.infer<typeof createSchema>;
-
-        // security-review.md §6: step-up re-verification — mfa_verified_at
-        // on the CURRENT SESSION must be no older than 15 minutes. Read live
-        // from app.sessions, never trusted from the access-token claim
-        // (which does not carry mfa_verified_at at all, deliberately).
-        const session = await ctx.sessions.findById(req.auth!.sessionId);
-        const mfaVerifiedAt = session?.mfaVerifiedAt ?? null;
-        const stepUpOk = mfaVerifiedAt && Date.now() - mfaVerifiedAt.getTime() <= INVITATION_ISSUANCE_STEP_UP_WINDOW_SECONDS * 1000;
-        if (!stepUpOk) {
-          next(apiError('STEP_UP_REQUIRED'));
-          return;
-        }
 
         if (userType === 'security_company_operator' && !partnerOrganizationId) {
           next(apiError('VALIDATION_ERROR', { details: ['partnerOrganizationId is required for security_company_operator'] }));

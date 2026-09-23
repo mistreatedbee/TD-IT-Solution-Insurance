@@ -91,6 +91,15 @@ export interface SessionRepo {
   revokeAllForAccount(accountId: string, reason: SessionRevokedReason): Promise<string[]>;
   /** True if any prior session row exists for this account + device (Feature 007). */
   hasPriorSessionForDevice(accountId: string, deviceId: string): Promise<boolean>;
+  /**
+   * ADR-0012 §2.2 — writes `mfa_verified_at` on the CURRENT session ROW
+   * only: no rotation, no new session, no touched `expires_at`/
+   * `absolute_expires_at`. This is the *only* sanctioned writer of this
+   * column outside session creation (INV-1) — the step-up verify endpoint
+   * is the sole caller. Must no-op (not throw) against a revoked session;
+   * the caller is expected to have already checked `revokedAt` itself.
+   */
+  touchMfaVerifiedAt(id: string, at: Date): Promise<void>;
 }
 
 function idleTtlSecondsFor(surface: SessionSurface): number {

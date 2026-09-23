@@ -138,5 +138,19 @@ export function createSessionRepo(db: Queryable): SessionRepo {
       );
       return result.rows.length > 0;
     },
+
+    // ADR-0012 §2.2 / INV-1: the only sanctioned writer of mfa_verified_at
+    // outside session creation. Deliberately does NOT touch expires_at or
+    // absolute_expires_at, and the `revoked_at is null` guard means a
+    // revoked session silently no-ops rather than resurrecting step-up
+    // freshness on a session that can no longer be used anyway.
+    async touchMfaVerifiedAt(id, at) {
+      await db.query(
+        `update app.sessions
+         set mfa_verified_at = $2
+         where id = $1 and revoked_at is null`,
+        [id, at],
+      );
+    },
   };
 }

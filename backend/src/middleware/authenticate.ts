@@ -123,7 +123,12 @@ export function createAuthenticateMiddleware(env: Env, revocationStore: KeyValue
       accountState: claims.account_state,
       partnerOrganizationId: claims.partner_organization_id,
       sessionId: claims.session_id,
-      mfaVerifiedRecently: false, // step-up check is a separate, endpoint-specific concern (see lib/step-up.ts)
+      // Always false here — step-up freshness is never trusted from a token
+      // claim (the access token carries no mfa_verified_at at all, by
+      // design). It is a separate, per-route concern enforced via
+      // `requireStepUp` (lib/step-up.ts, ADR-0012), which re-reads
+      // `app.sessions` live on every check (INV-3).
+      mfaVerifiedRecently: false,
       claims,
     };
     next();

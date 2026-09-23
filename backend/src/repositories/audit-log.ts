@@ -55,7 +55,12 @@ export type AuditEventType =
   | 'mfa_enrollment_ticket_issued'
   | 'mfa_enrollment_ticket_rejected'
   | 'account_locked'
-  | 'session_family_revoked';
+  | 'session_family_revoked'
+  // ADR-0012 §2.2.5 — step-up re-verification outcomes. Added by
+  // migrations/035. High-signal ATO indicator on a burst of the `_failed`
+  // variant against a privileged account (§5.2/C-4).
+  | 'mfa_step_up_verified'
+  | 'mfa_step_up_failed';
 
 /**
  * Event types that record privileged access to another account's data and

@@ -31,6 +31,9 @@ function fakeSessions(seenDevices: Set<string>): SessionRepo {
     async hasPriorSessionForDevice(accountId, deviceId) {
       return seenDevices.has(`${accountId}:${deviceId}`);
     },
+    async touchMfaVerifiedAt() {
+      return undefined;
+    },
   };
 }
 

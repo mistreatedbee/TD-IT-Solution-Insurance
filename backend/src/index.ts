@@ -35,6 +35,7 @@ import { createHealthRouter } from './routes/health.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createSessionRouter } from './routes/session.js';
 import { createMfaRouter } from './routes/mfa.js';
+import { createStepUpRouter } from './routes/step-up.js';
 import { createInvitationsRouter } from './routes/invitations.js';
 import { createAdminAccountsRouter } from './routes/admin-accounts.js';
 import { createAdminPoliciesRouter } from './routes/admin-policies.js';
@@ -135,6 +136,7 @@ async function main(): Promise<void> {
   v1.use(createAuthRouter(ctx));
   v1.use(createSessionRouter(ctx));
   v1.use(createMfaRouter(ctx));
+  v1.use(createStepUpRouter(ctx));
   v1.use(createInvitationsRouter(ctx));
   v1.use(createAdminAccountsRouter(ctx));
   v1.use(createAdminPoliciesRouter(ctx));

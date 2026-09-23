@@ -75,6 +75,10 @@ export const ERROR_CATALOG = {
     message: 'This action must be performed from the device associated with your current session.',
   },
   STEP_UP_REQUIRED: { statusCode: 401, message: 'Please re-verify your identity to continue.' },
+  // ADR-0012 §2.2.3 — no password fallback and no bypass for a privileged
+  // account that has no verified TOTP factor on file; there is no session to
+  // step up from a factor that was never enrolled.
+  MFA_NOT_ENROLLED: { statusCode: 409, message: 'Multi-factor authentication is not enrolled on this account.' },
   UPSTREAM_UNAVAILABLE: {
     statusCode: 503,
     message: 'The service is temporarily unavailable. Please try again shortly.',

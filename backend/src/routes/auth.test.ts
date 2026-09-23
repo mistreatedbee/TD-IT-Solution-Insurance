@@ -158,6 +158,12 @@ function createFakeSessionRepo(): SessionRepo {
       }
       return false;
     },
+    async touchMfaVerifiedAt(id, at) {
+      const row = rows.get(id);
+      if (row && row.revokedAt === null) {
+        row.mfaVerifiedAt = at;
+      }
+    },
   };
 }
 
