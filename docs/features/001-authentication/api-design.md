@@ -730,7 +730,25 @@ paths:
               schema:
                 type: object
                 properties:
-                  qrCodeImage: { type: string, description: Base64-encoded PNG. }
+                  qrCodeSvg: { type: string, description: >
+                      **CORRECTED — v1.2.0, P1 live-bug fix, 2026-09-23
+                      (`authentication-engineer`).** VOID, superseded: the
+                      field was previously named `qrCodeImage` and described
+                      as "Base64-encoded PNG" — that was wrong. GoTrue's TOTP
+                      enrollment response (`totp.qr_code`) is raw SVG markup,
+                      not base64 PNG; the wire field is renamed to
+                      `qrCodeSvg` to match. Clients must render it as SVG
+                      (e.g. `SvgXml` on mobile) rather than wrapping it in a
+                      `data:image/png;base64,...` URI. See
+                      docs/features/017-privileged-account-self-service/
+                      01-architecture-scope-note.md R-2 for the bug this
+                      fixes, and `backend/src/routes/mfa.ts` for the
+                      implementation-side rationale comment. Not re-verified
+                      against a live Supabase project in this pass — if one
+                      becomes available, confirm the exact string GoTrue
+                      returns (raw `<svg>` vs. a pre-wrapped
+                      `data:image/svg+xml,...` URI).
+                  }
                   manualEntryKey: { type: string }
                   enrollmentId: { type: string, format: uuid }
         '401': { $ref: '#/components/responses/Unauthorized' }

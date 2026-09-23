@@ -800,9 +800,22 @@ describe('POST /auth/login SR-14 forced-re-enrollment (api-design.md §11 Amendm
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ enrollmentTicket: loginBody.enrollmentTicket }),
     });
-    const enrollBody = (await enrollResponse.json()) as { enrollmentId?: string; error?: { code: string } };
+    const enrollBody = (await enrollResponse.json()) as {
+      enrollmentId?: string;
+      qrCodeSvg?: string;
+      qrCodeImage?: string;
+      manualEntryKey?: string;
+      error?: { code: string };
+    };
     expect(enrollResponse.status, JSON.stringify(enrollBody)).toBe(200);
     expect(enrollBody.enrollmentId).toBeTruthy();
+    // P1 fix (docs/features/017.../01-architecture-scope-note.md R-2): GoTrue's
+    // totp.qr_code is raw SVG markup, not base64 PNG. The wire field must be
+    // named for what it is (qrCodeSvg) so clients don't wrap it as
+    // `data:image/png;base64,...` again. qrCodeImage must NOT reappear.
+    expect(enrollBody.qrCodeSvg).toBe('<svg />');
+    expect(enrollBody.qrCodeImage).toBeUndefined();
+    expect(enrollBody.manualEntryKey).toBe('MANUALKEY');
 
     // 3. Complete enrollment with the (fake) TOTP code — this consumes the
     // ticket and mints a session, per SR-14(a)'s "force enrollment rather

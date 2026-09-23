@@ -4,7 +4,8 @@
  */
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { MfaQrCode } from '../../components/MfaQrCode';
 import { mfaEnroll, mfaEnrollVerify } from '../../api/auth';
 import { acceptInvitation, getInvitation } from '../../api/invitations';
 import { ApiError } from '../../api/errors';
@@ -150,17 +151,16 @@ export function AcceptInvitationScreen() {
           setting up your account.
         </Text>
         <View style={styles.qrWrapper}>
-          <Image
-            accessibilityLabel="QR code for authenticator app"
-            source={{ uri: `data:image/png;base64,${enrollment.qrCodeImage}` }}
-            style={styles.qrImage}
-            resizeMode="contain"
-          />
+          <MfaQrCode value={enrollment.qrCodeImage} size={200} style={styles.qrImage} />
         </View>
-        <Text style={styles.manualKeyLabel}>Can&apos;t scan? Enter this key manually:</Text>
-        <Text selectable style={styles.manualKey}>
-          {enrollment.manualEntryKey}
-        </Text>
+        <View style={styles.manualKeyBlock}>
+          <Text style={styles.manualKeyLabel}>
+            Can&apos;t scan the code? Enter this key manually in your authenticator app:
+          </Text>
+          <Text selectable style={styles.manualKey}>
+            {enrollment.manualEntryKey}
+          </Text>
+        </View>
         {errorMessage ? (
           <View style={styles.alertSpacing}>
             <Alert tone="danger">{errorMessage}</Alert>
@@ -236,20 +236,26 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
   },
+  manualKeyBlock: {
+    marginBottom: spacing.xl,
+  },
   manualKeyLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
+    fontSize: typography.sizes.sm,
+    fontWeight: '600',
+    color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
   manualKey: {
     fontFamily: 'monospace',
-    fontSize: typography.sizes.sm,
+    fontSize: typography.sizes.base,
     color: colors.textPrimary,
     textAlign: 'center',
     backgroundColor: colors.slate[50],
-    padding: spacing.sm,
-    borderRadius: 6,
-    marginBottom: spacing.xl,
+    padding: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.slate[100],
+    letterSpacing: 1,
   },
 });

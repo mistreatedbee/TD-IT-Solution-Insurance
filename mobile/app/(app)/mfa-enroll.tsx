@@ -8,7 +8,8 @@
  */
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { MfaQrCode } from '../../src/components/MfaQrCode';
 import { mfaEnroll, mfaEnrollVerify } from '../../src/api/auth';
 import { setRefreshToken } from '../../src/auth/secure-storage';
 import { useSessionStore } from '../../src/auth/session-store';
@@ -81,18 +82,17 @@ export default function MfaEnrollScreen() {
       </Text>
 
       <View style={styles.qrWrapper}>
-        <Image
-          accessibilityLabel="QR code to scan with your authenticator app"
-          source={{ uri: `data:image/png;base64,${enrollment.qrCodeImage}` }}
-          style={styles.qrImage}
-          resizeMode="contain"
-        />
+        <MfaQrCode value={enrollment.qrCodeImage} size={200} style={styles.qrImage} />
       </View>
 
-      <Text style={styles.manualKeyLabel}>Can&rsquo;t scan? Enter this key manually:</Text>
-      <Text selectable style={styles.manualKey}>
-        {enrollment.manualEntryKey}
-      </Text>
+      <View style={styles.manualKeyBlock}>
+        <Text style={styles.manualKeyLabel}>
+          Can&rsquo;t scan the code? Enter this key manually in your authenticator app:
+        </Text>
+        <Text selectable style={styles.manualKey}>
+          {enrollment.manualEntryKey}
+        </Text>
+      </View>
 
       <Text style={styles.otpLabel}>Enter the 6-digit code from your app to confirm.</Text>
 
@@ -137,21 +137,27 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
   },
+  manualKeyBlock: {
+    marginBottom: spacing.xl,
+  },
   manualKeyLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
+    fontSize: typography.sizes.sm,
+    fontWeight: '600',
+    color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
   manualKey: {
     fontFamily: 'monospace',
-    fontSize: typography.sizes.sm,
+    fontSize: typography.sizes.base,
     color: colors.textPrimary,
     textAlign: 'center',
     backgroundColor: colors.slate[50],
-    padding: spacing.sm,
-    borderRadius: 6,
-    marginBottom: spacing.xl,
+    padding: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.slate[100],
+    letterSpacing: 1,
   },
   otpLabel: {
     fontSize: typography.sizes.sm,

@@ -113,12 +113,25 @@ export function createMfaRouter(ctx: AppContext): Router {
       });
 
       res.status(200).json({
-        // NOTE: GoTrue's TOTP enrollment response carries an SVG QR code
-        // (`totp.qr_code`), not the base64-PNG the OpenAPI schema names —
-        // unverified against a live project (no Supabase project exists to
-        // confirm, same open-item posture as OI-11/FU-07). Flagged here
-        // rather than silently declared PNG when it is not.
-        qrCodeImage: enrollment.qrCodeSvg,
+        // FIX (P1, live bug — see docs/features/017-privileged-account-self-service/
+        // 01-architecture-scope-note.md R-2): GoTrue's TOTP enrollment response
+        // (`POST /factors` with factor_type=totp) carries `totp.qr_code` as a raw
+        // **SVG markup string** (an `<svg>...</svg>` document, NOT base64-encoded
+        // PNG data). The OpenAPI schema in api-design.md previously mislabelled
+        // this `qrCodeImage`/"Base64-encoded PNG", and the mobile client wrapped
+        // it in a `data:image/png;base64,...` URI, which is broken for SVG input.
+        // The field is now named and typed for what it actually is: raw SVG
+        // markup. Clients must render it as SVG (e.g. react-native-svg's
+        // `SvgXml`, or an inline `<svg>` on web / a `data:image/svg+xml,...` URI
+        // if a client needs an <img> src) — never wrap it as PNG base64.
+        // Determination basis: GoTrue's documented MFA enrollment response shape
+        // plus this codebase's own `TotpEnrollment.qrCodeSvg` field name
+        // (backend/src/db/supabase.ts); not re-verified against a live Supabase
+        // project in this pass (no project available here) — if a live project
+        // becomes available, confirm the exact string GoTrue returns (raw
+        // `<svg>` vs. an already-prefixed `data:image/svg+xml,...` URI) so the
+        // client-side wrapping logic can be adjusted precisely.
+        qrCodeSvg: enrollment.qrCodeSvg,
         manualEntryKey: enrollment.manualEntryKey,
         enrollmentId: enrollment.factorId,
       });
