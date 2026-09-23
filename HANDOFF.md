@@ -44,6 +44,27 @@ Supabase (Postgres, EU region) + MongoDB Atlas project:
   secrets-management-plan, compliance-review-supabase.md, compliance-review-smtp-vendor.md.
 - Both live databases have the real schema applied (not just paper design) — confirmed via
   an actual signup smoke test that landed a real row, then was deleted.
+- **Gap flagged 2026-09-23 (owner-discovered, confirmed against code): privileged-account
+  (admin/security-operator/support-agent) MFA/invitation onboarding has a complete, tested
+  *backend* contract and no web UI at all.** `backend/src/routes/mfa.ts` and `invitations.ts`
+  are fully built and covered by the 188-test suite above — invite issuance, invite-accept,
+  TOTP enroll/verify all work as HTTP endpoints today. But:
+  - **No web UI exists for a staff/admin user to accept an invitation or enroll MFA.** The
+    Admin Panel (`src/admin/`) and Security Company Dashboard (`src/security/`) have no
+    invite-accept or MFA-enrollment screens — a real staff member cannot complete onboarding
+    through the web today, only via raw API calls.
+  - **No web UI exists to *send* such an invitation either**, on any surface (web or mobile).
+  - **Only the customer-facing password-reset flow exists on web** (`src/pages/` customer
+    auth); privileged accounts have no forgot-password path on any surface.
+  - **Mobile has a working reference implementation for half of this**: invite-accept +
+    MFA-enroll screens exist and work in `mobile/app/` (customer-app auth flow reused for the
+    invited-user path) — but mobile likewise has no invite-*send* UI.
+  - Net effect: don't read "MFA enroll/verify, invitation-accept" in the bullet above as
+    implying a staff member can self-serve onboard through any UI — that capability is
+    backend-only. A feature record for the web UI work is being opened separately by
+    `technical-project-manager` under `docs/features/` (no folder existed for it as of this
+    writing — check for the newest-numbered folder there before assuming this is undocumented
+    elsewhere).
 
 **Feature 004 — Policy/Asset Management.** Paper design complete; **customer API + mobile screens implemented**:
 - `docs/features/004-policy-asset-management/` has `database-design.md` + `database-addendum-001.md`

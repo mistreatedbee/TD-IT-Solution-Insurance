@@ -16,6 +16,20 @@ Two tracks: what the **product** builds, and how the **organization** scales to 
 - Backend API + MongoDB schema for users, policies, assets.
 - Baseline security posture (MFA for admin, encryption in transit/at rest, audit logging) — non-negotiable even at MVP.
 
+### Phase 1.4 — Privileged account self-service (Feature 017) — CTO-prioritized, ahead of Phase 1.5/KYC and payment-gateway work
+- Tracked 2026-09-23 (`docs/features/017-privileged-account-self-service/business-requirements.md`).
+  CTO-authorized P1, sequenced alongside today's INC-002 follow-up items, ranked ahead of Feature
+  016 (KYC) and payment-gateway work.
+- Closes two confirmed, never-built gaps: no web UI to accept a staff/admin invitation and enroll
+  MFA (mobile has a working reference implementation; web has none), and no web UI to *send* such
+  an invitation in the first place (no reference implementation exists on either surface).
+- Sequencing: `solution-architect` scope note (parallel) → `ux-researcher`/`ui-designer` (web
+  enrollment UX) → `frontend-engineer` (lead implementation) → `authentication-engineer`
+  (consulting only) → `cybersecurity-architect` (Stage 8) → `qa-architect` (Stage 10).
+- Dependency: the privileged password-reset half of this problem space is only meaningful once
+  Resend/Supabase Send-Email-Hook email delivery is owner-confirmed working — a pre-existing,
+  separate open item, not reopened by this feature.
+
 ### Phase 1.5 — Identity verification (Feature 016, gating layer over Feature 013)
 - Tracked 2026-09-21 (`docs/features/016-kyc-identity-verification/product-scope-decision.md`).
   First shippable increment is **data-only**: Feature 013 Tier 1 (SA ID checksum/DOB consistency,
