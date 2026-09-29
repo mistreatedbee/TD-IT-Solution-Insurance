@@ -216,13 +216,13 @@ they confirm the shipped code matches. This incident does not close on the imple
 
 | ID | Action | Owner | Due | Status |
 |---|---|---|---|---|
-| **A-1** | F-1…F-7 implemented and merged | `authentication-engineer` / `frontend-architect` | 2026-09-26 | OPEN |
-| **A-2** | F-2 contract amendment (allow-listed per-client redirect) | `backend-architect` | 2026-09-25 | OPEN |
-| **A-3** | F-8 Supabase project password floor = 14 + leaked-password protection | `devops-engineer` + project owner | 2026-09-24 | OPEN |
-| **A-4** | F-9 regression tests green | `automation-qa-engineer` | 2026-09-26 | OPEN |
-| **A-5** | Re-threat-model the **browser-resident Supabase SDK** as a trust boundary in its own right — every credential- or session-mutating call the web bundle can make against Supabase directly, not just this one. The §2.5 trigger is now overdue. | `cybersecurity-architect` | 2026-10-03 | OPEN |
-| **A-6** | Check production Supabase auth logs for `user_updated`/recovery events against any `admin` / `security_company_operator` / `support_agent` address since web auth shipped, and report whether this path has been exercised. Not reachable from this repo; needs console access. | `security-engineer` + project owner | 2026-09-26 | OPEN |
-| **A-7** | Implementation verification against §5 and counter-sign | `security-engineer` | on A-1 merge | OPEN |
+| **A-1** | F-1…F-7 implemented and merged | `authentication-engineer` / `frontend-architect` | 2026-09-26 | **DONE** (commit `ba65236`) |
+| **A-2** | F-2 contract amendment (allow-listed per-client redirect) | `backend-architect` | 2026-09-25 | **DONE** (commit `ac1685d`) |
+| **A-3** | F-8 Supabase project password floor = 14 + leaked-password protection | `devops-engineer` + project owner | 2026-09-24 | OPEN — config declared (commit `e2b1904`), **not yet applied to the hosted project**; see `cto`'s 2026-09-29 ruling in §10, item 2 |
+| **A-4** | F-9 regression tests green | `automation-qa-engineer` | 2026-09-26 | **DONE** (61/61 web, 383/383 backend, part of `ba65236`) |
+| **A-5** | Re-threat-model the **browser-resident Supabase SDK** as a trust boundary in its own right — every credential- or session-mutating call the web bundle can make against Supabase directly, not just this one. The §2.5 trigger is now overdue. | `cybersecurity-architect` | 2026-10-03 | OPEN — reaffirmed P1 by `cto` 2026-09-29, see §10 |
+| **A-6** | Check production Supabase auth logs for `user_updated`/recovery events against any `admin` / `security_company_operator` / `support_agent` address since web auth shipped, and report whether this path has been exercised. Not reachable from this repo; needs console access. | `security-engineer` + project owner | 2026-09-26 (**overdue as of 2026-09-29**) | OPEN — escalated to P0 by `cto`, see §10 |
+| **A-7** | Implementation verification against §5 and counter-sign | `security-engineer` | on A-1 merge | **DONE — PASS**, see §9 |
 
 A-6 is the one that determines whether §7's "no breach" conclusion holds. Until it returns, §7 is provisional.
 
@@ -604,6 +604,65 @@ browser-resident Supabase SDK as its own trust boundary, `cybersecurity-architec
 have Supabase console access in this environment and did not attempt it), and `compliance-specialist`'s
 concurrence on §7. This incident does not fully close until those remaining actions land; A-7
 specifically (implementation verification) is what closes here.
+
+---
+
+## 10. Prioritisation and ownership after A-7 (`cto`, 2026-09-29)
+
+Cites §6 (actions register) and §9 (A-7 verification). Does not restate or alter either.
+
+**A-6 is overdue (due 2026-09-26, now 3 days late) and is escalated to P0**, ahead of everything
+else below. Two reasons: §7's "no breach" conclusion is formally provisional on A-6 per line 227,
+and the evidence window may be closing — Supabase dashboard log retention depends on the project's
+plan tier, which has not been confirmed, so each day of delay may lose part of what A-6 needs to
+examine.
+
+**P0 — today, one console session with the Supabase project owner.** All three need the same
+person with production access:
+
+1. **A-6.** `security-engineer` + project owner. Query `auth.audit_log_entries` first (a database
+   table, not subject to dashboard log-retention limits — confirm it's populated on this project),
+   then the Logs Explorer for recovery/`user_updated` events against any `admin` /
+   `security_company_operator` / `support_agent` address since web auth shipped. Record how far
+   back the evidence actually goes — a clean result only covers the period the logs cover.
+2. **A-3/F-8.** Project owner applies `minimum_password_length = 14` + leaked-password protection
+   per `supabase/README.md`; `devops-engineer` confirms afterward.
+3. **§8a's outstanding redirect allow-listing.** Project owner adds the new web reset-redirect URL
+   to Supabase Auth's URL configuration; `devops-engineer` tests end-to-end afterward. Without this
+   the fixed reset flow may not redirect correctly in production.
+
+**If A-6 finds suspicious events:** this incident is reclassified as having real victims —
+`security-engineer` force-resets and revokes sessions for affected accounts same-day,
+`compliance-specialist` starts the POPIA s22 notification assessment same-day, `cto` re-opens the
+severity rating. Everything in P1/P2 below proceeds regardless.
+
+**P1 — start now, in parallel with P0 (different owners, no conflict):**
+
+4. **A-5**, `cybersecurity-architect`, due 2026-10-03, unchanged. This is the root-cause fix; any
+   direct browser-to-Supabase call it finds that skips the backend gets its own action item, not a
+   note.
+5. **SU-FU-1** (ADR-0012, tracked there — referenced here because A-5 may feed it),
+   `backend-architect`. Two-sprint deadline from 2026-09-23 ratification is not moving. Stage 8/10
+   gates still apply. If A-5 surfaces direct-SDK calls touching account-state change,
+   verification-decision, or plan-catalog edit, `backend-architect` folds them into this work
+   rather than deferring them.
+
+**P2 — gated on the above:**
+
+6. **C-5** (ADR-0012), `compliance-specialist`: POPIA sign-off on `mfa_step_up_verified`/`failed`,
+   done in the same pass as this incident's §7 finding once A-6 returns (one compliance review, not
+   two).
+7. **C-4** (ADR-0012), `security-engineer`: detection rule for `mfa_step_up_failed` bursts, started
+   after A-6 closes and written against the full step-up action set SU-FU-1 adds, targeted for the
+   same sprint SU-FU-1 lands.
+
+**Backlog, explicitly deferred:** the missing `partner_organizations` table (blocks
+`security_company_operator` invitations in Feature 017 D-2). Owner `product-manager` as sponsor,
+with `database-architect`/`solution-architect`; enters the lifecycle at stage 1, needs its own ADR.
+Nobody adds a table or an invite path ad hoc to unblock this.
+
+**What needs the user:** getting the Supabase project owner into a console session today for P0
+items 1–3. No agent can do that part.
 
 ---
 
