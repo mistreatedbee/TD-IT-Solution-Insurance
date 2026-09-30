@@ -1380,3 +1380,75 @@ finding rather than a full closure.
 **Filed by:** `security-engineer`, 2026-09-22. **Discharges:** the route-specific extension of D-2/
 INC-001-C-4 dispatched today. **Does not discharge:** D-1, D-4, INC-001-C-4/D-2 in full, or INC-002-C-6
 (final s22, `compliance-specialist`, due 2026-09-24).
+
+---
+
+## 16. `cto` — Play organization-account blocker and re-sequencing (2026-09-30)
+
+Cites §4 (halt), §5 (dispatches), §9.3 (s22 clock), §9.6 (conditions). Does not alter any of them.
+
+### 16.1 New fact, as reported (not verified from this environment)
+
+Google Play has flagged the app's listing: apps offering financial/insurance services must be
+published from a **verified Organization developer account**, not an individual one. Remedy is
+business-administrative (D-U-N-S number, business verification documents, Google review), with
+multi-day lead time. The client is being asked today to start the D-U-N-S request. No code change
+resolves it. This session has no Play Console access and has not read Google's notice or policy text;
+everything below about Play behaviour is framed as a question for whoever holds the console.
+
+### 16.2 Ruling — this is a release blocker, not a new incident, and it changes nothing in §4/§5
+
+1. **It is tracked here, not as INC-004.** It involves no data, no victim and no control failure; it
+   is an external precondition on the same remediation path (§4(1) deactivate, §4(5) no new upload).
+   Recorded as **INC-002-X-1** below.
+2. **It does not delay D-1, D-4 or C-6.** Those determine whether INC-002 has data subjects affected;
+   that question is independent of Google's verification timeline. The §9.3 clock is already six
+   days past its FINAL date.
+3. **It does not relax §4(5).** The upload freeze was already in force for C-2/Data-safety reasons.
+   Google now blocking uploads too means the verification wait costs **no** schedule on this
+   incident — it runs concurrently with C-2, C-3 and C-5, which must all close before any upload
+   anyway.
+4. **It is not an excuse for the §4(1) halt still being undone nine days on.** Deactivating a
+   release is not a submission. Presume it still works until the console demonstrates otherwise.
+
+### 16.3 Owner console session — today, one sitting, in this order
+
+The project owner (sole holder of Play/Render/Atlas access, per §8) does the following. Items (a)–(c)
+come first because an account change or app transfer could move or lose this evidence.
+
+| # | Action | Closes / feeds |
+|---|---|---|
+| a | **Export evidence before anything else changes:** internal-tester list, install statistics for the release, and a screenshot/export of the submitted Data safety form | D-6, C-1, C-7 |
+| b | **Deactivate the release** (*Testing → Internal testing → Releases*). If blocked: **(i)** remove every tester/Google Group from the internal-testing list; if also blocked, **(ii)** *Advanced settings → Unpublish app*. Record which step worked and any error text verbatim | §4(1) |
+| c | Record exactly what the Google notice says: whether it restricts existing track management, uploads, or only production listing, and whether Google requires a **new** organization account plus app transfer or allows converting the current one | X-1 |
+| d | Render dashboard: read the literal value of `LOCATION_INGESTION_ENABLED` on the backend service (and any other service using the same Atlas cluster). If `"true"`: set `false` now | D-1 |
+| e | Atlas: give `database-architect` a read-only session or run the §5.2 inventory query they supply | D-4 |
+
+If INC-003 §10 P0 (Supabase A-6, A-3/F-8, redirect allow-list) is not yet done, fold it into this
+same session — same person, same day.
+
+### 16.4 Agent dispatch — now, in parallel with §16.3
+
+- **`compliance-specialist` — INC-002-C-6, today.** Per §9.3's own rule ("record a determination that
+  names what is still unknown rather than let the window drift"), issue the s22 determination **now**
+  on the evidence held, naming D-1/D-4/D-6 as outstanding and stating what flips it. Re-issue when
+  they return. Waiting for them is the failure mode §9.3 names. Also in scope: advise whether the
+  Play financial-services review is likely to ask for evidence of insurance/FSP authorisation for the
+  South African listing, and whether the verified legal entity must match the responsible party named
+  in the privacy policy. Flag either as a counsel question per §9.7 if it is not yours to settle.
+- **`devops-engineer` — D-1**, and prepare the step-by-step owner script for §16.3(a)–(d).
+  If direct Render API access is unavailable, say so in one line and hand to the owner script.
+- **`database-architect` — D-4**: write the exact read-only inventory query for §16.3(e) today.
+- **INC-003 §10 P1 re-dispatch, unchanged in substance:** `cybersecurity-architect` A-5 (due
+  2026-10-03, unmoved) and `backend-architect` + `frontend-architect` SU-FU-1 (ADR-0012). The
+  2026-09-30 failures were a session rate limit; nothing was committed and nothing was lost. Stagger
+  them after the three dispatches above if rate limits recur; INC-002's live exposure takes precedence.
+
+### 16.5 Condition added
+
+| # | Condition | Owner | Due |
+|---|---|---|---|
+| **INC-002-X-1** | Play organization-account verification completed (D-U-N-S issued, business verification passed, account type or transfer resolved), recorded here with dates. Until then no build may be uploaded to any track, **in addition to** §4(5). Any app transfer must happen only after §16.3(a) evidence is exported. | Tracking: `technical-project-manager` (weekly check with the client until closed). Console mechanics: `devops-engineer` + `mobile-architect`. Business documents: the client, via the project owner | Open-ended; status line here each week |
+
+**Filed by:** `cto`, 2026-09-30. **Discharges:** nothing. **Does not discharge:** D-1, D-4, D-6,
+C-1, C-2, C-6, C-7, or the §4(1) halt.
