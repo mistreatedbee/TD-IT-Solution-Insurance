@@ -5,12 +5,16 @@
  * requires an `Idempotency-Key` header and fresh step-up MFA (ADR-0012).
  *
  * Step-up contract (ADR-0012 §2.4): a `STEP_UP_REQUIRED` (401) response is a
- * recoverable, in-place interstitial, never a logout. This page catches it,
- * opens an in-place step-up dialog, challenges, collects a 6-digit TOTP
- * code, verifies, and on success automatically retries the ORIGINAL
- * `POST /invitations` request with the SAME `Idempotency-Key` — see
- * `retryPendingInvitation` below, which is the only place that key is read
- * back out.
+ * recoverable, in-place interstitial, never a logout. This page uses the
+ * shared `useStepUpRetry` hook (`src/admin/hooks/useStepUpRetry.ts`) and
+ * `StepUpDialog` component (`src/admin/components/StepUpDialog.tsx`) —
+ * extracted from this page's original inline implementation per ADR-0012
+ * SU-FU-1 so the three other Tier A admin actions can share the same
+ * mechanism. The hook catches `STEP_UP_REQUIRED`, opens the dialog, and on
+ * successful verify automatically retries the ORIGINAL
+ * `POST /invitations` request with the SAME `Idempotency-Key` (the key is
+ * part of the retried call's arguments, so the hook replays it unchanged —
+ * see `sendInvitationAction` below).
  *
  * Scope (Feature 017 D-2): `userType` is limited to `admin` and
  * `support_agent`. `security_company_operator` is shown as a disabled
@@ -20,23 +24,20 @@
  * scope here. This is intentionally surfaced, not silently omitted; see
  * docs/organization/adr/0012-step-up-authentication-for-privileged-actions.md
  * §3 for the CTO-flagged follow-up.
- *
- * No shared Modal component exists in `src/components/*` today
- * (design-system-manager inventory checked before writing this) — the
- * step-up dialog below is page-local markup (a fixed-position overlay),
- * not a new exported design-system primitive.
  */
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { FormEvent, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Input, SectionHeading } from '../../components';
 import { InlineAlert } from '../../dashboard/components/ui';
-import { ApiError } from '../../dashboard/api/errors';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { newIdempotencyKey } from '../../customer/api/idempotency';
+import { StepUpDialog } from '../components/StepUpDialog';
+import { useStepUpRetry } from '../hooks/useStepUpRetry';
 import {
   createInvitation,
   requestStepUpChallenge,
   verifyStepUp,
+  type CreateInvitationResult,
   type InvitableUserType,
 } from '../api/admin-invitations';
 
@@ -47,123 +48,6 @@ function userTypeLabel(userType: InvitableUserType): string {
   return userType === 'admin' ? 'Admin' : 'Support agent';
 }
 
-type StepUpPhase = 'requesting-challenge' | 'awaiting-code' | 'verifying';
-
-function StepUpDialog({
-  onVerified,
-  onCancel,
-}: {
-  onVerified: (result: { mfaVerifiedAt: string }) => void;
-  onCancel: () => void;
-}) {
-  const [phase, setPhase] = useState<StepUpPhase>('requesting-challenge');
-  const [challengeToken, setChallengeToken] = useState<string | null>(null);
-  const [code, setCode] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
-  const [expired, setExpired] = useState(false);
-
-  const startChallenge = useCallback(async () => {
-    setPhase('requesting-challenge');
-    setError(null);
-    setExpired(false);
-    try {
-      const { stepUpChallengeToken } = await requestStepUpChallenge();
-      setChallengeToken(stepUpChallengeToken);
-      setPhase('awaiting-code');
-    } catch (err) {
-      setError(mapUserFacingError(err, { context: 'mfa' }));
-      setExpired(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    void startChallenge();
-  }, [startChallenge]);
-
-  async function onSubmitCode(e: FormEvent) {
-    e.preventDefault();
-    if (!challengeToken) return;
-    setError(null);
-    setPhase('verifying');
-    try {
-      const result = await verifyStepUp(challengeToken, code.trim());
-      onVerified(result);
-    } catch (err) {
-      setCode('');
-      if (err instanceof ApiError && err.code === 'MFA_CHALLENGE_INVALID') {
-        const details = err.details as { attemptsRemaining?: number } | undefined;
-        setAttemptsRemaining(typeof details?.attemptsRemaining === 'number' ? details.attemptsRemaining : null);
-        setError(mapUserFacingError(err, { context: 'mfa' }));
-        setPhase('awaiting-code');
-        return;
-      }
-      if (err instanceof ApiError && err.code === 'MFA_CHALLENGE_EXPIRED') {
-        setError(mapUserFacingError(err, { context: 'mfa' }));
-        setExpired(true);
-        setPhase('awaiting-code');
-        return;
-      }
-      setError(mapUserFacingError(err, { context: 'mfa' }));
-      setPhase('awaiting-code');
-    }
-  }
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Verify your identity"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-    >
-      <Card padding="lg" interactive={false} className="w-full max-w-sm">
-        <SectionHeading as="h2" title="Verify your identity" size="md" className="mb-1" />
-        <p className="mb-4 text-sm text-text-secondary">
-          Sending an invitation requires a fresh authentication code from your authenticator app.
-        </p>
-
-        {error ? (
-          <div className="mb-4">
-            <InlineAlert tone="danger">
-              {error}
-              {attemptsRemaining != null ? ` (${attemptsRemaining} attempt${attemptsRemaining === 1 ? '' : 's'} remaining)` : ''}
-            </InlineAlert>
-          </div>
-        ) : null}
-
-        {phase === 'requesting-challenge' ? (
-          <p className="text-sm text-text-secondary">Preparing verification…</p>
-        ) : expired ? (
-          <Button fullWidth onClick={() => void startChallenge()}>
-            Get a new code prompt
-          </Button>
-        ) : (
-          <form className="space-y-4" onSubmit={onSubmitCode}>
-            <Input
-              label="6-digit code"
-              name="code"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              required
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              disabled={phase === 'verifying'}
-            />
-            <Button type="submit" fullWidth loading={phase === 'verifying'}>
-              Verify and send
-            </Button>
-          </form>
-        )}
-
-        <Button variant="tertiary" fullWidth className="mt-3" onClick={onCancel}>
-          Cancel
-        </Button>
-      </Card>
-    </div>
-  );
-}
-
 export function InviteStaffPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -172,13 +56,17 @@ export function InviteStaffPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
-  const [stepUpOpen, setStepUpOpen] = useState(false);
 
   // ADR-0012 §2.4: the SAME Idempotency-Key must be reused across the
-  // STEP_UP_REQUIRED → challenge → verify → retry cycle. Held in a ref so
-  // the retry (fired from a callback, not a fresh submit) reads back
-  // exactly what the original submit generated.
-  const pendingKeyRef = useRef<string | null>(null);
+  // STEP_UP_REQUIRED → challenge → verify → retry cycle. It's part of this
+  // action's arguments, so `useStepUpRetry` replays it unchanged on retry —
+  // no separate bookkeeping needed here.
+  const sendInvitationAction = useCallback(
+    (idempotencyKey: string) =>
+      createInvitation({ email: email.trim().toLowerCase(), userType }, idempotencyKey),
+    [email, userType],
+  );
+  const { stepUpOpen, run, onStepUpVerified, onStepUpCancel } = useStepUpRetry(sendInvitationAction);
 
   function validate(): boolean {
     setEmailError(null);
@@ -195,23 +83,20 @@ export function InviteStaffPage() {
     return true;
   }
 
-  async function sendInvitation(idempotencyKey: string) {
+  async function submit(invoke: () => Promise<CreateInvitationResult | undefined>, sentTo: string) {
     setSubmitting(true);
     setFormError(null);
-    const sentTo = email.trim().toLowerCase();
     try {
-      await createInvitation({ email: sentTo, userType }, idempotencyKey);
-      pendingKeyRef.current = null;
+      const result = await invoke();
+      if (result === undefined) {
+        // STEP_UP_REQUIRED — the hook has opened the dialog; the retry will
+        // call `submit` again via `handleStepUpVerified` below.
+        return;
+      }
       setSuccess(`Invitation sent to ${sentTo}.`);
       setEmail('');
       setUserType('admin');
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED') {
-        // Keep the same idempotency key — this is a retry of the same
-        // logical request, not a new one.
-        setStepUpOpen(true);
-        return;
-      }
       setFormError(mapUserFacingError(err, { context: 'admin' }));
     } finally {
       setSubmitting(false);
@@ -223,23 +108,21 @@ export function InviteStaffPage() {
     setSuccess(null);
     if (!validate()) return;
     // Fresh logical attempt: mint a new idempotency key. Only the automatic
-    // step-up retry reuses `pendingKeyRef.current` instead of calling this.
+    // step-up retry reuses the key captured by `useStepUpRetry` instead of
+    // calling this.
     const key = newIdempotencyKey();
-    pendingKeyRef.current = key;
-    await sendInvitation(key);
+    const sentTo = email.trim().toLowerCase();
+    await submit(() => run(key), sentTo);
   }
 
-  function onStepUpCancel() {
-    setStepUpOpen(false);
-    pendingKeyRef.current = null;
+  function onStepUpCancelClick() {
+    onStepUpCancel();
     setSubmitting(false);
   }
 
-  async function onStepUpVerified() {
-    setStepUpOpen(false);
-    const key = pendingKeyRef.current;
-    if (!key) return;
-    await sendInvitation(key);
+  async function handleStepUpVerified() {
+    const sentTo = email.trim().toLowerCase();
+    await submit(() => onStepUpVerified(), sentTo);
   }
 
   return (
@@ -310,7 +193,15 @@ export function InviteStaffPage() {
         </div>
       </form>
 
-      {stepUpOpen ? <StepUpDialog onVerified={() => void onStepUpVerified()} onCancel={onStepUpCancel} /> : null}
+      {stepUpOpen ? (
+        <StepUpDialog
+          requestChallenge={requestStepUpChallenge}
+          verify={verifyStepUp}
+          submitLabel="Verify and send"
+          onVerified={() => void handleStepUpVerified()}
+          onCancel={onStepUpCancelClick}
+        />
+      ) : null}
     </Card>
   );
 }

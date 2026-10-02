@@ -27,6 +27,8 @@ import {
   type AdminSettableAccountState,
 } from '../api/admin-data';
 import { AdminNavLink } from '../layout/AdminLayout';
+import { StepUpDialog } from '../components/StepUpDialog';
+import { useStepUpRetry } from '../hooks/useStepUpRetry';
 
 function countRegisteredAdminAssets(assets: AdminAssetSummary[]): number {
   return assets.filter((a) => a.status !== 'removed' && a.status !== 'cancelled').length;
@@ -133,6 +135,18 @@ function AccountStateActions({
   const [busy, setBusy] = useState<AdminSettableAccountState | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
+  // Tracks which state change a step-up challenge is currently blocking, so
+  // the success message after an automatic retry matches the original
+  // action (ADR-0012 §3 Tier A gap — account state changes).
+  const [pendingNextState, setPendingNextState] = useState<AdminSettableAccountState | null>(null);
+
+  const { stepUpOpen, run, onStepUpVerified, onStepUpCancel } = useStepUpRetry(updateAdminAccountState);
+
+  function describeOutcome(nextState: AdminSettableAccountState): string {
+    return nextState === 'active'
+      ? 'Account reactivated. Push notifications stay disabled until the customer re-registers a device.'
+      : 'Account state updated. All sessions were revoked and push tokens disabled.';
+  }
 
   if (!ADMIN_MUTABLE_USER_TYPES.has(account.userType)) {
     return (
@@ -164,24 +178,46 @@ function AccountStateActions({
     setBusy(nextState);
     setActionError(null);
     setActionInfo(null);
+    setPendingNextState(nextState);
 
     try {
       const trimmedReason = reason.trim();
-      const updated = await updateAdminAccountState(account.id, {
+      const updated = await run(account.id, {
         accountState: nextState,
         ...(trimmedReason ? { reason: trimmedReason } : {}),
       });
+      if (updated === undefined) {
+        // STEP_UP_REQUIRED — dialog is open; handleStepUpVerified retries.
+        return;
+      }
       onUpdated(updated);
-      setActionInfo(
-        nextState === 'active'
-          ? 'Account reactivated. Push notifications stay disabled until the customer re-registers a device.'
-          : 'Account state updated. All sessions were revoked and push tokens disabled.',
-      );
+      setActionInfo(describeOutcome(nextState));
+      setPendingNextState(null);
     } catch (err) {
       setActionError(mapUserFacingError(err, { context: 'admin' }));
     } finally {
       setBusy(null);
     }
+  }
+
+  async function handleStepUpVerified() {
+    setActionError(null);
+    try {
+      const updated = await onStepUpVerified();
+      if (!updated || !pendingNextState) return;
+      onUpdated(updated);
+      setActionInfo(describeOutcome(pendingNextState));
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    } finally {
+      setPendingNextState(null);
+    }
+  }
+
+  function handleStepUpCancel() {
+    onStepUpCancel();
+    setPendingNextState(null);
+    setBusy(null);
   }
 
   return (
@@ -262,6 +298,13 @@ function AccountStateActions({
           </>
         ) : null}
       </div>
+      {stepUpOpen ? (
+        <StepUpDialog
+          submitLabel="Verify and continue"
+          onVerified={() => void handleStepUpVerified()}
+          onCancel={handleStepUpCancel}
+        />
+      ) : null}
     </div>
   );
 }

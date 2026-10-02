@@ -128,6 +128,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       !options._isRetry &&
       err instanceof ApiError &&
       err.status === 401 &&
+      err.code !== 'STEP_UP_REQUIRED' &&
       path !== '/session/refresh';
     if (!shouldRefresh) throw err;
     await refreshAccessToken();

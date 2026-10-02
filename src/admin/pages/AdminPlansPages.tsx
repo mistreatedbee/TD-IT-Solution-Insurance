@@ -12,6 +12,8 @@ import {
 import { AdminNavLink } from '../layout/AdminLayout';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { formatSupportLevel } from '../../lib/plan-catalog-display';
+import { StepUpDialog } from '../components/StepUpDialog';
+import { useStepUpRetry } from '../hooks/useStepUpRetry';
 
 const ACCOUNT_TYPE_OPTIONS = ['individual', 'business', 'both'] as const;
 
@@ -114,6 +116,8 @@ export function PlanEditPage({ planId }: { planId: string }) {
   const [features, setFeatures] = useState<string[]>([]);
   const [accountTypes, setAccountTypes] = useState<string[]>([]);
 
+  const { stepUpOpen, run, onStepUpVerified, onStepUpCancel } = useStepUpRetry(updateAdminPlan);
+
   useEffect(() => {
     let cancelled = false;
     listAdminPlans()
@@ -206,7 +210,11 @@ export function PlanEditPage({ planId }: { planId: string }) {
 
     setSaving(true);
     try {
-      const updated = await updateAdminPlan(planId, patch);
+      const updated = await run(planId, patch);
+      if (updated === undefined) {
+        // STEP_UP_REQUIRED — dialog is open; handleStepUpVerified retries.
+        return;
+      }
       setPlan(updated);
       setSuccess('Plan updated.');
     } catch (err) {
@@ -214,6 +222,26 @@ export function PlanEditPage({ planId }: { planId: string }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleStepUpVerified() {
+    setError(null);
+    setSaving(true);
+    try {
+      const updated = await onStepUpVerified();
+      if (!updated) return;
+      setPlan(updated);
+      setSuccess('Plan updated.');
+    } catch (err) {
+      setError(mapUserFacingError(err, { context: 'admin' }));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleStepUpCancel() {
+    onStepUpCancel();
+    setSaving(false);
   }
 
   if (loading) {
@@ -338,6 +366,14 @@ export function PlanEditPage({ planId }: { planId: string }) {
           <Button variant="secondary">Cancel</Button>
         </Link>
       </div>
+
+      {stepUpOpen ? (
+        <StepUpDialog
+          submitLabel="Verify and continue"
+          onVerified={() => void handleStepUpVerified()}
+          onCancel={handleStepUpCancel}
+        />
+      ) : null}
     </Card>
   );
 }

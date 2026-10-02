@@ -8,9 +8,19 @@
  * contract this module exists to satisfy: on `STEP_UP_REQUIRED`, challenge,
  * collect a code, verify, then retry the ORIGINAL invitation request with
  * the SAME `Idempotency-Key`. That retry-with-same-key behaviour lives in
- * `InviteStaffPage`, not here — this module only wraps the three raw calls.
+ * `InviteStaffPage` via the shared `useStepUpRetry` hook
+ * (`src/admin/hooks/useStepUpRetry.ts`), not here — this module only wraps
+ * the invitation-creation call.
+ *
+ * The raw `requestStepUpChallenge`/`verifyStepUp` calls themselves have
+ * moved to the neutral `src/admin/api/step-up.ts` (ADR-0012 SU-FU-1), which
+ * any admin page can import directly. They are re-exported below so existing
+ * imports of this module (and `InviteStaffPage.test.tsx`'s
+ * `vi.mock('../api/admin-invitations', ...)`) keep working unchanged.
  */
 import { apiFetch } from '../../dashboard/api/client';
+export { requestStepUpChallenge, verifyStepUp } from './step-up';
+export type { StepUpChallengeResult, StepUpVerifyResult } from './step-up';
 
 /**
  * Scope note (Feature 017 D-2): `security_company_operator` is intentionally
@@ -41,26 +51,3 @@ export function createInvitation(
   });
 }
 
-export interface StepUpChallengeResult {
-  stepUpChallengeToken: string;
-  expiresIn: number;
-}
-
-export function requestStepUpChallenge(): Promise<StepUpChallengeResult> {
-  return apiFetch<StepUpChallengeResult>('/auth/mfa/step-up/challenge', {
-    method: 'POST',
-    body: {},
-  });
-}
-
-export interface StepUpVerifyResult {
-  mfaVerifiedAt: string;
-  stepUpExpiresAt: string;
-}
-
-export function verifyStepUp(stepUpChallengeToken: string, code: string): Promise<StepUpVerifyResult> {
-  return apiFetch<StepUpVerifyResult>('/auth/mfa/step-up/verify', {
-    method: 'POST',
-    body: { stepUpChallengeToken, code },
-  });
-}

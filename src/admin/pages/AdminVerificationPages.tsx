@@ -11,6 +11,8 @@ import {
 } from '../api/admin-verification';
 import { AdminNavLink } from '../layout/AdminLayout';
 import { verificationStatusLabel } from '../../customer/api/profile';
+import { StepUpDialog } from '../components/StepUpDialog';
+import { useStepUpRetry } from '../hooks/useStepUpRetry';
 
 export function VerificationQueuePage() {
   const [rows, setRows] = useState<VerificationRequestSummary[]>([]);
@@ -81,6 +83,20 @@ export function VerificationReviewPage() {
   const [data, setData] = useState<Awaited<ReturnType<typeof getAdminCustomerProfile>> | null>(
     null,
   );
+  // ADR-0012 §3 Tier A gap — identity verification approval. Tracks which
+  // decision a step-up challenge is blocking, so the automatic retry shows
+  // the right outcome message.
+  const [pendingDecision, setPendingDecision] = useState<
+    'verified' | 'rejected' | 'action_required' | null
+  >(null);
+
+  const { stepUpOpen, run, onStepUpVerified, onStepUpCancel } = useStepUpRetry(reviewCustomerVerification);
+
+  function describeDecision(decision: 'verified' | 'rejected' | 'action_required'): string {
+    return decision === 'verified'
+      ? 'Identity verified successfully.'
+      : 'Customer has been notified to update their profile.';
+  }
 
   useEffect(() => {
     if (!accountId) return;
@@ -95,23 +111,45 @@ export function VerificationReviewPage() {
     setActionError(null);
     setActionInfo(null);
     setBusy(decision);
+    setPendingDecision(decision);
     try {
-      const result = await reviewCustomerVerification(accountId, {
+      const result = await run(accountId, {
         decision,
         rejectionReasonCustomerSafe:
           decision === 'rejected' || decision === 'action_required' ? reason.trim() : undefined,
       });
+      if (result === undefined) {
+        // STEP_UP_REQUIRED — dialog is open; handleStepUpVerified retries.
+        return;
+      }
       setData(result);
-      setActionInfo(
-        decision === 'verified'
-          ? 'Identity verified successfully.'
-          : 'Customer has been notified to update their profile.',
-      );
+      setActionInfo(describeDecision(decision));
+      setPendingDecision(null);
     } catch (err) {
       setActionError(mapUserFacingError(err, { context: 'admin' }));
     } finally {
       setBusy(null);
     }
+  }
+
+  async function handleStepUpVerified() {
+    setActionError(null);
+    try {
+      const result = await onStepUpVerified();
+      if (!result || !pendingDecision) return;
+      setData(result);
+      setActionInfo(describeDecision(pendingDecision));
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    } finally {
+      setPendingDecision(null);
+    }
+  }
+
+  function handleStepUpCancel() {
+    onStepUpCancel();
+    setPendingDecision(null);
+    setBusy(null);
   }
 
   if (loading) return <LoadingState />;
@@ -224,6 +262,14 @@ export function VerificationReviewPage() {
             : null}
         </InlineAlert>
       )}
+
+      {stepUpOpen ? (
+        <StepUpDialog
+          submitLabel="Verify and continue"
+          onVerified={() => void handleStepUpVerified()}
+          onCancel={handleStepUpCancel}
+        />
+      ) : null}
     </div>
   );
 }
