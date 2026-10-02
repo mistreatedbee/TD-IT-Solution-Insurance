@@ -163,7 +163,9 @@ function createFakeAccountsRepo() {
     async findByEmail(email: string): Promise<AccountRow | null> {
       return email.trim().toLowerCase() === row.email ? row : null;
     },
-    async markEmailVerified(): Promise<void> {},
+    async markEmailVerified(): Promise<void> {
+      return;
+    },
     async getAccountStatus(id: string): Promise<AccountStatus | null> {
       if (id !== row.id) return null;
       return {

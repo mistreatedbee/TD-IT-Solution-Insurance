@@ -940,6 +940,17 @@
       }
     },
     {
+      "id": "web-invitations-accept",
+      "kind": "web_route",
+      "pattern": "/invitations/accept",
+      "feature": "017",
+      "stage8": {
+        "waived": true,
+        "reason": "Feature 017 D-1 architecture scoping — the public invitation-accept route is intentionally unauthenticated and separate from the protected /login and /admin/* flows. There is no Stage 8 review for this route yet, and it must be re-reviewed before production exposure of any real customer or privileged-user data. Scope is the token accept + MFA enrollment flow only; it does not cover the privileged invitation-send surface.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
       "id": "web-customer-auth-callback",
       "kind": "web_route",
       "pattern": "/auth/callback",
