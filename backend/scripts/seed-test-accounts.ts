@@ -161,6 +161,37 @@ async function enrollTotpIfNeeded(
   return { secret: enrollment.manualEntryKey, code };
 }
 
+/**
+ * Supabase's Admin API hard-deletes the auth.users row directly. If any
+ * app-schema table (most likely app.accounts itself, or
+ * app.account_status_cache, which is identity-linked per ADR-0002)
+ * references auth.users(id) without ON DELETE CASCADE, that delete fails
+ * with a generic "Database error deleting user" — no table name, no
+ * constraint name, nothing actionable in the error GoTrue surfaces. Delete
+ * the app-schema rows ourselves first so there is nothing left to violate a
+ * constraint when GoTrue removes the identity row.
+ */
+async function deleteSeedUser(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  pool: ReturnType<typeof getPgPool>,
+  userId: string,
+): Promise<void> {
+  await pool.query('delete from app.account_status_cache where id = $1', [userId]);
+  await pool.query('delete from app.accounts where id = $1', [userId]);
+  try {
+    await supabase.deleteUser(userId);
+  } catch (err) {
+    throw new Error(
+      `[seed] Deleting app-schema rows for ${userId} succeeded, but Supabase's Admin API ` +
+        `still refused to delete the auth user — some other table still references ` +
+        `auth.users(${userId}) without ON DELETE CASCADE. Find it with: ` +
+        `select conrelid::regclass, conname from pg_constraint where confrelid = 'auth.users'::regclass ` +
+        `and connamespace = 'app'::regnamespace and confdeltype != 'c'; ` +
+        `Underlying error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 async function seedOne(
   spec: (typeof TEST_ACCOUNTS)[keyof typeof TEST_ACCOUNTS],
   force: boolean,
@@ -177,7 +208,7 @@ async function seedOne(
   if ((existingAccount || existingAuth) && force) {
     const userId = existingAccount?.id ?? existingAuth?.userId;
     if (userId) {
-      await supabase.deleteUser(userId);
+      await deleteSeedUser(supabase, getPgPool(env), userId);
     }
   } else if (existingAccount) {
     let mfaSecret: string | null = null;
@@ -314,7 +345,7 @@ async function teardownOne(
     return { email: spec.email, found: true, userId, deleted: false };
   }
 
-  await supabase.deleteUser(userId);
+  await deleteSeedUser(supabase, pool, userId);
   return { email: spec.email, found: true, userId, deleted: true };
 }
 
