@@ -666,6 +666,50 @@ items 1–3. No agent can do that part.
 
 ---
 
+## 11. A-5 discharged — browser Supabase SDK threat model filed; new actions A-8 … A-23 (`cybersecurity-architect`, 2026-10-02)
+
+Cites §6 (A-5 row) and §10 item 4. §§1–10 are unaltered.
+
+**A-5: DONE.** The threat model is filed at
+[`INC-003-A5-browser-supabase-sdk-threat-model.md`](INC-003-A5-browser-supabase-sdk-threat-model.md), on its due date. It covers:
+- Layer 1: what the web bundle calls;
+- Layer 2: what the published anon key makes callable regardless of our code;
+- session-lifecycle coupling, callback handling, browser storage, live-config verification items, mobile confirmation, and a structural recommendation.
+
+Per `cto`'s §10 instruction, every reachable bypass has its own action below, not a note. The Feature 001 gate register is updated in `docs/features/001-authentication/security-review.md` §15.
+
+**Three items `cto` should read first** (detail in A-5 doc §10):
+1. **GoTrue's AAL2 rule is material to this incident's §4 severity.** *Upstream* GoTrue refuses password/email changes from an AAL1 session on an MFA-enabled user. So the original web path most likely **failed** for staff who already had a verified TOTP factor, and **succeeded** for un-enrolled privileged accounts and all customers. §4's revocation and audit limbs are unaffected. A-6's search should concentrate on privileged accounts that were un-enrolled during the exposure window. Live confirmation is A-22.
+2. **Session-lifecycle coupling (A-10/A-23)** defeats logout-all, admin suspension, SR-8 and FR-20 for customers without TOTP, and it directly undercuts SU-FU-1's suspend action. I recommend `cto` consider opening it as its own incident (INC-004).
+3. **Login CSRF at `/auth/callback` (A-13)** is a one-click, no-precondition attack on the customer surface. It is rated High on data-class grounds and merits its own severity assessment.
+
+**New actions** (continuing §6's register; existing rows untouched):
+
+| ID | Action | Owner | Due | Severity | Status |
+|---|---|---|---|---|---|
+| **A-8** | Published anon key opens GoTrue password grant: FR-11/FR-12/SR-4 bypass + password oracle. Interim: tighten GoTrue rate limits (A-22 item 8); structural via A-21 | `security-engineer` + project owner | 2026-10-06 (interim) | High | OPEN |
+| **A-9** | Void Feature 006 security-review §4's "anon key is public, not a secret" acceptance (in place, superseded text marked void); `cto` to explicitly accept or reject the residual until A-21 lands | `cybersecurity-architect` → `cto` | 2026-10-06 | High (governance) | OPEN |
+| **A-10** | Session-lifecycle coupling: backend revocation events never reach the browser GoTrue session; `/auth/supabase/exchange` re-mints. Design a revocation watermark at the exchange + GoTrue global sign-out on revocation (A-5 doc §4.4) | `backend-architect` (design) + `authentication-engineer` | 2026-10-09 | High | OPEN |
+| **A-11** | Relabel the F-9(b) guard test as code-hygiene, not a capability control; add a bundle check for the anon key once A-21 lands | `automation-qa-engineer` | 2026-10-16 | Low | OPEN |
+| **A-12** | `/auth/reset-password/confirm` accepts any GoTrue access token as `recoveryAccessToken` (no `amr=recovery` check, `backend/src/routes/auth.ts:818-835`); include mobile deep-link `access_token` parity | `backend-architect` | 2026-10-09 | Medium | OPEN |
+| **A-13** | Login CSRF at `/auth/callback`: delete the raw `#access_token` branch, stop signing in on email verification, strip tokens from URL on all exits (A-5 doc §5.4) | `authentication-engineer` + `frontend-architect` | 2026-10-07 | High | OPEN |
+| **A-14** | Remove the plaintext password in `sessionStorage` and the 10-second password replay loop (`src/onboarding/pendingSignupAuth.ts:13-20`, `CustomerOnboardingPage.tsx:144-171`) | `authentication-engineer` | 2026-10-16 | Medium | OPEN |
+| **A-15** | CSP + `Referrer-Policy: no-referrer` on Vercel and Render static hosting (SR-12(d)); none exists today (`vercel.json`, `index.html`, `render-staging.yaml` re-verified) | `frontend-architect` + `devops-engineer` | 2026-10-16 | Medium | OPEN |
+| **A-16** | GoTrue-direct signup/resend/recover bypass backend limiters, audit, consent check and F-2 redirect selection; route through backend (with A-21) | `authentication-engineer`; consent → `compliance-specialist` | 2026-10-16 | Medium | OPEN |
+| **A-17** | Allow-list callback OTP `type` to `signup`/`recovery`; disable magic-link/OTP sign-in if the console permits | `authentication-engineer` | 2026-10-07 | Medium | OPEN |
+| **A-18** | GoTrue `PUT /user` password/email change by any AAL1 session on accounts without TOTP. This is this incident's capability at Layer 2. Interim: Secure password change, Secure email change, A-3's floor; structural via A-21 | project owner + `devops-engineer` | 2026-10-06 (interim) | High | OPEN |
+| **A-19** | GoTrue-direct TOTP enrolment on accounts with no verified factor makes the attacker's factor a durable ATO + owner lockout. Interim: extend the SR-14(b) reconciliation to flag factors with no matching backend enrolment event; structural via A-21 | `authentication-engineer` + `site-reliability-engineer` | 2026-10-09 (interim) | High | OPEN |
+| **A-20** | TOTP-enrolled customers cannot reset their password via the backend (AAL1 → `insufficient_aal`, surfaced as `UPSTREAM_UNAVAILABLE`); needs a customer MFA reset branch; SR-24 still absent | `backend-architect` + `authentication-engineer` | 2026-10-16 | Medium (fails closed) | OPEN |
+| **A-21** | ADR: remove `supabase-js` from web, retire `/auth/supabase/exchange`, rotate/disable the published anon key | `solution-architect` (ADR), `cto` (ratify) | draft 2026-10-09; ratify 2026-10-16 | High | OPEN |
+| **A-22** | Supabase live-config verification, 12 items (A-5 doc §7), incl. AAL2 enforcement on v2.195.0 and the customer-account audit-log query. **Run in the same P0 console session as A-6/A-3** | `security-engineer` + project owner; `devops-engineer` records | 2026-10-06 | High | OPEN |
+| **A-23** | SU-FU-1 fold-in: `PATCH /v1/admin/accounts/:id/state` suspend/deactivate must reach the subject's GoTrue sessions; reactivation subject to A-10's watermark (A-5 doc §11). Follow-up to SU-FU-1, not a reopen of ADR-0012 | `backend-architect` | 2026-10-09 | High | OPEN |
+
+**Totals:** 16 new actions. High 9 (A-8, A-9, A-10, A-13, A-18, A-19, A-21, A-22, A-23) · Medium 6 (A-12, A-14, A-15, A-16, A-17, A-20) · Low 1 (A-11).
+
+**Effect on this incident's status:** INC-003 does not close until A-6 and A-3 close (unchanged) **and** each of A-8 … A-23 is closed or transferred to a successor incident by `cto` (see item 2 above). The §7 compliance position also gains the dependencies listed in the A-5 doc §12, for `compliance-specialist`.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*

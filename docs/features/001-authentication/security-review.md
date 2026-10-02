@@ -438,3 +438,45 @@ actions register and the provisional compliance position are in
 [`docs/organization/incidents/INC-003-web-password-reset-control-bypass.md`](../../organization/incidents/INC-003-web-password-reset-control-bypass.md).
 SR-6 does not return to satisfied until INC-003 A-1 and A-7 close — A-7 being `security-engineer`'s
 independent verification that shipped code matches the specification, not the implementer's self-certification.
+
+---
+
+## 15. §13 re-threat-model trigger honoured — browser-resident Supabase SDK (INC-003 A-5) (`cybersecurity-architect`, 2026-10-02)
+
+*Appended section. §§1–14 are unaltered. §13's gate decision and §14's record stand as written. This section records the discharge of the §13 trigger and what it changes in this feature's gate register.*
+
+**Trigger honoured.** §13's trigger *"any client-side Supabase SDK proposal (which would reverse FU-18 and make RLS front-line again)"* has now been run as a full threat model:
+[`docs/organization/incidents/INC-003-A5-browser-supabase-sdk-threat-model.md`](../../organization/incidents/INC-003-A5-browser-supabase-sdk-threat-model.md).
+It discharges INC-003 action A-5. Its findings are registered as INC-003 A-8 … A-23 (INC-003 §11).
+
+**What it changes in this document's premises** (recorded here; the sections above are not rewritten):
+- **SR-4 is NOT SATISFIED.** The `anon` key is compiled into the web bundle (`src/customer/supabase/client.ts:21-22`). TB-8 is open to anyone holding it, exactly as §4 Gap 3 warned. Feature 006 `security-review.md` §4's contrary acceptance is voided by its author (A-9). The residual is now a `cto` risk-acceptance decision.
+- **§6's "structural win" no longer holds.** Real users now hold GoTrue-honoured JWTs (web customers). GoTrue-direct factor enrolment on accounts without a verified factor is reachable (A-19). Unenrolment of a verified factor remains blocked by GoTrue's own AAL2 rule.
+- **§11 FU-06's "`authenticated` grants become inert" is no longer true.** An `authenticated` Postgres caller now exists. SR-3 (exposed schemas) is therefore load-bearing again and must be verified live (A-22 item 4).
+- **The §6 session policy has a bypass.** The absolute session cap, FR-20 device binding, SR-8 reuse revocation and every backend revocation event can be undone by re-minting through `POST /auth/supabase/exchange` from a lingering browser GoTrue session (A-10, A-23).
+
+**Gate-register update** (append-only; supersedes nothing above, records current state):
+
+| Control | State as of 2026-10-02 | Governing record |
+|---|---|---|
+| **SR-6** | **Satisfied on backend, mobile and web.** INC-003 A-1 and A-7 closed (INC-003 §6, §9.7). §14's "NOT SATISFIED on the web surface" is resolved. **Caveat:** the *capability* to change a password around SR-6 still exists at Layer 2 (GoTrue `PUT /user`) for privileged accounts with no verified factor yet. Tracked as A-18, not as an SR-6 reopen, because our code no longer does it. | INC-003 §9; A-5 doc §3 C-8 |
+| **SR-4** | **NOT SATISFIED** (see above) | A-8, A-9, A-21 |
+| **SR-3** | Specified; **unverified live**, and load-bearing again | A-22 item 4 |
+| **SR-5** | Baseline still unrecorded. A-5 §7 provides the 12-item checklist that discharges it. | A-22 |
+| **SR-8 / FR-20 / §6 absolute cap** | Implemented in backend; **bypassable** via exchange re-mint | A-10 |
+| **SR-12(d)** | **NOT SATISFIED.** No CSP or Referrer-Policy on Vercel or Render static hosting (re-verified) | A-15 |
+| **SR-14** | Login/exchange gates intact; **(b) reconciliation must be extended** to detect GoTrue-direct factor enrolment | A-19 |
+
+**Amended re-threat-model trigger list for this feature.** This replaces §13's list going forward, and §13's text is left intact. Added items in **bold**:
+- the first operator-facing (partner-org-scoped) endpoint;
+- the first endpoint that returns asset location to any surface;
+- any client-side Supabase SDK proposal. *Now standing rather than hypothetical:* it stays a live trigger for every change to `src/customer/supabase/*`, `/auth/callback` or `/auth/supabase/exchange` until A-21 removes the SDK.
+- a log drain, read replica, Edge Function or Storage bucket;
+- a new MFA factor type;
+- the introduction of a staging environment or a second engineer with production access;
+- **any change to the Supabase project's API keys** (rotation, the publishable/secret-key migration, or re-publishing any key to a client);
+- **any new GoTrue-session-establishing path** (magic link, OAuth/social provider, phone OTP, anonymous sign-in), whether or not our UI calls it;
+- **any new account-wide revocation event in the backend** — it must be shown to reach GoTrue or be enforced at the exchange (A-10's watermark);
+- **any new security response that hosting headers would affect** (CSP, framing) — re-verify SR-12(d).
+
+**Not changed:** §13's Stage 8 sign-off for Feature 001 is not withdrawn. The findings are registered and owned under INC-003 with dates, and no new Feature 001 build is pending that they would gate. If A-10 or A-13 slips past its date, I will convert it into a scoped hold on further web-auth changes under §13's scoped-hold mechanism.
