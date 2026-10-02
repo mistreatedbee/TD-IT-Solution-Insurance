@@ -223,6 +223,14 @@ export function VerificationReviewPage() {
         />
       </Card>
 
+      {/* Rendered above the status-dependent block below, not nested inside
+          it: a successful decide() transitions `profile.verificationStatus`
+          away from 'pending_review' in the same render that sets
+          `actionInfo`, which would otherwise hide this message the instant
+          it appears (found via a failing SU-FU-1 step-up retry test). */}
+      {actionError ? <InlineAlert tone="danger">{actionError}</InlineAlert> : null}
+      {actionInfo ? <InlineAlert tone="info">{actionInfo}</InlineAlert> : null}
+
       {profile.verificationStatus === 'pending_review' ? (
         <Card padding="lg" className="space-y-4">
           <SectionHeading as="h2" title="Decision" size="md" />
@@ -232,8 +240,6 @@ export function VerificationReviewPage() {
             onChange={(e) => setReason(e.target.value)}
             placeholder="Explain what the customer should fix, without internal jargon."
           />
-          {actionError ? <InlineAlert tone="danger">{actionError}</InlineAlert> : null}
-          {actionInfo ? <InlineAlert tone="info">{actionInfo}</InlineAlert> : null}
           <div className="flex flex-wrap gap-3">
             <Button disabled={busy !== null} onClick={() => void decide('verified')}>
               {busy === 'verified' ? 'Saving…' : 'Approve'}

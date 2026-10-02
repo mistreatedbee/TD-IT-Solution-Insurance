@@ -3,7 +3,7 @@
  * (`PATCH /v1/admin/plans/:planId`). Same four scenarios as
  * `AdminDataPages.test.tsx`.
  */
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -110,8 +110,11 @@ describe('PlanEditPage step-up (ADR-0012 SU-FU-1)', () => {
     await renderAndSave();
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Verify your identity' });
+    // Scoped to the dialog: the underlying plan-edit form has its own
+    // "Cancel" button rendered behind the overlay (not unmounted while the
+    // dialog is open), so an unscoped query is ambiguous.
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByText('Plan updated.')).not.toBeInTheDocument();
