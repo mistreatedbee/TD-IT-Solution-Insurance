@@ -93,6 +93,47 @@ export function PrivilegedLoginPage({
     setError(message);
   }
 
+  async function onRetryEnrollment() {
+    // Bug fix: this used to clear mfaToken/enrollmentTicket SYNCHRONOUSLY
+    // before awaiting the network call, which made React immediately render
+    // the bare credentials form regardless of what happened next — looking
+    // like "it just takes me back to the login page" if the retry was slow
+    // or failed (e.g. rate-limited from repeated attempts). Stay on this
+    // same screen the whole time; only transition on a definitive result.
+    if (!email.trim() || !password) {
+      setError('Enter your email and password again to retry.');
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await auth.loginWithPassword(email, password);
+      if (result.kind === 'enrollment') {
+        setEnrollmentTicket(result.enrollmentTicket);
+        setMfaToken(null);
+        setMfaCode('');
+        return;
+      }
+      if (result.kind === 'mfa') {
+        // Already enrolled — there is nothing to re-enroll into yet (no
+        // self-service MFA reset exists). Say so plainly instead of
+        // silently looping back to the same code prompt.
+        setMfaToken(result.mfaChallengeToken);
+        setMfaCode('');
+        setError(
+          'Your account already has an authenticator set up — there is no QR code to show. ' +
+            'If you no longer have access to it, contact your administrator to reset it.',
+        );
+        return;
+      }
+      await finishLogin(result.accessToken, result.refreshToken);
+    } catch (err) {
+      setError(mapUserFacingError(err, { context: 'auth' }));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function onSubmitMfa(e: FormEvent) {
     e.preventDefault();
     if (!mfaToken) return;
@@ -132,6 +173,7 @@ export function PrivilegedLoginPage({
           <form className="mt-4 space-y-4" onSubmit={onSubmitMfa}>
             <Input
               label="Authentication code"
+              name="mfa-code"
               value={mfaCode}
               onChange={(e) => setMfaCode(e.target.value)}
               inputMode="numeric"
@@ -142,23 +184,16 @@ export function PrivilegedLoginPage({
               Verify
             </Button>
             <div className="rounded-lg border border-border bg-background-alt p-3 text-sm text-text-secondary">
-              Need help with your authenticator? If you can’t access your code, set up MFA again and verify with a fresh code.
+              Lost access to your authenticator? Self-service MFA reset isn't available yet for
+              staff accounts — contact your administrator to have it reset.
             </div>
             <button
               type="button"
-              className="w-full text-sm font-medium text-primary hover:text-primary/80"
-              onClick={async () => {
-                setMfaToken(null);
-                setMfaCode('');
-                setEnrollmentTicket(null);
-                setError(null);
-
-                if (email.trim() && password) {
-                  await startLoginFlow();
-                }
-              }}
+              className="w-full text-sm font-medium text-primary hover:text-primary/80 disabled:opacity-50"
+              disabled={loading}
+              onClick={() => void onRetryEnrollment()}
             >
-              Set up MFA again
+              {loading ? 'Checking…' : 'Retry (if your account was never fully enrolled)'}
             </button>
           </form>
         ) : (

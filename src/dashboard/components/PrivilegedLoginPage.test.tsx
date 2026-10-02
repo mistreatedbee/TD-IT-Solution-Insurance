@@ -108,3 +108,102 @@ describe('PrivilegedLoginPage — MFA enrollment recovery (Feature 017 P0 fix)',
     await waitFor(() => expect(screen.getByText('Admin home')).toBeInTheDocument());
   });
 });
+
+describe('PrivilegedLoginPage — retry button on the MFA code screen', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('never silently reverts to a blank credentials form: an already-enrolled account gets a clear message, not a loop', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        if (url.endsWith('/session/refresh') && method === 'POST') {
+          return Promise.reject(new Error('no session to refresh in this test'));
+        }
+        // Every /auth/login call returns the same "already enrolled, enter
+        // your code" response — this account has a real factor, so there is
+        // no enrollment ticket to issue (backend/src/routes/auth.ts).
+        if (url.endsWith('/auth/login') && method === 'POST') {
+          return jsonResponse({ mfaRequired: true, mfaChallengeToken: 'chal-1', expiresIn: 300 });
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url} ${method}`));
+      }),
+    );
+
+    renderPage();
+
+    await waitFor(() => screen.getByRole('heading', { name: 'Admin sign in' }));
+    await user.type(byName('email'), 'staff@example.com');
+    await user.type(byName('password'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(byName('mfa-code')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /Retry/ }));
+
+    // Must NOT silently fall back to the bare credentials form (the bug:
+    // clearing state before the network call resolved made this flash/stick
+    // regardless of the result). The email/password fields must never
+    // reappear here. `queryByLabelText` is unreliable for `required` inputs
+    // in this test environment (see `byName`'s own comment above), so query
+    // by type directly rather than risk a trivially-passing negative assertion.
+    expect(document.querySelector('input[type="email"]')).not.toBeInTheDocument();
+    expect(document.querySelector('input[type="password"]')).not.toBeInTheDocument();
+
+    // Must explain plainly why there's no QR code, instead of looping quietly.
+    await waitFor(() =>
+      expect(screen.getByText(/already has an authenticator set up/)).toBeInTheDocument(),
+    );
+    expect(byName('mfa-code')).toBeInTheDocument();
+  });
+
+  it('retrying a genuinely never-enrolled account drops into the real QR enrollment step', async () => {
+    const user = userEvent.setup();
+    let loginCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        if (url.endsWith('/session/refresh') && method === 'POST') {
+          return Promise.reject(new Error('no session to refresh in this test'));
+        }
+        if (url.endsWith('/auth/login') && method === 'POST') {
+          loginCalls += 1;
+          // First attempt: pretend a stale mfaChallengeToken flow already put
+          // the user on the code screen. Retry re-authenticates and this time
+          // the backend reports no verified factor (recovery path).
+          if (loginCalls === 1) {
+            return jsonResponse({ mfaRequired: true, mfaChallengeToken: 'chal-1', expiresIn: 300 });
+          }
+          return jsonResponse({ mfaEnrollmentRequired: true, enrollmentTicket: 'ticket-2', expiresIn: 600 });
+        }
+        if (url.endsWith('/mfa/enroll') && method === 'POST') {
+          return jsonResponse({ qrCodeSvg: '<svg></svg>', manualEntryKey: 'WXYZ-9999', enrollmentId: 'enroll-2' });
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url} ${method}`));
+      }),
+    );
+
+    renderPage();
+
+    await waitFor(() => screen.getByRole('heading', { name: 'Admin sign in' }));
+    await user.type(byName('email'), 'staff@example.com');
+    await user.type(byName('password'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(byName('mfa-code')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /Retry/ }));
+
+    await waitFor(() => expect(screen.getByText('WXYZ-9999')).toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: 'Set up two-factor authentication' })).toBeInTheDocument();
+  });
+});
