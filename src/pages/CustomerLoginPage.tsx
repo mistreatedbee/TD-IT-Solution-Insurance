@@ -10,6 +10,7 @@ import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { decodeJwtPayload } from '../lib/jwt';
 import {
   PRIVILEGED_DASHBOARD_CONFIG,
+  getPrivilegedSessionHomePath,
   isPrivilegedUserType,
   clearOtherRoleSessions,
 } from '../dashboard/auth/roleRouting';
@@ -60,6 +61,11 @@ export function CustomerLoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    const activePrivilegedHomePath = getPrivilegedSessionHomePath();
+    if (activePrivilegedHomePath) {
+      navigate(activePrivilegedHomePath, { replace: true });
+      return;
+    }
     if (auth.status === 'signed-in') {
       navigate(redirect, { replace: true });
     }

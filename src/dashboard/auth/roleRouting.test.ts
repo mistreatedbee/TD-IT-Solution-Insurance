@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PRIVILEGED_DASHBOARD_CONFIG,
+  getPrivilegedSessionHomePath,
   isPrivilegedUserType,
   clearOtherRoleSessions,
 } from './roleRouting';
@@ -23,6 +24,29 @@ describe('isPrivilegedUserType', () => {
     expect(isPrivilegedUserType('constructor')).toBe(false);
     expect(isPrivilegedUserType('toString')).toBe(false);
     expect(isPrivilegedUserType('nonsense')).toBe(false);
+  });
+});
+
+describe('getPrivilegedSessionHomePath', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('returns the dedicated dashboard path for any active privileged session', () => {
+    sessionStorage.setItem(ADMIN_KEY, 'admin-refresh');
+    expect(getPrivilegedSessionHomePath()).toBe('/admin');
+
+    sessionStorage.clear();
+    sessionStorage.setItem(SECURITY_KEY, 'security-refresh');
+    expect(getPrivilegedSessionHomePath()).toBe('/security');
+
+    sessionStorage.clear();
+    sessionStorage.setItem(CALL_CENTRE_KEY, 'call-centre-refresh');
+    expect(getPrivilegedSessionHomePath()).toBe('/call-centre');
+  });
+
+  it('returns null when no privileged role is currently stored', () => {
+    expect(getPrivilegedSessionHomePath()).toBeNull();
   });
 });
 

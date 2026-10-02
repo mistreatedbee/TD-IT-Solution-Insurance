@@ -40,6 +40,19 @@ export function isPrivilegedUserType(value: string): value is PrivilegedUserType
   return Object.prototype.hasOwnProperty.call(PRIVILEGED_DASHBOARD_CONFIG, value);
 }
 
+export function getPrivilegedSessionHomePath(): string | null {
+  for (const config of Object.values(PRIVILEGED_DASHBOARD_CONFIG)) {
+    try {
+      if (sessionStorage.getItem(config.storageKey)) {
+        return config.homePath;
+      }
+    } catch {
+      // Best effort: storage may be unavailable in this browser context.
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // SR-LU-4 (docs/features/001-authentication/security-review-login-unification.md)
 // / standing constraint C-LU-2: "Establishing a session for role X must first
