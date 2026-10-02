@@ -6,14 +6,26 @@
  *   - security_company_operator (/security/login)
  *   - support_agent (/call-centre/login)
  *
- * Privileged accounts get TOTP MFA enrolled; the script prints each TOTP
- * secret so you can add it to an authenticator app (or re-run and read
- * the current 6-digit code from the summary).
+ * By default, privileged accounts are created UNENROLLED — the exact same
+ * state as a real invited staff member who has accepted their invitation
+ * but not yet set up MFA. Logging in at the printed URL with the printed
+ * password walks you through the real in-browser enrollment screen (scan
+ * the QR code, or use the manual entry key) — PrivilegedLoginPage already
+ * handles this via the backend's enrollmentTicket response, the same path
+ * a real staff member goes through. There is no separate "setup" step to
+ * run first; logging in IS the setup step.
+ *
+ * Pass --enroll-mfa to instead auto-enroll TOTP via the Admin API and have
+ * this script print the raw secret/current code directly — useful for
+ * scripted API testing without a browser, but note the secret CANNOT be
+ * retrieved again later (Supabase never returns an enrolled factor's
+ * secret) — only a fresh --force recreate can get you a new one.
  *
  * Requires repo-root `.env.local` with Supabase + Postgres credentials.
  *
  *   npx tsx backend/scripts/seed-test-accounts.ts
- *   npx tsx backend/scripts/seed-test-accounts.ts --force   # delete + recreate
+ *   npx tsx backend/scripts/seed-test-accounts.ts --force       # delete + recreate
+ *   npx tsx backend/scripts/seed-test-accounts.ts --enroll-mfa  # auto-enroll, print secret
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -94,6 +106,8 @@ interface SeedResult {
   mfaSecret: string | null;
   mfaCode: string | null;
   created: boolean;
+  /** Whether this user type requires MFA at all (independent of whether it's been enrolled yet). */
+  mfaRequired: boolean;
 }
 
 async function ensurePartnerOrg(pool: ReturnType<typeof getPgPool>): Promise<void> {
@@ -151,6 +165,7 @@ async function seedOne(
   spec: (typeof TEST_ACCOUNTS)[keyof typeof TEST_ACCOUNTS],
   force: boolean,
   invitedBy: string | null,
+  enrollMfa: boolean,
 ): Promise<SeedResult> {
   const env = loadSeedEnv();
   const supabase = getSupabaseAdmin(env);
@@ -167,7 +182,7 @@ async function seedOne(
   } else if (existingAccount) {
     let mfaSecret: string | null = null;
     let mfaCode: string | null = null;
-    if (spec.mfaRequired) {
+    if (spec.mfaRequired && enrollMfa) {
       const mfa = await enrollTotpIfNeeded(spec.email, spec.password);
       mfaSecret = mfa.secret;
       mfaCode = mfa.code ?? (mfa.secret && !mfa.secret.startsWith('(') ? generateTotpCode(mfa.secret) : null);
@@ -181,6 +196,7 @@ async function seedOne(
       mfaSecret,
       mfaCode,
       created: false,
+      mfaRequired: spec.mfaRequired,
     };
   }
 
@@ -203,7 +219,7 @@ async function seedOne(
 
   let mfaSecret: string | null = null;
   let mfaCode: string | null = null;
-  if (spec.mfaRequired) {
+  if (spec.mfaRequired && enrollMfa) {
     const mfa = await enrollTotpIfNeeded(spec.email, spec.password);
     mfaSecret = mfa.secret;
     mfaCode = mfa.code;
@@ -218,6 +234,7 @@ async function seedOne(
     mfaSecret,
     mfaCode,
     created: true,
+    mfaRequired: spec.mfaRequired,
   };
 }
 
@@ -240,14 +257,26 @@ function printSummary(results: SeedResult[], webBase: string): void {
         // eslint-disable-next-line no-console
         console.log(`  MFA code (now): ${row.mfaCode}`);
       }
+    } else if (row.mfaRequired) {
+      // eslint-disable-next-line no-console
+      console.log(
+        '  MFA:      not yet enrolled — log in at the URL above with the email/password ' +
+          'above and you will land on the real in-browser QR-code enrollment screen ' +
+          '(same flow a real invited staff member goes through). Scan it with an ' +
+          'authenticator app (Google Authenticator, Authy, 1Password, etc.), or use the ' +
+          'manual entry key shown on that screen, then enter the 6-digit code it generates.',
+      );
     }
     // eslint-disable-next-line no-console
-    console.log(`  Status:   ${row.created ? 'created' : 'already existed (verified/enrolled)'}\n`);
+    console.log(`  Status:   ${row.created ? 'created' : 'already existed'}\n`);
   }
   // eslint-disable-next-line no-console
   console.log(
-    'Add MFA secrets to Google Authenticator / 1Password if prompted for a 6-digit code at login.\n' +
-      'Re-run this script anytime to print a fresh TOTP code from the stored secret.\n',
+    'Privileged accounts start UNENROLLED by default — just log in at the URL above and ' +
+      'follow the on-screen QR code / manual key prompt. Pass --enroll-mfa to instead have ' +
+      'this script auto-enroll via the API and print the raw secret (useful for headless/API ' +
+      'testing only; note the secret cannot be retrieved again later — only --force + ' +
+      '--enroll-mfa together can get you a fresh one).\n',
   );
 }
 
@@ -363,6 +392,7 @@ async function main(): Promise<void> {
   }
 
   const force = process.argv.includes('--force');
+  const enrollMfa = process.argv.includes('--enroll-mfa');
   const env = loadSeedEnv();
   const pool = getPgPool(env);
 
@@ -372,10 +402,10 @@ async function main(): Promise<void> {
 
   await ensurePartnerOrg(pool);
 
-  const adminResult = await seedOne(TEST_ACCOUNTS.admin, force, null);
-  const securityResult = await seedOne(TEST_ACCOUNTS.security, force, adminResult.userId);
-  const customerResult = await seedOne(TEST_ACCOUNTS.customer, force, adminResult.userId);
-  const supportResult = await seedOne(TEST_ACCOUNTS.support, force, adminResult.userId);
+  const adminResult = await seedOne(TEST_ACCOUNTS.admin, force, null, enrollMfa);
+  const securityResult = await seedOne(TEST_ACCOUNTS.security, force, adminResult.userId, enrollMfa);
+  const customerResult = await seedOne(TEST_ACCOUNTS.customer, force, adminResult.userId, enrollMfa);
+  const supportResult = await seedOne(TEST_ACCOUNTS.support, force, adminResult.userId, enrollMfa);
 
   const webBase = process.env.TEST_WEB_BASE_URL?.trim() || 'http://localhost:5173';
   printSummary(
