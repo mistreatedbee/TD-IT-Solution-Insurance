@@ -40,7 +40,7 @@ describe('CustomerLoginPage — MFA enrollment recovery', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows the enrollment flow when the login response requires MFA setup', async () => {
+  it('returns the user to the login form and allows a fresh MFA enrollment attempt', async () => {
     const user = userEvent.setup();
     let loginAttempts = 0;
     vi.stubGlobal(
@@ -93,6 +93,9 @@ describe('CustomerLoginPage — MFA enrollment recovery', () => {
     await waitFor(() => expect(screen.getByText('Enter the 6-digit code from your authenticator app.')).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: 'Set up MFA again' }));
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Log in' }));
     await waitFor(() => expect(screen.getByText('ABCD-1234')).toBeInTheDocument());
     expect(screen.getByRole('heading', { name: 'Set up two-factor authentication' })).toBeInTheDocument();
 

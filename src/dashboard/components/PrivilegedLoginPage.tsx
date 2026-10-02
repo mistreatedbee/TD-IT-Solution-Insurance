@@ -147,7 +147,12 @@ export function PrivilegedLoginPage({
             <button
               type="button"
               className="w-full text-sm font-medium text-primary hover:text-primary/80"
-              onClick={() => void startLoginFlow()}
+              onClick={() => {
+                setMfaToken(null);
+                setMfaCode('');
+                setEnrollmentTicket(null);
+                setError(null);
+              }}
             >
               Set up MFA again
             </button>
