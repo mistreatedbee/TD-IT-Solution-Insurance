@@ -8,6 +8,7 @@ import { login as loginRequest, verifyMfaChallenge } from '../customer/api/auth'
 import { mapUserFacingError } from '../lib/user-facing-errors';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { decodeJwtPayload } from '../lib/jwt';
+import { MfaEnrollmentStep } from '../invitations/MfaEnrollmentStep';
 import {
   PRIVILEGED_DASHBOARD_CONFIG,
   getPrivilegedSessionHomePath,
@@ -57,6 +58,7 @@ export function CustomerLoginPage() {
   const [password, setPassword] = useState('');
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
+  const [enrollmentTicket, setEnrollmentTicket] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -121,6 +123,12 @@ export function CustomerLoginPage() {
         setMfaToken(result.mfaChallengeToken);
         return;
       }
+      if (result.mfaEnrollmentRequired && result.enrollmentTicket) {
+        setEnrollmentTicket(result.enrollmentTicket);
+        setMfaToken(null);
+        setMfaCode('');
+        return;
+      }
       if (result.mfaEnrollmentRequired) {
         setError(
           'Additional security setup (MFA enrollment) is required before you can sign in. Follow the instructions in your enrollment invitation, or contact support.',
@@ -160,6 +168,20 @@ export function CustomerLoginPage() {
     }
   }
 
+  async function onEnrollmentSuccess(tokens: { accessToken: string; refreshToken: string }) {
+    try {
+      await routeTokensByRole(tokens.accessToken, tokens.refreshToken);
+    } catch (err) {
+      setEnrollmentTicket(null);
+      setError(mapUserFacingError(err, { context: 'auth' }));
+    }
+  }
+
+  function onEnrollmentTerminalError(message: string) {
+    setEnrollmentTicket(null);
+    setError(message);
+  }
+
   return (
     <MarketingAuthShell>
       <SectionHeading as="h1" title="Log in" size="md" className="mb-1" />
@@ -169,7 +191,15 @@ export function CustomerLoginPage() {
 
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
 
-      {mfaToken ? (
+      {enrollmentTicket ? (
+        <div className="mt-4">
+          <MfaEnrollmentStep
+            enrollmentTicket={enrollmentTicket}
+            onSuccess={(tokens) => void onEnrollmentSuccess(tokens)}
+            onTerminalError={onEnrollmentTerminalError}
+          />
+        </div>
+      ) : mfaToken ? (
         <form className="mt-4 space-y-4" onSubmit={onSubmitMfa}>
           <p className="text-sm text-text-secondary">
             Enter the 6-digit code from your authenticator app.
@@ -186,17 +216,36 @@ export function CustomerLoginPage() {
           <Button type="submit" fullWidth loading={loading}>
             Verify
           </Button>
-          <button
-            type="button"
-            className="w-full text-sm text-text-secondary hover:text-text-primary"
-            onClick={() => {
-              setMfaToken(null);
-              setMfaCode('');
-              setError(null);
-            }}
-          >
-            Back to email and password
-          </button>
+          <div className="rounded-lg border border-border bg-background-alt p-3 text-sm text-text-secondary">
+            Need help with your authenticator? If you can’t access your code, set up MFA again and verify with a fresh code.
+          </div>
+          <div className="space-y-2">
+            <button
+              type="button"
+              className="w-full text-sm text-text-secondary hover:text-text-primary"
+              onClick={() => {
+                setMfaToken(null);
+                setMfaCode('');
+                setError(null);
+              }}
+            >
+              Back to email and password
+            </button>
+            <button
+              type="button"
+              className="w-full text-sm font-medium text-primary hover:text-primary/80"
+              onClick={() => {
+                setMfaToken(null);
+                setMfaCode('');
+                setEnrollmentTicket(null);
+                setError(null);
+                setEmail('');
+                setPassword('');
+              }}
+            >
+              Set up MFA again
+            </button>
+          </div>
         </form>
       ) : (
         <form className="mt-4 space-y-4" onSubmit={onSubmitCredentials}>

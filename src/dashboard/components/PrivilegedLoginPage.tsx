@@ -134,6 +134,20 @@ export function PrivilegedLoginPage({
             <Button type="submit" fullWidth loading={loading}>
               Verify
             </Button>
+            <div className="rounded-lg border border-border bg-background-alt p-3 text-sm text-text-secondary">
+              Need help with your authenticator? If you can’t access your code, set up MFA again and verify with a fresh code.
+            </div>
+            <button
+              type="button"
+              className="w-full text-sm font-medium text-primary hover:text-primary/80"
+              onClick={() => {
+                setMfaToken(null);
+                setMfaCode('');
+                setError(null);
+              }}
+            >
+              Set up MFA again
+            </button>
           </form>
         ) : (
           <form className="mt-4 space-y-4" onSubmit={onSubmitCredentials}>
