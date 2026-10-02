@@ -113,14 +113,14 @@ export function CustomerLoginPage() {
     await auth.signInWithTokens(accessToken, refreshToken);
   }
 
-  async function onSubmitCredentials(e: FormEvent) {
-    e.preventDefault();
+  async function startLoginFlow() {
     setError(null);
     setLoading(true);
     try {
       const result = await loginRequest(email, password);
       if (result.mfaRequired && result.mfaChallengeToken) {
         setMfaToken(result.mfaChallengeToken);
+        setEnrollmentTicket(null);
         return;
       }
       if (result.mfaEnrollmentRequired && result.enrollmentTicket) {
@@ -143,14 +143,13 @@ export function CustomerLoginPage() {
     } catch (err) {
       setError(mapUserFacingError(err, { context: 'auth' }));
     } finally {
-      // SR-LU-1 (docs/features/001-authentication/security-review-login-unification.md):
-      // must run on every exit path, including the mfaRequired early-return above —
-      // otherwise `loading` stays true forever and the MFA form's Verify button (bound
-      // to this same `loading` state) renders permanently disabled. This is every
-      // admin/security_company_operator/support_agent login, plus any MFA-enrolled
-      // customer.
       setLoading(false);
     }
+  }
+
+  async function onSubmitCredentials(e: FormEvent) {
+    e.preventDefault();
+    await startLoginFlow();
   }
 
   async function onSubmitMfa(e: FormEvent) {
@@ -234,14 +233,7 @@ export function CustomerLoginPage() {
             <button
               type="button"
               className="w-full text-sm font-medium text-primary hover:text-primary/80"
-              onClick={() => {
-                setMfaToken(null);
-                setMfaCode('');
-                setEnrollmentTicket(null);
-                setError(null);
-                setEmail('');
-                setPassword('');
-              }}
+              onClick={() => void startLoginFlow()}
             >
               Set up MFA again
             </button>

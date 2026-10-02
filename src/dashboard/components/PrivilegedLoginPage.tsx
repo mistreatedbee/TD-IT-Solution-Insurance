@@ -41,14 +41,14 @@ export function PrivilegedLoginPage({
     navigate(redirect, { replace: true });
   }
 
-  async function onSubmitCredentials(e: FormEvent) {
-    e.preventDefault();
+  async function startLoginFlow() {
     setError(null);
     setLoading(true);
     try {
       const result = await auth.loginWithPassword(email, password);
       if (result.kind === 'mfa') {
         setMfaToken(result.mfaChallengeToken);
+        setEnrollmentTicket(null);
         return;
       }
       if (result.kind === 'enrollment') {
@@ -59,6 +59,8 @@ export function PrivilegedLoginPage({
         // than leaving the account permanently locked out. Drop straight into the
         // same enrollment UI the invitation-accept flow uses.
         setEnrollmentTicket(result.enrollmentTicket);
+        setMfaToken(null);
+        setMfaCode('');
         return;
       }
       await finishLogin(result.accessToken, result.refreshToken);
@@ -67,6 +69,11 @@ export function PrivilegedLoginPage({
     } finally {
       setLoading(false);
     }
+  }
+
+  async function onSubmitCredentials(e: FormEvent) {
+    e.preventDefault();
+    await startLoginFlow();
   }
 
   async function onEnrollmentSuccess(tokens: { accessToken: string; refreshToken: string }) {
@@ -140,11 +147,7 @@ export function PrivilegedLoginPage({
             <button
               type="button"
               className="w-full text-sm font-medium text-primary hover:text-primary/80"
-              onClick={() => {
-                setMfaToken(null);
-                setMfaCode('');
-                setError(null);
-              }}
+              onClick={() => void startLoginFlow()}
             >
               Set up MFA again
             </button>

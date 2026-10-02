@@ -42,12 +42,20 @@ describe('CustomerLoginPage — MFA enrollment recovery', () => {
 
   it('shows the enrollment flow when the login response requires MFA setup', async () => {
     const user = userEvent.setup();
+    let loginAttempts = 0;
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation((url: string, init?: RequestInit) => {
         const method = init?.method ?? 'GET';
         if (url.endsWith('/auth/login') && method === 'POST') {
+          loginAttempts += 1;
+          if (loginAttempts === 1) {
+            return jsonResponse({ mfaRequired: true, mfaChallengeToken: 'challenge-1', expiresIn: 600 });
+          }
           return jsonResponse({ mfaEnrollmentRequired: true, enrollmentTicket: 'ticket-1', expiresIn: 600 });
+        }
+        if (url.endsWith('/auth/mfa/challenge') && method === 'POST') {
+          return jsonResponse({ accessToken: 'access-1', refreshToken: 'refresh-1', expiresIn: 900, sessionId: 'sess-1' });
         }
         if (url.endsWith('/mfa/enroll') && method === 'POST') {
           return jsonResponse({ qrCodeSvg: '<svg></svg>', manualEntryKey: 'ABCD-1234', enrollmentId: 'enroll-1' });
@@ -81,6 +89,9 @@ describe('CustomerLoginPage — MFA enrollment recovery', () => {
     await user.type(byName('email'), 'customer@example.com');
     await user.type(byName('password'), 'password123');
     await user.click(screen.getByRole('button', { name: 'Log in' }));
+
+    await waitFor(() => expect(screen.getByText('Enter the 6-digit code from your authenticator app.')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Set up MFA again' }));
 
     await waitFor(() => expect(screen.getByText('ABCD-1234')).toBeInTheDocument());
     expect(screen.getByRole('heading', { name: 'Set up two-factor authentication' })).toBeInTheDocument();
