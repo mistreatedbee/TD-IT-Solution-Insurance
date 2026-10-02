@@ -49,10 +49,11 @@ export interface StepUpActionDefinition {
 
 /**
  * ADR-0012 §3's Tier A policy table, reviewable in code instead of "the one
- * endpoint that happens to have the check pasted into it." Gaps are tracked
- * here deliberately (SU-FU-1) rather than omitted, so the table stays
- * honest about what the platform protects vs. what it should — see the ADR
- * for why the three `gap` rows are out of this change's scope.
+ * endpoint that happens to have the check pasted into it." SU-FU-1
+ * (ADR-0012 §6.3, §8.2 — two-sprint time-box from 2026-09-23) closed out the
+ * three `gap` rows by wiring `requireStepUp` into each listed route; this
+ * table is the authoritative record of that enforcement and must stay in
+ * lockstep with the routers it describes.
  */
 export const STEP_UP_ACTIONS: readonly StepUpActionDefinition[] = [
   {
@@ -66,21 +67,21 @@ export const STEP_UP_ACTIONS: readonly StepUpActionDefinition[] = [
     action: 'account_state_change',
     route: 'PATCH /v1/admin/accounts/:id/state',
     windowSeconds: STEP_UP_WINDOW_SECONDS.invitationIssuance,
-    status: 'gap',
+    status: 'enforced',
     rationale: 'SU-FU-1: can lock out a real customer or un-suspend an attacker-controlled account.',
   },
   {
     action: 'verification_decision',
     route: 'PATCH /v1/admin/accounts/:id/profile/verification',
     windowSeconds: STEP_UP_WINDOW_SECONDS.invitationIssuance,
-    status: 'gap',
+    status: 'enforced',
     rationale: 'SU-FU-1: verification status is a trust primitive other controls key off.',
   },
   {
     action: 'plan_catalog_edit',
     route: 'PATCH /v1/admin/plans/:planId',
     windowSeconds: STEP_UP_WINDOW_SECONDS.invitationIssuance,
-    status: 'gap',
+    status: 'enforced',
     rationale: 'SU-FU-1: commercial impact across every subscriber; effectively money-moving.',
   },
 ] as const;

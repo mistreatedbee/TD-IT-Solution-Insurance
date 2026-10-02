@@ -329,7 +329,10 @@ function makeDetail(input: {
   };
 }
 
-function createStateHarness(initialAccounts: AdminAccountDetail[]) {
+function createStateHarness(
+  initialAccounts: AdminAccountDetail[],
+  sessionOpts: { mfaVerifiedAt?: Date | null; revokedAt?: Date | null } = {},
+) {
   const env = fakeEnv();
   const kv = new InMemoryKeyValueStore();
   const adminId = randomUUID();
@@ -339,6 +342,18 @@ function createStateHarness(initialAccounts: AdminAccountDetail[]) {
   const revokeAllForAccountCalls: Array<{ accountId: string; reason: string }> = [];
   const disableAllForAccountCalls: string[] = [];
   const recordCalls: AuditEventInput[] = [];
+
+  // ADR-0012 SU-FU-1: requireStepUp reads this live per request. Defaults to
+  // a fresh mfaVerifiedAt (admin verified MFA "just now") so the pre-existing
+  // behavioural tests below keep exercising the handler, not the step-up
+  // gate. Individual tests override via `sessionOpts` to exercise the gate
+  // itself.
+  const sessionRecord = {
+    id: sessionId,
+    accountId: adminId,
+    revokedAt: sessionOpts.revokedAt ?? null,
+    mfaVerifiedAt: sessionOpts.mfaVerifiedAt !== undefined ? sessionOpts.mfaVerifiedAt : new Date(),
+  };
 
   const stubAdmin: AccountRow = {
     id: adminId,
@@ -360,6 +375,9 @@ function createStateHarness(initialAccounts: AdminAccountDetail[]) {
       async revokeAllForAccount(accountId: string, reason: string) {
         revokeAllForAccountCalls.push({ accountId, reason });
         return [`session-${accountId}`];
+      },
+      async findById(id: string) {
+        return id === sessionId ? { ...sessionRecord } : null;
       },
     },
     pushTokens: {
@@ -458,6 +476,7 @@ function createStateHarness(initialAccounts: AdminAccountDetail[]) {
     adminId,
     sessionId,
     accounts,
+    sessionRecord,
     revokeAllForAccountCalls,
     disableAllForAccountCalls,
     recordCalls,
@@ -643,5 +662,140 @@ describe('PATCH /admin/accounts/:id/state', () => {
       body: JSON.stringify({ accountState: 'suspended' }),
     });
     expect(res.status).toBe(403);
+  });
+
+  // ADR-0012 SU-FU-1 — step-up enforcement on account state changes.
+  describe('ADR-0012 SU-FU-1 step-up enforcement', () => {
+    it('stale mfaVerifiedAt -> 401 STEP_UP_REQUIRED, resource unchanged, no audit event', async () => {
+      const customerId = randomUUID();
+      harness = createStateHarness(
+        [makeDetail({ id: customerId, email: 'customer@example.com', userType: 'customer', accountState: 'active' })],
+        { mfaVerifiedAt: new Date(Date.now() - 16 * 60 * 1000) },
+      );
+      await harness.start();
+
+      const res = await harness.patchState(customerId, { accountState: 'suspended' });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('STEP_UP_REQUIRED');
+      expect(harness.accounts.get(customerId)?.accountState).toBe('active');
+      expect(harness.recordCalls).toHaveLength(0);
+      expect(harness.revokeAllForAccountCalls).toHaveLength(0);
+    });
+
+    it('null mfaVerifiedAt -> 401 STEP_UP_REQUIRED, resource unchanged, no audit event', async () => {
+      const customerId = randomUUID();
+      harness = createStateHarness(
+        [makeDetail({ id: customerId, email: 'customer@example.com', userType: 'customer', accountState: 'active' })],
+        { mfaVerifiedAt: null },
+      );
+      await harness.start();
+
+      const res = await harness.patchState(customerId, { accountState: 'suspended' });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('STEP_UP_REQUIRED');
+      expect(harness.accounts.get(customerId)?.accountState).toBe('active');
+      expect(harness.recordCalls).toHaveLength(0);
+    });
+
+    it('revoked session -> STEP_UP_REQUIRED (closes ADR-0012 C-3(iv) for this route)', async () => {
+      const customerId = randomUUID();
+      harness = createStateHarness(
+        [makeDetail({ id: customerId, email: 'customer@example.com', userType: 'customer', accountState: 'active' })],
+        { mfaVerifiedAt: new Date(), revokedAt: new Date() },
+      );
+      await harness.start();
+
+      const res = await harness.patchState(customerId, { accountState: 'suspended' });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('STEP_UP_REQUIRED');
+      expect(harness.accounts.get(customerId)?.accountState).toBe('active');
+      expect(harness.recordCalls).toHaveLength(0);
+    });
+
+    it('non-admin caller gets 403 before step-up even runs, even with a stale/no session record', async () => {
+      const customerId = randomUUID();
+      harness = createStateHarness(
+        [makeDetail({ id: customerId, email: 'customer@example.com', userType: 'customer', accountState: 'active' })],
+        { mfaVerifiedAt: null },
+      );
+      await harness.start();
+
+      const env = fakeEnv();
+      const token = signAccessToken(
+        {
+          sub: customerId,
+          user_type: 'customer',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+
+      const res = await fetch(harness.url(`/admin/accounts/${customerId}/state`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ accountState: 'suspended' }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('fresh mfaVerifiedAt -> success, unchanged behavior', async () => {
+      const customerId = randomUUID();
+      harness = createStateHarness(
+        [makeDetail({ id: customerId, email: 'customer@example.com', userType: 'customer', accountState: 'active' })],
+        { mfaVerifiedAt: new Date() },
+      );
+      await harness.start();
+
+      const res = await harness.patchState(customerId, { accountState: 'suspended' });
+      expect(res.status).toBe(200);
+      expect(harness.accounts.get(customerId)?.accountState).toBe('suspended');
+      expect(harness.recordCalls).toHaveLength(1);
+    });
+
+    // ADR-0012 SU-FU-1 idempotency ruling: a request blocked with
+    // STEP_UP_REQUIRED never reaches the handler at all, so a plain re-send
+    // after step-up succeeds is correct and safe without an
+    // `Idempotency-Key` — there is no "first" handler execution to dedupe
+    // against. This test is independent of mfaVerifiedAt bookkeeping: it
+    // proves the *second* (post-step-up) call is the only call that ever
+    // touches the resource or writes an audit event, and that re-sending the
+    // same plain body produces exactly one state transition, not a
+    // duplicate-mutation hazard.
+    it('blocked request followed by a plain re-send (no Idempotency-Key) after step-up mutates exactly once', async () => {
+      const customerId = randomUUID();
+      harness = createStateHarness(
+        [makeDetail({ id: customerId, email: 'customer@example.com', userType: 'customer', accountState: 'active' })],
+        { mfaVerifiedAt: new Date(Date.now() - 16 * 60 * 1000) },
+      );
+      await harness.start();
+
+      const blocked = await harness.patchState(customerId, { accountState: 'suspended' });
+      expect(blocked.status).toBe(401);
+      expect(harness.accounts.get(customerId)?.accountState).toBe('active');
+      expect(harness.recordCalls).toHaveLength(0);
+
+      // Simulate the client's re-prove-then-retry flow: the admin completes
+      // step-up out of band, and the session's mfa_verified_at is now fresh.
+      harness.sessionRecord.mfaVerifiedAt = new Date();
+
+      const retried = await harness.patchState(customerId, { accountState: 'suspended' });
+      expect(retried.status).toBe(200);
+      expect(harness.accounts.get(customerId)?.accountState).toBe('suspended');
+      expect(harness.recordCalls).toHaveLength(1);
+
+      // A second plain re-send (e.g. a client double-submit) after success
+      // is a normal, already-handled state-transition conflict — not a
+      // step-up or idempotency concern.
+      const resentAgain = await harness.patchState(customerId, { accountState: 'suspended' });
+      expect(resentAgain.status).toBe(409);
+      expect(harness.recordCalls).toHaveLength(1);
+    });
   });
 });

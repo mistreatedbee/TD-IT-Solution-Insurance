@@ -12,6 +12,7 @@ import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
+import { requireStepUp, STEP_UP_WINDOW_SECONDS } from '../lib/step-up.js';
 
 const idParamsSchema = z.object({ id: z.string().uuid() });
 
@@ -189,6 +190,10 @@ export function createAdminVerificationRouter(ctx: AppContext): Router {
       { attempts: 30, windowSeconds: 900 },
       (req) => `admin-profile-review:${req.auth!.accountId}`,
     ),
+    // ADR-0012 SU-FU-1: verification status is a trust primitive other
+    // controls key off — same 15-minute window as invitation issuance, run
+    // before any read/write of the subject's profile.
+    requireStepUp(ctx, STEP_UP_WINDOW_SECONDS.invitationIssuance),
     async (req, res, next) => {
       try {
         const paramsParsed = idParamsSchema.safeParse(req.params);

@@ -427,3 +427,120 @@ confirm coverage before a second consumer ships.
 Confirmed void for privileged actions, as §4.3 states. Password re-entry never satisfies step-up.
 `integration-architect` to amend `docs/features/008-*/api-design.md:208` rather than leave a
 contradicting contract in the tree.
+
+---
+
+## 9. SU-FU-1 implementation record (`backend-architect`, 2026-10-02)
+
+Closes the RR-4 / §8.2 time-boxed residual risk and the three `status: 'gap'` rows in
+`backend/src/lib/step-up.ts`'s `STEP_UP_ACTIONS` table, within the two-sprint window from
+2026-09-23.
+
+### 9.1 What shipped (backend half; frontend's admin-UI handling is tracked separately by
+`frontend-architect` under the same SU-FU-1 action — see §9.5 merge note)
+
+Three routes wired onto the existing `requireStepUp(ctx, STEP_UP_WINDOW_SECONDS.invitationIssuance)`
+middleware, in the exact order already ratified for `POST /v1/invitations`
+(`authenticate` → `requireUserType('admin')` → the route's existing rate limiter → `requireStepUp`
+→ body validation, where present → handler), so the gate runs before any read or write of the
+target resource:
+
+- `PATCH /v1/admin/accounts/:id/state` (`backend/src/routes/admin-accounts.ts:176-189`)
+- `PATCH /v1/admin/accounts/:id/profile/verification` (`backend/src/routes/admin-verification.ts:184-196`)
+- `PATCH /v1/admin/plans/:planId` (`backend/src/routes/admin-plans.ts:79-93`, `requireStepUp` ordered
+  before `validateBody(updatePlanSchema)`)
+
+No new freshness window was introduced — all three reuse `STEP_UP_WINDOW_SECONDS.invitationIssuance`
+(15 minutes), per the §2.3 guidance that a new named window is only warranted for an action class
+that actually needs a different value; none of these three do. `requireStepUp` itself was not
+modified (ratified control, out of scope for this change).
+
+The `STEP_UP_ACTIONS` table in `step-up.ts` was flipped from `status: 'gap'` to `status: 'enforced'`
+for all three rows in the same commit as the wiring, and the table's header comment and the
+"SU-FU-1:" rationale-prefix comments were updated to describe the table as the authoritative record
+of enforcement rather than a list of gaps-to-be-closed.
+
+### 9.2 Idempotency ruling
+
+**`Idempotency-Key` was deliberately NOT added to these three routes.** A request blocked with
+`STEP_UP_REQUIRED` never reaches the handler — `requireStepUp` runs and short-circuits via `next(apiError(...))`
+before any handler code executes, so there is no "first attempt" that mutated state or wrote an audit
+row for a later identical request to collide with. A plain re-send of the same request after the
+admin completes step-up out-of-band is therefore correct and safe without a dedupe key: it is simply
+the first attempt that actually reaches the handler. This is proven in
+`backend/src/routes/admin-accounts.test.ts` ("blocked request followed by a plain re-send (no
+Idempotency-Key) after step-up mutates exactly once"), which shows (a) the blocked call mutates
+nothing and writes no audit row, (b) the retried call after a fresh `mfaVerifiedAt` succeeds exactly
+once, and (c) a further plain re-send is rejected by the route's own, pre-existing, state-transition
+conflict logic (`409 CONFLICT`) — an ordinary double-submit concern unrelated to step-up or
+idempotency. This mirrors `POST /v1/invitations`'s existing idempotency key for a *different* reason
+(that route mints a resource on first success); these three routes mutate an existing resource and
+already have transition/state-conflict handling that fills the same role a dedupe key would.
+
+### 9.3 Test evidence
+
+Updated `admin-accounts.test.ts`, `admin-verification.test.ts`, `admin-plans.test.ts` fixtures: none
+of the three previously set `ctx.sessions`/`mfaVerifiedAt` at all, so every existing test in these
+files would have failed closed (`401 STEP_UP_REQUIRED`) the moment the middleware was wired in. Each
+harness now stubs `ctx.sessions.findById` with a fresh `mfaVerifiedAt` by default (preserving every
+pre-existing assertion unchanged) and exposes an override for the new step-up-specific tests. Added,
+per route, for (a) stale `mfaVerifiedAt`, (b) null `mfaVerifiedAt`, (c) revoked session, (d) non-admin
+caller (confirms `403` still wins before `requireStepUp` runs — order-of-middleware proof), and (e)
+fresh `mfaVerifiedAt` (unchanged success path) — 15 new route-level tests across the three files, plus
+the idempotency-ruling test in §9.2.
+
+**C-3(iv) closure:** ADR-0012 §8.3 left "(iv) step-up on a revoked session fails" distinctly
+unasserted. It is now covered twice: directly in the new `backend/src/lib/step-up.test.ts` unit test
+("revoked session -> STEP_UP_REQUIRED even if mfaVerifiedAt is fresh"), and at the route level in all
+three of the SU-FU-1 test files ("revoked session -> STEP_UP_REQUIRED (closes ADR-0012 C-3(iv) for
+this route)"). C-3(iv) is closed for both the original `invitations.ts` consumer (transitively, since
+the assertion is against the shared middleware) and the three new ones.
+
+**Scope-note R-5:** closed by adding `backend/src/lib/step-up.test.ts`, unit-testing `requireStepUp`
+directly against a fake `AppContext` (no HTTP, no route) for: missing `req.auth` → `UNAUTHORIZED`
+without touching the session store; session not found; revoked session (fresh or not); null
+`mfaVerifiedAt`; stale `mfaVerifiedAt`; fresh `mfaVerifiedAt`; the window-boundary-inclusive case; and
+an unexpected session-store error propagating to `next()` rather than throwing. This was chosen over
+requesting a `qa-architect` sufficiency sign-off, since the unit test was small to add and directly
+closes the gap the ADR already named.
+
+Also added a table-consistency test (`routes/step-up.test.ts`) asserting every row in
+`STEP_UP_ACTIONS` has `status: 'enforced'`, so a future PR cannot silently reintroduce a `'gap'` row
+without the test suite catching it.
+
+**Full-suite result:** not independently re-verified by this session — see §9.6 below. The commit
+message for this work states the test files touched; `security-engineer`/`qa-architect` should run
+`cd backend && npm test` themselves as part of their respective gates rather than trust a claimed
+count here, consistent with this repo's house rule on verifying before asserting.
+
+### 9.4 A-5 threat-model fold-in check
+
+Checked for a cybersecurity-architect A-5 direct-browser-to-Supabase threat-model finding touching
+`account_state_change`, `verification_decision`, or `plan_catalog_edit` before closing this record; none
+was found in the tree as of this writing. If A-5 later reports such a path for any of these three
+actions, it does not invalidate this ADR's server-side enforcement (a browser-to-Supabase bypass would
+evade the whole backend, not just step-up) but does mean the finding needs its own remediation tracked
+against whatever client surface makes that call directly.
+
+### 9.5 Merge constraint
+
+Per the SU-FU-1 dispatch, this backend-side change must not merge to `main` alone — Render deploys
+`main` directly, and shipping server-side enforcement without the admin web UI's `STEP_UP_REQUIRED`
+handling for these three actions would break suspend/verification-decision/plan-edit for any admin
+whose last TOTP proof is more than 15 minutes old, with no client-side recovery path. Merge only
+together with (or after) `frontend-architect`'s corresponding admin-UI work for these three actions.
+
+### 9.6 Still open / not self-certified here
+
+This record does **not** constitute Stage 8 or Stage 10 sign-off. Outstanding before this SU-FU-1
+follow-up can be considered closed:
+
+- `security-engineer` — implementation verification (middleware ordering in the live router, that no
+  step-up artefact is newly logged by these three routes, confirmation of the idempotency ruling).
+- `cybersecurity-architect` — Stage 8 sign-off, and disposition of the §9.4 A-5 fold-in check.
+- `qa-architect` / `automation-qa-engineer` — Stage 10 sign-off; independently run `cd backend && npm
+  test` and record the actual pass count; confirm the new `step-up.test.ts` unit file is accepted as
+  satisfying R-5 (or require additional coverage).
+- **C-4** (detection rule on `mfa_step_up_failed` bursts) and **C-5** (compliance-specialist
+  confirmation of audit event types) remain open from §8.3 and are unaffected by this SU-FU-1 change —
+  they were never scoped to it and still need their own owners to close them.

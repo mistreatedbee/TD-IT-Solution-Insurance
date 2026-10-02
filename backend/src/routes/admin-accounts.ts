@@ -12,6 +12,7 @@ import { buildPage, parsePaginationQuery } from '../lib/pagination.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
+import { requireStepUp, STEP_UP_WINDOW_SECONDS } from '../lib/step-up.js';
 import {
   InvalidAccountStateTransitionError,
   type AdminSettableAccountState,
@@ -181,6 +182,11 @@ export function createAdminAccountsRouter(ctx: AppContext): Router {
       { attempts: DEFAULT_AUTHENTICATED_LIMIT.attempts, windowSeconds: DEFAULT_AUTHENTICATED_LIMIT.windowSeconds },
       (req) => `admin-accounts-state:${req.auth!.accountId}`,
     ),
+    // ADR-0012 SU-FU-1: can lock out a real customer or un-suspend an
+    // attacker-controlled account — same 15-minute window as invitation
+    // issuance, same shared middleware, run before any read/write of the
+    // subject account.
+    requireStepUp(ctx, STEP_UP_WINDOW_SECONDS.invitationIssuance),
     async (req, res, next) => {
       try {
         const paramsParsed = idParamsSchema.safeParse(req.params);

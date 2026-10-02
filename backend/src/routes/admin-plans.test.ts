@@ -73,7 +73,9 @@ function samplePlan(id: string, overrides: Partial<PlanCatalogDocument> = {}): P
   return essentialPlanFixture(id, overrides);
 }
 
-function createHarness(opts: { plans?: PlanCatalogDocument[] } = {}) {
+function createHarness(
+  opts: { plans?: PlanCatalogDocument[]; mfaVerifiedAt?: Date | null; sessionRevokedAt?: Date | null } = {},
+) {
   const env = fakeEnv();
   const kv = new InMemoryKeyValueStore();
   const adminId = randomUUID();
@@ -84,9 +86,24 @@ function createHarness(opts: { plans?: PlanCatalogDocument[] } = {}) {
     stored.set(plan.id, plan);
   }
 
+  // ADR-0012 SU-FU-1: requireStepUp reads this live per request. Defaults to
+  // a fresh mfaVerifiedAt so the pre-existing behavioural tests below keep
+  // exercising the handler, not the step-up gate.
+  const sessionRecord = {
+    id: sessionId,
+    accountId: adminId,
+    revokedAt: opts.sessionRevokedAt ?? null,
+    mfaVerifiedAt: opts.mfaVerifiedAt !== undefined ? opts.mfaVerifiedAt : new Date(),
+  };
+
   const ctx = {
     env,
     kv,
+    sessions: {
+      async findById(id: string) {
+        return id === sessionId ? { ...sessionRecord } : null;
+      },
+    },
     planCatalog: {
       async listAll() {
         return [...stored.values()];
@@ -334,6 +351,95 @@ describe('routes/admin-plans', () => {
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error: { code: string } };
       expect(body.error.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  describe('ADR-0012 SU-FU-1 step-up enforcement on PATCH /admin/plans/:planId', () => {
+    it('stale mfaVerifiedAt -> 401 STEP_UP_REQUIRED, plan unchanged', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011', { maxAssets: 5 });
+      const { app, adminBearer, stored } = createHarness({
+        plans: [plan],
+        mfaVerifiedAt: new Date(Date.now() - 16 * 60 * 1000),
+      });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/${plan.id}`, {
+        method: 'PATCH',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ maxAssets: 8 }),
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('STEP_UP_REQUIRED');
+      expect(stored.get(plan.id)?.maxAssets).toBe(5);
+    });
+
+    it('null mfaVerifiedAt -> 401 STEP_UP_REQUIRED, plan unchanged', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011', { maxAssets: 5 });
+      const { app, adminBearer, stored } = createHarness({ plans: [plan], mfaVerifiedAt: null });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/${plan.id}`, {
+        method: 'PATCH',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ maxAssets: 8 }),
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('STEP_UP_REQUIRED');
+      expect(stored.get(plan.id)?.maxAssets).toBe(5);
+    });
+
+    it('revoked session -> STEP_UP_REQUIRED (closes ADR-0012 C-3(iv) for this route)', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011', { maxAssets: 5 });
+      const { app, adminBearer, stored } = createHarness({
+        plans: [plan],
+        mfaVerifiedAt: new Date(),
+        sessionRevokedAt: new Date(),
+      });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/${plan.id}`, {
+        method: 'PATCH',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ maxAssets: 8 }),
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('STEP_UP_REQUIRED');
+      expect(stored.get(plan.id)?.maxAssets).toBe(5);
+    });
+
+    it('non-admin caller gets 403 before step-up even runs', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011', { maxAssets: 5 });
+      const { app, customerBearer } = createHarness({ plans: [plan], mfaVerifiedAt: null });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/${plan.id}`, {
+        method: 'PATCH',
+        headers: { authorization: customerBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ maxAssets: 8 }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('fresh mfaVerifiedAt -> success, unchanged behavior', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011', { maxAssets: 5 });
+      const { app, adminBearer, stored } = createHarness({ plans: [plan], mfaVerifiedAt: new Date() });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/${plan.id}`, {
+        method: 'PATCH',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ maxAssets: 8 }),
+      });
+      expect(res.status).toBe(200);
+      expect(stored.get(plan.id)?.maxAssets).toBe(8);
     });
   });
 });

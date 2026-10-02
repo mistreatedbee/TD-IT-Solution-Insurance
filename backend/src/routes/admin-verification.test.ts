@@ -128,6 +128,12 @@ describe('admin verification routes', () => {
   let customerProfiles: CustomerProfilesRepo;
   let auditEvents: string[] = [];
   let auditCalls: Array<{ kind: 'record' | 'bulk'; event: unknown }> = [];
+  // ADR-0012 SU-FU-1: requireStepUp reads ctx.sessions.findById live. Default
+  // to a fresh mfaVerifiedAt so pre-existing behavioural tests keep
+  // exercising the handler; individual tests mutate these before issuing a
+  // request to exercise the step-up gate itself.
+  let sessionMfaVerifiedAt: Date | null = new Date();
+  let sessionRevokedAt: Date | null = null;
 
   function adminToken(): string {
     return signAccessToken(
@@ -149,10 +155,19 @@ describe('admin verification routes', () => {
     await customerProfiles.getOrCreateForAccount(customerId);
     auditEvents = [];
     auditCalls = [];
+    sessionMfaVerifiedAt = new Date();
+    sessionRevokedAt = null;
 
     const ctx = {
       env,
       kv,
+      sessions: {
+        async findById(id: string) {
+          return id === sessionId
+            ? { id: sessionId, accountId: adminId, revokedAt: sessionRevokedAt, mfaVerifiedAt: sessionMfaVerifiedAt }
+            : null;
+        },
+      },
       customerProfiles,
       accounts: {
         async findById(id: string) {
@@ -332,6 +347,97 @@ describe('admin verification routes', () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       expect(res.status).toBe(403);
+    });
+  });
+
+  // ADR-0012 SU-FU-1 — step-up enforcement on verification decisions.
+  describe('ADR-0012 SU-FU-1 step-up enforcement', () => {
+    it('stale mfaVerifiedAt -> 401 STEP_UP_REQUIRED, profile unchanged, no audit event', async () => {
+      sessionMfaVerifiedAt = new Date(Date.now() - 16 * 60 * 1000);
+
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified' }),
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('STEP_UP_REQUIRED');
+
+      const profile = await customerProfiles.findByAccountId(customerId);
+      expect(profile?.verificationStatus).toBe('pending_review');
+      expect(auditCalls.filter((c) => c.kind === 'record')).toHaveLength(0);
+    });
+
+    it('null mfaVerifiedAt -> 401 STEP_UP_REQUIRED, profile unchanged, no audit event', async () => {
+      sessionMfaVerifiedAt = null;
+
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified' }),
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('STEP_UP_REQUIRED');
+
+      const profile = await customerProfiles.findByAccountId(customerId);
+      expect(profile?.verificationStatus).toBe('pending_review');
+      expect(auditCalls.filter((c) => c.kind === 'record')).toHaveLength(0);
+    });
+
+    it('revoked session -> STEP_UP_REQUIRED (closes ADR-0012 C-3(iv) for this route)', async () => {
+      sessionMfaVerifiedAt = new Date();
+      sessionRevokedAt = new Date();
+
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified' }),
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('STEP_UP_REQUIRED');
+
+      const profile = await customerProfiles.findByAccountId(customerId);
+      expect(profile?.verificationStatus).toBe('pending_review');
+    });
+
+    it('non-admin caller gets 403 before step-up even runs', async () => {
+      sessionMfaVerifiedAt = null;
+
+      const token = signAccessToken(
+        {
+          sub: customerId,
+          user_type: 'customer',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified' }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('fresh mfaVerifiedAt -> success, unchanged behavior', async () => {
+      sessionMfaVerifiedAt = new Date();
+
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { profile: { verificationStatus: string } };
+      expect(body.profile.verificationStatus).toBe('verified');
     });
   });
 });

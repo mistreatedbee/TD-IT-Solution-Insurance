@@ -11,6 +11,7 @@ import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { validateBody } from '../lib/validation.js';
+import { requireStepUp, STEP_UP_WINDOW_SECONDS } from '../lib/step-up.js';
 
 const entitlementSchema = z.object({
   basicAssetManagement: z.boolean(),
@@ -84,6 +85,11 @@ export function createAdminPlansRouter(ctx: AppContext): Router {
       { attempts: ADMIN_REGISTRY_LIST_LIMIT.attempts, windowSeconds: ADMIN_REGISTRY_LIST_LIMIT.windowSeconds },
       (req) => `admin-plans-patch:${req.auth!.accountId}`,
     ),
+    // ADR-0012 SU-FU-1: commercial impact across every subscriber —
+    // effectively a money-moving action. Same 15-minute window as
+    // invitation issuance, run before body validation and before any
+    // read/write of the plan.
+    requireStepUp(ctx, STEP_UP_WINDOW_SECONDS.invitationIssuance),
     validateBody(updatePlanSchema),
     async (req, res, next) => {
       try {

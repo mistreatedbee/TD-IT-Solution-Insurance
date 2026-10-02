@@ -1500,6 +1500,7 @@ Two problems surfaced while wiring this into the existing mechanism, both disclo
 - `authenticate` + `requireUserType('admin')`.
 - Admin **cannot** suspend/deactivate themselves (`403 FORBIDDEN`).
 - Admin **cannot** mutate another `admin` account — only `customer`, `support_agent`, and `security_company_operator` targets (`403 FORBIDDEN`).
+- **Added by `backend-architect`, 2026-10-02 (ADR-0012 SU-FU-1):** `401 STEP_UP_REQUIRED` — this route now also requires `requireStepUp` (the current session's `mfa_verified_at` fresh within the 15-minute `invitationIssuance` window), enforced after `requireUserType('admin')` and before the handler reads or mutates the subject account. See ADR-0012 §3 Tier A and §9.
 
 **Rate limit:** platform-wide authenticated baseline — `DEFAULT_AUTHENTICATED_LIMIT` (100 requests / 1 min), keyed per admin `account_id`. Deliberately not given a bespoke row in §5's table (same posture as `GET /v1/admin/accounts/{id}` detail).
 

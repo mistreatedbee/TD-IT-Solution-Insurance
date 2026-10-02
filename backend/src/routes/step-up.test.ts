@@ -22,6 +22,7 @@ import { InMemoryKeyValueStore } from '../db/redis.js';
 import { signAccessToken } from '../lib/jwt.js';
 import { mintNewSession, rotateRefreshToken, type SessionRecord, type SessionRepo } from '../lib/refresh-session.js';
 import { INVITATION_ISSUANCE_STEP_UP_WINDOW_SECONDS, MFA_CHALLENGE_LIMIT } from '../lib/policy.js';
+import { STEP_UP_ACTIONS } from '../lib/step-up.js';
 import type { AppContext } from '../context.js';
 import type { AccountRow, AccountStatus, UserType, AccountState } from '../repositories/accounts.js';
 import type { SupabaseAdmin } from '../db/supabase.js';
@@ -520,6 +521,15 @@ describe('ADR-0012 step-up authentication', () => {
     expect((await crossSessionVerify.json()).error.code).toBe('MFA_CHALLENGE_INVALID');
 
     server.close();
+  });
+});
+
+describe('ADR-0012 SU-FU-1 — STEP_UP_ACTIONS table consistency', () => {
+  it('every Tier A row is enforced — the table may not claim a gap that is not actually wired', () => {
+    expect(STEP_UP_ACTIONS.length).toBeGreaterThan(0);
+    for (const row of STEP_UP_ACTIONS) {
+      expect(row.status).toBe('enforced');
+    }
   });
 });
 
