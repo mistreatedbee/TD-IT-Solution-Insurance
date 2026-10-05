@@ -448,5 +448,25 @@ async function main(): Promise<void> {
 main().catch((err) => {
   // eslint-disable-next-line no-console
   console.error('[seed-test-accounts] Failed:', err instanceof Error ? err.message : err);
+  // `pg` attaches these fields to database errors. `where` in particular
+  // traces the exact call chain ("PL/pgSQL function ... line N at SQL
+  // statement") through any trigger/function involved — print everything
+  // rather than guessing, since the bare .message has already proven
+  // insufficient to locate where a bad INSERT is actually coming from.
+  const pgErr = err as Partial<{
+    detail: string;
+    hint: string;
+    where: string;
+    table: string;
+    constraint: string;
+    schema: string;
+    code: string;
+  }>;
+  for (const field of ['code', 'schema', 'table', 'constraint', 'detail', 'hint', 'where'] as const) {
+    if (pgErr?.[field]) {
+      // eslint-disable-next-line no-console
+      console.error(`  ${field}: ${pgErr[field]}`);
+    }
+  }
   process.exit(1);
 });
