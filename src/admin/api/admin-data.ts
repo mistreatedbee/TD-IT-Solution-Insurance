@@ -62,10 +62,17 @@ export interface AdminAssetDetail extends AdminAssetSummary {
   updatedAt: string;
 }
 
-export function listAdminAccounts(params?: { cursor?: string; limit?: number }) {
+export function listAdminAccounts(params?: {
+  cursor?: string;
+  limit?: number;
+  role?: 'customer' | 'staff';
+  email?: string;
+}) {
   const search = new URLSearchParams();
   if (params?.cursor) search.set('cursor', params.cursor);
   if (params?.limit) search.set('limit', String(params.limit));
+  if (params?.role) search.set('role', params.role);
+  if (params?.email) search.set('email', params.email);
   const qs = search.toString();
   return apiFetch<CursorPage<AdminAccountSummary>>(`/admin/accounts${qs ? `?${qs}` : ''}`);
 }
@@ -98,10 +105,17 @@ export function getAdminPolicy(id: string) {
   return apiFetch<AdminPolicyDetail>(`/admin/policies/${encodeURIComponent(id)}`);
 }
 
-export function listAdminAssets(params?: { cursor?: string; accountId?: string }) {
+export function listAdminAssets(params?: {
+  cursor?: string;
+  accountId?: string;
+  status?: 'active' | 'inactive' | 'removed';
+  assetType?: string;
+}) {
   const search = new URLSearchParams();
   if (params?.cursor) search.set('cursor', params.cursor);
   if (params?.accountId) search.set('accountId', params.accountId);
+  if (params?.status) search.set('status', params.status);
+  if (params?.assetType) search.set('assetType', params.assetType);
   const qs = search.toString();
   return apiFetch<CursorPage<AdminAssetSummary>>(`/admin/assets${qs ? `?${qs}` : ''}`);
 }

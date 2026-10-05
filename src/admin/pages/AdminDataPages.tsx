@@ -1,7 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Button, Card, Input, SectionHeading } from '../../components';
+import {
+  Briefcase,
+  Car,
+  Laptop,
+  MapPin,
+  MonitorSmartphone,
+  Package,
+  Smartphone,
+  Tablet,
+  Tv,
+} from 'lucide-react';
+import { Button, Card, Input, SectionHeading, StatBlock } from '../../components';
 import { DataTable, DetailGrid, InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
+import { getActiveAssetCount } from '../api/admin-home-stats';
+import { useHomeCount } from '../../dashboard/hooks/useHomeCount';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import {
   formatAssetUsage,
@@ -517,6 +530,40 @@ export function PolicyDetailPage({ policyId }: { policyId: string }) {
   );
 }
 
+const ASSET_TYPE_ICONS: Record<string, typeof Car> = {
+  vehicle: Car,
+  laptop: Laptop,
+  smartphone: Smartphone,
+  tablet: Tablet,
+  tv: Tv,
+  desktop: MonitorSmartphone,
+  business_equipment: Briefcase,
+  other_electronics: Package,
+};
+
+const ASSET_TYPE_FILTERS = [
+  'vehicle',
+  'laptop',
+  'smartphone',
+  'tablet',
+  'tv',
+  'desktop',
+  'business_equipment',
+  'other_electronics',
+] as const;
+
+function AssetTypeCell({ assetType }: { assetType: string }) {
+  const Icon = ASSET_TYPE_ICONS[assetType] ?? Package;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-tint text-primary">
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <span className="capitalize">{assetType.replace(/_/g, ' ')}</span>
+    </span>
+  );
+}
+
 export function AssetsListPage() {
   const [params] = useSearchParams();
   const accountId = params.get('accountId') ?? undefined;
@@ -525,11 +572,18 @@ export function AssetsListPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [status, setStatus] = useState<'active' | 'inactive' | 'removed' | ''>('');
+  const [assetType, setAssetType] = useState('');
+  const totalCount = useHomeCount(getActiveAssetCount);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    listAdminAssets({ accountId })
+    listAdminAssets({
+      accountId,
+      status: status || undefined,
+      assetType: assetType || undefined,
+    })
       .then((page) => {
         if (cancelled) return;
         setRows(page.data);
@@ -543,42 +597,108 @@ export function AssetsListPage() {
     return () => {
       cancelled = true;
     };
-  }, [accountId]);
+  }, [accountId, status, assetType]);
 
   async function loadMore() {
     if (!cursor) return;
-    const page = await listAdminAssets({ cursor, accountId });
+    const page = await listAdminAssets({ cursor, accountId, status: status || undefined, assetType: assetType || undefined });
     setRows((prev) => [...prev, ...page.data]);
     setCursor(page.pagination.nextCursor);
     setHasMore(page.pagination.hasMore);
   }
 
+  const gpsPairedInView = rows.filter((r) => r.gpsDeviceId).length;
+
   return (
-    <Card padding="lg">
-      <SectionHeading as="h1" title="Assets" size="md" className="mb-4" />
-      {accountId ? <p className="mb-3 text-sm text-text-secondary">Filtered to account {accountId}</p> : null}
-      {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
-      {loading ? (
-        <LoadingState />
-      ) : (
-        <>
-          <DataTable
-            columns={[
-              { key: 'displayName', header: 'Asset', render: (row) => <AdminNavLink to={`/admin/assets/${row.id}`}>{String(row.displayName)}</AdminNavLink> },
-              { key: 'assetType', header: 'Type' },
-              { key: 'status', header: 'Status', render: (row) => <StatusBadge value={String(row.status)} /> },
-              { key: 'gpsDeviceId', header: 'GPS', render: (row) => (row.gpsDeviceId ? 'Paired' : '—') },
-            ]}
-            rows={rows as unknown as Array<Record<string, unknown>>}
-          />
-          {hasMore ? (
-            <Button className="mt-4" variant="secondary" size="sm" onClick={() => void loadMore()}>
-              Load more
-            </Button>
-          ) : null}
-        </>
-      )}
-    </Card>
+    <div className="space-y-6">
+      {!accountId ? (
+        <Card padding="lg">
+          <div className="grid grid-cols-2 gap-6 sm:grid-cols-3">
+            {totalCount.status === 'loaded' ? (
+              <StatBlock size="md" value={totalCount.count ?? 0} label="Registered assets" animate={false} />
+            ) : (
+              <StatBlock size="md" value={0} label={totalCount.status === 'loading' ? 'Loading…' : 'Unavailable'} animate={false} />
+            )}
+            <StatBlock size="md" value={rows.length} label="Showing" animate={false} />
+            <StatBlock size="md" value={gpsPairedInView} label="GPS paired (in view)" animate={false} />
+          </div>
+        </Card>
+      ) : null}
+
+      <Card padding="lg">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <SectionHeading as="h1" title="Assets" size="md" className="mb-0" />
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={assetType}
+              onChange={(e) => setAssetType(e.target.value)}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            >
+              <option value="">All types</option>
+              {ASSET_TYPE_FILTERS.map((t) => (
+                <option key={t} value={t}>
+                  {t.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as typeof status)}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            >
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="removed">Removed</option>
+            </select>
+          </div>
+        </div>
+        {accountId ? <p className="mb-3 text-sm text-text-secondary">Filtered to account {accountId}</p> : null}
+        {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+        {loading ? (
+          <LoadingState />
+        ) : rows.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-12 text-center">
+            <Package className="h-8 w-8 text-slate-300" aria-hidden="true" />
+            <p className="text-sm font-medium text-text-primary">No assets match these filters</p>
+            <p className="text-sm text-text-secondary">Try a different type or status.</p>
+          </div>
+        ) : (
+          <>
+            <DataTable
+              columns={[
+                {
+                  key: 'displayName',
+                  header: 'Asset',
+                  render: (row) => <AdminNavLink to={`/admin/assets/${row.id}`}>{String(row.displayName)}</AdminNavLink>,
+                },
+                { key: 'assetType', header: 'Type', render: (row) => <AssetTypeCell assetType={String(row.assetType)} /> },
+                { key: 'status', header: 'Status', render: (row) => <StatusBadge value={String(row.status)} /> },
+                {
+                  key: 'gpsDeviceId',
+                  header: 'GPS',
+                  render: (row) =>
+                    row.gpsDeviceId ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-700">
+                        <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                        Paired
+                      </span>
+                    ) : (
+                      <span className="text-text-secondary">—</span>
+                    ),
+                },
+              ]}
+              rows={rows as unknown as Array<Record<string, unknown>>}
+            />
+            {hasMore ? (
+              <Button className="mt-4" variant="secondary" size="sm" onClick={() => void loadMore()}>
+                Load more
+              </Button>
+            ) : null}
+          </>
+        )}
+      </Card>
+    </div>
   );
 }
 
