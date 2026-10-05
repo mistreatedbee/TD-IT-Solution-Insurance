@@ -293,6 +293,29 @@ describe('routes/admin-assets', () => {
     expect([...harness.bulkCalls[0]!.disclosedAccountIds].sort()).toEqual([subjectA, subjectB].sort());
   });
 
+  it('SECURITY: detail response never includes lastLocation, even when the asset has one', async () => {
+    const subjectId = randomUUID();
+    const asset = sampleAsset(subjectId);
+    asset.lastLocation = { latitude: -26.2041, longitude: 28.0473, accuracyMeters: 10, recordedAt: new Date() };
+    asset.locationSource = 'self_device';
+    harness = createHarness({ assets: [asset] });
+    await harness.start();
+
+    const res = await fetch(harness.url(`/admin/assets/${asset.id}`), {
+      headers: { authorization: `Bearer ${harness.token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    // cybersecurity-architect ruling, 2026-10-05: admin detail view must never
+    // return a customer's precise coordinate with no case context — this was a
+    // live exposure (serializeAdminAsset spread serializeAsset wholesale)
+    // until this commit. Every other field stays available; only the
+    // coordinate itself is withheld.
+    expect(body).not.toHaveProperty('lastLocation');
+    expect(body.id).toBe(asset.id);
+    expect(body.displayName).toBe('Work laptop');
+  });
+
   it('detail call records privileged_data_access for the subject viewed', async () => {
     const subjectId = randomUUID();
     const asset = sampleAsset(subjectId);

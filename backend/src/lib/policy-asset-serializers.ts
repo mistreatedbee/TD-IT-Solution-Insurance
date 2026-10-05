@@ -94,9 +94,25 @@ export function serializeAdminPolicySummary(
   };
 }
 
+/**
+ * SECURITY: `lastLocation` is deliberately EXCLUDED from the admin projection.
+ * `serializeAsset` (the owner-facing serializer) includes it, and until
+ * 2026-10-05 this function spread that output wholesale, handing any admin
+ * a customer's precise coordinate with no case context, no time-bound
+ * access, and only generic detail-view audit logging (no location-specific
+ * disclosure trail). cybersecurity-architect confirmed this as a live,
+ * already-shipped instance of the exact exposure ADR-0009 SDL-5 and
+ * INC-001 §2 warned about, and ruled it must close before any further
+ * admin location work proceeds (recovery-case-scoped, time-boxed, with its
+ * own audit trail — tracked separately, not yet built). Destructure the
+ * sensitive field out explicitly rather than spreading, so a future field
+ * added to `serializeAsset` requires an active decision here, not a silent
+ * inheritance.
+ */
 export function serializeAdminAsset(doc: AssetDocument) {
+  const { lastLocation: _lastLocation, ...rest } = serializeAsset(doc);
   return {
-    ...serializeAsset(doc),
+    ...rest,
     accountId: doc.accountId,
     legalHold: doc.legalHold,
   };
