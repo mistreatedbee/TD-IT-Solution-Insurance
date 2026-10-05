@@ -170,12 +170,25 @@ async function enrollTotpIfNeeded(
  * constraint name, nothing actionable in the error GoTrue surfaces. Delete
  * the app-schema rows ourselves first so there is nothing left to violate a
  * constraint when GoTrue removes the identity row.
+ *
+ * app.account_audit_log.account_id/actor_account_id reference app.accounts
+ * with ON DELETE SET NULL, but migrations/033's
+ * account_audit_log_privileged_access_has_subject and
+ * account_audit_log_privileged_has_actor constraints both forbid a null
+ * subject/actor on a privileged_data_access (or _bulk_access) row. A single
+ * old audit row of that type naming a test account as subject or actor is
+ * enough to make the SET NULL cascade itself fail the CHECK constraint,
+ * which blocks the whole delete with no indication an audit row is the
+ * cause (confirmed 2026-10-05 via the live constraint-violation detail).
+ * Purge those rows for this account first — acceptable for seed/test data,
+ * never something this script would do to a real account.
  */
 async function deleteSeedUser(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   pool: ReturnType<typeof getPgPool>,
   userId: string,
 ): Promise<void> {
+  await pool.query('delete from app.account_audit_log where account_id = $1 or actor_account_id = $1', [userId]);
   await pool.query('delete from app.account_status_cache where id = $1', [userId]);
   await pool.query('delete from app.accounts where id = $1', [userId]);
   try {
