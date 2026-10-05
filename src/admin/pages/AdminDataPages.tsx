@@ -42,6 +42,8 @@ import {
 import { AdminNavLink } from '../layout/AdminLayout';
 import { StepUpDialog } from '../components/StepUpDialog';
 import { useStepUpRetry } from '../hooks/useStepUpRetry';
+import { getAdminCustomerProfile } from '../api/admin-verification';
+import { verificationStatusLabel } from '../../customer/api/profile';
 
 function countRegisteredAdminAssets(assets: AdminAssetSummary[]): number {
   return assets.filter((a) => a.status !== 'removed' && a.status !== 'cancelled').length;
@@ -442,12 +444,46 @@ function AccountStateActions({
 export function AccountDetailPage({ accountId }: { accountId: string }) {
   const [account, setAccount] = useState<AdminAccountDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
+  const [policyCount, setPolicyCount] = useState<number | null>(null);
+  const [assetCount, setAssetCount] = useState<number | null>(null);
 
   useEffect(() => {
     getAdminAccount(accountId)
       .then(setAccount)
       .catch((err) => setError(mapUserFacingError(err, { context: 'admin' })));
   }, [accountId]);
+
+  // Verification status only applies to customer accounts — staff have no
+  // customer profile, and calling this endpoint for them would just 404.
+  useEffect(() => {
+    if (account?.userType !== 'customer') return;
+    let cancelled = false;
+    getAdminCustomerProfile(accountId)
+      .then((res) => {
+        if (!cancelled) setVerificationStatus(res.profile.verificationStatus);
+      })
+      .catch(() => {
+        // Non-fatal — the rest of the page still renders without this.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, account?.userType]);
+
+  useEffect(() => {
+    if (!account) return;
+    let cancelled = false;
+    listAdminPolicies({ accountId }).then((page) => {
+      if (!cancelled) setPolicyCount(page.data.length);
+    }).catch(() => {});
+    listAdminAssets({ accountId }).then((page) => {
+      if (!cancelled) setAssetCount(countRegisteredAdminAssets(page.data));
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, account]);
 
   if (error) return <InlineAlert tone="danger">{error}</InlineAlert>;
   if (!account) return <LoadingState />;
@@ -459,6 +495,20 @@ export function AccountDetailPage({ accountId }: { accountId: string }) {
         rows={[
           { label: 'User type', value: account.userType.replace(/_/g, ' ') },
           { label: 'State', value: <StatusBadge value={account.accountState} /> },
+          ...(account.userType === 'customer'
+            ? [
+                {
+                  label: 'Verification',
+                  value: verificationStatus ? (
+                    <Link to={`/admin/verification/${account.id}`} className="text-primary hover:underline">
+                      {verificationStatusLabel(verificationStatus as Parameters<typeof verificationStatusLabel>[0])}
+                    </Link>
+                  ) : (
+                    '—'
+                  ),
+                },
+              ]
+            : []),
           { label: 'MFA required', value: account.mfaRequired ? 'Yes' : 'No' },
           { label: 'Partner org', value: account.partnerOrganizationId ?? '—' },
           { label: 'Suspended at', value: account.suspendedAt ? new Date(account.suspendedAt).toLocaleString() : '—' },
@@ -467,12 +517,12 @@ export function AccountDetailPage({ accountId }: { accountId: string }) {
           { label: 'Updated', value: new Date(account.updatedAt).toLocaleString() },
         ]}
       />
-      <div className="mt-6 flex gap-3">
+      <div className="mt-6 flex flex-wrap gap-6">
         <Link className="text-sm text-primary hover:underline" to={`/admin/policies?accountId=${account.id}`}>
-          View policies
+          {policyCount === null ? 'View policies' : `${policyCount} ${policyCount === 1 ? 'policy' : 'policies'} →`}
         </Link>
         <Link className="text-sm text-primary hover:underline" to={`/admin/assets?accountId=${account.id}`}>
-          View assets
+          {assetCount === null ? 'View assets' : `${assetCount} ${assetCount === 1 ? 'asset' : 'assets'} →`}
         </Link>
       </div>
       <div className="mt-8 border-t border-border pt-6">

@@ -20,6 +20,11 @@ import type { AdminAccountDetail } from '../api/admin-data';
 vi.mock('../api/admin-data', () => ({
   getAdminAccount: vi.fn(),
   updateAdminAccountState: vi.fn(),
+  listAdminPolicies: vi.fn().mockResolvedValue({ data: [], pagination: { nextCursor: null, hasMore: false } }),
+  listAdminAssets: vi.fn().mockResolvedValue({ data: [], pagination: { nextCursor: null, hasMore: false } }),
+}));
+vi.mock('../api/admin-verification', () => ({
+  getAdminCustomerProfile: vi.fn().mockRejectedValue(new Error('not mocked for this test')),
 }));
 vi.mock('../api/step-up', () => ({
   requestStepUpChallenge: vi.fn(),
