@@ -130,6 +130,9 @@ function createHarness(opts: { assets?: AssetDocument[] }) {
       async findByIdForAdmin(assetId: string) {
         return stored.get(assetId) ?? null;
       },
+      async countActiveGlobal() {
+        return [...stored.values()].filter((a) => a.status !== 'removed').length;
+      },
     },
     adminAccessLog: {
       async recordBulkDisclosure(input: AdminAccessBulkDisclosureInput): Promise<void> {
@@ -185,6 +188,60 @@ describe('routes/admin-assets', () => {
 
   afterEach(async () => {
     if (harness) await harness.stop();
+  });
+
+  describe('GET /admin/assets/count (Admin Home KPI row)', () => {
+    it('counts everything except removed assets, and records a zero-resultCount disclosure', async () => {
+      harness = createHarness({
+        assets: [
+          { ...sampleAsset(randomUUID(), '507f1f77bcf86cd799439031'), status: 'active' },
+          { ...sampleAsset(randomUUID(), '507f1f77bcf86cd799439032'), status: 'inactive' },
+          { ...sampleAsset(randomUUID(), '507f1f77bcf86cd799439033'), status: 'removed' },
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/admin/assets/count'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { count: number } };
+      expect(body.data.count).toBe(2);
+
+      expect(harness.bulkCalls).toHaveLength(1);
+      expect(harness.bulkCalls[0]).toMatchObject({
+        disclosedAccountIds: [],
+        resultCount: 0,
+        resourceType: 'asset',
+        endpoint: 'GET /v1/admin/assets/count',
+        actorAccountId: harness.adminId,
+        actorSessionId: harness.sessionId,
+      });
+    });
+
+    it('returns 403, not the count, for a non-admin caller', async () => {
+      const env = fakeEnv();
+      const customerId = randomUUID();
+      const token = signAccessToken(
+        {
+          sub: customerId,
+          user_type: 'customer',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+
+      harness = createHarness({});
+      await harness.start();
+      const res = await fetch(harness.url('/admin/assets/count'), {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(403);
+    });
   });
 
   it('returns 403 for non-admin callers', async () => {

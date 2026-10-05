@@ -156,6 +156,11 @@ export function createAssetsRepo(db: Db) {
       return collection().countDocuments({ accountId, status: { $ne: 'removed' } });
     },
 
+    /** Platform-wide count, for the Admin Home KPI row. Not scoped to an account. */
+    async countActiveGlobal(): Promise<number> {
+      return collection().countDocuments({ status: { $ne: 'removed' } });
+    },
+
     async listForAdmin(
       filters: { accountId?: string; status?: AssetStatus; assetType?: AssetType },
       limit: number,

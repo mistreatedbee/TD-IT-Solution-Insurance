@@ -67,6 +67,7 @@ function adminToken(env: Env, accountId: string, sessionId: string): string {
 function createHarness(opts: {
   listRows?: AdminAccountSummary[];
   detailRow?: AdminAccountDetail | null;
+  customerCount?: number;
 }) {
   const env = fakeEnv();
   const kv = new InMemoryKeyValueStore();
@@ -142,6 +143,9 @@ function createHarness(opts: {
       },
       async findByIdForAdminDetail(id: string): Promise<AdminAccountDetail | null> {
         return detailRow && detailRow.id === id ? detailRow : null;
+      },
+      async countActiveCustomers(): Promise<number> {
+        return opts.customerCount ?? 0;
       },
     },
     auditLog: {
@@ -222,6 +226,51 @@ describe('routes/admin-accounts', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(403);
+  });
+
+  describe('GET /admin/accounts/customers/count (Admin Home KPI row)', () => {
+    it('returns the count and records a zero-resultCount disclosure', async () => {
+      harness = createHarness({ customerCount: 42 });
+      await harness.start();
+
+      const res = await fetch(harness.url('/admin/accounts/customers/count'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { count: number } };
+      expect(body.data.count).toBe(42);
+
+      expect(harness.bulkCalls).toHaveLength(1);
+      expect(harness.bulkCalls[0]).toMatchObject({
+        disclosedAccountIds: [],
+        actorAccountId: harness.adminId,
+        actorSessionId: harness.sessionId,
+      });
+    });
+
+    it('returns 403, not the count, for a non-admin caller', async () => {
+      const env = fakeEnv();
+      const customerId = randomUUID();
+      const token = signAccessToken(
+        {
+          sub: customerId,
+          user_type: 'customer',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+
+      harness = createHarness({});
+      await harness.start();
+      const res = await fetch(harness.url('/admin/accounts/customers/count'), {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(403);
+    });
   });
 
   it('list call records bulk disclosure per ADR-0006 R-1', async () => {

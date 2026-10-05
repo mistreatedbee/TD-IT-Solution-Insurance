@@ -192,6 +192,11 @@ export function createPoliciesRepo(db: Db) {
       return collection().countDocuments({ accountId });
     },
 
+    /** Platform-wide count, for the Admin Home KPI row. Not scoped to an account. */
+    async countActiveGlobal(): Promise<number> {
+      return collection().countDocuments({ status: 'active' });
+    },
+
     async listActiveForAccount(accountId: string): Promise<PolicyDocument[]> {
       const rows = await collection().find({ accountId, status: 'active' }).toArray();
       return rows.map(toPolicy);

@@ -133,6 +133,38 @@ export function createAdminAccountsRouter(ctx: AppContext): Router {
     },
   );
 
+  // Admin Home KPI row — aggregate count only, same pattern as
+  // /admin/verification-requests/count: still an audited disclosure (ADR-0006
+  // AUD-3(b)/AUD-10), but with an empty disclosedAccountIds array.
+  router.get(
+    '/admin/accounts/customers/count',
+    authenticate,
+    requireUserType('admin'),
+    createRateLimiter(
+      ctx.kv,
+      { attempts: AUDIT_LOG_READ_LIMIT.attempts, windowSeconds: AUDIT_LOG_READ_LIMIT.windowSeconds },
+      (req) => `admin-accounts-count:${req.auth!.accountId}`,
+    ),
+    async (req, res, next) => {
+      try {
+        const count = await ctx.accounts.countActiveCustomers();
+
+        await ctx.auditLog.recordBulkDisclosure({
+          disclosedAccountIds: [],
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        res.status(200).json({ data: { count } });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
   router.get(
     '/admin/accounts/:id',
     authenticate,

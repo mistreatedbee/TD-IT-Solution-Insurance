@@ -95,6 +95,42 @@ export function createAdminPoliciesRouter(ctx: AppContext): Router {
     },
   );
 
+  // Admin Home KPI row — aggregate count only, mirroring the
+  // /admin/verification-requests/count pattern: still an audited disclosure
+  // (ADR-0006 R-1 Trail B), but with an empty disclosedAccountIds array and
+  // resultCount 0, since no individual policy is returned.
+  router.get(
+    '/admin/policies/count',
+    authenticate,
+    requireUserType('admin'),
+    createRateLimiter(
+      ctx.kv,
+      { attempts: ADMIN_REGISTRY_LIST_LIMIT.attempts, windowSeconds: ADMIN_REGISTRY_LIST_LIMIT.windowSeconds },
+      (req) => `admin-policies-count:${req.auth!.accountId}`,
+    ),
+    async (req, res, next) => {
+      try {
+        const count = await ctx.policies.countActiveGlobal();
+
+        await ctx.adminAccessLog.recordBulkDisclosure({
+          disclosedAccountIds: [],
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          resourceType: 'policy',
+          endpoint: 'GET /v1/admin/policies/count',
+          resultCount: 0,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        res.status(200).json({ data: { count } });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
   router.get(
     '/admin/policies/:policyId',
     authenticate,

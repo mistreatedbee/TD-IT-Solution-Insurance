@@ -238,6 +238,14 @@ export function createAccountsRepo(db: Queryable) {
       return row ? toAccount(row) : null;
     },
 
+    /** Platform-wide count, for the Admin Home KPI row. Aggregate only — no row data returned. */
+    async countActiveCustomers(): Promise<number> {
+      const result = await db.query<{ count: string }>(
+        `select count(*) from app.accounts where user_type = 'customer' and account_state = 'active'`,
+      );
+      return Number(result.rows[0]?.count ?? 0);
+    },
+
     async findByPhone(phone: string): Promise<AccountRow | null> {
       const normalized = phone.trim();
       if (!normalized) return null;

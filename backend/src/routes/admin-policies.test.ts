@@ -139,6 +139,9 @@ function createHarness(opts: { policies?: PolicyDocument[] }) {
       async findByIdForAdmin(policyId: string) {
         return stored.get(policyId) ?? null;
       },
+      async countActiveGlobal() {
+        return [...stored.values()].filter((p) => p.status === 'active').length;
+      },
     },
     adminAccessLog: {
       async recordBulkDisclosure(input: AdminAccessBulkDisclosureInput): Promise<void> {
@@ -232,6 +235,61 @@ describe('routes/admin-policies', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(403);
+  });
+
+  describe('GET /admin/policies/count (Admin Home KPI row)', () => {
+    it('counts only active policies, not pending/cancelled ones, and records a zero-resultCount disclosure', async () => {
+      harness = createHarness({
+        policies: [
+          { ...samplePolicy(randomUUID(), '507f1f77bcf86cd799439021'), status: 'active' },
+          { ...samplePolicy(randomUUID(), '507f1f77bcf86cd799439022'), status: 'active' },
+          { ...samplePolicy(randomUUID(), '507f1f77bcf86cd799439023'), status: 'pending_activation' },
+          { ...samplePolicy(randomUUID(), '507f1f77bcf86cd799439024'), status: 'cancelled' },
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/admin/policies/count'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { count: number } };
+      expect(body.data.count).toBe(2);
+
+      expect(harness.bulkCalls).toHaveLength(1);
+      expect(harness.bulkCalls[0]).toMatchObject({
+        disclosedAccountIds: [],
+        resultCount: 0,
+        resourceType: 'policy',
+        endpoint: 'GET /v1/admin/policies/count',
+        actorAccountId: harness.adminId,
+        actorSessionId: harness.sessionId,
+      });
+    });
+
+    it('returns 403, not the count, for a non-admin caller', async () => {
+      const env = fakeEnv();
+      const customerId = randomUUID();
+      const token = signAccessToken(
+        {
+          sub: customerId,
+          user_type: 'customer',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+
+      harness = createHarness({});
+      await harness.start();
+      const res = await fetch(harness.url('/admin/policies/count'), {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(403);
+    });
   });
 
   it('list call records Trail B bulk disclosure per ADR-0006 R-1', async () => {
