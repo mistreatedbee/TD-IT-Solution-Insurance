@@ -64,6 +64,8 @@ export interface AdminAccountDetail {
 
 export interface AdminAccountListFilters {
   userType?: UserType;
+  /** Admin Panel IA split: 'customer' vs everyone else, independent of `userType`. */
+  role?: 'customer' | 'staff';
   accountState?: AccountState;
   partnerOrganizationId?: string;
   /** Exact match only — backed by accounts_email_unique (api-design.md §11.E). */
@@ -306,6 +308,11 @@ export function createAccountsRepo(db: Queryable) {
       if (filters.userType !== undefined) {
         params.push(filters.userType);
         where.push(`user_type = $${params.length}`);
+      }
+      if (filters.role === 'customer') {
+        where.push(`user_type = 'customer'`);
+      } else if (filters.role === 'staff') {
+        where.push(`user_type <> 'customer'`);
       }
       if (filters.accountState !== undefined) {
         params.push(filters.accountState);

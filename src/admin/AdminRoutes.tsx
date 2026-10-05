@@ -6,11 +6,12 @@ import { AdminAuthGate, AdminLayout } from './layout/AdminLayout';
 import { AdminHomePage } from './pages/AdminHomePage';
 import {
   AccountDetailPage,
-  AccountsListPage,
   AssetDetailPage,
   AssetsListPage,
+  CustomersListPage,
   PoliciesListPage,
   PolicyDetailPage,
+  StaffListPage,
 } from './pages/AdminDataPages';
 import { VerificationQueuePage, VerificationReviewPage } from './pages/AdminVerificationPages';
 import { PlanEditRoute, PlansListPage } from './pages/AdminPlansPages';
@@ -19,7 +20,7 @@ import { InviteStaffPage } from './pages/InviteStaffPage';
 
 function AccountDetailRoute() {
   const { accountId } = useParams();
-  if (!accountId) return <Navigate to="/admin/accounts" replace />;
+  if (!accountId) return <Navigate to="/admin/customers" replace />;
   return <AccountDetailPage accountId={accountId} />;
 }
 
@@ -47,14 +48,17 @@ export default function AdminRoutes() {
             <PrivilegedLoginPage
               title="Admin sign in"
               subtitle="Platform administrator access — MFA required for privileged accounts."
-              defaultRedirect="/admin/accounts"
+              defaultRedirect="/admin/customers"
             />
           }
         />
         <Route element={<AdminAuthGate />}>
           <Route element={<AdminLayout />}>
             <Route index element={<AdminHomePage />} />
-            <Route path="accounts" element={<AccountsListPage />} />
+            <Route path="customers" element={<CustomersListPage />} />
+            <Route path="staff" element={<StaffListPage />} />
+            {/* Backward-compat: the old mixed-list route now redirects to Customers. */}
+            <Route path="accounts" element={<Navigate to="/admin/customers" replace />} />
             <Route path="accounts/invite" element={<InviteStaffPage />} />
             <Route path="accounts/:accountId" element={<AccountDetailRoute />} />
             <Route path="policies" element={<PoliciesListPage />} />

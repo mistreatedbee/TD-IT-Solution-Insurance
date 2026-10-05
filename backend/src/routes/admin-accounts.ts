@@ -21,6 +21,13 @@ import {
 
 const listFiltersSchema = z.object({
   userType: z.enum(['customer', 'admin', 'security_company_operator', 'support_agent']).optional(),
+  // Admin Panel IA split: "Staff" means any non-customer user type. A single
+  // `role` value is simpler and more future-proof than accepting an array of
+  // `userType`s for the one case the UI actually needs (customer vs
+  // everyone-else) — adding a fifth privileged user type later needs no
+  // frontend change here. `userType` above still works standalone for
+  // anything that needs one exact type.
+  role: z.enum(['customer', 'staff']).optional(),
   accountState: z.enum(['pending_verification', 'active', 'suspended', 'deactivated']).optional(),
   partnerOrganizationId: z.string().uuid().optional(),
   email: z.string().email().optional(),

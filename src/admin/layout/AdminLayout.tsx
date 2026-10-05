@@ -44,7 +44,8 @@ export function AdminLayout() {
     <DashboardShell
       brand="Admin"
       navItems={[
-        { to: '/admin/accounts', label: 'Customers' },
+        { to: '/admin/customers', label: 'Customers' },
+        { to: '/admin/staff', label: 'Staff' },
         { to: '/admin/verification', label: 'Verification' },
         { to: '/admin/policies', label: 'Policies' },
         { to: '/admin/assets', label: 'Assets' },

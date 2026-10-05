@@ -86,7 +86,8 @@ describe('AdminHomePage', () => {
     expect(verificationLink).toHaveAttribute('href', '/admin/verification');
     await waitFor(() => expect(screen.getByText('14 pending')).toBeInTheDocument());
 
-    expect(screen.getByRole('link', { name: /View accounts/ })).toHaveAttribute('href', '/admin/accounts');
+    expect(screen.getByRole('link', { name: /View customers/ })).toHaveAttribute('href', '/admin/customers');
+    expect(screen.getByRole('link', { name: /View staff/ })).toHaveAttribute('href', '/admin/staff');
     expect(screen.getByRole('link', { name: /Manage plans/ })).toHaveAttribute('href', '/admin/plans');
     expect(screen.getByRole('link', { name: /Invite a staff member/ })).toHaveAttribute(
       'href',

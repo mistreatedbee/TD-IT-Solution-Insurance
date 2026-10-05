@@ -70,7 +70,9 @@ describe('AdminRoutes index route (Feature 012 AC-1, AC-7)', () => {
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeInTheDocument());
     expect(screen.getByText(/Signed in as admin@example\.com · Admin/)).toBeInTheDocument();
-    // Not redirected straight to the Customers/accounts list.
-    expect(screen.queryByRole('heading', { name: 'Customers' })).not.toBeInTheDocument();
+    // Not redirected straight to the Customers list page itself (its `h1` page
+    // title) — the Home page's own "Customers" quick-link card title (an `h3`)
+    // is expected and is not what this assertion is checking for.
+    expect(screen.queryByRole('heading', { name: 'Customers', level: 1 })).not.toBeInTheDocument();
   });
 });

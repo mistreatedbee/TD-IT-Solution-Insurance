@@ -67,7 +67,40 @@ function AssetUsageCell({
   return label;
 }
 
-export function AccountsListPage() {
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  support_agent: 'Support agent',
+  security_company_operator: 'Security operator',
+};
+
+const ROLE_BADGE_TONE: Record<string, 'gold' | 'neutral' | 'emerald'> = {
+  admin: 'gold',
+  support_agent: 'neutral',
+  security_company_operator: 'emerald',
+};
+
+function RoleBadge({ userType }: { userType: string }) {
+  const label = ROLE_LABELS[userType] ?? userType;
+  const tone = ROLE_BADGE_TONE[userType] ?? 'neutral';
+  const toneClasses =
+    tone === 'gold'
+      ? 'bg-amber-50 text-amber-800 ring-amber-200'
+      : tone === 'emerald'
+        ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+        : 'bg-slate-100 text-slate-700 ring-slate-200';
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium leading-4 ring-1 ring-inset ${toneClasses}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+/** Shared list body for Customers/Staff — same table mechanics, different
+ * server-side `role` filter and columns (Type is redundant once a list is
+ * one role; Staff needs a Role column Customers doesn't). */
+function useAccountList(role: 'customer' | 'staff', email?: string) {
   const [rows, setRows] = useState<AdminAccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +109,9 @@ export function AccountsListPage() {
 
   useEffect(() => {
     let cancelled = false;
-    listAdminAccounts({ limit: 25 })
+    setLoading(true);
+    setCursor(null);
+    listAdminAccounts({ role, limit: 25, email: email || undefined })
       .then((page) => {
         if (cancelled) return;
         setRows(page.data);
@@ -90,35 +125,117 @@ export function AccountsListPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [role, email]);
 
   async function loadMore() {
     if (!cursor) return;
-    const page = await listAdminAccounts({ cursor, limit: 25 });
+    const page = await listAdminAccounts({ cursor, role, limit: 25, email: email || undefined });
     setRows((prev) => [...prev, ...page.data]);
     setCursor(page.pagination.nextCursor);
     setHasMore(page.pagination.hasMore);
   }
 
+  return { rows, loading, error, hasMore, loadMore };
+}
+
+export function CustomersListPage() {
+  const [emailSearch, setEmailSearch] = useState('');
+  const [submittedEmail, setSubmittedEmail] = useState('');
+  const { rows, loading, error, hasMore, loadMore } = useAccountList('customer', submittedEmail);
+
   return (
     <Card padding="lg">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <SectionHeading as="h1" title="Customers" size="md" className="mb-0" />
-        <Link to="/admin/accounts/invite">
-          <Button variant="secondary" size="sm">
-            Invite staff
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setSubmittedEmail(emailSearch.trim());
+          }}
+        >
+          <Input
+            label="Look up by exact email"
+            hideLabel
+            placeholder="customer@example.com"
+            value={emailSearch}
+            onChange={(e) => setEmailSearch(e.target.value)}
+            className="w-64"
+          />
+          <Button type="submit" variant="secondary" size="sm">
+            Search
           </Button>
-        </Link>
+          {submittedEmail ? (
+            <Button
+              type="button"
+              variant="tertiary"
+              size="sm"
+              onClick={() => {
+                setEmailSearch('');
+                setSubmittedEmail('');
+              }}
+            >
+              Clear
+            </Button>
+          ) : null}
+        </form>
       </div>
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
       {loading ? (
         <LoadingState />
+      ) : rows.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-12 text-center">
+          <p className="text-sm font-medium text-text-primary">No customers found</p>
+          {submittedEmail ? <p className="text-sm text-text-secondary">No exact match for that email.</p> : null}
+        </div>
       ) : (
         <>
           <DataTable
             columns={[
               { key: 'email', header: 'Email', render: (row) => <AdminNavLink to={`/admin/accounts/${row.id}`}>{String(row.email)}</AdminNavLink> },
-              { key: 'userType', header: 'Type' },
+              { key: 'accountState', header: 'State', render: (row) => <StatusBadge value={String(row.accountState)} /> },
+              { key: 'createdAt', header: 'Created', render: (row) => new Date(String(row.createdAt)).toLocaleDateString() },
+            ]}
+            rows={rows as unknown as Array<Record<string, unknown>>}
+          />
+          {hasMore ? (
+            <Button className="mt-4" variant="secondary" size="sm" onClick={() => void loadMore()}>
+              Load more
+            </Button>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
+
+export function StaffListPage() {
+  const { rows, loading, error, hasMore, loadMore } = useAccountList('staff');
+
+  return (
+    <Card padding="lg">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <SectionHeading as="h1" title="Staff" size="md" className="mb-0" />
+        <Link to="/admin/accounts/invite">
+          <Button size="sm">Invite staff</Button>
+        </Link>
+      </div>
+      {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+      {loading ? (
+        <LoadingState />
+      ) : rows.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-12 text-center">
+          <p className="text-sm font-medium text-text-primary">No staff accounts yet</p>
+          <Link to="/admin/accounts/invite" className="text-sm font-medium text-primary hover:underline">
+            Invite your first staff member
+          </Link>
+        </div>
+      ) : (
+        <>
+          <DataTable
+            columns={[
+              { key: 'email', header: 'Email', render: (row) => <AdminNavLink to={`/admin/accounts/${row.id}`}>{String(row.email)}</AdminNavLink> },
+              { key: 'userType', header: 'Role', render: (row) => <RoleBadge userType={String(row.userType)} /> },
               { key: 'accountState', header: 'State', render: (row) => <StatusBadge value={String(row.accountState)} /> },
               { key: 'createdAt', header: 'Created', render: (row) => new Date(String(row.createdAt)).toLocaleDateString() },
             ]}
