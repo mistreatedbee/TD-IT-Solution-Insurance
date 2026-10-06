@@ -148,7 +148,24 @@ export function AssetDetailScreen() {
       // INC-002 §12/§13 SR-INC002-W1 — record the server-side consent-grant
       // artefact at the same point as the local record, still before the OS
       // permission prompt fires.
-      await grantConsentMutation.mutateAsync(id);
+      try {
+        await grantConsentMutation.mutateAsync(id);
+      } catch (grantErr) {
+        // security-engineer finding (2026-10-06): the local writes above are
+        // optimistic — if the server-side consent record fails, the device
+        // must not be left believing it has consent it doesn't. Revert
+        // before rethrowing so the outer catch's messaging and this
+        // function's "tracking active" state agree with what the server
+        // actually has on record. No server-side consent-gate backstop
+        // exists on the location-report endpoint today (tracked separately
+        // as a defense-in-depth follow-up), so this client-side reversion is
+        // the only thing preventing a false "tracking enabled" state here.
+        await setLocationTrackingConsent('denied');
+        await clearLinkedSmartphoneAssetId();
+        setConsentGrantedState(false);
+        setLinkedAssetIdState(null);
+        throw grantErr;
+      }
 
       const fix = await requestForegroundLocation();
       await reportMutation.mutateAsync({
