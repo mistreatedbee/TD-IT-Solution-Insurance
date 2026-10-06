@@ -11,6 +11,8 @@ import {
   type SecurityCaseStatus,
   type SecurityRecoveryCase,
 } from '../../api/security-cases';
+import { ApiError, NetworkUnavailableError } from '../../api/errors';
+import { useIsOnline } from '../../network/NetworkProvider';
 import { MapPlaceholder } from '../recovery/MapPlaceholder';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { Alert, Badge, Button, Card, Screen } from '../../theme/primitives';
@@ -63,6 +65,7 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const isOnline = useIsOnline();
 
   useEffect(() => {
     let cancelled = false;
@@ -83,15 +86,34 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
     };
   }, [caseId]);
 
+  // Offline-tolerance policy (docs/organization/05-development-standards.md,
+  // "Offline behaviour for mutations that need confirmed delivery"): a
+  // partner operator believing a case update was saved when it wasn't is
+  // the same class of risk as a customer theft report or consent change.
+  // setStatus (PATCH to a specific status) is naturally idempotent — only
+  // (a)/(b) needed. claimSecurityCase is NOT naturally idempotent: the
+  // backend's claim write only matches an unclaimed (status='open', no
+  // partner org) case, so a retry after an ambiguous network failure would
+  // get NOT_FOUND even if the original attempt actually succeeded — (d)'s
+  // "treat as already-succeeded" handling applies here too.
+
   async function setStatus(status: SecurityCaseStatus) {
     if (!caseId) return;
+    if (!isOnline) {
+      setError("You're offline. This status change has not been saved — reconnect and try again.");
+      return;
+    }
     setUpdating(true);
     setError(null);
     try {
       const updated = await updateSecurityCaseStatus(caseId, status);
       setRecoveryCase(updated);
     } catch (err) {
-      setError(mapUserFacingError(err, { context: 'security-case' }));
+      if (err instanceof NetworkUnavailableError) {
+        setError("We couldn't confirm this status change was saved. Check your connection and try again.");
+      } else {
+        setError(mapUserFacingError(err, { context: 'security-case' }));
+      }
     } finally {
       setUpdating(false);
     }
@@ -99,12 +121,36 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
 
   async function handleClaim() {
     if (!caseId) return;
+    if (!isOnline) {
+      setError("You're offline. This case has not been claimed — reconnect and try again.");
+      return;
+    }
     setUpdating(true);
     setError(null);
     try {
       const updated = await claimSecurityCase(caseId);
       setRecoveryCase(updated);
     } catch (err) {
+      if (err instanceof NetworkUnavailableError) {
+        setError("We couldn't confirm this claim was received. Check your connection, then refresh before retrying — retrying a claim that already succeeded will show as unavailable, not as success.");
+        return;
+      }
+      // (d): a claim retried after it actually already succeeded hits the
+      // backend's open-only match and comes back NOT_FOUND. Re-fetch rather
+      // than assume failure — if the case is no longer 'open', the original
+      // attempt landed; show its current state instead of an error.
+      if (err instanceof ApiError && err.status === 404) {
+        try {
+          const refreshed = await getSecurityCase(caseId);
+          if (refreshed.status !== 'open') {
+            setRecoveryCase(refreshed);
+            return;
+          }
+        } catch {
+          // Fall through to the generic error below — the refetch itself
+          // failing doesn't change what we tell the user about the claim.
+        }
+      }
       setError(mapUserFacingError(err, { context: 'security-case' }));
     } finally {
       setUpdating(false);
