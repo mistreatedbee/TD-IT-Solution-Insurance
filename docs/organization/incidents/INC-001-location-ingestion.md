@@ -219,3 +219,15 @@ The statement criterion 6 asks for is not merely unproven — on the evidence ab
 | A-15 | SD-FU-09 — `shouldDehydrateQuery` filter excluding location query keys from the persisted cache | `mobile-architect` + `security-engineer` | — **DONE 2026-08-28** |
 | A-16 | `features.ts` comment says "fail-closed"; the implementation is enabled-when-unset. Comment-only correction | `mobile-engineer` | — **DONE 2026-08-28** |
 | A-17 | `app.json` still declares `expo-location` + `ACCESS_FINE_LOCATION` with capture flagged off — decide whether build #2 ships a manifest asserting an unused capability | `mobile-architect` + `product-manager` | Store submission — **interim: `app.config.ts` strips plugin/permissions when flag off at build time (2026-08-28)** |
+
+---
+
+## 10. A-7 evidence note — 2026-10-06 (`cto`)
+
+Appended, not rewritten. Raised during Stage 8 review of the mobile offline-tolerance work (commits `d8ed4b1`, `e4d8f66`, `4a4e599`, `c7ba6dd`): `security-engineer` found `POST /assets/:assetId/location-report` (`backend/src/routes/assets.ts:106-188`) has no check that a consent record exists before accepting the write. Confirmed on re-read of the current code; this is **not a new finding** — it is A-7 (SDL-4/SDL-9), already open and already blocking re-enabling ingestion per §8.
+
+**New detail for the A-7 work item, not previously recorded:** a server-side consent log now exists — `ctx.locationConsentLog.recordGrant` / `recordWithdrawal` are called from the same route file — but the location-report handler never reads it before accepting a write. A-7 is therefore half-built: the consent *record* side landed; the per-request *enforcement* side (reject a report with no matching grant, or after a withdrawal) did not. `authentication-engineer` + `backend-architect` should treat closing A-7 as wiring the existing log into the report handler's guard, not building a consent record from scratch.
+
+**Containment unaffected.** The endpoint remains kill-switched and fails closed unless `LOCATION_INGESTION_ENABLED === 'true'` (`assets.ts:122`, `backend/src/config/env.ts:376-383`), consistent with §8's record of the switch being live in production. This note does not change A-7's blocking status or urgency: it still blocks re-enabling ingestion, and no re-enable happens without a chaired Stage 8. Anyone setting `LOCATION_INGESTION_ENABLED=true` before A-7 (and A-8/A-9) close reopens INC-002 territory and should escalate to `cto` immediately rather than proceeding.
+
+The client-side mitigation landed the same day (commit `c7ba6dd`): `handleConsentAccept` in `mobile/src/screens/assets/AssetDetailScreen.tsx` now reverts its optimistic local "tracking enabled" state if the server-side consent-grant call fails, so a transient failure no longer leaves the device believing it has consent the server never recorded. This is a client-side control only and does not substitute for A-7's server-side enforcement.
