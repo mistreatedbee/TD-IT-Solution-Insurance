@@ -406,6 +406,11 @@ describe('routes/recovery', () => {
     });
 
     expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { caseId?: string; referenceNumber?: string } };
+    // Lets a client whose retry actually succeeded the first time route
+    // straight to the case that already exists, instead of a dead end.
+    expect(body.error.caseId).toBe('507f1f77bcf86cd799439099');
+    expect(body.error.referenceNumber).toBe('RC-20260801-ABCD');
   });
 
   it('lists and returns detail for the caller own cases', async () => {

@@ -10,6 +10,15 @@ export interface ApiErrorBody {
     requestId: string;
     /** Present on 401s from /auth/login and /auth/mfa/challenge (api-design.md §5). */
     attemptsRemaining?: number | null;
+    /**
+     * Present on 409 CONFLICT from POST /recovery/cases (backend/src/routes/
+     * recovery.ts): the open case that already exists for this asset. Lets a
+     * caller whose retry actually succeeded the first time route straight to
+     * it, per the offline-retry policy in
+     * docs/organization/05-development-standards.md, instead of a dead end.
+     */
+    caseId?: string;
+    referenceNumber?: string;
   };
 }
 
@@ -18,6 +27,8 @@ export class ApiError extends Error {
   readonly code: string;
   readonly requestId: string;
   readonly attemptsRemaining: number | null;
+  readonly caseId: string | null;
+  readonly referenceNumber: string | null;
 
   constructor(status: number, body: ApiErrorBody) {
     super(body.error.message);
@@ -26,6 +37,8 @@ export class ApiError extends Error {
     this.code = body.error.code;
     this.requestId = body.error.requestId;
     this.attemptsRemaining = body.error.attemptsRemaining ?? null;
+    this.caseId = body.error.caseId ?? null;
+    this.referenceNumber = body.error.referenceNumber ?? null;
   }
 }
 

@@ -36,7 +36,12 @@ export function useRecoveryLocationQuery(caseId: string | undefined) {
 export function useCreateRecoveryCaseMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateRecoveryCaseRequest) => createRecoveryCase(body),
+    // Idempotency key is the caller's responsibility, not minted fresh per
+    // call — a retry of the same submission intent MUST reuse the same key,
+    // or the server can't recognise it as a retry (offline-retry policy,
+    // docs/organization/05-development-standards.md).
+    mutationFn: ({ body, idempotencyKey }: { body: CreateRecoveryCaseRequest; idempotencyKey: string }) =>
+      createRecoveryCase(body, idempotencyKey),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recovery', 'cases'] });
     },

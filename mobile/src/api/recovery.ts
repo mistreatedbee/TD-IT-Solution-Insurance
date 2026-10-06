@@ -73,11 +73,25 @@ export function getRecoveryCase(caseId: string) {
   });
 }
 
-export function createRecoveryCase(body: CreateRecoveryCaseRequest) {
+/**
+ * CTO ruling (ADR-aligned offline policy, see
+ * docs/organization/05-development-standards.md "Offline behaviour for
+ * mutations that need confirmed delivery"): a dropped connection does not
+ * mean the request never arrived — `NetworkUnavailableError` covers
+ * timeouts and connections dropped mid-response, so the server may have
+ * already created the case. A retry MUST reuse the same idempotency key as
+ * the original attempt, or the server can't recognise it as a retry and
+ * will return CONFLICT for a report that actually already succeeded.
+ * Callers that need safe retry (report-theft) must generate one key per
+ * submission intent and pass it explicitly; `newIdempotencyKey()` here is
+ * only the default for callers that don't care (there are none critical
+ * today, but the signature must not silently mint a fresh key per call).
+ */
+export function createRecoveryCase(body: CreateRecoveryCaseRequest, idempotencyKey = newIdempotencyKey()) {
   return apiFetch<RecoveryCase>('/recovery/cases', {
     method: 'POST',
     body,
-    headers: { 'Idempotency-Key': newIdempotencyKey() },
+    headers: { 'Idempotency-Key': idempotencyKey },
   });
 }
 

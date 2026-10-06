@@ -92,7 +92,19 @@ export function createRecoveryRouter(ctx: AppContext): Router {
           (c) => c.assetId === parsed.data.assetId && c.status !== 'closed' && c.status !== 'recovered',
         );
         if (duplicate) {
-          next(apiError('CONFLICT', { message: 'An open recovery case already exists for this asset.' }));
+          // CTO ruling (mobile offline-retry policy,
+          // docs/organization/05-development-standards.md): a retry whose
+          // first attempt actually succeeded must be able to find its way
+          // to the case it already created, not just see a dead-end error.
+          // Carry the existing case's id/reference so the client can route
+          // there directly instead of stopping the user cold.
+          next(
+            apiError('CONFLICT', {
+              message: 'An open recovery case already exists for this asset.',
+              caseId: duplicate.id,
+              referenceNumber: duplicate.referenceNumber,
+            }),
+          );
           return;
         }
 
