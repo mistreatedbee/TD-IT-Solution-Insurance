@@ -98,9 +98,15 @@ jest.mock('../../../config/features', () => ({
   FEATURE_HARDWARE_TRACKING_ENABLED: false,
 }));
 
+const mockIsOnline = jest.fn(() => true);
+jest.mock('../../../network/NetworkProvider', () => ({
+  useIsOnline: () => mockIsOnline(),
+}));
+
 describe('AssetDetailScreen — location withdrawal (INC-002 M1/M2)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsOnline.mockReturnValue(true);
   });
 
   it('renders a reachable "Turn off tracking" control when tracking is active', async () => {
@@ -151,5 +157,59 @@ describe('AssetDetailScreen — location withdrawal (INC-002 M1/M2)', () => {
     expect(mockMutateAsyncWithdraw).not.toHaveBeenCalled();
 
     alertSpy.mockRestore();
+  });
+
+  describe('offline-tolerance policy (docs/organization/05-development-standards.md)', () => {
+    it('blocks withdrawal when offline with a definite "has NOT been turned off" message, and never calls the mutation', async () => {
+      mockIsOnline.mockReturnValue(false);
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
+        const confirm = buttons?.find((b) => b.text === 'Turn off tracking');
+        confirm?.onPress?.();
+      });
+
+      await renderWithProviders(<AssetDetailScreen />);
+      const button = await screen.findByText('Turn off tracking');
+      await act(async () => {
+        fireEvent.press(button);
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText(/Tracking has NOT been turned off/)).toBeTruthy(),
+      );
+      expect(mockMutateAsyncWithdraw).not.toHaveBeenCalled();
+      // The critical POPIA property: the screen must still offer "Turn off
+      // tracking" (i.e. still believes tracking is ON), never "Enable
+      // tracking" — it must not have silently flipped to believing
+      // withdrawal succeeded.
+      expect(screen.getByText('Turn off tracking')).toBeTruthy();
+
+      alertSpy.mockRestore();
+    });
+
+    it('on a NetworkUnavailableError, shows an uncertain-delivery message and leaves tracking shown as ON (never claims success or definite failure)', async () => {
+      const { NetworkUnavailableError } = jest.requireActual('../../../api/errors');
+      mockMutateAsyncWithdraw.mockRejectedValueOnce(new NetworkUnavailableError());
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
+        const confirm = buttons?.find((b) => b.text === 'Turn off tracking');
+        confirm?.onPress?.();
+      });
+
+      await renderWithProviders(<AssetDetailScreen />);
+      const button = await screen.findByText('Turn off tracking');
+      await act(async () => {
+        fireEvent.press(button);
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText(/couldn.t confirm tracking was turned off/)).toBeTruthy(),
+      );
+      // Must not claim it was turned off (that's the "Tracking turned off"
+      // success Alert) — confirmed by local state never having been cleared.
+      expect(mockClearLocationTrackingConsent).not.toHaveBeenCalled();
+      expect(mockClearLinkedSmartphoneAssetId).not.toHaveBeenCalled();
+      expect(screen.getByText('Turn off tracking')).toBeTruthy();
+
+      alertSpy.mockRestore();
+    });
   });
 });

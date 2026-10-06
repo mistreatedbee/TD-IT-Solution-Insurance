@@ -12,6 +12,8 @@ import {
 } from '../../api/hooks/useAssetLocation';
 import { useAssetQuery } from '../../api/hooks/useAssets';
 import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
+import { NetworkUnavailableError } from '../../api/errors';
+import { useIsOnline } from '../../network/NetworkProvider';
 import { FEATURE_HARDWARE_TRACKING_ENABLED, FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
 import {
   assetStatusBadgeTone,
@@ -78,6 +80,7 @@ export function AssetDetailScreen() {
   const withdrawMutation = useWithdrawAssetLocationMutation();
   const grantConsentMutation = useGrantAssetLocationConsentMutation();
   const { hasIncidentManagement, changePlanHref } = usePlanEntitlements();
+  const isOnline = useIsOnline();
 
   const [linkedAssetId, setLinkedAssetIdState] = useState<string | null>(null);
   const [consentGranted, setConsentGrantedState] = useState(false);
@@ -122,6 +125,14 @@ export function AssetDetailScreen() {
 
   const handleConsentAccept = useCallback(async () => {
     if (!id || !FEATURE_LOCATION_TRACKING_ENABLED) return;
+    // Offline-tolerance policy (docs/organization/05-development-standards.md,
+    // "Offline behaviour for mutations that need confirmed delivery"): block
+    // before anything is sent — nothing has changed yet at this point, so
+    // this is a definite, accurate "not sent" case.
+    if (!isOnline) {
+      setActionError("You're offline. Tracking has not been enabled — reconnect and try again.");
+      return;
+    }
     setActionLoading(true);
     setActionError(null);
     try {
@@ -154,11 +165,20 @@ export function AssetDetailScreen() {
       await refetchLocation();
       await locationSummary.refetch();
     } catch (err) {
-      setActionError(mapUserFacingError(err, { context: 'location' }));
+      // (b) A dropped connection here doesn't mean nothing happened — the
+      // server-side consent record or the location report may have already
+      // landed. Don't claim either definitely failed; prompt a check instead.
+      if (err instanceof NetworkUnavailableError) {
+        setActionError(
+          "We couldn't confirm this reached the server. Check your connection — if tracking doesn't start, turn it off and on again.",
+        );
+      } else {
+        setActionError(mapUserFacingError(err, { context: 'location' }));
+      }
     } finally {
       setActionLoading(false);
     }
-  }, [id, locationSummary, reportMutation, refetchLocation, grantConsentMutation]);
+  }, [id, isOnline, locationSummary, reportMutation, refetchLocation, grantConsentMutation]);
 
   const handleConsentDecline = useCallback(async () => {
     await setLocationTrackingConsent('denied');
@@ -167,6 +187,13 @@ export function AssetDetailScreen() {
 
   const performDisableTracking = useCallback(async () => {
     if (!id) return;
+    // Offline-tolerance policy: block before sending. This matters most of
+    // all three actions on this screen under POPIA — a customer must never
+    // be told tracking is off when the withdrawal never reached the server.
+    if (!isOnline) {
+      setActionError("You're offline. Tracking has NOT been turned off — reconnect and try again.");
+      return;
+    }
     setActionLoading(true);
     setActionError(null);
     try {
@@ -190,11 +217,23 @@ export function AssetDetailScreen() {
           : 'Location tracking is off for this phone.',
       );
     } catch (err) {
-      setActionError(mapUserFacingError(err, { context: 'location' }));
+      // (b) Local consent/linked-asset state is deliberately only cleared
+      // AFTER withdrawMutation resolves (above) — so on any failure, this
+      // screen still correctly shows tracking as ON. A NetworkUnavailableError
+      // specifically must not claim withdrawal definitely failed (the
+      // server may have processed it before the connection dropped); it
+      // also must not claim success. Prompt a clear retry instead.
+      if (err instanceof NetworkUnavailableError) {
+        setActionError(
+          "We couldn't confirm tracking was turned off. Please check your connection and try again.",
+        );
+      } else {
+        setActionError(mapUserFacingError(err, { context: 'location' }));
+      }
     } finally {
       setActionLoading(false);
     }
-  }, [id, withdrawMutation, refetchLocation, locationSummary]);
+  }, [id, isOnline, withdrawMutation, refetchLocation, locationSummary]);
 
   const handleDisableTracking = useCallback(() => {
     if (!id) return;
@@ -214,6 +253,10 @@ export function AssetDetailScreen() {
 
   const handleUpdateLocation = useCallback(async () => {
     if (!id || !FEATURE_LOCATION_TRACKING_ENABLED) return;
+    if (!isOnline) {
+      setActionError("You're offline. Location has not been updated — reconnect and try again.");
+      return;
+    }
     setActionLoading(true);
     setActionError(null);
     try {
@@ -231,11 +274,15 @@ export function AssetDetailScreen() {
       await refetchLocation();
       await locationSummary.refetch();
     } catch (err) {
-      setActionError(mapUserFacingError(err, { context: 'location' }));
+      if (err instanceof NetworkUnavailableError) {
+        setActionError("We couldn't confirm the location update was received. Check your connection and try again.");
+      } else {
+        setActionError(mapUserFacingError(err, { context: 'location' }));
+      }
     } finally {
       setActionLoading(false);
     }
-  }, [id, locationSummary, reportMutation, refetchLocation]);
+  }, [id, isOnline, locationSummary, reportMutation, refetchLocation]);
 
   if (isLoading) {
     return (
