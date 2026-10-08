@@ -28,7 +28,11 @@ export interface RecoveryNotificationService {
   notifySecurityOperatorsTheftReported(params: {
     caseId: string;
     referenceNumber: string;
-    assetName: string;
+    // PDM-5 (compliance-review-security-partner-data-minimisation.md F-7):
+    // the partner-facing push must not carry the customer-authored asset
+    // display name. Asset category (an enum, not free text) is the most
+    // identifying detail permitted in this notification.
+    assetType: string;
     assetId: string;
   }): Promise<void>;
   notifyCaseAssigned(params: {
@@ -146,13 +150,14 @@ export function createRecoveryNotificationService(deps: {
       });
     },
 
-    async notifySecurityOperatorsTheftReported({ caseId, referenceNumber, assetName, assetId }) {
+    async notifySecurityOperatorsTheftReported({ caseId, referenceNumber, assetType, assetId }) {
       const operatorIds = await deps.accounts.listActiveSecurityOperatorIds();
       const tasks = operatorIds.map((accountId) =>
         deps.pushNotifications.sendToAccount({
           accountId,
           templateId: 'recovery.case.partner.new',
-          variables: { assetName, caseId, referenceNumber, assetId },
+          // PDM-5: no `assetName` here — see interface note above.
+          variables: { assetType, caseId, referenceNumber, assetId },
         }),
       );
       await Promise.allSettled(tasks);

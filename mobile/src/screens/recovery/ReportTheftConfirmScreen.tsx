@@ -154,7 +154,7 @@ export function ReportTheftConfirmScreen() {
         }}
         multiline
         numberOfLines={4}
-        hint="When and where did you last see the asset? Any police case number? Please don't include personal details about other people (e.g. names of suspects) — only describe what happened."
+        hint="When and where did you last see the asset? Please don't include personal details about other people (e.g. names of suspects) — only describe what happened. If you've opened a SAPS case, add the case number on the tracking screen after you submit this report."
         style={styles.notesInput}
       />
 

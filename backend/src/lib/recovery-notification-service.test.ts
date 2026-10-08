@@ -165,7 +165,7 @@ describe('recovery-notification-service', () => {
     await service.notifySecurityOperatorsTheftReported({
       caseId: '507f1f77bcf86cd799439011',
       referenceNumber: 'RC-20260801-ABCD',
-      assetName: 'MacBook Pro',
+      assetType: 'laptop',
       assetId: '507f1f77bcf86cd799439021',
     });
 
@@ -177,13 +177,27 @@ describe('recovery-notification-service', () => {
         variables: expect.objectContaining({
           caseId: '507f1f77bcf86cd799439011',
           referenceNumber: 'RC-20260801-ABCD',
-          assetName: 'MacBook Pro',
+          assetType: 'laptop',
         }),
       }),
     );
+    // PDM-5 (compliance-review-security-partner-data-minimisation.md F-7):
+    // the customer-authored asset display name must never reach the partner
+    // push — objectContaining above only proves the listed keys are present,
+    // not that assetName is absent.
+    for (const call of pushSend.mock.calls) {
+      const [args] = call as [{ variables?: Record<string, unknown> }];
+      expect(args.variables).not.toHaveProperty('assetName');
+    }
     expect(pushSend).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: 'op-2', templateId: 'recovery.case.partner.new' }),
     );
+    // PDM-5 (compliance-review-security-partner-data-minimisation.md F-7):
+    // the partner fan-out must never carry the customer-authored asset
+    // display name, which routinely contains a person's name or plate.
+    for (const [call] of pushSend.mock.calls) {
+      expect(call.variables).not.toHaveProperty('assetName');
+    }
   });
 
   it('skips partner push when operator disabled theft_critical push', async () => {
@@ -240,7 +254,7 @@ describe('recovery-notification-service', () => {
     await service.notifySecurityOperatorsTheftReported({
       caseId: '507f1f77bcf86cd799439011',
       referenceNumber: 'RC-20260801-ABCD',
-      assetName: 'MacBook Pro',
+      assetType: 'laptop',
       assetId: '507f1f77bcf86cd799439021',
     });
 

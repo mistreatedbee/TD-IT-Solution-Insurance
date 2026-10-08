@@ -14,16 +14,21 @@ jest.mock('../../theme/primitives', () => {
       label,
       value,
       onChangeText,
+      hint,
     }: {
       label: string;
       value: string;
       onChangeText: (text: string) => void;
+      hint?: string;
     }) => (
-      <TextInput
-        accessibilityLabel={label}
-        value={value}
-        onChangeText={onChangeText}
-      />
+      <View>
+        <TextInput
+          accessibilityLabel={label}
+          value={value}
+          onChangeText={onChangeText}
+        />
+        {hint ? <Text>{hint}</Text> : null}
+      </View>
     ),
     Button: ({
       children,
@@ -85,6 +90,23 @@ async function pressSubmit(submitLabel = 'Submit theft report') {
     fireEvent.press(screen.getByText(submitLabel));
   });
 }
+
+describe('ReportTheftConfirmScreen — notes-field data minimisation (PDM-7 / F-9)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockMutateAsync.mockReset();
+    mockIsOnline.mockReturnValue(true);
+  });
+
+  it('does not solicit a police case number into the shared notes field, and points to the dedicated police-report flow instead', async () => {
+    await render(<ReportTheftConfirmScreen />);
+
+    expect(screen.queryByText(/Any police case number/)).toBeNull();
+    expect(
+      screen.getByText(/If you've opened a SAPS case, add the case number on the tracking screen/),
+    ).toBeTruthy();
+  });
+});
 
 describe('ReportTheftConfirmScreen — offline-retry policy', () => {
   beforeEach(() => {

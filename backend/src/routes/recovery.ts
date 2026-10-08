@@ -130,7 +130,12 @@ export function createRecoveryRouter(ctx: AppContext): Router {
           ctx.recoveryNotifications.notifySecurityOperatorsTheftReported({
             caseId: recoveryCase.id,
             referenceNumber: recoveryCase.referenceNumber,
-            assetName: asset.displayName,
+            // PDM-5 (compliance-review-security-partner-data-minimisation.md
+            // F-7): the partner-facing push must NOT carry the customer's
+            // free-text asset display name (`asset.displayName`) — it
+            // routinely contains a person's name or a number plate. Pass
+            // only the asset's category enum, which is not customer PII.
+            assetType: asset.assetType,
             assetId: asset.id,
           }),
         );

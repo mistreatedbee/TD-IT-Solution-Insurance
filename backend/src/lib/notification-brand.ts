@@ -78,6 +78,12 @@ function deepLink(path: string): string {
   return `tditinsurance://${path.replace(/^\//, '')}`;
 }
 
+/** Asset category enum ("business_equipment") to a readable label — never
+ * customer free text, so safe for the partner-facing push (PDM-5). */
+function assetCategoryLabel(assetType: string): string {
+  return assetType.replace(/_/g, ' ');
+}
+
 export function buildBrandedPushMessage(
   templateId: PushTemplateId,
   variables: PushTemplateVariables = {},
@@ -185,8 +191,12 @@ export function buildBrandedPushMessage(
       return {
         eventId: templateId,
         title: 'New theft case',
-        body: variables.assetName
-          ? `A customer reported ${variables.assetName} stolen${refSuffix}. Open the app to respond.`
+        // PDM-5 (compliance-review-security-partner-data-minimisation.md
+        // F-7): this notification must not carry the customer's free-text
+        // asset display name — only the asset category enum, which is not
+        // customer PII.
+        body: variables.assetType
+          ? `A customer reported a ${assetCategoryLabel(variables.assetType)} stolen${refSuffix}. Open the app to respond.`
           : `A new theft case${refSuffix} needs attention. Open the app to respond.`,
         subtitle,
         category: 'theft_critical',

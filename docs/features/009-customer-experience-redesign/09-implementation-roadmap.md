@@ -202,3 +202,28 @@ Parallel: `design-system-manager` signs off new composed components listed in `0
 | Hardware vendor ADR | `integration-architect` |
 | POPIA on profile/KYC | `compliance-specialist` |
 | Phase 1 QA | `automation-qa-engineer` |
+
+---
+
+## Pilot-Readiness Blockers — Security Company Dashboard
+
+**Filed by:** `technical-project-manager` · **Date:** 2026-10-08
+**Trigger:** `cto`'s 2026-10-08 pilot-partner readiness ruling, following
+`compliance-review-security-partner-data-minimisation.md` and
+`docs/organization/partner-operator-agreement-requirements.md`.
+**Format:** follows the "Blockers to Watch" convention in
+`docs/organization/sprint-plan-release-gate-a.md` — tracking entries only, no new analysis or
+re-ruling. See the cited documents for the underlying findings; this section does not restate them.
+**Common thread: all three are business/legal decisions owned by the business owner (+ counsel
+where noted), not engineering tasks.** None has an engineering workaround.
+
+| ID | What's blocked | Owner | What it gates |
+|---|---|---|---|
+| **G-7** | Dispatch-model decision: shared unclaimed pool (de-identified, any partner org sees any open case) vs. admin-assigned dispatch (staff manually assigns each case to exactly one partner). Open since `docs/organization/11-documented-client-instructions.md` §4 G-7; ruling confirms it is a Client/business-owner call, not a compliance one (`compliance-review-security-partner-data-minimisation.md` §2.4, §0.3) | Business owner | **PDM-6** (partner registry — registry design depends on which dispatch model it serves); the pilot launch itself (compliance sign-off at Stage 8 withheld until G-7 is answered, §6); whether an admin-assignment route is ever built |
+| **CT-1** | Cross-border consent (data leaving South Africa to NextWave's hosting) currently sits at "informally acknowledged, not confirmed in the required form" (`docs/organization/10-data-protection-contract-obligations.md` §10.3) and needs **formal sign-off in that required form**, not the existing informal acknowledgement | Business owner | Any pilot with real customer data on the Security Company Dashboard (`compliance-review-security-partner-data-minimisation.md` §0.4, §6 gate position: "will not sign Stage 8 for a pilot with real customer data until every [PILOT] condition, CT-1 (required form), G-7 and an executed partner agreement are in place") |
+| **Partner-operator agreement** | A signed POPIA s21 agreement with each pilot partner, per the drafted requirements at `docs/organization/partner-operator-agreement-requirements.md`. Three open counsel questions from that document's §7 (mirrored in the companion compliance ruling's §7) must also be answered before the agreement can be finalised: (a) is a partner TD IT Solution's "operator," or a separate "responsible party" for the partner's own records (occurrence books, SAPS evidence, etc.); (b) does POPIA s57(1)(b) prior Information Regulator authorisation apply to suspect/criminal-behaviour-adjacent information recovery work may generate; (c) who actually signs, given NextWave appears to be an operator rather than a direct contracting party per decision record TDIT-2026-09 (companion doc §A.2 position: TD IT Solution (Pty) Ltd and the partner sign, not NextWave — counsel to confirm) | Business owner + admitted counsel | Executing any partner agreement at all; pilot launch with real customer data (same §6 gate position as CT-1 above); PDM-6 partner registry's "agreement status: executed" field, which gates operator invitation and the dispatch pool per `compliance-review-security-partner-data-minimisation.md` PDM-6 |
+
+**Status:** all three open as of 2026-10-08. No engineering work is blocked by these three items
+specifically — PDM-1…PDM-9 (code-side minimisation) may proceed in parallel per the compliance
+ruling §6 — but **no pilot partner may be given access to real customer data until all three
+close.**

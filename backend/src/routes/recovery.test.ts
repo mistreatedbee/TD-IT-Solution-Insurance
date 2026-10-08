@@ -182,6 +182,7 @@ function createHarness(opts: {
   cases?: RecoveryCaseDocument[];
   planCatalogId?: string | null;
   envOverrides?: Partial<Env>;
+  onNotifySecurityOperators?: (params: Record<string, unknown>) => void;
 }) {
   const env = fakeEnv(opts.envOverrides);
   const kv = new InMemoryKeyValueStore();
@@ -310,7 +311,8 @@ function createHarness(opts: {
       async notifyTheftReportSubmitted() {
         return undefined;
       },
-      async notifySecurityOperatorsTheftReported() {
+      async notifySecurityOperatorsTheftReported(params: Record<string, unknown>) {
+        opts.onNotifySecurityOperators?.(params);
         return undefined;
       },
     },
@@ -382,6 +384,36 @@ describe('routes/recovery', () => {
     expect(body.assetId).toBe(assetId);
     expect(body.status).toBe('open');
     expect(body.referenceNumber).toMatch(/^RC-/);
+  });
+
+  it('PDM-5 (compliance-review-security-partner-data-minimisation.md F-7): never sends the customer-authored asset display name to the partner fan-out notification', async () => {
+    const assetId = '507f1f77bcf86cd799439021';
+    const acctId = randomUUID();
+    let captured: Record<string, unknown> | undefined;
+    const { app, accountId, sessionId, env } = createHarness({
+      accountId: acctId,
+      assets: [sampleAsset(acctId, assetId)],
+      onNotifySecurityOperators: (params) => {
+        captured = params;
+      },
+    });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const res = await fetch(`${listened.baseUrl}/recovery/cases`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+        'idempotency-key': randomUUID(),
+      },
+      body: JSON.stringify({ assetId, notes: 'Stolen yesterday' }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(captured).toBeDefined();
+    expect(captured).not.toHaveProperty('assetName');
+    expect(captured?.assetType).toBeDefined();
   });
 
   it('returns 409 when an open case already exists for the asset', async () => {

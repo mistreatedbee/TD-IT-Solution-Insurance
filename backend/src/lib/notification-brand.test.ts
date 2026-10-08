@@ -22,18 +22,30 @@ describe('notification-brand', () => {
 
   it('builds partner new-case push with security deep link', () => {
     const message = buildBrandedPushMessage('recovery.case.partner.new', {
-      assetName: 'MacBook Pro',
+      assetType: 'laptop',
       caseId: '507f1f77bcf86cd799439011',
       referenceNumber: 'RC-2026-0001',
     });
 
     expect(message.title).toBe('New theft case');
-    expect(message.body).toContain('MacBook Pro');
+    expect(message.body).toContain('laptop');
     expect(message.body).toContain('RC-2026-0001');
     expect(message.category).toBe('theft_critical');
     expect(message.priority).toBe('high');
     expect(message.deepLink).toBe('tditinsurance://security/cases/507f1f77bcf86cd799439011');
     expect(message.data.deepLink).toBe('tditinsurance://security/cases/507f1f77bcf86cd799439011');
+  });
+
+  it('PDM-5 (compliance-review-security-partner-data-minimisation.md F-7): never includes the customer-authored asset display name', () => {
+    const message = buildBrandedPushMessage('recovery.case.partner.new', {
+      assetName: 'MacBook Pro belonging to Thabo',
+      assetType: 'laptop',
+      caseId: '507f1f77bcf86cd799439011',
+      referenceNumber: 'RC-2026-0001',
+    });
+
+    expect(message.body).not.toContain('MacBook Pro');
+    expect(message.body).not.toContain('Thabo');
   });
 
   it('builds branded test notification copy', () => {
