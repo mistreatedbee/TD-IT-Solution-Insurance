@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Button, Card, SectionHeading } from '../../components';
 import { DataTable, DetailGrid, InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
+import { ApiError } from '../../dashboard/api/errors';
 import {
   claimSecurityCase,
   getSecurityCase,
@@ -11,6 +12,8 @@ import {
   type SecurityRecoveryCase,
 } from '../api/cases';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { isNetworkError } from '../../lib/network-error';
+import { useIsOnline } from '../../lib/useIsOnline';
 
 const STATUS_ACTIONS: { label: string; status: SecurityCaseStatus }[] = [
   { label: 'Start investigating', status: 'investigating' },
@@ -103,6 +106,7 @@ export function CaseDetailPage() {
   const [recoveryCase, setRecoveryCase] = useState<SecurityRecoveryCase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
+  const isOnline = useIsOnline();
 
   useEffect(() => {
     if (!caseId) return;
@@ -111,15 +115,32 @@ export function CaseDetailPage() {
       .catch((err) => setError(mapUserFacingError(err, { context: 'security-case' })));
   }, [caseId]);
 
+  // Offline-tolerance policy (docs/organization/05-development-standards.md,
+  // "Offline behaviour for mutations that need confirmed delivery") — ported from
+  // the mobile implementation (mobile/src/screens/security/SecurityCaseDetailScreen.tsx,
+  // commit 4a4e599). setStatus is naturally idempotent — only (a)/(b) needed. claimCase is
+  // NOT naturally idempotent: the backend's claim write only matches an unclaimed
+  // (status='open', no partner org) case, so a retry after an ambiguous network failure
+  // would get a 404 even if the original attempt actually succeeded — handled below by
+  // refetching and treating "no longer open" as proof the original claim landed.
+
   async function setStatus(status: SecurityCaseStatus) {
     if (!caseId) return;
+    if (!isOnline) {
+      setError("You're offline. This status change has not been saved — reconnect and try again.");
+      return;
+    }
     setUpdating(true);
     setError(null);
     try {
       const updated = await updateSecurityCaseStatus(caseId, status);
       setRecoveryCase(updated);
     } catch (err) {
-      setError(mapUserFacingError(err, { context: 'security-case' }));
+      if (isNetworkError(err)) {
+        setError("We couldn't confirm this status change was saved. Check your connection and try again.");
+      } else {
+        setError(mapUserFacingError(err, { context: 'security-case' }));
+      }
     } finally {
       setUpdating(false);
     }
@@ -127,12 +148,38 @@ export function CaseDetailPage() {
 
   async function claimCase() {
     if (!caseId) return;
+    if (!isOnline) {
+      setError("You're offline. This case has not been claimed — reconnect and try again.");
+      return;
+    }
     setUpdating(true);
     setError(null);
     try {
       const updated = await claimSecurityCase(caseId);
       setRecoveryCase(updated);
     } catch (err) {
+      if (isNetworkError(err)) {
+        setError(
+          "We couldn't confirm this claim was received. Check your connection, then refresh before retrying — retrying a claim that already succeeded will show as unavailable, not as success.",
+        );
+        return;
+      }
+      // A claim retried after it actually already succeeded hits the backend's
+      // open-only match and comes back 404. Re-fetch rather than assume failure —
+      // if the case is no longer 'open', the original attempt landed; show its
+      // current state instead of an error.
+      if (err instanceof ApiError && err.status === 404) {
+        try {
+          const refreshed = await getSecurityCase(caseId);
+          if (refreshed.status !== 'open') {
+            setRecoveryCase(refreshed);
+            return;
+          }
+        } catch {
+          // Refetch itself failing doesn't change what we tell the user about
+          // the claim — fall through to the generic error below.
+        }
+      }
       setError(mapUserFacingError(err, { context: 'security-case' }));
     } finally {
       setUpdating(false);
@@ -151,7 +198,6 @@ export function CaseDetailPage() {
         rows={[
           { label: 'Status', value: <StatusBadge value={recoveryCase.status} /> },
           { label: 'Asset ID', value: recoveryCase.assetId },
-          { label: 'Customer account', value: recoveryCase.accountId },
           { label: 'Reported', value: new Date(recoveryCase.reportedAt).toLocaleString() },
           { label: 'Notes', value: recoveryCase.notes ?? '—' },
           { label: 'Partner org', value: recoveryCase.partnerOrganizationId ?? 'Unassigned' },

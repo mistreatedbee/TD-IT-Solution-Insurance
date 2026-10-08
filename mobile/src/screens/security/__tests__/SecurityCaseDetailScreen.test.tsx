@@ -44,12 +44,26 @@ function openCase() {
   return {
     id: 'case-1',
     assetId: 'asset-1',
-    accountId: 'account-1',
     status: 'open' as const,
     referenceNumber: 'RC-1',
     reportedAt: '2026-01-01T00:00:00.000Z',
   };
 }
+
+describe('SecurityCaseDetailScreen — data minimisation (PDM-1)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockIsOnline.mockReturnValue(true);
+    mockGetSecurityCase.mockResolvedValue(openCase());
+  });
+
+  it('never renders a "Customer account" label — accountId must not reach the partner UI', async () => {
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('RC-1');
+
+    expect(screen.queryByText('Customer account')).toBeNull();
+  });
+});
 
 describe('SecurityCaseDetailScreen — offline-tolerance policy', () => {
   beforeEach(() => {

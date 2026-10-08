@@ -202,7 +202,6 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
 
       <Card style={styles.section}>
         <DetailRow label="Asset ID" value={recoveryCase.assetId} />
-        <DetailRow label="Customer account" value={recoveryCase.accountId} />
         <DetailRow
           label="Reported"
           value={new Date(recoveryCase.reportedAt).toLocaleString()}

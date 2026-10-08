@@ -108,6 +108,24 @@ describe('ReportTheftConfirmScreen — notes-field data minimisation (PDM-7 / F-
   });
 });
 
+describe('ReportTheftConfirmScreen — customer disclosure (PDM-9)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockMutateAsync.mockReset();
+    mockIsOnline.mockReturnValue(true);
+  });
+
+  it('renders the security-partner data-sharing disclosure before submit, visible without extra interaction', async () => {
+    await render(<ReportTheftConfirmScreen />);
+
+    expect(
+      screen.getByText(
+        /we.ll share a short summary \(no name or contact details\) with our contracted security partners/,
+      ),
+    ).toBeTruthy();
+  });
+});
+
 describe('ReportTheftConfirmScreen — offline-retry policy', () => {
   beforeEach(() => {
     jest.clearAllMocks();

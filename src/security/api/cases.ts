@@ -5,7 +5,6 @@ export type SecurityCaseStatus = 'open' | 'investigating' | 'tracking' | 'recove
 export interface SecurityRecoveryCase {
   id: string;
   assetId: string;
-  accountId: string;
   status: SecurityCaseStatus;
   referenceNumber: string;
   reportedAt: string;

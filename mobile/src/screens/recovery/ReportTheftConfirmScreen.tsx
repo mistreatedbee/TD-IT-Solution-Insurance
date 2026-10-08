@@ -158,6 +158,13 @@ export function ReportTheftConfirmScreen() {
         style={styles.notesInput}
       />
 
+      <Text style={styles.disclosure}>
+        When you submit this report, we&rsquo;ll share a short summary (no name or contact
+        details) with our contracted security partners so one of them can take your case. The
+        partner who takes it will see your report details, including anything you type above, to
+        help recover your asset.
+      </Text>
+
       {!isOnline ? (
         <View style={styles.alertSpacing}>
           <Alert tone="warning">You&rsquo;re offline. Reconnect before submitting this report.</Alert>
@@ -220,6 +227,12 @@ const styles = StyleSheet.create({
   notesInput: {
     minHeight: 96,
     textAlignVertical: 'top',
+  },
+  disclosure: {
+    fontSize: typography.sizes.xs,
+    color: colors.textSecondary,
+    lineHeight: typography.sizes.xs * 1.4,
+    marginBottom: spacing.lg,
   },
   confirmRow: {
     flexDirection: 'row',

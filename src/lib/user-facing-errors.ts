@@ -1,5 +1,6 @@
 import { ApiError, SessionTerminatedError } from '../customer/api/errors';
 import { mapSupabaseAuthError } from '../customer/supabase/auth';
+import { isNetworkError } from './network-error';
 
 export type UserFacingErrorContext =
   | 'auth'
@@ -145,14 +146,7 @@ export interface MapUserFacingErrorOptions {
 
 /** Maps network/offline failures to a friendly message (web has no NetworkUnavailableError class). */
 function mapNetworkLike(err: unknown): string | null {
-  if (!(err instanceof Error)) return null;
-  const msg = err.message.toLowerCase();
-  if (
-    msg.includes('failed to fetch') ||
-    msg.includes('networkerror') ||
-    msg.includes('load failed') ||
-    msg.includes('network request failed')
-  ) {
+  if (isNetworkError(err)) {
     return 'Could not reach the server. Check your internet connection and try again.';
   }
   return null;

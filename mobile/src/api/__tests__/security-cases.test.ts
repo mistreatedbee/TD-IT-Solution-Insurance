@@ -20,7 +20,6 @@ function jsonResponse(status: number, body: unknown) {
 const sampleCase = {
   id: '507f1f77bcf86cd799439011',
   assetId: '507f1f77bcf86cd799439012',
-  accountId: 'acc-001',
   status: 'open',
   referenceNumber: 'RC-2026-0001',
   reportedAt: '2026-08-14T08:00:00.000Z',
