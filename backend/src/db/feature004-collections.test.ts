@@ -17,14 +17,15 @@ describe('db/feature004-collections — admin_access_log bootstrap specs', () =>
     expect(FEATURE004_COLLECTIONS.adminAccessLog).toBe('admin_access_log');
   });
 
-  it('defines four named indexes per database-addendum-001.md §2', () => {
+  it('defines five named indexes per database-addendum-001.md §2 and ADR-0006 §18.8 C-C (SR-009S-7)', () => {
     const indexes = FEATURE004_INDEXES.adminAccessLog;
-    expect(indexes).toHaveLength(4);
+    expect(indexes).toHaveLength(5);
     expect(indexes.map((idx) => idx.name)).toEqual([
       'admin_access_log_actorAccountId_createdAt',
       'admin_access_log_actorSessionId_createdAt',
       'admin_access_log_targetAccountId_createdAt_partial',
       'admin_access_log_createdAt_purge_partial',
+      'admin_access_log_resourceType_resourceId_createdAt_partial',
     ]);
 
     const targetPartial = indexes[2];
@@ -34,6 +35,16 @@ describe('db/feature004-collections — admin_access_log bootstrap specs', () =>
 
     const purgePartial = indexes[3];
     expect(purgePartial?.partialFilterExpression).toEqual({ legalHold: false });
+
+    // SR-009S-7 — chain-check index for the privileged_state_change applied-iff
+    // rule (ADR-0006 §18.8 C-C; docs/organization/runbooks/
+    // aud-8-privileged-access-reconstruction.md §14.3), so the chain-check query
+    // isn't a collection scan.
+    const chainCheckIndex = indexes[4];
+    expect(chainCheckIndex?.key).toEqual({ resourceType: 1, resourceId: 1, createdAt: -1 });
+    expect(chainCheckIndex?.partialFilterExpression).toEqual({
+      resourceId: { $type: 'objectId' },
+    });
   });
 
   it('requires ADR-0006 R-1 correlation fields on every document', () => {

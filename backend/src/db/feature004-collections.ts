@@ -449,6 +449,18 @@ export const FEATURE004_INDEXES: Record<
       name: 'admin_access_log_createdAt_purge_partial',
       partialFilterExpression: { legalHold: false },
     },
+    {
+      // ADR-0006 §18.8 C-C / SR-009S-7 — chain-check: "every row for this
+      // resource, in time order", used to apply the privileged_state_change
+      // applied-iff rule (docs/organization/runbooks/aud-8-privileged-access-
+      // reconstruction.md §13). Scoped to resourceId-bearing rows only — the
+      // same partial-filter convention as the targetAccountId index above —
+      // because list-level / call-scoped rows (resourceId: null) are never
+      // chain-check inputs.
+      key: { resourceType: 1, resourceId: 1, createdAt: -1 },
+      name: 'admin_access_log_resourceType_resourceId_createdAt_partial',
+      partialFilterExpression: { resourceId: { $type: 'objectId' } },
+    },
   ],
 };
 

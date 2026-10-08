@@ -331,3 +331,140 @@ Until **FU-A10** (deploy-time / CI assertion that the runtime credential is refu
 
 **FU-A4 (document):** discharged.  
 **FU-A4 as an operable control before first production privileged account:** still blocked on **FU-A11** per §16.5 item 2 / §16.6.
+
+## 14. Chain-check — was a `privileged_state_change` row actually applied? (ADR-0006 §18.8 C-C / SR-009S-7)
+
+**Added 2026-10-08 by `security-engineer`, closing SR-009S-7**
+(`docs/features/009-customer-experience-redesign/security-review-security-operations.md` §8).
+This section is additive — §1–§12 above (disclosure reconstruction) are unchanged and this does
+not reopen or restate them. It documents the decision-record half of AUD-8 that ADR-0006 §18.8
+introduced after this runbook was first filed: `privileged_state_change` rows (Security Company
+Dashboard case claim/status-transition audit, `backend/src/repositories/admin-access-log.ts`
+`recordStateChange()`) are written **before** the compare-and-set mutation they describe, not
+inside a transaction with it (§18.8 ruling (b)). That ordering is only safe because a row's
+truth can be checked after the fact. This section is that check.
+
+### 14.1 Why this exists
+
+AUD-10's "no privileged effect without a record" principle is read, for a state change, as
+"before the effect" = "before mutating" (§18.8(b)). That makes the audit row and the mutation two
+separate writes with no multi-document transaction between them (C-D names the triggers that
+would make a transaction mandatory; none has tripped yet). A row can therefore exist whose
+mutation never took effect — a crash between the audit write and the compare-and-set call, or
+(the far more common case) the compare-and-set itself missing because a concurrent writer moved
+the document first (`security-cases.ts`'s claim/PATCH handlers, exactly the race
+`security-cases.test.ts:978-1025` exercises). An unverifiable "operator closed case C" row is
+misleading evidence, not just stale data, so the chain-check below is required, not optional.
+
+### 14.2 The applied-iff rule (verbatim from ADR-0006 §18.8 C-C)
+
+> A `privileged_state_change` row records an authorised transition that was committed to, and it
+> was **applied if and only if** one of these holds: the next row for the same `resourceId` has
+> `fromStatus` equal to this row's `toStatus`, **or** this is the latest row and the case's
+> current `status` equals its `toStatus`.
+
+Restated operationally, for a given `privileged_state_change` row R on case C:
+
+1. Fetch every `privileged_state_change` row for C (`resourceType: 'recovery_case'`,
+   `resourceId` = C's `_id`), ordered by `createdAt` ascending.
+2. If R has a successor row N in that ordering: R is **applied** iff `N.fromStatus ===
+   R.toStatus`. (If they differ, R's compare-and-set missed — some other write, not the one R
+   describes, is what actually changed C's status between R and N.)
+3. If R is the last row in that ordering (no successor yet): R is **applied** iff `C.status ===
+   R.toStatus`, read from the case document itself (`recovery_cases` collection) at chain-check
+   time.
+4. A row that fails its check is not proof of a security breach by itself — it is proof the
+   audited transition did not take effect. Compare-and-set misses (lost races, §14.4) and
+   process crashes between the audit write and the mutation (§18.8(b)) produce the identical
+   signature: a broken chain. The chain check cannot distinguish the two causes; it only proves
+   one of them happened. Distinguishing them (if ever required) needs application logs or
+   process-restart evidence from the same time window — out of scope for this runbook.
+
+This rule is **per case** (`resourceId`), not per actor or per session — it says nothing about
+*who* a row belongs to, only whether *that case's* documented transition happened. It is a
+different axis from §7–§8's subject-keyed/actor-keyed disclosure reconstruction above and is run
+separately.
+
+### 14.3 Chain-check query
+
+**Inputs:** case id `$1` / `C` (the `recovery_cases._id`, a Mongo `ObjectId`).
+
+```javascript
+// Uses admin_access_log_resourceType_resourceId_createdAt_partial
+// (backend/src/db/feature004-collections.ts FEATURE004_INDEXES.adminAccessLog) —
+// without it this is a collection scan, which is exactly what SR-009S-7 required
+// an index to avoid.
+const rows = await db.admin_access_log
+  .find({
+    resourceType: 'recovery_case',
+    resourceId: C, // ObjectId, not the :caseId path string — AUD-4/§18.8(a)(1)
+    eventType: 'privileged_state_change',
+  })
+  .sort({ createdAt: 1 })
+  .toArray();
+
+// §14.2 step 2–3, applied in order:
+for (let i = 0; i < rows.length; i++) {
+  const row = rows[i];
+  const next = rows[i + 1];
+  const applied = next
+    ? next.fromStatus === row.toStatus
+    : (await db.recovery_cases.findOne({ _id: C }))?.status === row.toStatus;
+  // record `applied` per row; do not discard rows that fail the check — see §14.4.
+}
+```
+
+Do not add a `$limit` to the sort — the rule needs every row for the case, not a recent window,
+because a crash that produced a dangling row can be arbitrarily old if nobody has run this check
+since.
+
+### 14.4 Known-good worked example (the SR-009S-4/SR-009S-7 race test)
+
+`backend/src/routes/security-cases.test.ts` — *"a PATCH that races a concurrent status change
+returns 404, not 2xx, and leaves the case at the post-race status"* (around line 978) is the
+chain-check's worked example, not just a route-level regression test:
+
+- The case pre-read observes `status: 'investigating'`.
+- A concurrent writer moves the case to `'tracking'` before the PATCH handler's compare-and-set
+  runs.
+- The handler audits one `privileged_state_change` row — `fromStatus: 'investigating'`,
+  `toStatus: 'recovered'` — then its own compare-and-set (`status: 'investigating'`) misses,
+  because the document is now at `'tracking'`. The route returns 404, never 2xx.
+- Applying §14.2 to the resulting state: this row is the only (hence latest) row for the case, so
+  the rule compares the case's current status (`'tracking'`, left exactly where the race left it)
+  against the row's `toStatus` (`'recovered'`). They differ → **the chain check correctly marks
+  this row as not applied** — matching reality: the audited transition to `'recovered'` never
+  took effect.
+
+This confirms the rule behaves correctly on the one race scenario the test suite already
+exercises end to end. A dedicated chain-check unit test against the repository layer was
+considered (per the Stage 8 review's invitation to use judgment on this) and not added in this
+pass: the rule itself is a three-line read-after-query comparison with no independent
+implementation in `backend/src/` to regress — adding one here would be asserting the rule
+document matches itself, not catching a real defect. If the chain-check query above is ever
+promoted from "runbook" to actual code (a scheduled job, an admin tool), that implementation
+needs its own unit tests against this worked example and the obvious "two consecutive rows for
+the same case" / "single unambiguously-applied row" cases — tracked as a follow-up if and when
+C-D(iii) ("the chain check finds an unexplained break in production") becomes something anyone
+actually runs on a schedule, rather than a manual investigative procedure like the rest of this
+document.
+
+### 14.5 Preconditions and failure modes specific to this check
+
+- Same FU-A11 investigative-credential prerequisite as §11/§3 — this is still a manual
+  investigative procedure, not an automated job, and the same "do not invent access grants" rule
+  applies.
+- `resourceId` must be read from the stored row, never re-derived from a request path parameter —
+  AUD-4, already enforced at write time (§18.8(a)(1)) and worth re-checking at read time if this
+  is ever scripted.
+- **RR-009S-1 limits what a broken chain can tell you with more than one partner organisation.**
+  Per the Stage 8 review (§4): in a cross-org claim race, rows can be written in the opposite
+  order from the mutations, and `admin_access_log` carries no partner-organisation field today
+  (A-3, open advisory) to resolve which org's row the applied transition actually belongs to. For
+  the single-partner pilot this cannot happen. It becomes live the moment a second partner
+  organisation is onboarded (C-D(ii)), which is also the trigger that makes transactions
+  mandatory and would retire this manual chain-check path for new writes.
+- A broken chain found during a live investigation is itself a C-D(iii) trigger (ADR-0006 §18.8):
+  finding one in production requires revisiting whether transactions are now mandatory, not just
+  noting the one row.
+

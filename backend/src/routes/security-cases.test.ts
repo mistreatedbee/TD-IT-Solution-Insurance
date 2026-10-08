@@ -1022,6 +1022,19 @@ describe('routes/security-cases', () => {
         fromStatus: 'investigating', // what the pre-read actually observed
         toStatus: 'recovered',
       });
+
+      // ADR-0006 §18.8 C-C / SR-009S-7 — the applied-iff chain-check rule
+      // (docs/organization/runbooks/aud-8-privileged-access-reconstruction.md §14.2),
+      // applied directly to this race's own resulting row and case state: this is
+      // the only (hence latest) privileged_state_change row for the case, so it was
+      // "applied" iff the case's current status equals the row's toStatus. The case
+      // is at 'tracking' (the race's own outcome) and the row's toStatus is
+      // 'recovered' — they differ, so the chain check must say "not applied",
+      // which matches reality: the audited transition never took effect.
+      const row = stateChangeCalls[0]!.event;
+      const caseStatusAfter = stored.status;
+      const chainCheckApplied = caseStatusAfter === row.toStatus;
+      expect(chainCheckApplied).toBe(false);
     });
 
     // ADR-0006 §18.8 C-B: "write the decision record BEFORE the mutation" is only an

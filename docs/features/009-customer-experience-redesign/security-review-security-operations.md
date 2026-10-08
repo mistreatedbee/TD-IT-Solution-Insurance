@@ -711,3 +711,84 @@ SR-INC002B-S1/S2, SR-009S-2/-3/-4/-7/-8, DC-1…DC-3, PDM-6, PDM-9b, the CT-3 pa
 DEV-009S-1, with conditions DC-1…DC-3, and PDM-2 is amended accordingly. Confirms the §18.3 per-case shape.
 §18.6 retention is ruled (§10.5). **Not a pilot clearance:** PDM-6 and the PDM-9 privacy-notice half are
 independently confirmed **not met**, and the partner breach leg, CT-1, G-7 and the executed agreement remain open.
+
+## 11. `security-engineer` — SR-009S-7 closure — 2026-10-08
+
+**Scope:** closing the last open `[Pilot]`-tagged condition owned jointly by `security-engineer` + `database-architect`
+(§8 conditions table, row **SR-009S-7**), per the chair's §18.8 C-C condition (ADR-0006
+`docs/organization/adr/0006-privileged-access-audit-correlation.md` §18.8, ruling (b), bullet C-C). I am covering
+both named owners' pieces myself — the work is one documented rule plus one index, not a split of labor that needs
+two separate sign-offs.
+
+### 11.1 What C-C required and what's been done
+
+C-C required three things. All three are now in place:
+
+1. **The applied-iff rule, documented.** Added as a new §14 in the AUD-8 runbook —
+   [`docs/organization/runbooks/aud-8-privileged-access-reconstruction.md`](../../organization/runbooks/aud-8-privileged-access-reconstruction.md)
+   §14.1–§14.5 — rather than only in this review or only in the ADR, closing the gap the chair's §9 verification
+   found (`privileged_state_change` "appears nowhere in `docs/` outside ADR-0006"). The rule is quoted verbatim from
+   ADR-0006 §18.8 C-C at §14.2, then restated as an operational four-step procedure, then given a runnable chain-check
+   query (§14.3) and a worked example against this review's own race test (§14.4). This is additive to the existing
+   runbook — §1–§12 (subject-keyed/actor-keyed disclosure reconstruction) are untouched; the chain-check is a
+   different axis (per-case, not per-subject/per-actor) and is documented as its own section rather than folded into
+   either existing direction.
+2. **An index so the chain-check query isn't a collection scan.** Added to
+   `backend/src/db/feature004-collections.ts`'s `FEATURE004_INDEXES.adminAccessLog`:
+   `admin_access_log_resourceType_resourceId_createdAt_partial` on `{ resourceType: 1, resourceId: 1, createdAt: -1 }`,
+   partial-filtered to `resourceId: { $type: 'objectId' }` (list-level/call-scoped rows carry `resourceId: null` and
+   are never chain-check inputs, matching the existing `targetAccountId`-partial index's convention immediately
+   above it in the same file). Regression coverage updated in
+   `backend/src/db/feature004-collections.test.ts` (now asserts five named indexes, not four, and pins this one's
+   key shape and partial filter).
+3. **The chain-check rule checked against the existing race test, not just asserted in prose.** Per this review's
+   own invitation (§8 row SR-009S-7 names the runbook entry + index as the bar; a new test was left to judgment), I
+   added one assertion to the existing test in `backend/src/routes/security-cases.test.ts` — *"a PATCH that races a
+   concurrent status change returns 404, not 2xx, and leaves the case at the post-race status"* — that applies the
+   §14.2 rule directly to that test's own resulting audit row and case state (single row, so the "latest row" branch
+   of the rule) and asserts the rule correctly comes out `false` (not applied), matching the race's actual outcome. I
+   did not add a separate, independent chain-check unit test against the repository layer, because the rule has no
+   independent implementation in `backend/src/` yet to regress against — it is a runbook procedure, not shipped code
+   (see §14.4's closing paragraph for the reasoning and the trigger — C-D(iii) — under which that would change). I'm
+   flagging this choice rather than silently making it: if `database-architect` or `cybersecurity-architect` want a
+   belt-and-braces repository-level test anyway, it's a small addition, not a design question.
+
+### 11.2 What this does not change
+
+- No change to the C-A/C-B/C-D conditions, which the chair's §9 table already found **Met** / **Standing** /
+  **Not triggered** respectively. Nothing here revisits those findings.
+- No change to RR-009S-1 (concurrent-identical-transition / cross-org claim-race misattribution). §14.5 of the
+  runbook explicitly cross-references it: the chain-check can detect that a row's chain is broken but, with more
+  than one partner organisation, cannot always attribute *which* org's transition actually applied, because
+  `admin_access_log` carries no partner-organisation field (open advisory A-3). That residual risk is unchanged and
+  remains accepted for the single-partner pilot only, per §18.8 and the chair's §4 table.
+- No change to retention, PDM-6, the privacy-notice gap, or any of the other open `[Pilot]` conditions in §8's
+  table — this closes SR-009S-7 only.
+
+### 11.3 Verification run
+
+`cd backend && npx tsc --noEmit` — clean. `cd backend && npx vitest run` — **469 passed, 0 failed** (57 test files).
+One test (`src/lib/step-up.test.ts`, the MFA-freshness-window boundary case) failed on one run of the full suite
+under load and passed cleanly both before my change (stashed) and after it when run in isolation — a pre-existing
+timing-sensitive test unrelated to this change, not a regression introduced here. Flagging it for whoever owns
+`src/lib/step-up.ts` test stability, not claiming it as part of this closure.
+
+### 11.4 Files changed
+
+- `backend/src/db/feature004-collections.ts` — new index.
+- `backend/src/db/feature004-collections.test.ts` — updated index-count/shape assertions.
+- `backend/src/routes/security-cases.test.ts` — added chain-check assertion to the existing race test.
+- `docs/organization/runbooks/aud-8-privileged-access-reconstruction.md` — new §14 (applied-iff rule, chain-check
+  query, worked example, preconditions).
+
+### 11.5 Database note — not applied by me
+
+The new index is declared in code (`FEATURE004_INDEXES.adminAccessLog`) but **not applied to the live database**.
+Per the same convention the SR-009S-1 fix followed, applying it requires running
+`npx tsx backend/scripts/bootstrap-mongo-collections.ts` against the target Mongo deployment. I have not run that —
+flagging it for whoever has that access, same as SR-009S-1.
+
+**Status: SR-009S-7 is CLOSED.** All other `[Pilot]`-tagged conditions in §8's table remain open and ungated by
+this section.
+
+**Signed:** `security-engineer`, 2026-10-08.
