@@ -196,6 +196,15 @@ it is satisfied.**
 the same change via the shared builder. Tier 0 count stays a bare integer — ruled not a disclosure in
 Feature 012 `security-review.md` §13.2, unchanged.
 
+> **Note (compliance-specialist, 2026-10-08) — PDM-2 amended, original text above unchanged.** PDM-2's
+> literal field list conflicted with PDM-8 (also mine): a subject-keyed audit row for every disclosed
+> case, including unclaimed ones, requires `accountId` to be fetched server-side. The implementation
+> (and my own Stage 8 concurrence, DEV-009S-1) excludes `accountId` from every partner-facing
+> type/mapper/serializer instead of from the Mongo fetch itself. PDM-2 now reads: **exclude every listed
+> field except `accountId`, which may be fetched only for audit rows and customer notifications, and must
+> never appear in any partner-facing type, mapper, or serializer.** Full reasoning and conditions
+> (DC-1/DC-2/DC-3) at `security-review-security-operations.md` §10.1.
+
 ---
 
 ## 5. What this ruling does not do
