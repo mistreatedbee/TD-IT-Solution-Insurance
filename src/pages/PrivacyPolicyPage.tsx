@@ -15,6 +15,15 @@ import { COMPANY_CONTACT } from '../lib/companyContact';
  * not yet happen"). This is not a substitute for full legal review — it
  * exists so the footer/waitlist-form Privacy Policy link is never a dead
  * link or a "coming soon" stub, per Section 12.2(b)(2)/(3).
+ *
+ * This page also doubles as the account-signup privacy notice
+ * (`CustomerSignupPage.tsx`'s consent link). The "Theft reports" section
+ * below is the PDM-9b minimum required before any pilot with real data —
+ * see compliance-specialist's finding at
+ * docs/features/009-customer-experience-redesign/security-review-security-operations.md
+ * Section 10.4. It is deliberately a minimum (category-level disclosure,
+ * matching the in-app notice already shown before a theft report is
+ * submitted), not the full POPIA notice this policy still owes.
  */
 export function PrivacyPolicyPage() {
   return (
@@ -26,8 +35,10 @@ export function PrivacyPolicyPage() {
         <SectionHeading eyebrow="Legal" title="Privacy Policy" as="h1" size="lg" />
         <div className="prose mt-8 max-w-none space-y-6 text-base text-text-secondary">
           <p>
-            This policy currently covers the one thing this site collects: the optional waitlist
-            sign-up form on our homepage.
+            This policy currently covers the waitlist sign-up form on our homepage, and — for
+            customer account holders — what happens to a theft report you submit. It does not yet
+            cover every type of processing an account involves; that fuller notice is still being
+            built.
           </p>
           <div>
             <h2 className="text-lg font-semibold text-text-primary">What we collect</h2>
@@ -40,9 +51,22 @@ export function PrivacyPolicyPage() {
           <div>
             <h2 className="text-lg font-semibold text-text-primary">What we don't do</h2>
             <p>
-              We won't send you marketing, and we won't share or sell your details to anyone
-              else. Joining the waitlist is not an application for insurance and does not create
-              any policy or contract.
+              We won't send you marketing, and we won't sell your details to anyone. Joining the
+              waitlist is not an application for insurance and does not create any policy or
+              contract. We also don't share waitlist details with anyone else — see "Theft
+              reports" below for the one thing account holders' data is shared for.
+            </p>
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Theft reports</h2>
+            <p>
+              If you have a customer account and submit a theft report, we share it to help
+              recover your asset. A short summary of the report (without your name or contact
+              details) goes to our panel of contracted security partners, so one of them can take
+              your case. The partner who takes your case then receives your full report details,
+              including anything you typed into it. These partners are private security companies
+              registered with PSIRA and under contract with us — we don't share report data with
+              anyone outside that category.
             </p>
           </div>
           <div>
