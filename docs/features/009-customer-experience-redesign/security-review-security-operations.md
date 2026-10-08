@@ -309,3 +309,197 @@ read-backs and the new tests. That is a scoped re-verification, not a fresh revi
 type, a serialiser, or a visibility predicate.
 
 **Signed (chair):** `cybersecurity-architect`, 2026-10-08. Awaiting `security-engineer` (R) and `compliance-specialist` (C).
+
+---
+
+## 9. `security-engineer` (R) independent verification — 2026-10-08
+
+**Verdict: CONCUR with the chair's CONDITIONAL SIGN-OFF.** This is an independent re-read of the code and a live run
+of the suite/catalog check, not a rubber-stamp of §0–§8. I re-verified SR-009S-1, SR-009S-5 and SR-009S-6's fixes
+from commit `64cc173` myself, record my own concurrence on DEV-009S-1 (§9.3), and surveyed the four
+`security-cases.ts` routes for cross-org IDOR (§9.4). One new, non-blocking finding is recorded at §9.5
+(SR-009S-8). SR-009S-2, -3, -4 and -7 remain open exactly as the chair left them — nothing below discharges them.
+
+### 9.1 SR-009S-1 re-verified — enum widening, `$expr` branch, and live Atlas catalog
+
+Read `backend/src/db/feature004-collections.ts:235-366` myself (current state, not the diff) and
+`backend/src/repositories/admin-access-log.ts` (full) side by side, row shape by row shape:
+
+- `resourceType` enum is `['policy', 'asset', 'recovery_case']` (`:273`), `eventType` enum is
+  `['privileged_data_access', 'privileged_bulk_access', 'privileged_state_change']` (`:248`). `fromStatus`/`toStatus`
+  added to the base schema as `['string', 'null']` (`:288-297`).
+- The three row shapes `admin-access-log.ts` actually emits all satisfy the validator:
+  - `recordCaseBulkDisclosure`'s bulk row (`:247-256`) → `eventType: 'privileged_bulk_access'`, `targetAccountId:
+    null`, `resourceId: null`, `resultCount: disclosedCases.length`, `resourceType: 'recovery_case'` → matches branch
+    2 (`feature004-collections.ts:336-345`) exactly, and `resourceType`'s wider enum now accepts `'recovery_case'`.
+  - `recordCaseBulkDisclosure`'s per-case rows (`:257-267`) and `recordDetail` (`:156-176`) → `eventType:
+    'privileged_data_access'`, `targetAccountId` set, `resultCount: null` → matches branch 1 (`:326-335`).
+  - `recordStateChange` (`:279-299`) → `eventType: 'privileged_state_change'`, `targetAccountId` set, `resourceId`
+    set, `resultCount: null`, `fromStatus`/`toStatus` both set → matches branch 3 (`:351-362`) field-for-field against
+    `assertInvariants()`'s own `privileged_state_change` block (`admin-access-log.ts:133-148`). This is the exact
+    mirroring the chair's required fix (§2 item 2) asked for — I checked it clause by clause, not just that a third
+    branch exists.
+- `feature004-collections.test.ts` now carries a from-scratch `$jsonSchema`/`$expr` interpreter
+  (`matchesJsonSchema`/`evalExpr`, `:96-161`) rather than TypeScript-shape assertions alone, and feeds it the exact
+  row shapes `admin-access-log.ts` emits, including two negative cases (`:188-214`) and a `resourceType` typo
+  rejection (`:244-256`). This is a materially stronger regression guard than what the chair reviewed as a gap — it
+  closes the "fakes can't catch drift" problem the chair raised (§2), not just the enum values.
+- **I ran `verify-mongo-catalog` against the live database myself** (not relying on the user's report that bootstrap
+  had been applied): `npx tsx backend/scripts/verify-mongo-catalog.ts` → `result=PASS`, `16 declared collections
+  checked, 0 drift finding(s)`, and specifically `feature004/admin_access_log: exists=true indexes=4/4
+  validator=match`. This discharges SR-009S-1's own required step 5 ("Run `catalog-verify` against Atlas after
+  bootstrap and attach the output to the re-verification") — attached here. The chair's §2 concern that "only a real
+  `mongod` with the validator applied can" detect this is now answered against the actual Atlas catalog, not just
+  statically.
+- I also ran `cd backend && npx tsc --noEmit` (clean) and `cd backend && npm test` myself: **57 files, 462/462
+  tests pass.** This matches the count the user reported from the same commit; I did not simply trust the number,
+  I reproduced it.
+
+**SR-009S-1: independently confirmed closed.**
+
+### 9.2 SR-009S-5 and SR-009S-6 re-verified in `recovery-cases.ts` / `security-cases.ts`
+
+- **SR-009S-5 (cross-tenant pagination).** `andFilters()` (`recovery-cases.ts:467-472`) is used at both call sites in
+  `listForPartnerOrg` (`:551`, `:563`) in place of the object-spread the chair identified as the bug. The dedicated
+  regression test (`recovery-cases.test.ts:750-793`) seeds exactly the shape of case the chair's bug would have
+  leaked — a wrap-up-window-expired case sorting between the cursor position and a legitimately-visible older case —
+  and asserts it is absent from page 2 while the legitimate case is present, and cross-checks the detail route
+  agrees. I consider this the right regression test for this bug, not merely "a test exists."
+- **SR-009S-6 (forward-only transitions).** `RECOVERY_CASE_FORWARD_TRANSITIONS` (`recovery-cases.ts:442-448`) is a
+  closed map with `open: []`, `closed: []`, `recovered: ['closed']` — no entry points backward, and `open` is
+  unreachable as a target from any claimed state, matching the chair's own stated requirement that claiming (not
+  this map) is the only path into `investigating`. `isForwardStatusTransition` is enforced in two independent
+  places: the PATCH route rejects with 409 *before* writing any audit row (`security-cases.ts:316-319`), and
+  `updateStatusForPartnerOrg` itself re-checks and fails closed (returns `null`, no mutation) even if a future call
+  site skipped the route-layer check (`recovery-cases.ts:700`). Route tests (`security-cases.test.ts:1083-1198`)
+  cover: closed→investigating rejected 409 with no audit row and no mutation, recovered→tracking rejected 409, and
+  two legitimate forward paths (recovered→closed, investigating→recovered, i.e. skip-ahead is allowed) still succeed
+  200. This is adequate coverage of both the positive and negative cases, and of the "no audit row on rejection"
+  property PDM-8 depends on.
+
+**SR-009S-5 and SR-009S-6: independently confirmed closed**, on the terms the chair set (§5, §6) — SR-009S-6's own
+tag is unchanged: it discharges PDM-4/[S8] now, and is pilot-blocking only on PDM-4's own 90-day terms, which the
+chair already stated and I have no basis to loosen or tighten.
+
+### 9.3 DEV-009S-1 — independent concurrence (security-control-adequacy question, separate from compliance's question)
+
+**I CONCUR with DEV-009S-1 as implemented, from a security-control-adequacy standpoint**, which is the question this
+role — not the chair, not compliance — has final say over per the division of authority the chair recorded in §1.
+My reasoning is independent of the chair's, though it arrives at the same place:
+
+1. The structural guarantee is real, and I verified all four of its load-bearing claims myself rather than taking
+   the chair's characterization at face value: (a) `OfferTierRecoveryCase`/`ClaimedTierRecoveryCase` genuinely have
+   no `accountId` field (`recovery-cases.ts:259-280`) — confirmed by reading the interfaces directly, not inferred;
+   (b) both tier mappers (`toOfferTierCase`, `toClaimedTierCase`, `toClaimedTierView`) build the return value by
+   named-field construction, never `{ ...row }` or `{ ...doc }` (`:282-323`) — I checked every mapper, not a sample;
+   (c) both serializers (`serializeOfferTierRecoveryCase`, `serializeClaimedTierRecoveryCase`) are allowlists built
+   the same way (`:325-348`); (d) every one of the five response-producing call sites in `security-cases.ts`
+   (list `:105-108`, detail `:196`, claim `:273`, PATCH `:361`, count — no case data in response) goes through
+   `serializePartnerCase`/`serializeClaimedTierRecoveryCase`, never a raw `res.json(result)` or `res.json(page.data)`
+   — I read each handler, not just the helper function's existence.
+2. From a control-adequacy lens specifically (as opposed to a data-minimisation lens, which is compliance's
+   question): the risk a security reviewer cares about for a field like this is *egress* — can it reach an external
+   party, a log sink, or a response body through any code path, including a future one. TypeScript's structural
+   typing plus the absence of a spread operator at every mapping boundary makes `accountId` egress require an
+   explicit, visible, reviewable new line of code (adding it to an interface and a mapper and a serializer) rather
+   than a passive oversight (forgetting to strip a field, or a future field added to a type that an existing spread
+   picks up automatically). That is the right default to prefer for a field with a legitimate internal consumer,
+   and it is a stronger control than a denylist test, which is why I agree with the chair that SR-009S-2's
+   allowlist tests are the correct condition to attach rather than a reason to re-open DEV-009S-1 itself.
+3. I checked for a bypass the chair's framing didn't explicitly rule out: whether `accountId` could reach a response
+   via an *error* path (a thrown object serialized by a generic error handler) rather than the success path the
+   chair analyzed. `recordStateChange`/`recordDetail`/`recordCaseBulkDisclosure` never throw `AdminAccessLogDbRow`
+   objects or anything containing `accountId` — their thrown errors (`assertInvariants()`) are plain `Error` strings
+   with no row data embedded (`admin-access-log.ts:104-148`), and the repository functions that hold `accountId` in
+   scope (`claimForPartnerOrg`, `updateStatusForPartnerOrg`, `listForPartnerOrg`, `findByIdForPartnerOrg`) never
+   construct or throw an object containing it. This closes a path the chair's §1 didn't explicitly check and that I
+   consider the most likely alternate egress route for a field "held in process memory."
+4. RR-009S-2 (accepted residual risk) is correctly scoped as I'd scope it myself: the exposure is server-side
+   process memory / potential log exposure, not response egress, and a logger capturing a full in-memory result
+   object is already a logging-hygiene defect independent of this field.
+
+**My concurrence is itself conditional on SR-009S-2 landing**, for the same reason the chair gave: today's tests are
+denylist-shaped (`SecurityCasePages.test.tsx:38-50` and the analogous backend assertions) and a denylist is a weaker
+regression guard against a *future* field than the allowlist tests SR-009S-2 requires. This does not change
+DEV-009S-1's disposition; it is the same condition the chair already attached, now independently affirmed rather
+than inherited.
+
+### 9.4 Cross-org IDOR check — authentication/authorization gates on all four routes
+
+Read `backend/src/middleware/authenticate.ts` (full) and `backend/src/routes/security-cases.ts` (full) together,
+specifically hunting for a way a partner-A operator could act on a partner-B case.
+
+- All four in-scope routes — `GET /security/cases`, `GET /security/cases/:caseId`, `POST
+  /security/cases/:caseId/claim`, `PATCH /security/cases/:caseId` — and the fifth (`GET /security/cases/count`)
+  apply the identical middleware chain in the identical order: `authenticate` → `requireUserType
+  ('security_company_operator')` → `requirePartnerOrg` → rate limiter → handler (`security-cases.ts:71-76, 120-125,
+  162-167, 203-208, 280-285`). I checked each route registration individually rather than assuming they match.
+- `requirePartnerOrg` (`:62-69`) reads `req.auth?.partnerOrganizationId` and 403s if it is falsy. It does not read
+  anything from the request body, query string, or path params.
+- Every handler derives `orgId` from `req.auth!.partnerOrganizationId!` exactly once, immediately after the
+  middleware chain (`:85, 133, 175, 216, 298`), and passes that single value into the repository call that scopes
+  the query (`listForPartnerOrg`, `countForPartnerOrg`, `findByIdForPartnerOrg`, `claimForPartnerOrg`,
+  `updateStatusForPartnerOrg`). I grepped the whole file for any read of `req.body`, `req.query`, or `req.params`
+  that could supply an alternate org id, and for any variable named with "org"/"partner" other than this one — there
+  is none. A crafted request body or query string containing a different `partnerOrganizationId` has no code path
+  that reads it.
+- `req.auth.partnerOrganizationId` itself is not client-suppliable at request time: it comes from a verified JWT
+  claim (`authenticate.ts:119-134`, `claims.partner_organization_id`), and I traced the claim back to its mint point
+  — `account.partnerOrganizationId`, read from the Postgres `accounts` table at login/session-refresh time
+  (`backend/src/routes/auth.ts:55, 451`, `backend/src/routes/session.ts:141`, `backend/src/routes/mfa.ts:237`,
+  `backend/src/repositories/accounts.ts:127`) — never from a request body the operator controls. The JWT signature
+  is verified before any claim is trusted (`authenticate.ts:97`, `verifyAccessToken`). An operator cannot forge or
+  select their own `partnerOrganizationId`; it is fixed at account-provisioning time server-side and carried
+  signed through every subsequent request.
+- The repository layer provides a second, independent barrier even if the route layer were somehow bypassed:
+  `claimForPartnerOrg`'s mutation filter is `unclaimedCaseVisiblePredicate()` (requires `partnerOrganizationId:
+  null`), and `updateStatusForPartnerOrg`'s filter requires `partnerOrganizationId: expectedStatus`'s org — i.e. an
+  exact match on the caller's own `orgId` (`recovery-cases.ts:628, 743-748`) — so even a hypothetical orgId mix-up
+  at the route layer could not let org A's token mutate org B's claimed case; the match clause itself enforces
+  tenant ownership at the database layer.
+
+**No cross-org IDOR found on list/detail/claim/PATCH.** All four routes are authenticated, require the
+`security_company_operator` user type, require a non-null partner-org claim, and that claim is server-minted,
+signed, and the sole source of tenant scoping at both the route and repository layers.
+
+### 9.5 New finding — SR-009S-8 (non-blocking, advisory-tier) — `requireUserType` not independently re-read against its own implementation
+
+While verifying §9.4 I checked `requireUserType('security_company_operator')`'s own implementation
+(`backend/src/middleware/require-role.ts`) to confirm it actually rejects every other `userType` rather than, say,
+allow-listing by a prefix match or silently passing through when the claim is absent. It does: it 403s unless
+`req.auth?.userType` strictly equals one of the allowed literals, and runs after `authenticate` in every one of the
+five registrations, so an unauthenticated request never reaches it with `req.auth` undefined. This is sound — I am
+recording this as a found-nothing check, not a finding, for the record's own completeness, but noting one real gap
+while I was there: **no test in `security-cases.test.ts` exercises a token minted for a different, valid
+`userType`** (e.g. `customer` or `admin`) hitting any of the four routes — only "no partner org" (403, tested at
+`:1200`) and the happy path are covered. `requireUserType`'s own unit tests (if any) may cover this generically, but
+nothing in this file pins that a `customer`-typed token specifically cannot reach `/security/cases`. I consider this
+**non-blocking** — the code path is correct by inspection and `requireUserType` is a shared, presumably
+independently-tested middleware already relied on by Feature 001's admin routes — but it is a one-line test gap
+worth closing before the joint gate's manifest entry replaces the waiver, so a future refactor of `requireUserType`
+or an accidental route-registration reorder is caught here too, not only in whichever other router happens to test
+it. Owner: `backend-engineer`, non-blocking, does not change SR-009S-1/5/6's closed status or the overall CONDITIONAL
+verdict.
+
+### 9.6 Items I did not re-open
+
+SR-009S-2, SR-009S-3, SR-009S-4 and SR-009S-7 are unchanged by this verification — I read far enough into
+`recovery-cases.ts`'s write paths (§9.3 point 1(d), and directly inspecting `claimForPartnerOrg`/
+`updateStatusForPartnerOrg`'s read-back projections) to confirm the chair's SR-009S-3 finding still holds exactly as
+written: `claimForPartnerOrg` (`:627-631`) and `updateStatusForPartnerOrg` (`:742-751`) still use
+`POLICE_REPORT_FIELD_EXCLUSION_PROJECTION`, not the tier-specific `CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION`, and the
+internal `closedAt` pre-read (`:734-737`) still has no projection at all. I did not find anything that changes
+SR-009S-2's or SR-009S-4's or SR-009S-7's status either. These remain required before pilot, exactly as the chair's
+conditions register (§8) states.
+
+**My own conditions register addition:**
+
+| ID | Condition | Owner | Blocks |
+|---|---|---|---|
+| **SR-009S-8** | Add a route test asserting a validly-authenticated but wrong-`userType` token (e.g. `customer`) receives 403, not 2xx, on at least one of the four `security-cases.ts` routes (§9.5) | `backend-engineer` | Non-blocking — close before the joint-gate manifest entry replaces the waiver |
+
+**Signed (R):** `security-engineer`, 2026-10-08. Concurs with the chair's CONDITIONAL SIGN-OFF and with DEV-009S-1.
+SR-009S-1, SR-009S-5 and SR-009S-6 independently confirmed closed (re-read code, ran `tsc`/`npm test` myself —
+462/462 — and ran `verify-mongo-catalog` against the live database myself — PASS, `admin_access_log
+validator=match`). SR-009S-2, -3, -4, -7 remain open and pilot-blocking, unchanged. New non-blocking finding
+SR-009S-8 recorded at §9.5. Awaiting `compliance-specialist` (C) to complete the joint gate.
