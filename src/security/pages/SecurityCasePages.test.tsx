@@ -50,6 +50,28 @@ describe('PDM-1: no customer account identifier on the web case detail page', ()
     const _typeCheck: { accountId: string } = baseCase;
     void _typeCheck;
   });
+
+  // SR-009S-2 — upgrades the denylist check above to an allowlist-shaped regression:
+  // `apiFetch<SecurityRecoveryCase>` is a compile-time cast, not a runtime schema
+  // validator, so a JSON payload that actually contains `accountId` (e.g. a backend
+  // serializer regression) is NOT stripped before it reaches this component's state.
+  // The only real guarantee left is "the component never renders a field it wasn't
+  // written to render" — this test proves that empirically, against an adversarial
+  // payload carrying an unexpected field, rather than trusting the type alone.
+  it('SR-009S-2: a response payload carrying an unexpected extra field (e.g. accountId) is never rendered anywhere on the page', async () => {
+    const poisonedCase = {
+      ...baseCase,
+      accountId: 'LEAKED-ACCOUNT-ID-MUST-NOT-RENDER',
+    };
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => jsonResponse(poisonedCase)));
+
+    const { container } = renderCaseDetail();
+
+    await waitFor(() => expect(screen.getByText('REF-001')).toBeInTheDocument());
+
+    expect(container.textContent).not.toContain('LEAKED-ACCOUNT-ID-MUST-NOT-RENDER');
+    expect(screen.queryByText(/LEAKED-ACCOUNT-ID-MUST-NOT-RENDER/)).not.toBeInTheDocument();
+  });
 });
 
 describe('Security Dashboard offline-tolerance (CaseDetailPage setStatus/claimCase)', () => {

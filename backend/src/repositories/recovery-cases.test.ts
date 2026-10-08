@@ -88,8 +88,24 @@ function matches(doc: RawDoc, filter: Record<string, unknown>): boolean {
   });
 }
 
+/**
+ * Applies a Mongo-style projection with real inclusion/exclusion semantics (not just
+ * exclusion) — SR-009S-3 narrows `updateStatusForPartnerOrg`'s internal `closedAt`
+ * pre-read to an INCLUSION projection (`{ closedAt: 1 }`), so the fake must distinguish
+ * "keep only these fields" from "drop these fields", or an inclusion projection would
+ * silently behave as if it excluded the one field it was meant to keep.
+ */
 function applyExclusionProjection(doc: RawDoc, projection?: Record<string, 0 | 1>): RawDoc {
   if (!projection) return doc;
+  const entries = Object.entries(projection);
+  const isInclusion = entries.length > 0 && entries.every(([, v]) => v === 1);
+  if (isInclusion) {
+    const result: RawDoc = { _id: doc._id };
+    for (const key of Object.keys(projection)) {
+      if (key in doc) result[key] = doc[key];
+    }
+    return result;
+  }
   const result: RawDoc = { ...doc };
   for (const key of Object.keys(projection)) {
     delete result[key];
@@ -170,6 +186,30 @@ function createFakeDb(seed: RawDoc[]): { db: Db; docs: RawDoc[] } {
   } as unknown as Db;
 
   return { db, docs };
+}
+
+/**
+ * SR-009S-2 — exact-key allowlists for `OfferTierRecoveryCase`/`ClaimedTierRecoveryCase`
+ * (matching their interface declarations in `recovery-cases.ts`), used in place of
+ * denylist assertions ("does not have property `accountId`") so a future field added
+ * to either type without updating this test fails loudly here too, not only in the
+ * route-layer test of the same name.
+ */
+const OFFER_TIER_CASE_KEYS = ['id', 'partnerOrganizationId', 'status', 'referenceNumber', 'reportedAt', 'updatedAt'].sort();
+const CLAIMED_TIER_CASE_KEYS = [
+  'id',
+  'assetId',
+  'partnerOrganizationId',
+  'status',
+  'referenceNumber',
+  'reportedAt',
+  'notes',
+  'lastLocationAt',
+  'updatedAt',
+].sort();
+
+function expectExactKeys(obj: object, expectedKeys: string[]) {
+  expect(Object.keys(obj).sort()).toEqual(expectedKeys);
 }
 
 function baseDoc(overrides: Partial<RawDoc> = {}): RawDoc {
@@ -533,7 +573,8 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
 
       expect(rows).toHaveLength(1);
       expect(rows[0]!.accountId).toBe('real-customer-account-id');
-      expect(rows[0]!.case).not.toHaveProperty('accountId');
+      // SR-009S-2: exact-key allowlist on the claimed-tier `case` shape.
+      expectExactKeys(rows[0]!.case, CLAIMED_TIER_CASE_KEYS);
     });
 
     it('findByIdForPartnerOrg exposes accountId only at the top level, never inside `case` (claimed tier)', async () => {
@@ -548,7 +589,7 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       expect(result).not.toBeNull();
       expect(result!.tier).toBe('claimed');
       expect(result!.accountId).toBe('real-customer-account-id');
-      expect(result!.case).not.toHaveProperty('accountId');
+      expectExactKeys(result!.case, CLAIMED_TIER_CASE_KEYS);
     });
 
     it('findByIdForPartnerOrg exposes accountId only at the top level, never inside `case` (offer tier)', async () => {
@@ -568,12 +609,12 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       expect(result).not.toBeNull();
       expect(result!.tier).toBe('offer');
       expect(result!.accountId).toBe('real-customer-account-id');
-      expect(result!.case).not.toHaveProperty('accountId');
+      expectExactKeys(result!.case, OFFER_TIER_CASE_KEYS);
     });
   });
 
   describe('PDM-2: tiered projections by claim state', () => {
-    it('offer tier (unclaimed) excludes notes, assetId, lastLocation, lastLocationAt, callCentreNotes', async () => {
+    it('offer tier (unclaimed) has EXACTLY the offer-tier key set (SR-009S-2)', async () => {
       const id = new ObjectId();
       const { db } = createFakeDb([
         baseDoc({
@@ -593,12 +634,10 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
 
       expect(result).not.toBeNull();
       expect(result!.tier).toBe('offer');
-      for (const key of ['notes', 'assetId', 'lastLocation', 'lastLocationAt', 'callCentreNotes']) {
-        expect(result!.case).not.toHaveProperty(key);
-      }
+      expectExactKeys(result!.case, OFFER_TIER_CASE_KEYS);
     });
 
-    it('claimed tier (Tier 1) excludes callCentreNotes and lastLocation but keeps notes/assetId/lastLocationAt', async () => {
+    it('claimed tier (Tier 1) has EXACTLY the claimed-tier key set, with notes/assetId/lastLocationAt populated (SR-009S-2)', async () => {
       const id = new ObjectId();
       const lastLocationAt = new Date('2026-08-01T00:00:00.000Z');
       const { db } = createFakeDb([
@@ -618,8 +657,7 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
 
       expect(result).not.toBeNull();
       expect(result!.tier).toBe('claimed');
-      expect(result!.case).not.toHaveProperty('callCentreNotes');
-      expect(result!.case).not.toHaveProperty('lastLocation');
+      expectExactKeys(result!.case, CLAIMED_TIER_CASE_KEYS);
       const claimedCase = result!.case as { notes: string | null; assetId: string; lastLocationAt: Date | null };
       expect(claimedCase.notes).toBe('Stolen laptop, last seen at the office');
       expect(claimedCase.assetId).toBe('asset-1');
@@ -789,6 +827,72 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       // The detail route must agree with list — PDM-3's "cannot structurally diverge" guarantee.
       const detail = await repo.findByIdForPartnerOrg('org-1', expired._id.toHexString());
       expect(detail).toBeNull();
+    });
+  });
+
+  describe('SR-009S-3: write-path read-backs use the claimed-tier projection, not just the police-report exclusion', () => {
+    it('claimForPartnerOrg read-back excludes lastLocation and callCentreNotes on a fully populated document', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({
+          _id: id,
+          partnerOrganizationId: null,
+          status: 'open',
+          lastLocation: { latitude: -26.1, longitude: 28.0, recordedAt: new Date(), accuracyMeters: 10 },
+          lastLocationAt: new Date(),
+          callCentreNotes: [{ agentAccountId: 'agent-1', text: 'called customer', createdAt: new Date() }],
+          sapsCaseNumber: 'CAS-1/1/2026',
+        }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.claimForPartnerOrg('org-1', id.toHexString());
+
+      expect(row).not.toBeNull();
+      // `toCase()` always produces these keys on the returned `RecoveryCaseDocument`
+      // (it is used by both the customer- and partner-facing write paths), so the
+      // projection's effect shows up as the field never having been fetched — an
+      // excluded field comes back `undefined`/empty, never the real stored value —
+      // not as the key being absent from the object literal.
+      expect(row!.lastLocation).toBeUndefined();
+      expect(row!.callCentreNotes).toEqual([]);
+      expect(row!.sapsCaseNumber).toBeNull();
+      expect(row!.reportingStation).toBeNull();
+      expect(row!.reportedToPoliceAt).toBeNull();
+      expect(row!.policeReportHistory).toEqual([]);
+      expect(row!.policeReportReminderSentAt).toBeNull();
+    });
+
+    it('updateStatusForPartnerOrg read-back excludes lastLocation and callCentreNotes on a terminal transition of a fully populated document', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({
+          _id: id,
+          partnerOrganizationId: 'org-1',
+          status: 'tracking',
+          lastLocation: { latitude: -26.1, longitude: 28.0, recordedAt: new Date(), accuracyMeters: 10 },
+          lastLocationAt: new Date(),
+          callCentreNotes: [{ agentAccountId: 'agent-1', text: 'called customer', createdAt: new Date() }],
+          sapsCaseNumber: 'CAS-1/1/2026',
+        }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'closed', 'tracking');
+
+      expect(row).not.toBeNull();
+      // As above: `toCase()` always produces these keys; an excluded field comes back
+      // `undefined`/empty rather than the real stored value.
+      expect(row!.lastLocation).toBeUndefined();
+      expect(row!.callCentreNotes).toEqual([]);
+      expect(row!.sapsCaseNumber).toBeNull();
+      expect(row!.reportingStation).toBeNull();
+      expect(row!.reportedToPoliceAt).toBeNull();
+      expect(row!.policeReportHistory).toEqual([]);
+      expect(row!.policeReportReminderSentAt).toBeNull();
+      // The terminal-transition closedAt behaviour (§SR-011-4) must still work with the
+      // narrowed `{ closedAt: 1 }` internal pre-read.
+      expect(row!.closedAt).toBeInstanceOf(Date);
     });
   });
 

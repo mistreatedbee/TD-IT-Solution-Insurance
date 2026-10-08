@@ -93,6 +93,32 @@ function sampleCase(
 
 const WRAP_UP_WINDOW_DAYS = 90;
 
+/**
+ * SR-009S-2 — exact-key allowlists for each tier's serialized response shape, kept in
+ * lockstep with `serializeOfferTierRecoveryCase`/`serializeClaimedTierRecoveryCase`
+ * (`repositories/recovery-cases.ts`). A denylist test ("does not contain `accountId`")
+ * only catches the one field it names; these allowlists fail if a FUTURE field is added
+ * to either serializer without updating the test here too — the exact failure mode the
+ * chair's security review (§1 item 4, SR-009S-2) called out as the weak point of the
+ * pre-existing tests.
+ */
+const OFFER_TIER_RESPONSE_KEYS = ['id', 'status', 'referenceNumber', 'reportedAt', 'partnerOrganizationId', 'updatedAt'].sort();
+const CLAIMED_TIER_RESPONSE_KEYS = [
+  'id',
+  'assetId',
+  'status',
+  'referenceNumber',
+  'reportedAt',
+  'notes',
+  'lastLocationAt',
+  'partnerOrganizationId',
+  'updatedAt',
+].sort();
+
+function expectExactKeys(obj: Record<string, unknown>, expectedKeys: string[]) {
+  expect(Object.keys(obj).sort()).toEqual(expectedKeys);
+}
+
 /** Mirrors `recovery-cases.ts`'s `claimedCaseVisiblePredicate`/`unclaimedCaseVisiblePredicate`
  * closely enough for route-level tests — see that file's own repository-level tests for
  * the authoritative, projection-level guarantees. */
@@ -142,6 +168,12 @@ function createHarness(opts: {
    * race-condition path for real, rather than merely asserting against a
    * pre-mutated fixture. Fires once, on the first `updateStatusForPartnerOrg` call. */
   simulateRaceOnFirstUpdate?: RecoveryCaseStatus;
+  /** SR-009S-4 — simulates the `recordStateChange` audit write itself throwing (e.g. a
+   * DB write failure), to prove the C-B fail-closed sequence: if the audit write
+   * throws, the subsequent mutation (`claimForPartnerOrg`/`updateStatusForPartnerOrg`)
+   * must never run, and the response must be a 5xx, not a 2xx built from a mutation
+   * that happened anyway. */
+  failStateChangeAudit?: boolean;
 }) {
   const env = fakeEnv();
   const kv = new InMemoryKeyValueStore();
@@ -150,6 +182,7 @@ function createHarness(opts: {
   const partnerOrgId = opts.partnerOrgId ?? randomUUID();
   const cases = [...(opts.cases ?? [])];
   const auditCalls: Array<{ kind: 'record' | 'bulk'; event: unknown }> = [];
+  const mutationCalls = { claim: 0, updateStatus: 0 };
   const accessLogCalls: Array<
     | { kind: 'detail'; event: unknown }
     | { kind: 'caseBulk'; event: unknown }
@@ -204,6 +237,7 @@ function createHarness(opts: {
         return toResult(row, tier);
       },
       async claimForPartnerOrg(orgId: string, caseId: string) {
+        mutationCalls.claim += 1;
         const idx = cases.findIndex(
           (c) => c.id === caseId && c.partnerOrganizationId === null && c.status === 'open',
         );
@@ -222,6 +256,7 @@ function createHarness(opts: {
         status: RecoveryCaseStatus,
         expectedStatus: RecoveryCaseStatus,
       ) {
+        mutationCalls.updateStatus += 1;
         if (opts.simulateRaceOnFirstUpdate) {
           const raceIdx = cases.findIndex((c) => c.id === caseId);
           if (raceIdx >= 0) {
@@ -266,6 +301,9 @@ function createHarness(opts: {
         accessLogCalls.push({ kind: 'caseBulk', event });
       },
       async recordStateChange(event: unknown) {
+        if (opts.failStateChangeAudit) {
+          throw new Error('simulated admin_access_log write failure (SR-009S-4)');
+        }
         accessLogCalls.push({ kind: 'stateChange', event });
       },
     },
@@ -320,6 +358,7 @@ function createHarness(opts: {
     cases,
     auditCalls,
     accessLogCalls,
+    mutationCalls,
     token: operatorToken(env, operatorId, sessionId, partnerOrgId),
     async start() {
       await new Promise<void>((resolve) => {
@@ -484,7 +523,9 @@ describe('routes/security-cases', () => {
       const body = (await res.json()) as { data: Array<Record<string, unknown>> };
       expect(res.status).toBe(200);
       expect(body.data).toHaveLength(1);
-      expect(Object.keys(body.data[0]!)).not.toContain('accountId');
+      // SR-009S-2: exact-key allowlist, not a denylist on `accountId` alone — a future
+      // field added to `ClaimedTierRecoveryCase` without updating this test fails here.
+      expectExactKeys(body.data[0]!, CLAIMED_TIER_RESPONSE_KEYS);
       expect(JSON.stringify(body)).not.toContain(accountId);
     });
 
@@ -508,7 +549,7 @@ describe('routes/security-cases', () => {
       });
       const body = (await res.json()) as Record<string, unknown>;
       expect(res.status).toBe(200);
-      expect(Object.keys(body)).not.toContain('accountId');
+      expectExactKeys(body, CLAIMED_TIER_RESPONSE_KEYS);
       expect(JSON.stringify(body)).not.toContain(accountId);
     });
 
@@ -532,7 +573,7 @@ describe('routes/security-cases', () => {
       });
       const body = (await res.json()) as Record<string, unknown>;
       expect(res.status).toBe(200);
-      expect(Object.keys(body)).not.toContain('accountId');
+      expectExactKeys(body, OFFER_TIER_RESPONSE_KEYS);
       expect(JSON.stringify(body)).not.toContain(accountId);
     });
 
@@ -557,7 +598,7 @@ describe('routes/security-cases', () => {
       });
       const body = (await res.json()) as Record<string, unknown>;
       expect(res.status).toBe(200);
-      expect(Object.keys(body)).not.toContain('accountId');
+      expectExactKeys(body, CLAIMED_TIER_RESPONSE_KEYS);
       expect(JSON.stringify(body)).not.toContain(accountId);
     });
 
@@ -587,7 +628,7 @@ describe('routes/security-cases', () => {
       });
       const body = (await res.json()) as Record<string, unknown>;
       expect(res.status).toBe(200);
-      expect(Object.keys(body)).not.toContain('accountId');
+      expectExactKeys(body, CLAIMED_TIER_RESPONSE_KEYS);
       expect(JSON.stringify(body)).not.toContain(accountId);
     });
   });
@@ -595,7 +636,7 @@ describe('routes/security-cases', () => {
   // PDM-2 (compliance-review-security-partner-data-minimisation.md §4): tiered field
   // exposure by claim state, observable from the HTTP response shape.
   describe('PDM-2 — tiered response shape by claim state', () => {
-    it('an unclaimed (offer-tier) case in the list omits notes/assetId/lastLocationAt', async () => {
+    it('an unclaimed (offer-tier) case in the list has EXACTLY the offer-tier key set (SR-009S-2)', async () => {
       harness = createHarness({
         cases: [
           sampleCase({
@@ -616,13 +657,13 @@ describe('routes/security-cases', () => {
       });
       const body = (await res.json()) as { data: Array<Record<string, unknown>> };
       expect(res.status).toBe(200);
-      const row = body.data[0]!;
-      for (const key of ['notes', 'assetId', 'lastLocationAt', 'lastLocation', 'callCentreNotes']) {
-        expect(Object.keys(row)).not.toContain(key);
-      }
+      // Exact-key allowlist: fails loudly if ANY field (not just the ones named in the
+      // old denylist test) is ever added to the offer tier's response without updating
+      // this test — the weakness SR-009S-2 was written to close.
+      expectExactKeys(body.data[0]!, OFFER_TIER_RESPONSE_KEYS);
     });
 
-    it('a claimed (Tier 1) case in the detail response includes notes/assetId/lastLocationAt', async () => {
+    it('a claimed (Tier 1) case in the detail response has EXACTLY the claimed-tier key set (SR-009S-2)', async () => {
       const caseId = '507f1f77bcf86cd799439011';
       const lastLocationAt = new Date('2026-08-01T00:00:00.000Z');
       harness = createHarness({
@@ -648,9 +689,60 @@ describe('routes/security-cases', () => {
       expect(body.notes).toBe('the customer’s own description of the theft');
       expect(body.assetId).toBe('507f1f77bcf86cd799439021');
       expect(body.lastLocationAt).toBe(lastLocationAt.toISOString());
-      for (const key of ['callCentreNotes', 'lastLocation']) {
-        expect(Object.keys(body)).not.toContain(key);
-      }
+      expectExactKeys(body, CLAIMED_TIER_RESPONSE_KEYS);
+    });
+
+    it('POST /claim response has EXACTLY the claimed-tier key set (SR-009S-2)', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: null,
+            status: 'open',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/claim`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(res.status).toBe(200);
+      expectExactKeys(body, CLAIMED_TIER_RESPONSE_KEYS);
+    });
+
+    it('PATCH response has EXACTLY the claimed-tier key set (SR-009S-2)', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({
+        partnerOrgId: 'org-123',
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: 'org-123',
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${harness.token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'tracking' }),
+      });
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(res.status).toBe(200);
+      expectExactKeys(body, CLAIMED_TIER_RESPONSE_KEYS);
     });
   });
 
@@ -929,6 +1021,75 @@ describe('routes/security-cases', () => {
         targetAccountId: accountId,
         fromStatus: 'investigating', // what the pre-read actually observed
         toStatus: 'recovered',
+      });
+    });
+
+    // ADR-0006 §18.8 C-B: "write the decision record BEFORE the mutation" is only an
+    // acceptable substitute for a transaction if a failed audit write provably stops
+    // the mutation from running. SR-009S-4 — no prior test actually simulated the
+    // audit write itself throwing; the race tests above simulate a concurrent writer,
+    // not a failing `recordStateChange` call.
+    describe('SR-009S-4 — C-B fail-closed: if the audit write throws, the mutation never runs', () => {
+      it('POST /claim: recordStateChange throwing returns 5xx, never calls claimForPartnerOrg, and leaves the case unclaimed', async () => {
+        const caseId = '507f1f77bcf86cd799439011';
+        const accountId = randomUUID();
+        harness = createHarness({
+          failStateChangeAudit: true,
+          cases: [
+            sampleCase({
+              id: caseId,
+              accountId,
+              assetId: '507f1f77bcf86cd799439021',
+              partnerOrganizationId: null,
+              status: 'open',
+            }),
+          ],
+        });
+        await harness.start();
+
+        const res = await fetch(harness.url(`/security/cases/${caseId}/claim`), {
+          method: 'POST',
+          headers: { authorization: `Bearer ${harness.token}` },
+        });
+
+        expect(res.status).toBeGreaterThanOrEqual(500);
+        expect(harness.mutationCalls.claim).toBe(0);
+        const stored = harness.cases.find((c) => c.id === caseId)!;
+        expect(stored.status).toBe('open');
+        expect(stored.partnerOrganizationId).toBeNull();
+      });
+
+      it('PATCH: recordStateChange throwing returns 5xx, never calls updateStatusForPartnerOrg, and leaves the case status unchanged', async () => {
+        const caseId = '507f1f77bcf86cd799439011';
+        const accountId = randomUUID();
+        harness = createHarness({
+          partnerOrgId: 'org-123',
+          failStateChangeAudit: true,
+          cases: [
+            sampleCase({
+              id: caseId,
+              accountId,
+              assetId: '507f1f77bcf86cd799439021',
+              partnerOrganizationId: 'org-123',
+              status: 'investigating',
+            }),
+          ],
+        });
+        await harness.start();
+
+        const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+          method: 'PATCH',
+          headers: {
+            authorization: `Bearer ${harness.token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ status: 'tracking' }),
+        });
+
+        expect(res.status).toBeGreaterThanOrEqual(500);
+        expect(harness.mutationCalls.updateStatus).toBe(0);
+        const stored = harness.cases.find((c) => c.id === caseId)!;
+        expect(stored.status).toBe('investigating');
       });
     });
   });
@@ -1218,6 +1379,44 @@ describe('routes/security-cases', () => {
 
     const res = await fetch(harness.url('/security/cases'), {
       headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  // SR-009S-8 (security-engineer, §9.5) — a validly-authenticated token of the WRONG
+  // userType must be rejected by `requireUserType('security_company_operator')`. Only
+  // "no partner org" (403, above) and the happy path were covered before this; nothing
+  // pinned a `customer`-typed token specifically being refused.
+  it('SR-009S-8: a valid customer-typed token receives 403, not 2xx, on GET /security/cases', async () => {
+    const env = fakeEnv();
+    const customerToken = signAccessToken(
+      {
+        sub: randomUUID(),
+        user_type: 'customer',
+        mfa_required: false,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    harness = createHarness({
+      cases: [
+        sampleCase({
+          id: '507f1f77bcf86cd799439011',
+          accountId: randomUUID(),
+          assetId: '507f1f77bcf86cd799439021',
+          partnerOrganizationId: null,
+          status: 'open',
+        }),
+      ],
+    });
+    await harness.start();
+
+    const res = await fetch(harness.url('/security/cases'), {
+      headers: { authorization: `Bearer ${customerToken}` },
     });
     expect(res.status).toBe(403);
   });

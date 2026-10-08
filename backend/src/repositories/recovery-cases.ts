@@ -618,16 +618,18 @@ export function createRecoveryCasesRepo(db: Db) {
       caseId: string,
     ): Promise<RecoveryCaseDocument | null> {
       if (!ObjectId.isValid(caseId)) return null;
-      // SR-011-1a: project police-report fields out of this write-path read-back too —
-      // every partner-facing response must be built from a row that never had these
-      // fields loaded. `accountId` IS fetched here (needed internally for
-      // `scheduleCustomerRecoveryCaseChange` and PDM-8 audit logging) — the route layer
-      // is responsible for never letting it reach the HTTP response (PDM-1), via
+      // SR-009S-3: project out the full claimed-tier exclusion set on this write-path
+      // read-back too — not just the police-report fields. A claimed case's read-backs
+      // must use the SAME projection as its read paths (`findByIdForPartnerOrg`), so
+      // `lastLocation` and `callCentreNotes` are never loaded into a partner-operator
+      // request's memory here either. `accountId` IS still fetched (needed internally
+      // for `scheduleCustomerRecoveryCaseChange` and PDM-8 audit logging) — the route
+      // layer is responsible for never letting it reach the HTTP response (PDM-1), via
       // `toClaimedTierView`/`serializeClaimedTierRecoveryCase`.
       const result = await collection().findOneAndUpdate(
         { _id: new ObjectId(caseId), ...unclaimedCaseVisiblePredicate() },
         { $set: { partnerOrganizationId, status: 'investigating', updatedAt: new Date() } },
-        { returnDocument: 'after', projection: POLICE_REPORT_FIELD_EXCLUSION_PROJECTION },
+        { returnDocument: 'after', projection: CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION },
       );
       return result ? toCase(result as unknown as RecoveryCaseDbRow) : null;
     },
@@ -727,18 +729,24 @@ export function createRecoveryCasesRepo(db: Db) {
         updatedAt: new Date(),
       };
       if (status === 'closed' || status === 'recovered') {
-        // Deliberately no projection here: this is an internal read used only to
-        // decide whether to set `closedAt`, never returned or serialised. The
-        // partner-facing exclusion projection is applied on the write-path read-back
-        // below, which is what actually reaches the caller.
-        const existing = await collection().findOne({
-          _id: new ObjectId(caseId),
-          partnerOrganizationId,
-        });
+        // SR-009S-3: narrowed to `{ closedAt: 1 }` — this internal read is used only
+        // to decide whether to set `closedAt`, never returned or serialised, so it
+        // must not load the police-report triple, `policeReportHistory`,
+        // `lastLocation` or `callCentreNotes` into a partner-operator request's
+        // memory either. The partner-facing exclusion projection is applied on the
+        // write-path read-back below, which is what actually reaches the caller.
+        const existing = await collection().findOne(
+          { _id: new ObjectId(caseId), partnerOrganizationId },
+          { projection: { closedAt: 1 } },
+        );
         if (existing && (existing as unknown as { closedAt: Date | null }).closedAt == null) {
           setFields.closedAt = new Date();
         }
       }
+      // SR-009S-3: project out the full claimed-tier exclusion set on this write-path
+      // read-back — a status-change read-back is always of an already-claimed case
+      // (see the restriction above), so it must use the SAME projection as the
+      // claimed-tier read paths, not just the narrower police-report-only exclusion.
       const result = await collection().findOneAndUpdate(
         {
           _id: new ObjectId(caseId),
@@ -747,7 +755,7 @@ export function createRecoveryCasesRepo(db: Db) {
           status: expectedStatus,
         },
         { $set: setFields },
-        { returnDocument: 'after', projection: POLICE_REPORT_FIELD_EXCLUSION_PROJECTION },
+        { returnDocument: 'after', projection: CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION },
       );
       return result ? toCase(result as unknown as RecoveryCaseDbRow) : null;
     },

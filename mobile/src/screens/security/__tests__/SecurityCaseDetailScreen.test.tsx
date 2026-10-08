@@ -63,6 +63,24 @@ describe('SecurityCaseDetailScreen — data minimisation (PDM-1)', () => {
 
     expect(screen.queryByText('Customer account')).toBeNull();
   });
+
+  // SR-009S-2 — upgrades the denylist check above to an allowlist-shaped regression:
+  // the API client's type is a compile-time cast, not a runtime schema validator, so a
+  // response that actually carries an unexpected extra field (e.g. a backend serializer
+  // regression reintroducing `accountId`) is not stripped before it reaches this
+  // screen's state. This test proves the screen never renders such a field anywhere,
+  // against an adversarial payload, rather than trusting the type alone.
+  it('SR-009S-2: a response carrying an unexpected extra field (e.g. accountId) is never rendered anywhere on screen', async () => {
+    mockGetSecurityCase.mockResolvedValue({
+      ...openCase(),
+      accountId: 'LEAKED-ACCOUNT-ID-MUST-NOT-RENDER',
+    });
+
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('RC-1');
+
+    expect(screen.queryByText(/LEAKED-ACCOUNT-ID-MUST-NOT-RENDER/)).toBeNull();
+  });
 });
 
 describe('SecurityCaseDetailScreen — offline-tolerance policy', () => {
