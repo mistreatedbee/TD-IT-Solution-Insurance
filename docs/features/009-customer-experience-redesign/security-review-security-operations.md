@@ -503,3 +503,211 @@ SR-009S-1, SR-009S-5 and SR-009S-6 independently confirmed closed (re-read code,
 462/462 — and ran `verify-mongo-catalog` against the live database myself — PASS, `admin_access_log
 validator=match`). SR-009S-2, -3, -4, -7 remain open and pilot-blocking, unchanged. New non-blocking finding
 SR-009S-8 recorded at §9.5. Awaiting `compliance-specialist` (C) to complete the joint gate.
+
+---
+
+## 10. `compliance-specialist` (C) independent concurrence — 2026-10-08
+
+**Verdict: CONCUR with the chair's CONDITIONAL SIGN-OFF (§0) and with `security-engineer`'s concurrence (§9). With
+this section the joint Stage 8 gate for this slice is complete, at "conditional sign-off". That is a code gate,
+not a pilot clearance.** My gate position in `compliance-review-security-partner-data-minimisation.md` §6 is
+unchanged. No pilot partner operator may reach real customer data until the open items in §10.6 are closed.
+
+**What I read myself (2026-10-08).** `recovery-cases.ts:205-418` (projections, tier row types, tier interfaces,
+mappers, serialisers, visibility predicates, `PartnerVisibleCaseResult`) and every `accountId` reference in
+`security-cases.ts`. Both customer-facing privacy notices (`src/pages/PrivacyPolicyPage.tsx`,
+`mobile/app/(auth)/privacy.tsx`) and the signup screens that link to them. `ReportTheftConfirmScreen.tsx:150-166`.
+ADR-0006 AUD-7, AUD-9, §14.2, §17.4 and §18. Feature 011 `business-requirements.md:305-308`. I searched `docs/` and
+the repo for any partner register, and `docs/organization/runbooks/` for a partner breach leg. I did **not** run the
+test suites or touch any database. For SR-009S-1/5/6 I rely on §9.1/§9.2, because whether they are closed is a
+security-control question and not mine.
+
+### 10.1 DEV-009S-1 — CONCUR. PDM-2 amended by its author.
+
+**Ruling:** fetching `accountId` into the partner-request process, solely for the audit write and the customer
+notification, and withholding it from every partner response at the type, mapper and serialiser boundary,
+**satisfies PDM-1 and PDM-2.** I do not require the stricter query-level exclusion I originally wrote.
+
+Reasoning, reached independently of §1 and §9.3:
+
+1. **POPIA tests the disclosure, not the fetch.** PDM-1/PDM-2 regulate one processing activity: making information
+   available to a partner (s1 "dissemination … making available"), tested under s10 against *the partner's*
+   purpose. The partner receives no `accountId` at any tier. I checked this myself. Neither `OfferTierRecoveryCase`
+   nor `ClaimedTierRecoveryCase` has the field (`:259-280`). All three mappers copy named fields only, with no
+   spread (`:282-323`). Both serialisers are allowlists (`:325-348`). `accountId` sits beside `case` in
+   `PartnerVisibleCaseResult`, never inside it (`:416-418`). In `security-cases.ts` it is read only at
+   `:96, :188, :244, :331`, and every one of those is an audit `targetAccountId`. The s10 outcome PDM-1 exists for is
+   achieved.
+2. **The platform's own use of `accountId` on that request is a separate activity, and it is lawful and
+   necessary.** As responsible party we must be able to record *which customer's* case went to *which* recipient.
+   That serves s19 accountability and our ability to answer s23(1)(b) (the identity of third parties who have had
+   access). It cannot be done without the subject key. Removing the subject from our own audit write would buy a
+   minimisation gain that does not exist (the value ends up in the same process either way, §1 item 2(a)) at the
+   cost of a real accountability loss.
+3. **The defect was in my conditions, not in the implementation.** I wrote PDM-2's field list ("a field never
+   fetched cannot be leaked") and PDM-8 (subject-keyed audit rows for partner reads, pilot-blocking) in the same
+   document and did not reconcile them. Read literally, they conflict for this one field. `backend-engineer`
+   resolved the conflict in favour of the stronger obligation and documented it in the code
+   (`recovery-cases.ts:205-216`). That was right. PDM-2's query-level method still binds every field the server has
+   no use for: `callCentreNotes`, `lastLocation` and the police-report fields at every tier, plus `notes`, `assetId`
+   and `lastLocationAt` at Tier 0. The code does that.
+4. **PDM-2 amended, by its author.** PDM-2 is to be read as: "…the offer-tier and Tier 1 exclusion projections
+   exclude every listed field **except `accountId`**. `accountId` may be fetched solely for ADR-0006 §18.3/§18.4
+   audit rows and for customer notification dispatch, and must be structurally absent from every partner-facing
+   type, mapper and serialiser (DEV-009S-1)." This section is the authoritative record of the amendment. This task
+   is append-only to this file, so I have not edited the PDM-2 row in the compliance review. A dated in-place
+   cross-reference should be added there, with the original text kept.
+
+**Conditions of my concurrence:**
+- **DC-1 = SR-009S-2:** exact-key allowlist tests per tier on list, detail, claim and PATCH. This is the same
+  condition the chair and §9.3 attached. Until it lands, the non-egress guarantee has only a denylist test behind it.
+- **DC-2 (standing):** no application log, error payload, telemetry event or push payload on a partner-request
+  path may carry `accountId` or a `PartnerVisibleCaseResult` object. None does today: there is no logger call in
+  `security-cases.ts`, and §9.3 item 3 cleared the throw paths. This turns RR-009S-2's "no evidence any logger
+  serialises these" into a rule. Breaking it is a PDM-1 breach, not a logging-hygiene matter.
+- **DC-3 (standing, extends PDM-10):** the deviation covers two consumers of the side-channel `accountId` on partner
+  paths, audit and customer notification. Any new consumer needs `compliance-specialist` review.
+
+### 10.2 ADR-0006 §18.7 item 3 — per-case disclosure shape: CONFIRMED
+
+§18.3's shape (one row per disclosed case, no dedup) is the correct reading of C-16(b) for this domain. A customer
+with two cases has received two disclosures with two case references. It is verified in code and tested (§4, row
+"§18.3 / C-16(b)"). Logging an offer-tier (de-identified) disclosure against its subject is also correct, for the
+reason in §1 item 3. These rows are internal and never partner-readable.
+
+### 10.3 PDM-6 — NOT MET. No manual single-org record exists.
+
+I searched `docs/organization/`, `docs/features/009-customer-experience-redesign/` and the repo for a partner
+register, partner record or PSIRA entry. Every hit is either the requirement itself or a document citing it as open:
+`partner-operator-agreement-requirements.md:253,256,272`, `08-qa-security-accessibility.md:131,156`,
+`09-implementation-roadmap.md:222,224`, and §8 above. **Nobody has created the manual equivalent.** There is also
+nothing to put in it yet: the agreement it must reference is unexecuted (`09-implementation-roadmap.md:226`: "all
+three open as of 2026-10-08").
+
+So that it can be done without a further ruling, the manual equivalent satisfies PDM-6 for a **one-partner** pilot
+if it contains:
+(a) a dated record under `docs/organization/` giving the partner's legal name, PSIRA registration number (checked
+against the PSIRA register, with the check date), agreement reference, agreement status (`executed`), effective
+date, and termination date or notice terms;
+(b) the exact `partnerOrganizationId` UUID assigned to that partner, and the operator accounts invited under it;
+(c) a recorded check, run before go-live and again at every operator invitation, that every
+`security_company_operator` account carries that UUID and no other. This is the load-bearing part. The unclaimed
+pool and the PDM-5 push fan-out reach every operator in every org (F-1, F-7), so an operator invited under a second,
+mistyped UUID is a disclosure to an uncontracted party;
+(d) a same-day termination step: suspend the operator accounts, revoke sessions, update the record.
+Owner: `backend-architect` (record and check query) with the business owner (agreement facts).
+`compliance-specialist` checks it before the pilot. **[PILOT], still blocking.**
+
+### 10.4 PDM-9 privacy-notice half — NOT MET. The chair's finding is confirmed, and the position is worse than "not updated".
+
+**In-app disclosure: met.** `ReportTheftConfirmScreen.tsx:161-166` is my PDM-9 text verbatim, shown before submit,
+and it is accurate against what is built (§7). PDM-7's hint (`:157`) is also met.
+
+**Privacy notice: not updated on any surface.**
+- `mobile/app/(auth)/privacy.tsx` (the mobile signup consent link, `signup.tsx:181`) is a two-paragraph interim
+  notice. It names no recipient or category of recipient, and it still describes GPS as "a future release".
+- `src/pages/PrivacyPolicyPage.tsx` limits its own scope to the waitlist form and states "**we won't share or sell
+  your details to anyone else**" (`:43`). Yet the **web customer account signup links account holders to this page**
+  as its privacy notice (`CustomerSignupPage.tsx:165`). A web-registered customer who later reports a theft is
+  therefore told at signup that nothing is shared, and told at report time that it is shared with partners. The
+  report-time notice is accurate and specific, which mitigates this. But an account holder's s18(1)(e) notice cannot
+  be a document that says the opposite. The web notice's wrong scope for account holders predates this slice. This
+  slice turns it into a live contradiction.
+
+**Required, PDM-9b [PILOT].** Before any pilot with real data, both notices must at minimum:
+(i) state that theft reports are shared with our panel of contracted security partners as a summary without name or
+contact details, and in full with the partner that takes the case, to recover the asset;
+(ii) name the category: private security companies registered with PSIRA and under contract with us;
+(iii) on the web, stop telling account holders that their details are not shared with anyone.
+Category level is enough (C-15). Adjust (i) if the Client chooses admin-assigned dispatch (G-7). Owner:
+`technical-writer` with `compliance-specialist` (copy), plus `frontend-engineer`/`mobile-engineer`. The full POPIA
+notice that the mobile screen promises "before public app-store release" is a wider deliverable already owed. This
+minimum does not discharge it.
+
+### 10.5 ADR-0006 §18.6 retention — RULED
+
+I have enough information to rule. As §18.6 asked, the two event classes are ruled separately.
+
+**(1) Recovery-case disclosure rows** (`privileged_data_access` and `privileged_bulk_access` with
+`resourceType: 'recovery_case'`): **12 months from `createdAt`.** That is the same clock as Trails A and B, so no
+AUD-7(a) asymmetry arises.
+These rows are access telemetry, the same class I ruled on at §14.2, and they change nothing in the customer
+relationship. The durable fact an s23(1)(b) request needs ("which third party received my report") does not depend
+on them. It sits on the case: `recovery_cases.partnerOrganizationId` names the single org that received the
+identifying tier. That field is stable, because no unclaim or reassignment path exists: SR-009S-6's map is
+forward-only, and `claimForPartnerOrg` only claims from `null`. Offer-tier rows record disclosures I ruled are not
+personal information in the recipient's hands (my review §2.3), so keeping them longer buys no s23 value.
+**Revisit trigger:** any unclaim, reassignment or admin-assigned-dispatch path that can change
+`partnerOrganizationId` takes away that stability and reopens this item.
+
+**(2) Recovery-case decision rows** (`privileged_state_change`): **retained for the life of the case record's own
+retention clock. Today that is 5 years from `recovery_cases.closedAt` (Feature 011 `business-requirements.md:305`,
+C-011-10, provisional on C-011-6), and never less than 12 months from `createdAt`. Rows for a case that has not
+closed are retained while it remains open.**
+- This is the class `compliance-review-supabase.md` §6.1.2 already pointed toward a longer clock: records of an
+  action that changes the customer relationship. Who took the case, who marked it recovered, and when, is evidence
+  in theft, recovery and claim disputes, in SAPS proceedings, and in Client–partner billing disputes.
+- **C-C makes this technically necessary, not just prudent.** §18.8(b)'s applied-iff rule reads each row against
+  the next row for the same `resourceId`. A purge keyed on row `createdAt` would cut a long case's chain partway and
+  leave the surviving rows unverifiable. The chain must age out as a unit, keyed on the case.
+- Volume is a handful of rows per case, so the s14 cost is small. The real cost is keeping partner operators'
+  `ipAddress`/`userAgent` for years. I accept that rather than require field redaction, because redaction needs an
+  update-capable principal on `admin_access_log`, which my own §14.3 D3 forbids.
+- Tying the period to the case clock, rather than fixing a number, means it follows automatically if C-011-6
+  (licence category / OI-6) moves the case record's floor. It needs no re-ruling.
+
+**AUD-7(a) asymmetry statement (required by §14.2/§17.4), made here.** Decision rows outlive Trail A's 12 months.
+What this ruling buys is a **longer single-trail decision record, not a longer correlated window.** After 12 months a
+`privileged_state_change` row can no longer be joined to the operator's Trail A session and login events. It still
+stands on its own fields: actor, subject, case, from/to status, timestamp. Correlated reconstruction of partner
+decisions stays capped at 12 months.
+
+**Implementation conditions** (owners `database-architect` + `backend-engineer`; `security-engineer` verifies):
+- **RT-1.** No purge job exists on `admin_access_log` today (§8). Nothing is under-retained, and equally nothing
+  enforces the period. A purge job must exist before any real-data row reaches 12 months old. It must:
+  (a) purge disclosure rows at the 12-month `createdAt` cutoff;
+  (b) never apply a `createdAt`-only cutoff to `privileged_state_change` rows, and purge a case's whole chain
+  together only once that case has closed and passed the case-record clock;
+  (c) honour `legalHold`;
+  (d) record each run with evidence.
+  The existing `admin_access_log_createdAt_purge_partial` index serves (a) only. RT-1 does not block pilot entry.
+- **RT-2.** §18.8(a)(2) stands: `recovery_cases` must not be deleted while decision rows referencing it are kept.
+  Nothing anywhere rules on whole-document retention for `recovery_cases` itself: Feature 011 rules field-level
+  purges only. I record that as my own open item, **CS-009S-1**. It sets the upper bound this ruling defers to. It is
+  non-blocking, because no deletion path exists.
+
+### 10.6 Before a pilot with real customer data — compliance view
+
+| Item | Status | Blocks |
+|---|---|---|
+| SR-009S-2 (= DC-1), SR-009S-3, -4, -7 | Open (§8, §9.6) | Pilot |
+| PDM-6 manual single-org record (§10.3) | **Not created** | Pilot |
+| PDM-9b privacy notices (§10.4) | **Not done**. The web notice contradicts the partner disclosure | Pilot |
+| Partner leg in `runbooks/ct-3-breach-notification-runbook.md` (companion doc §B.7; my review §6) | **Not added**. No file in `docs/organization/runbooks/` mentions partners | Pilot |
+| CT-1 in required form · G-7 · executed s21 partner agreement · counsel questions (my review §7) | Open (business owner / counsel) | Pilot |
+| §18.6 retention | **Ruled (§10.5)**. RT-1 must land before any real-data row reaches 12 months | Not pilot entry |
+| PDM-1, PDM-3, PDM-5, PDM-7, PDM-9 in-app copy, PDM-4 (with SR-009S-6) | Met (§7, §9.2) | — |
+| PDM-8 | Audit shape met (§4). Live once the SR-009S-1 fix is deployed (§9.1) | — |
+| CS-009S-1 `recovery_cases` whole-document retention | Open, mine | Non-blocking |
+| Advisory A-1 (`assetId` in push variables) | Endorsed as PDM-5 hardening. Land it with SR-009S-3 | Non-blocking |
+
+**Pre-approval checklist (my review §6), updated:**
+- Regime ✔
+- Classification ✔
+- Audit logging ✔ (subject to SR-009S-2/-7)
+- PCI: N/A
+- Retention ✔ ruled (RT-1 pending)
+- Lawful basis / authority ✘ (G-7, CT-1)
+- Partner agreement ✘ (agreement, PDM-6)
+- Breach procedure ✘ (partner leg)
+- Consent/disclosure: partial (in-app ✔, notices ✘)
+
+**Manifest.** I have not edited `stage8-manifest.json`. The joint gate is now complete in the conditional sense, so
+the chair's replacement of the `backend-security-cases` waiver (§8) may proceed. It must carry forward
+SR-INC002B-S1/S2, SR-009S-2/-3/-4/-7/-8, DC-1…DC-3, PDM-6, PDM-9b, the CT-3 partner leg and RT-1 as conditions.
+`EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR` stays `"false"` in every non-development profile (§7).
+
+**Signed (C):** `compliance-specialist`, 2026-10-08. Concurs with the chair's CONDITIONAL SIGN-OFF and with
+DEV-009S-1, with conditions DC-1…DC-3, and PDM-2 is amended accordingly. Confirms the §18.3 per-case shape.
+§18.6 retention is ruled (§10.5). **Not a pilot clearance:** PDM-6 and the PDM-9 privacy-notice half are
+independently confirmed **not met**, and the partner breach leg, CT-1, G-7 and the executed agreement remain open.
