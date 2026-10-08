@@ -105,3 +105,37 @@ Reuse `mapUserFacingError` — no raw API messages.
 | Apple/Google wallet policy card | FUTURE | |
 | WhatsApp alert channel | REQUIRES CLIENT DECISION | |
 | Family/multi-driver accounts | REQUIRES CLIENT DECISION | |
+
+---
+
+## 6. Compliance ruling — security-partner case visibility (appended 2026-10-08, `compliance-specialist`)
+
+*Append-only. §1–§5 are unchanged; this section adds to §1's Stage 8 table without editing it.*
+
+Full ruling: [`compliance-review-security-partner-data-minimisation.md`](compliance-review-security-partner-data-minimisation.md).
+Partner agreement requirements: [`../../organization/partner-operator-agreement-requirements.md`](../../organization/partner-operator-agreement-requirements.md).
+
+**Summary.** A shared unclaimed pool is lawful under POPIA only as a **de-identified offer tier**. As
+built (`buildPartnerOrgQuery`, `recovery-cases.ts:192`), every partner org receives `accountId`,
+`assetId` and customer free-text `notes` on every open case before claiming it — excessive under s10.
+Identifying fields go only to the claiming org; `accountId` is withdrawn from the partner surface at
+every stage. Admin-assigned dispatch is preferred but not mandated; the model is a Client decision (G-7).
+
+| Item (adds to §1) | Owner | Status |
+|------|-------|--------|
+| PDM-1 remove `accountId` from partner API + both UIs | `backend-engineer`, web, mobile | **Open — pilot blocker** |
+| PDM-2 offer-tier vs assigned-tier projection/serialiser | `backend-engineer` | **Open — pilot blocker** |
+| PDM-3 `findByIdForPartnerOrg` unclaimed branch limited to `status: 'open'` | `backend-engineer` | **Open — pilot blocker** |
+| PDM-4 90-day post-closure partner visibility window | `backend-engineer` | Open |
+| PDM-5 drop `assetName` from partner push | `backend-engineer` | **Open — pilot blocker** |
+| PDM-6 partner registry tied to executed agreement | `backend-architect` | **Open — pilot blocker** |
+| PDM-7 remove "police case number" prompt from theft-report `notes` hint | `mobile-engineer` + UX | **Open — pilot blocker** |
+| PDM-8 subject-keyed audit on partner detail reads (RR-012-2) | `cybersecurity-architect` | **Open — pilot blocker** |
+| PDM-9 customer s18 disclosure at theft report | `technical-writer` + `mobile-engineer` | **Open — pilot blocker** |
+| Executed partner operator agreement (s21) | TD IT Solution (Pty) Ltd | **Open — pilot blocker** |
+
+**Gate:** no pilot partner sees real customer data until the blockers above, CT-1 (required form) and
+G-7 close. QA additions for §2 Phase 8: assert `accountId` absent from every `/v1/security/cases*`
+response; assert an unclaimed case's list and detail responses omit `notes`/`assetId`/`lastLocationAt` (the
+claim response, now assigned to the caller, may include them);
+assert detail on an unclaimed non-`open` case returns 404.

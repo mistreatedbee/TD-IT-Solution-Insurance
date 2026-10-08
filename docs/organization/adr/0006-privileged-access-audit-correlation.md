@@ -859,3 +859,122 @@ This is the first real exercise of R-1 end to end, and it is the reason the gate
 Migration `034_account_audit_log_subject_and_purge_indexes.sql` was applied to the live Supabase project (`TD IT Solutions`, eu-central-1) on 2026-08-11. Catalog verification: `app.account_audit_log` now has four non-PK indexes — `account_audit_log_pkey`, `account_audit_log_actor_created_at`, `account_audit_log_account_id_created_at`, and `account_audit_log_created_at`. The subject-keyed AUD-8 query path is no longer a sequential scan.
 
 **Still open under FU-A13:** purge scheduling (`app.purge_expired_audit_log()` remains uncalled); deploy-time live-vs-design schema-object check (second half, shares FU-A10); 033's `NOT VALID` constraint promotion (`security-engineer`).
+
+---
+
+## 18. 2026-10-08 — `backend-architect` design pass: RR-012-2 closure design for the Security Company Dashboard (partner-operator reads **and** decisions)
+
+**Author:** `backend-architect`. **Status:** design spec, not implementation — handed to `backend-engineer` to build. **Appended, not merged into any prior section.** This section closes out RR-012-2 (`docs/features/012-employee-dashboard/security-review.md` §9, Residual Risk table — "NOT ACCEPTED — pre-existing, re-flagged … under ADR-0006 C-15/C-16(b)") at the design level, ahead of a chaired Stage 8 re-review of `backend/src/routes/security-cases.ts` for the pilot partner. It does not reopen R-1 … R-5 or any ratified ruling above; it is the "any future endpoint" / "third-trail" application this ADR's §5 AUD-9 third bullet and §12's Security-Company-Dashboard trigger already pre-authorized, applied to the concrete code that now exists (it did not exist when §9/§12/RR-012-2 were written).
+
+### 18.1 What's being closed, precisely
+
+`backend/src/routes/security-cases.ts` has five handlers reading/mutating `recovery_cases` on behalf of a `security_company_operator`: `GET /security/cases` (list), `GET /security/cases/count` (audited per Feature 012 C-012-1 — the only one with any trail today), `GET /security/cases/:caseId` (detail), `POST /security/cases/:caseId/claim` (state change), `PATCH /security/cases/:caseId` (state change). Only the count path writes anything. This section specs the remaining four.
+
+It also resolves `admin_access_log`'s structural gap named by RR-012-2 itself: the collection's `resourceType` is `'policy' | 'asset'` only (`backend/src/repositories/admin-access-log.ts:12`) — there is today no row shape a partner-operator read of a recovery case could even be written into.
+
+### 18.2 Which trail, and why this doesn't need a new ADR
+
+Per AUD-9's third-trail rule (§5): a new privileged-access trail "lives in the store that holds the data it describes" (MongoDB, `recovery_cases` is already there per ADR-0002), "carries the AUD-1 join key with identical field names and semantics," "inherits AUD-7 … in full," and "no new correlation mechanism may be invented for it." All four conditions are satisfied by **extending the existing `admin_access_log` collection** (Trail B) rather than standing up a fourth store or a bespoke scheme:
+
+- Same store, same ownership (Policy & Asset Service holds the Mongo connection recovery-cases already uses — no new credential, no new availability dependency, consistent with §3's reasoning for why option (b) over (a) is affordable).
+- Same join key shape: `actorAccountId`, `actorSessionId`, `auditRequestId`, `ipAddress`, `userAgent` — copied verbatim from `AdminAccessActor`, populated from `req.auth` exactly as `security-cases.ts:101-107`'s existing count-audit call already does.
+- Same fail-closed ordering (AUD-10): audit write precedes response serialisation; a throw must 5xx, never silently serve the case.
+- Same append-only privilege model (AUD-11): the request-path credential gets `insert`/`find` only on this collection, already true for `admin_access_log`.
+
+**One naming note, non-blocking, flagged to `database-architect`:** `admin_access_log` is now, with this change, written to by a non-admin actor type (`security_company_operator`). The collection name is a minor misnomer, not a boundary problem — the collection was never scoped to the `admin` role in its schema, only in its name and its two existing resource types. Recommend renaming to `privileged_access_log` at the next migration-touching change to this collection; not worth a dedicated migration on its own, and not a condition of this design.
+
+**Why no new ADR:** this is not a new decision about trail placement, join-key shape, retention mechanics, or fail-closed semantics — all of that is AUD-1/AUD-6/AUD-7/AUD-10/AUD-11, inherited per AUD-9's own stated inheritance rule. The only two things genuinely new are (a) a third `resourceType` value and (b) a new event class for state changes (§18.4) that this ADR's §5 scope (built around *reads*) did not anticipate verbatim. Both are additive extensions of an existing, ratified pattern, not a new trust-boundary or a new store — which is exactly the line AUD-9's growth rule draws between "re-threat-model before it ships" (a new cross-store read, not this) and an incremental addition within a trail already carrying the guarantees. If `cybersecurity-architect`'s Stage 8 chair disagrees once this reaches review, the fallback is a dedicated ADR-0013; nothing below is written in a way that would need rearchitecting if that call goes the other way.
+
+### 18.3 List and detail reads — bulk-disclosure-style, extending `admin_access_log`
+
+**Schema change:** add `'recovery_case'` to `AdminAccessResourceType` (`backend/src/repositories/admin-access-log.ts:12`). No other field changes needed for the read side — `targetAccountId`, `resourceId`, `endpoint` already fit.
+
+**`GET /security/cases/:caseId` (detail):** call the existing `recordDetail()` unchanged in shape:
+
+```ts
+await ctx.adminAccessLog.recordDetail({
+  actorAccountId: req.auth!.accountId,
+  actorSessionId: req.auth!.sessionId,
+  auditRequestId: req.auditRequestId ?? null,
+  ipAddress: clientIp(req),
+  userAgent: req.header('user-agent') ?? null,
+  targetAccountId: recoveryCase.accountId,
+  resourceType: 'recovery_case',
+  resourceId: recoveryCase.id,
+  endpoint: '/v1/security/cases/:caseId',
+});
+```
+
+Ordering per AUD-10: write after the `findByIdForPartnerOrg` lookup succeeds (including the `NOT_FOUND` branch returning *before* any write — a 404 discloses nothing and must not be logged as if it did), before `res.status(200).json(...)`. A write failure must `next()` an error that 5xxs, not fall through to the response.
+
+**`GET /security/cases` (list):** this is the one place this design deliberately **departs** from the admin-assets/admin-policies precedent, and the departure is load-bearing, not cosmetic. `AdminAccessBulkDisclosureInput`'s existing shape (`backend/src/repositories/admin-access-log.ts:46-53`) dedupes to **one row per distinct subject account**, discarding which specific resource(s) that subject's row(s) corresponded to. That is correct for policies/assets, where C-16(b)'s purpose/case-reference requirement does not apply (ADR-0006 §5 AUD-9 is explicit: "this does not extend to Trails A and B"). It is **wrong** for recovery cases, where AUD-9's C-16(b) bullet *does* apply ("any partner-organisation operator access … must carry a purpose or case reference") and a customer can have more than one case: deduping by subject would silently drop which case(s) were actually disclosed, the one fact C-16(b) exists to preserve.
+
+**Required: a new, case-granular method, not a reuse of `recordBulkDisclosure()`:**
+
+```ts
+export interface AdminAccessCaseBulkDisclosureInput extends AdminAccessActor {
+  /** One entry per case present in the returned page — NOT deduped by subject.
+   * Each case is its own disclosure event with its own case reference (C-16(b)):
+   * a customer with two cases on one page must produce two rows, not one. */
+  disclosedCases: ReadonlyArray<{ accountId: string; caseId: string }>;
+  endpoint: string;
+}
+
+// recordCaseBulkDisclosure(): one `privileged_bulk_access` row
+// { resourceType: 'recovery_case', targetAccountId: null, resourceId: null,
+//   resultCount: disclosedCases.length }
+// plus one `privileged_data_access` row per entry in disclosedCases
+// { resourceType: 'recovery_case', targetAccountId: accountId, resourceId: caseId }
+// — no dedup, no Set(). Single insertMany, unordered, mirroring recordBulkDisclosure's
+// existing atomicity and AUD-10 fail-closed contract exactly.
+```
+
+`resultCount` here means "cases returned," matching the existing Trail B convention for `resourceType: 'asset'|'policy'` (`admin-access-log.ts:51`'s comment: "documents returned in the page," not distinct-subject count) — kept consistent rather than inventing a fourth counting convention.
+
+Call-site ordering, mirroring `security-cases.ts:101`'s existing count pattern: query → materialise `rows` → derive `disclosedCases = rows.map(r => ({ accountId: r.accountId, caseId: r.id }))` → write → serialise. A case appearing on page 1 of a paginated list and again (re-fetched) on a later request is two separate disclosure events and both are logged — this mirrors how `GET /admin/policies` logs every page, not just the first.
+
+### 18.4 Claim and PATCH-status — a decision record, not a disclosure log
+
+These two routes are not reads of another account's data in the SR-10 sense; they are the operator **acting** on the case — accepting a claim (`open → investigating`) or progressing it (`investigating → tracking → recovered/closed`). Treating them as another `privileged_data_access` row would under-record what actually happened: a disclosure row says "the operator saw X"; these events need to say "the operator changed case C from status S1 to status S2, for customer X, at time T" — the same actor/subject/sitting/time join key (AUD-1), plus two fields no read event needs.
+
+**New event type on the same collection, not a new collection:** `'privileged_state_change'`, alongside the existing `'privileged_data_access'` / `'privileged_bulk_access'`. Same collection as §18.3 for the reasons in §18.2 (one store, one join key, one retention clock, one set of grants) — a decision about one case is exactly as evidentiary as a read of it, and splitting decisions into a second collection would recreate the two-trail correlation problem this entire ADR exists to avoid, this time *within* a single domain's own data.
+
+```ts
+export interface AdminAccessStateChangeInput extends AdminAccessActor {
+  targetAccountId: string;      // the case's accountId — the customer, not the operator
+  resourceType: 'recovery_case';
+  resourceId: string;           // caseId — this IS the case reference C-16(b) requires,
+                                 // resolving to a document that exists independently of
+                                 // this write (the recovery_cases row itself), not an
+                                 // operator's free-text assertion
+  fromStatus: RecoveryCaseStatus;
+  toStatus: RecoveryCaseStatus;
+  endpoint: string;              // '/v1/security/cases/:caseId/claim' | '/v1/security/cases/:caseId'
+}
+```
+
+Row shape: `eventType: 'privileged_state_change'`, `targetAccountId` and `resourceId` required (mirrors `privileged_data_access`'s invariant — a state change always names a subject and a resource; there is no "bulk" variant of a decision), `resultCount: null`, plus `fromStatus`/`toStatus` as new top-level fields on `AdminAccessLogDbRow`, required if-and-only-if `eventType === 'privileged_state_change'` — same per-eventType-branching `assertInvariants()` style already used for `resultCount` (`admin-access-log.ts:56-78`), extended with one more branch rather than restructured.
+
+**`POST /security/cases/:caseId/claim`:** `fromStatus: existing?.status ?? 'open'`, `toStatus: 'investigating'` (claim always transitions open→investigating per `claimForPartnerOrg`'s own contract). Write after `claimForPartnerOrg` returns a non-null result (a failed claim attempt against an already-claimed case is not this operator's decision to record), before the response. The existing `NOT_FOUND` branch (case already claimed by someone else, or doesn't exist) must not write a state-change row — nothing changed.
+
+**`PATCH /security/cases/:caseId`:** `fromStatus: existing.status`, `toStatus: bodyParsed.data.status`, written once `updateStatusForPartnerOrg` returns non-null, same ordering. Note `updateStatusForPartnerOrg` already requires the case to be claimed by the caller's org before allowing a status change (the comment at `recovery-cases.ts:334-340`) — so every `privileged_state_change` row for this route has `fromStatus`/`toStatus` both drawn from the caller's own prior claim, never a cross-org state leak.
+
+**Fail-closed (AUD-10) applies identically to decision records as to disclosure records** — if the audit write throws, the claim/status-update must 5xx and the underlying Mongo document's status change should not be left to stand unaudited. Because the status mutation (`claimForPartnerOrg`/`updateStatusForPartnerOrg`) and the audit write are two separate Mongo operations without a multi-document transaction today, `backend-engineer` must decide (and record) one of: (a) a transaction spanning both writes (requires a replica-set-backed Mongo deployment — confirm with `database-architect`/`cloud-infrastructure-architect` before assuming availability), or (b) write-audit-then-fail-the-request-but-leave-the-status-change-applied, documented honestly as a known gap (an applied-but-unaudited state change is strictly worse than AUD-10's "data returned but unaudited" case, because the customer-visible case state itself has now changed) — the author's recommendation is (a) if transactions are available, otherwise write the audit record **first**, inside the same handler, and only then call the status-mutating repository method, so a failed audit write never reaches the mutation at all; this reorders the "ordering: write-before-serialise" rule to "write-before-mutate" specifically for this state-change case, which is a deliberate, stated departure from AUD-10's literal text ("before serialising the response") and must be called out as such in the Stage 9 diff and verified by `security-engineer` at Stage 8 re-review.
+
+### 18.5 C-16(b) purpose/case-reference requirement — how it's satisfied here
+
+AUD-9's C-16(b) bullet requires a purpose/case reference that "must resolve to a case that exists independently of the access." For every event type above, `resourceId` (the `recovery_cases` document's own `_id`) **is** that reference: it is not operator-asserted, it pre-exists the read/decision, and it is independently queryable. This also closes `cto`'s FU-A14 finding (§17.3: "no case, claim, theft-report or recovery entity exists anywhere on this platform," filed as a Stage-1 prerequisite for any partner-operator read surface) for the recovery-case domain specifically — `recovery_cases` (Feature 009/011) is exactly the entity FU-A14 said was missing. `cybersecurity-architect` should confirm this closes FU-A14's recovery-case half at the Stage 8 re-review; it is noted here as a design-time observation, not a unilateral closure of someone else's finding.
+
+### 18.6 Retention — explicitly not ruled here
+
+Per AUD-9's C-16(a) bullet: a new trail's retention period is never silently inherited, even when it shares a collection with an existing one. `admin_access_log`'s current 12 months (`database-addendum-001.md` §3.3) was ruled for policy/asset disclosure records. **Open item for `compliance-specialist`, blocking Stage 8 sign-off, not blocking this design handoff:** whether recovery-case disclosure and, separately, recovery-case *decision* records (§18.4 — arguably higher-value evidence than a read, given theft/recovery/criminal-proceedings relevance already flagged for the location trail at ADR-0006 §5 AUD-9) warrant 12 months, a longer period, or the same period with a documented AUD-7(a) asymmetry statement. `legalHold` (already a field on `admin_access_log`, §5 AUD-7(b)) extends unchanged to both new event types with no schema work.
+
+### 18.7 Summary of concrete changes for `backend-engineer`
+
+1. `backend/src/repositories/admin-access-log.ts`: widen `AdminAccessResourceType` to include `'recovery_case'`; add `AdminAccessCaseBulkDisclosureInput` + `recordCaseBulkDisclosure()` (§18.3); add `'privileged_state_change'` to `AdminAccessEventType`, add `fromStatus`/`toStatus` fields to `AdminAccessLogDbRow`, extend `assertInvariants()` with the new branch, add `AdminAccessStateChangeInput` + `recordStateChange()` (§18.4).
+2. `backend/src/routes/security-cases.ts`: wire `recordDetail()` into the detail handler, `recordCaseBulkDisclosure()` into the list handler, `recordStateChange()` into claim and PATCH, all before response serialisation (claim/PATCH: resolve the transaction-vs-ordering question in §18.4 explicitly, don't default to the read-path ordering without checking it holds).
+3. `compliance-specialist`: retention ruling (§18.6) and confirmation that §18.3's per-case (not per-subject) disclosure shape is the correct reading of C-16(b) for this domain.
+4. `cybersecurity-architect`: Stage 8 re-review of the four wired handlers against this section; confirm or reject the §18.2 "extend, don't fork" call and the §18.4 ordering departure; rule on whether FU-A14's recovery-case half is now closed (§18.5).
+5. `database-architect`: formalize the `admin_access_log` validator amendment (new `resourceType` enum value, new `eventType` enum value, conditional-required `fromStatus`/`toStatus`); non-blocking naming note (§18.2) on the collection's name.
+
+This section does not touch, narrow, or widen RR-012-1 (the unlogged, cheap, cross-tenant `/count` aggregate) — that remains governed by Feature 012 §9/§11 as written. It also does not rule on the shared-pool-vs-admin-assigned-dispatch question; see `docs/features/009-customer-experience-redesign/10-security-dashboard-pool-narrowing.md` for that design, which §18.3/§18.4's audit shapes above are written to work unchanged under either outcome (the disclosed/decided case set they log is computed from whatever `buildPartnerOrgQuery` and `claimForPartnerOrg` return, not from a hardcoded assumption about pool visibility).
