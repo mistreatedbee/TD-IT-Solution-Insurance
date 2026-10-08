@@ -62,7 +62,8 @@ export const recoveryCasesJsonSchemaValidator: Document = {
       // Feature 011 (SAPS case-number capture) — docs/features/011-saps-case-reporting/.
       // Customer-only fields (C-011-9 / SR-011-1/-1a): the partner/security-company read
       // paths in repositories/recovery-cases.ts project these OUT of the query — never
-      // add them to serializeSecurityRecoveryCase or any partner/support-agent response.
+      // add them to serializeOfferTierRecoveryCase/serializeClaimedTierRecoveryCase or
+      // any partner/support-agent response.
       sapsCaseNumber: { bsonType: ['string', 'null'], minLength: 3, maxLength: 50 },
       reportingStation: { bsonType: ['string', 'null'], minLength: 1, maxLength: 200 },
       reportedToPoliceAt: { bsonType: ['date', 'null'] },
@@ -87,7 +88,8 @@ export const recoveryCasesJsonSchemaValidator: Document = {
       // Feature 010 Phase 2 (database-design.md §5) — set ONLY by the (not-yet-authorized)
       // support-case escalation endpoint; null for every customer-self-reported case
       // (the only case-creation path that exists today). Additive, backward-compatible.
-      // Not added to `serializeSecurityRecoveryCase` — a security-company operator has no
+      // Not added to `serializeOfferTierRecoveryCase`/`serializeClaimedTierRecoveryCase`
+      // — a security-company operator has no
       // recovery-mandate need to know a case originated by phone vs. self-report
       // (database-design.md §5 / security-review.md §5, confirmed).
       originatingSupportCaseId: { bsonType: ['string', 'null'] },

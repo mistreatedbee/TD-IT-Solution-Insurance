@@ -5,7 +5,8 @@
  * `sapsCaseNumber` / `reportingStation` / `reportedToPoliceAt` / `policeReportHistory` /
  * `policeReportReminderSentAt` off a `RecoveryCaseDocument` and puts it on the wire.
  * They exist in their own module, deliberately separate from
- * `repositories/recovery-cases.ts`'s `serializeSecurityRecoveryCase`, so that:
+ * `repositories/recovery-cases.ts`'s `serializeOfferTierRecoveryCase`/
+ * `serializeClaimedTierRecoveryCase`, so that:
  *
  *   1. `backend/src/routes/security-cases.ts` and `backend/src/routes/support-lookup.ts`
  *      can carry an ESLint `no-restricted-imports` rule (see `.eslintrc.cjs`) forbidding

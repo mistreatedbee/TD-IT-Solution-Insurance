@@ -27,15 +27,51 @@ import {
 
 type RawDoc = Record<string, unknown> & { _id: ObjectId };
 
+function matchesOperatorValue(actual: unknown, expected: unknown): boolean {
+  if (
+    expected !== null &&
+    typeof expected === 'object' &&
+    !(expected instanceof Date) &&
+    !Array.isArray(expected) &&
+    !(expected instanceof ObjectId)
+  ) {
+    return Object.entries(expected as Record<string, unknown>).every(([op, opVal]) => {
+      switch (op) {
+        case '$nin':
+          return !(opVal as unknown[]).includes(actual);
+        case '$in':
+          return (opVal as unknown[]).includes(actual);
+        case '$ne':
+          return actual !== opVal;
+        case '$gt':
+          return actual instanceof Date && opVal instanceof Date
+            ? actual.getTime() > opVal.getTime()
+            : (actual as number) > (opVal as number);
+        case '$lt':
+          return actual instanceof Date && opVal instanceof Date
+            ? actual.getTime() < opVal.getTime()
+            : (actual as number) < (opVal as number);
+        default:
+          return actual === expected;
+      }
+    });
+  }
+  if (expected === null) return actual === null || actual === undefined;
+  return actual === expected;
+}
+
 function matches(doc: RawDoc, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([key, value]) => {
     if (key === '$or') {
       return (value as Array<Record<string, unknown>>).some((sub) => matches(doc, sub));
     }
+    if (key === '$and') {
+      return (value as Array<Record<string, unknown>>).every((sub) => matches(doc, sub));
+    }
     if (key === '_id') {
       return doc._id instanceof ObjectId && (value as ObjectId).equals(doc._id);
     }
-    return doc[key] === value;
+    return matchesOperatorValue(doc[key], value);
   });
 }
 
@@ -88,6 +124,9 @@ function createFakeDb(seed: RawDoc[]): { db: Db; docs: RawDoc[] } {
       const found = docs.find((d) => matches(d, filter));
       if (!found) return null;
       return applyExclusionProjection(found, opts?.projection);
+    },
+    async countDocuments(filter: Record<string, unknown>) {
+      return docs.filter((d) => matches(d, filter)).length;
     },
     async findOneAndUpdate(
       filter: Record<string, unknown>,
@@ -176,11 +215,15 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
 
       expect(rows).toHaveLength(1);
       const row = rows[0]!;
-      expect(row.sapsCaseNumber).toBeNull();
-      expect(row.reportingStation).toBeNull();
-      expect(row.reportedToPoliceAt).toBeNull();
-      expect(row.policeReportHistory).toEqual([]);
-      expect(row.policeReportReminderSentAt).toBeNull();
+      expect(row.tier).toBe('claimed');
+      // Police-report fields are projected out at the query level — they are never
+      // fetched into the row at all, so they cannot be present on the returned `case`
+      // shape (not merely null-by-convention).
+      expect(row.case).not.toHaveProperty('sapsCaseNumber');
+      expect(row.case).not.toHaveProperty('reportingStation');
+      expect(row.case).not.toHaveProperty('reportedToPoliceAt');
+      expect(row.case).not.toHaveProperty('policeReportHistory');
+      expect(row.case).not.toHaveProperty('policeReportReminderSentAt');
     });
 
     it('findByIdForPartnerOrg never returns police-report fields, even when they are set', async () => {
@@ -198,8 +241,9 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       const row = await repo.findByIdForPartnerOrg('org-1', id.toHexString());
 
       expect(row).not.toBeNull();
-      expect(row!.sapsCaseNumber).toBeNull();
-      expect(row!.reportingStation).toBeNull();
+      expect(row!.tier).toBe('claimed');
+      expect(row!.case).not.toHaveProperty('sapsCaseNumber');
+      expect(row!.case).not.toHaveProperty('reportingStation');
     });
 
     it('claimForPartnerOrg (write-path read-back) never returns police-report fields', async () => {
@@ -232,7 +276,12 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       ]);
       const repo = createRecoveryCasesRepo(db);
 
-      const row = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'tracking');
+      const row = await repo.updateStatusForPartnerOrg(
+        'org-1',
+        id.toHexString(),
+        'tracking',
+        'investigating',
+      );
 
       expect(row).not.toBeNull();
       expect(row!.sapsCaseNumber).toBeNull();
@@ -247,11 +296,11 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       ]);
       const repo = createRecoveryCasesRepo(db);
 
-      const tracking = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'tracking');
+      const tracking = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'tracking', 'investigating');
       expect(tracking!.closedAt).toBeNull();
       expect(docs[0]!.closedAt).toBeNull();
 
-      const closed = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'closed');
+      const closed = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'closed', 'tracking');
       expect(closed).not.toBeNull();
       expect(docs[0]!.closedAt).toBeInstanceOf(Date);
     });
@@ -266,7 +315,7 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       ]);
       const repo = createRecoveryCasesRepo(db);
 
-      const recovered = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'recovered');
+      const recovered = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'recovered', 'tracking');
       expect(recovered).not.toBeNull();
       expect(docs[0]!.closedAt).toBeInstanceOf(Date);
     });
@@ -284,7 +333,7 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       ]);
       const repo = createRecoveryCasesRepo(db);
 
-      await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'closed');
+      await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'closed', 'recovered');
       expect(docs[0]!.closedAt).toEqual(closedAt);
     });
 
@@ -300,7 +349,7 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       ]);
       const repo = createRecoveryCasesRepo(db);
 
-      await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'recovered');
+      await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'recovered', 'closed');
       expect(docs[0]!.closedAt).toEqual(closedAt);
     });
   });
@@ -456,6 +505,265 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       });
 
       expect(result.ok).toBe(true);
+    });
+  });
+
+  describe('PDM-1: accountId never reaches a partner-facing `case` shape', () => {
+    it('listForPartnerOrg exposes accountId only at the top level of the result, never inside `case`', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, accountId: 'real-customer-account-id', partnerOrganizationId: 'org-1' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const rows = await repo.listForPartnerOrg('org-1', {}, 10, null);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.accountId).toBe('real-customer-account-id');
+      expect(rows[0]!.case).not.toHaveProperty('accountId');
+    });
+
+    it('findByIdForPartnerOrg exposes accountId only at the top level, never inside `case` (claimed tier)', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, accountId: 'real-customer-account-id', partnerOrganizationId: 'org-1' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const result = await repo.findByIdForPartnerOrg('org-1', id.toHexString());
+
+      expect(result).not.toBeNull();
+      expect(result!.tier).toBe('claimed');
+      expect(result!.accountId).toBe('real-customer-account-id');
+      expect(result!.case).not.toHaveProperty('accountId');
+    });
+
+    it('findByIdForPartnerOrg exposes accountId only at the top level, never inside `case` (offer tier)', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({
+          _id: id,
+          accountId: 'real-customer-account-id',
+          partnerOrganizationId: null,
+          status: 'open',
+        }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const result = await repo.findByIdForPartnerOrg('org-1', id.toHexString());
+
+      expect(result).not.toBeNull();
+      expect(result!.tier).toBe('offer');
+      expect(result!.accountId).toBe('real-customer-account-id');
+      expect(result!.case).not.toHaveProperty('accountId');
+    });
+  });
+
+  describe('PDM-2: tiered projections by claim state', () => {
+    it('offer tier (unclaimed) excludes notes, assetId, lastLocation, lastLocationAt, callCentreNotes', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({
+          _id: id,
+          partnerOrganizationId: null,
+          status: 'open',
+          notes: 'Stolen from my car outside Sandton City, SAPS case 123/01/2026',
+          assetId: 'asset-sensitive',
+          lastLocation: { latitude: -26.1, longitude: 28.0, recordedAt: new Date(), accuracyMeters: 10 },
+          lastLocationAt: new Date(),
+          callCentreNotes: [{ agentAccountId: 'agent-1', text: 'called customer', createdAt: new Date() }],
+        }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const result = await repo.findByIdForPartnerOrg('org-1', id.toHexString());
+
+      expect(result).not.toBeNull();
+      expect(result!.tier).toBe('offer');
+      for (const key of ['notes', 'assetId', 'lastLocation', 'lastLocationAt', 'callCentreNotes']) {
+        expect(result!.case).not.toHaveProperty(key);
+      }
+    });
+
+    it('claimed tier (Tier 1) excludes callCentreNotes and lastLocation but keeps notes/assetId/lastLocationAt', async () => {
+      const id = new ObjectId();
+      const lastLocationAt = new Date('2026-08-01T00:00:00.000Z');
+      const { db } = createFakeDb([
+        baseDoc({
+          _id: id,
+          partnerOrganizationId: 'org-1',
+          notes: 'Stolen laptop, last seen at the office',
+          assetId: 'asset-1',
+          lastLocation: { latitude: -26.1, longitude: 28.0, recordedAt: new Date(), accuracyMeters: 10 },
+          lastLocationAt,
+          callCentreNotes: [{ agentAccountId: 'agent-1', text: 'called customer', createdAt: new Date() }],
+        }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const result = await repo.findByIdForPartnerOrg('org-1', id.toHexString());
+
+      expect(result).not.toBeNull();
+      expect(result!.tier).toBe('claimed');
+      expect(result!.case).not.toHaveProperty('callCentreNotes');
+      expect(result!.case).not.toHaveProperty('lastLocation');
+      const claimedCase = result!.case as { notes: string | null; assetId: string; lastLocationAt: Date | null };
+      expect(claimedCase.notes).toBe('Stolen laptop, last seen at the office');
+      expect(claimedCase.assetId).toBe('asset-1');
+      expect(claimedCase.lastLocationAt).toEqual(lastLocationAt);
+    });
+  });
+
+  describe('PDM-3: list/count/detail share the same narrowed visibility predicate', () => {
+    it('findByIdForPartnerOrg matches listForPartnerOrg exactly for an unclaimed, open case (F-4)', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([baseDoc({ _id: id, partnerOrganizationId: null, status: 'open' })]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const [listRows, detail] = await Promise.all([
+        repo.listForPartnerOrg('org-1', {}, 10, null),
+        repo.findByIdForPartnerOrg('org-1', id.toHexString()),
+      ]);
+
+      expect(listRows).toHaveLength(1);
+      expect(detail).not.toBeNull();
+      expect(detail!.tier).toBe('offer');
+    });
+
+    it('findByIdForPartnerOrg returns null for an unclaimed case that is NOT open (e.g. investigating by nobody is impossible, but a stale non-open/null-org row must not leak)', async () => {
+      // Regression for the pre-PDM-3 bug: findByIdForPartnerOrg's unclaimed branch used
+      // to be `{ partnerOrganizationId: null }` with no status constraint — wider than
+      // buildPartnerOrgQuery's list filter. A null-org case in any non-'open' status
+      // (e.g. data migrated from a legacy state) must now be invisible via detail too.
+      const id = new ObjectId();
+      const { db } = createFakeDb([baseDoc({ _id: id, partnerOrganizationId: null, status: 'closed' })]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const detail = await repo.findByIdForPartnerOrg('org-1', id.toHexString());
+
+      expect(detail).toBeNull();
+    });
+
+    it('countForPartnerOrg equals listForPartnerOrg length for the same filters (C-012-3 extended)', async () => {
+      const orgId = 'org-1';
+      const { db } = createFakeDb([
+        baseDoc({ _id: new ObjectId(), partnerOrganizationId: null, status: 'open' }),
+        baseDoc({ _id: new ObjectId(), partnerOrganizationId: orgId, status: 'investigating' }),
+        baseDoc({ _id: new ObjectId(), partnerOrganizationId: 'org-2', status: 'investigating' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const [rows, count] = await Promise.all([
+        repo.listForPartnerOrg(orgId, {}, 10, null),
+        repo.countForPartnerOrg(orgId, {}),
+      ]);
+
+      expect(count).toBe(2);
+      expect(rows).toHaveLength(2);
+    });
+  });
+
+  describe('PDM-4: 90-day wrap-up window', () => {
+    it('a claimed case still shows in list/count/detail within the 90-day window after closedAt', async () => {
+      const recentlyClosed = new Date();
+      recentlyClosed.setUTCDate(recentlyClosed.getUTCDate() - 10);
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'closed', closedAt: recentlyClosed }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const [rows, count, detail] = await Promise.all([
+        repo.listForPartnerOrg('org-1', {}, 10, null),
+        repo.countForPartnerOrg('org-1', {}),
+        repo.findByIdForPartnerOrg('org-1', id.toHexString()),
+      ]);
+
+      expect(rows).toHaveLength(1);
+      expect(count).toBe(1);
+      expect(detail).not.toBeNull();
+    });
+
+    it('a claimed case drops out of list/count/detail once closedAt is more than 90 days ago', async () => {
+      const longAgo = new Date();
+      longAgo.setUTCDate(longAgo.getUTCDate() - 91);
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'closed', closedAt: longAgo }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const [rows, count, detail] = await Promise.all([
+        repo.listForPartnerOrg('org-1', {}, 10, null),
+        repo.countForPartnerOrg('org-1', {}),
+        repo.findByIdForPartnerOrg('org-1', id.toHexString()),
+      ]);
+
+      expect(rows).toHaveLength(0);
+      expect(count).toBe(0);
+      expect(detail).toBeNull();
+    });
+
+    it('a claimed case past the 90-day window but still open-status (not terminal) remains visible', async () => {
+      // The wrap-up window only applies to terminal statuses (recovered/closed) that
+      // have actually closed — a long-running 'investigating'/'tracking' case with no
+      // closedAt must not be dropped merely because it is old.
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'investigating', closedAt: null }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const detail = await repo.findByIdForPartnerOrg('org-1', id.toHexString());
+
+      expect(detail).not.toBeNull();
+    });
+
+    it('a recovered (not yet closed) case past 90 days also drops out (closedAt is set on entry to recovered too)', async () => {
+      const longAgo = new Date();
+      longAgo.setUTCDate(longAgo.getUTCDate() - 120);
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'recovered', closedAt: longAgo }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const detail = await repo.findByIdForPartnerOrg('org-1', id.toHexString());
+
+      expect(detail).toBeNull();
+    });
+  });
+
+  describe('ADR-0006 §18.8 C-A: updateStatusForPartnerOrg compare-and-set on expectedStatus', () => {
+    it('applies the update when expectedStatus matches the document’s current status', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'investigating' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const result = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'tracking', 'investigating');
+
+      expect(result).not.toBeNull();
+      expect(result!.status).toBe('tracking');
+    });
+
+    it('rejects (returns null) when expectedStatus no longer matches — the race-condition regression case', async () => {
+      // Simulates two operators retrying a status change: the first call already moved
+      // the case from 'investigating' to 'tracking'; a second, stale request still
+      // believes the case is 'investigating' and must fail its compare-and-set rather
+      // than silently applying an update derived from stale state.
+      const id = new ObjectId();
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'tracking' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const result = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'recovered', 'investigating');
+
+      expect(result).toBeNull();
+      // The document must be left exactly as it was — no partial/incorrect mutation.
+      expect(docs[0]!.status).toBe('tracking');
     });
   });
 });

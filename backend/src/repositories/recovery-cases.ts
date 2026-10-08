@@ -5,11 +5,19 @@
  * ONLY place `sapsCaseNumber` / `reportingStation` / `reportedToPoliceAt` /
  * `policeReportHistory` / `policeReportReminderSentAt` (collectively "police-report
  * fields") may be read off the raw document. The partner/security-company-facing read
- * paths (`listForPartnerOrg`, `findByIdForPartnerOrg`) apply a Mongo projection that
+ * paths (`listForPartnerOrg`, `findByIdForPartnerOrg`, and the write-path read-backs in
+ * `claimForPartnerOrg`/`updateStatusForPartnerOrg`) apply a Mongo projection that
  * EXCLUDES these fields at the query level — they are never fetched into the row object
- * on that path, so `serializeSecurityRecoveryCase` structurally cannot see them even if
- * a future edit adds a field to that function. Do not "fix" the projection to include
- * these fields without a fresh security-review sign-off (security-review.md SR-011-1a).
+ * on that path, so neither `serializeOfferTierRecoveryCase` nor
+ * `serializeClaimedTierRecoveryCase` can structurally see them even if a future edit
+ * adds a field to either function. Do not "fix" the projection to include these fields
+ * without a fresh security-review sign-off (security-review.md SR-011-1a).
+ *
+ * PDM-2 (compliance-review-security-partner-data-minimisation.md) extends this same
+ * "excluded at the query level" discipline to a second, claim-state-tiered set of
+ * fields — see `OFFER_TIER_FIELD_EXCLUSION_PROJECTION` / `CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION`
+ * below, and the `PartnerVisibleCaseResult` doc comment for how `accountId` is handled
+ * as a deliberate, documented exception to "excluded at the query level" (PDM-1/PDM-8).
  */
 import { ObjectId, type Db, type Collection, type Document } from 'mongodb';
 import { mongoCursorFilter, type MongoDecodedCursor } from '../lib/mongo-pagination.js';
@@ -76,8 +84,9 @@ export interface RecoveryCaseDocument {
    * (database-design.md §5.2) — do NOT substitute `updatedAt` for this field. */
   closedAt: Date | null;
   /** Feature 011 (SAPS case-number capture) — customer-only fields. NEVER add these to
-   * `serializeSecurityRecoveryCase` or any security-company/support-agent surface
-   * without a fresh compliance + security review (C-011-9 / SR-011-1 / SR-011-7). */
+   * `serializeOfferTierRecoveryCase`, `serializeClaimedTierRecoveryCase`, or any
+   * security-company/support-agent surface without a fresh compliance + security
+   * review (C-011-9 / SR-011-1 / SR-011-7). */
   sapsCaseNumber: string | null;
   reportingStation: string | null;
   reportedToPoliceAt: Date | null;
@@ -172,13 +181,211 @@ export function serializeRecoveryCase(doc: RecoveryCaseDocument) {
   };
 }
 
-export function serializeSecurityRecoveryCase(doc: RecoveryCaseDocument) {
+// PDM-1 (compliance-review-security-partner-data-minimisation.md §3/§4): `accountId`
+// is withdrawn from every security-company-partner-facing response, at every claim
+// stage, not only pre-claim — a claimed partner recovers an *asset*, identified by
+// case reference and asset descriptors; the account id gives it nothing operational
+// and gives it a persistent key to profile a customer across cases over time. It is
+// deliberately NOT a field on `OfferTierRecoveryCase`/`ClaimedTierRecoveryCase` below
+// (TypeScript cannot pass what the type doesn't have) rather than merely omitted by
+// convention from a serializer that could drift. `serializeSecurityRecoveryCase` (the
+// old, untiered serializer that unconditionally spread `accountId`) is removed —
+// `serializeOfferTierRecoveryCase`/`serializeClaimedTierRecoveryCase` replace every
+// call site in `routes/security-cases.ts`.
+
+/**
+ * PDM-2 (compliance-review-security-partner-data-minimisation.md §4) — an unclaimed
+ * case ("offer tier") carries no operational need for `notes` (most likely field to
+ * contain an address or a SAPS case number — F-9), `assetId`, `lastLocation`,
+ * `lastLocationAt`, or `callCentreNotes`: an operator deciding whether to claim a case
+ * needs only its reference/status/timestamps. Excluded at the Mongo projection level
+ * (SR-011-1a pattern — "a field never fetched cannot be leaked"), not filtered after
+ * the fact by the serializer alone.
+ *
+ * `accountId` is deliberately NOT in this projection, unlike the compliance review's
+ * literal field list. ADR-0006 §18.3 requires every disclosed case — including
+ * unclaimed/offer-tier rows an operator merely browses — to be logged with its
+ * subject `accountId` as the audit trail's `targetAccountId` (PDM-8). Withholding it
+ * from the DB fetch entirely would make that audit write impossible. The field is
+ * fetched (for the audit write only) and is structurally absent from
+ * `OfferTierRecoveryCase`/`ClaimedTierRecoveryCase` and never reaches
+ * `serializeOfferTierRecoveryCase`/`serializeClaimedTierRecoveryCase` or the HTTP
+ * response — PDM-1's guarantee is enforced at the response-serializer boundary for
+ * this one field, not the query boundary, and that boundary is exercised by a
+ * dedicated regression test (`recovery-cases.test.ts`).
+ */
+export const OFFER_TIER_FIELD_EXCLUSION_PROJECTION: Document = {
+  ...POLICE_REPORT_FIELD_EXCLUSION_PROJECTION,
+  notes: 0,
+  assetId: 0,
+  lastLocation: 0,
+  lastLocationAt: 0,
+  callCentreNotes: 0,
+};
+
+/**
+ * PDM-2 — a claimed case ("Tier 1") additionally excludes `callCentreNotes` and
+ * `lastLocation`, which compliance confirmed are fetched today with no actual use
+ * (F-5 — neither has ever been in `serializeRecoveryCase`'s output). Does NOT exclude
+ * `notes`/`assetId`/`lastLocationAt`: those are operationally relevant once a case is
+ * claimed. See the `accountId` note on `OFFER_TIER_FIELD_EXCLUSION_PROJECTION` above —
+ * the same reasoning applies here.
+ */
+export const CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION: Document = {
+  ...POLICE_REPORT_FIELD_EXCLUSION_PROJECTION,
+  callCentreNotes: 0,
+  lastLocation: 0,
+};
+
+type OfferTierCaseDbRow = Pick<
+  RecoveryCaseDbRow,
+  '_id' | 'accountId' | 'partnerOrganizationId' | 'status' | 'referenceNumber' | 'reportedAt' | 'createdAt' | 'updatedAt'
+>;
+
+type ClaimedTierCaseDbRow = Omit<
+  RecoveryCaseDbRow,
+  | 'callCentreNotes'
+  | 'lastLocation'
+  | 'sapsCaseNumber'
+  | 'reportingStation'
+  | 'reportedToPoliceAt'
+  | 'policeReportHistory'
+  | 'policeReportReminderSentAt'
+>;
+
+/** The shape returned by `serializeOfferTierRecoveryCase` — structurally has no
+ * `accountId`, `notes`, `assetId`, `lastLocation`, `lastLocationAt`, or
+ * `callCentreNotes` field, so none of those can ever reach that serializer. */
+export interface OfferTierRecoveryCase {
+  id: string;
+  partnerOrganizationId: string | null;
+  status: RecoveryCaseStatus;
+  referenceNumber: string;
+  reportedAt: Date;
+  updatedAt: Date;
+}
+
+/** The shape returned by `serializeClaimedTierRecoveryCase` — structurally has no
+ * `accountId`, `callCentreNotes`, or `lastLocation` field. */
+export interface ClaimedTierRecoveryCase {
+  id: string;
+  assetId: string;
+  partnerOrganizationId: string | null;
+  status: RecoveryCaseStatus;
+  referenceNumber: string;
+  reportedAt: Date;
+  notes: string | null;
+  lastLocationAt: Date | null;
+  updatedAt: Date;
+}
+
+function toOfferTierCase(row: OfferTierCaseDbRow): OfferTierRecoveryCase {
   return {
-    ...serializeRecoveryCase(doc),
-    accountId: doc.accountId,
+    id: row._id.toHexString(),
+    partnerOrganizationId: row.partnerOrganizationId,
+    status: row.status,
+    referenceNumber: row.referenceNumber,
+    reportedAt: row.reportedAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function toClaimedTierCase(row: ClaimedTierCaseDbRow): ClaimedTierRecoveryCase {
+  return {
+    id: row._id.toHexString(),
+    assetId: row.assetId,
+    partnerOrganizationId: row.partnerOrganizationId,
+    status: row.status,
+    referenceNumber: row.referenceNumber,
+    reportedAt: row.reportedAt,
+    notes: row.notes,
+    lastLocationAt: row.lastLocationAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/** `ClaimedTierRecoveryCase` built from a full, already-converted
+ * `RecoveryCaseDocument` (used by the claim/PATCH write paths, which keep
+ * `accountId` available internally for notification dispatch — see
+ * `toClaimedTierCase`'s doc comment — but must never let it reach the response). */
+export function toClaimedTierView(doc: RecoveryCaseDocument): ClaimedTierRecoveryCase {
+  return {
+    id: doc.id,
+    assetId: doc.assetId,
+    partnerOrganizationId: doc.partnerOrganizationId,
+    status: doc.status,
+    referenceNumber: doc.referenceNumber,
+    reportedAt: doc.reportedAt,
+    notes: doc.notes,
+    lastLocationAt: doc.lastLocationAt,
+    updatedAt: doc.updatedAt,
+  };
+}
+
+export function serializeOfferTierRecoveryCase(doc: OfferTierRecoveryCase) {
+  return {
+    id: doc.id,
+    status: doc.status,
+    referenceNumber: doc.referenceNumber,
+    reportedAt: doc.reportedAt.toISOString(),
     partnerOrganizationId: doc.partnerOrganizationId,
     updatedAt: doc.updatedAt.toISOString(),
   };
+}
+
+export function serializeClaimedTierRecoveryCase(doc: ClaimedTierRecoveryCase) {
+  return {
+    id: doc.id,
+    assetId: doc.assetId,
+    status: doc.status,
+    referenceNumber: doc.referenceNumber,
+    reportedAt: doc.reportedAt.toISOString(),
+    notes: doc.notes,
+    lastLocationAt: doc.lastLocationAt?.toISOString() ?? null,
+    partnerOrganizationId: doc.partnerOrganizationId,
+    updatedAt: doc.updatedAt.toISOString(),
+  };
+}
+
+/** PDM-4 (compliance-review-security-partner-data-minimisation.md F-10) — the wrap-up
+ * window: once a case the caller's org claimed has been `recovered`/`closed` for more
+ * than this many days, it drops out of that org's own list/detail/count. This is
+ * partner VISIBILITY, not deletion — `recovery_cases`' own retention (the
+ * police-report 5-year clock, Feature 011) is unaffected, and `legalHold` does NOT
+ * extend partner visibility (a hold preserves our record; it is not a reason to keep
+ * showing it to a third party). */
+export const PARTNER_CASE_WRAP_UP_WINDOW_DAYS = 90;
+
+function wrapUpCutoff(now: Date = new Date()): Date {
+  const cutoff = new Date(now);
+  cutoff.setUTCDate(cutoff.getUTCDate() - PARTNER_CASE_WRAP_UP_WINDOW_DAYS);
+  return cutoff;
+}
+
+/**
+ * PDM-3/PDM-4 — the ONLY predicate defining whether a case this org has claimed is
+ * still visible to it. `buildPartnerOrgQuery` (list/count) and `findByIdForPartnerOrg`
+ * (detail) both call this so list, count, and detail cannot structurally diverge
+ * (extends C-012-3 to the detail route, per PDM-3/F-4).
+ */
+export function claimedCaseVisiblePredicate(partnerOrganizationId: string): Document {
+  return {
+    partnerOrganizationId,
+    $or: [
+      { status: { $nin: ['recovered', 'closed'] } },
+      { closedAt: null },
+      { closedAt: { $gt: wrapUpCutoff() } },
+    ],
+  };
+}
+
+/**
+ * PDM-3 — the shared-pool branch: every partner org sees every unassigned,
+ * still-open case (RR-012-1's cross-tenant pool signal, unchanged by PDM-1..4 —
+ * narrowing Problem A, universal pool visibility, is out of scope here).
+ */
+export function unclaimedCaseVisiblePredicate(): Document {
+  return { partnerOrganizationId: null, status: 'open' as RecoveryCaseStatus };
 }
 
 /**
@@ -195,12 +402,44 @@ export function buildPartnerOrgQuery(
 ): Document {
   const statusFilter = filters.status ? { status: filters.status } : {};
   return {
-    $or: [
-      { partnerOrganizationId },
-      { partnerOrganizationId: null, status: 'open' as RecoveryCaseStatus },
-    ],
+    $or: [claimedCaseVisiblePredicate(partnerOrganizationId), unclaimedCaseVisiblePredicate()],
     ...statusFilter,
   };
+}
+
+/** Tagged result of a partner-scoped read — `tier` drives which serializer the route
+ * layer uses; `accountId` is exposed ONLY for the caller to pass to PDM-8 audit
+ * logging (ADR-0006 §18.3), never to the HTTP response (see the tier types' doc
+ * comments and the `accountId` note above `OFFER_TIER_FIELD_EXCLUSION_PROJECTION`).
+ * `createdAt` is exposed ONLY for `buildPage()`'s cursor encoding — it is not part of
+ * either tier's response shape and is never passed to a serializer. */
+export type PartnerVisibleCaseResult =
+  | { tier: 'claimed'; accountId: string; createdAt: Date; case: ClaimedTierRecoveryCase }
+  | { tier: 'offer'; accountId: string; createdAt: Date; case: OfferTierRecoveryCase };
+
+function compareDesc(
+  a: { createdAt: Date; _id: ObjectId },
+  b: { createdAt: Date; _id: ObjectId },
+): number {
+  const diff = b.createdAt.getTime() - a.createdAt.getTime();
+  if (diff !== 0) return diff;
+  return b._id.toHexString().localeCompare(a._id.toHexString());
+}
+
+/**
+ * Safely ANDs together filter fragments that may each independently carry a
+ * top-level `$or` key (`claimedCaseVisiblePredicate()`/`unclaimedCaseVisiblePredicate()`
+ * and `mongoCursorFilter()` both can). A naive object spread (`{ ...a, ...b }`) silently
+ * drops `a`'s `$or` whenever `b` also has one — the later spread's key wins — which would
+ * have quietly dropped the partner-visibility predicate entirely on every paginated
+ * request past page 1 (a cursor is always present from page 2 onward). Empty fragments
+ * are dropped so `find({})` isn't wrapped in a pointless `$and: [{}]`.
+ */
+function andFilters(...filters: Document[]): Document {
+  const nonEmpty = filters.filter((f) => Object.keys(f).length > 0);
+  if (nonEmpty.length === 0) return {};
+  if (nonEmpty.length === 1) return nonEmpty[0]!;
+  return { $and: nonEmpty };
 }
 
 export function createRecoveryCasesRepo(db: Db) {
@@ -259,25 +498,68 @@ export function createRecoveryCasesRepo(db: Db) {
       return row ? toCase(row) : null;
     },
 
+    /**
+     * PDM-2 — queried as two independent, separately-projected branches (claimed-by-
+     * caller, and the shared unclaimed-open pool) rather than one `$or` query with a
+     * single projection, because the two branches need different field exclusions
+     * (`OFFER_TIER_FIELD_EXCLUSION_PROJECTION` vs `CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION`)
+     * and Mongo cannot vary a projection per matched document within one query. Each
+     * branch is fetched sorted `(createdAt desc, _id desc)` and capped at `limit`; the
+     * top `limit` of the merged union is necessarily contained in the top `limit` of
+     * each branch individually (standard k-way-merge bound), so this is both correct
+     * and no more expensive than the single-query form once merged client-side.
+     */
     async listForPartnerOrg(
       partnerOrganizationId: string,
       filters: { status?: RecoveryCaseStatus },
       limit: number,
       cursor: MongoDecodedCursor | null,
-    ): Promise<RecoveryCaseDocument[]> {
-      const query = {
-        ...buildPartnerOrgQuery(partnerOrganizationId, filters),
-        ...mongoCursorFilter(cursor),
-      };
-      // SR-011-1a: police-report fields are excluded at the query level — never fetched
-      // into `rows`, so `serializeSecurityRecoveryCase` structurally cannot see them.
-      const rows = await collection()
-        .find(query)
-        .project<RecoveryCaseDbRow>(POLICE_REPORT_FIELD_EXCLUSION_PROJECTION)
+    ): Promise<PartnerVisibleCaseResult[]> {
+      const cursorFilter = mongoCursorFilter(cursor);
+      const statusFilter = filters.status ? { status: filters.status } : {};
+
+      const claimedRows = (await collection()
+        .find(andFilters(claimedCaseVisiblePredicate(partnerOrganizationId), statusFilter, cursorFilter))
+        .project(CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION)
         .sort({ createdAt: -1, _id: -1 })
         .limit(limit)
-        .toArray();
-      return rows.map(toCase);
+        .toArray()) as unknown as ClaimedTierCaseDbRow[];
+
+      // Unclaimed cases are always status 'open' — only query this branch when the
+      // caller's status filter (if any) doesn't rule it out, mirroring
+      // `buildPartnerOrgQuery`'s $or semantics exactly (PDM-3 shared predicate).
+      const includeUnclaimed = !filters.status || filters.status === 'open';
+      const offerRows = includeUnclaimed
+        ? ((await collection()
+            .find(andFilters(unclaimedCaseVisiblePredicate(), cursorFilter))
+            .project(OFFER_TIER_FIELD_EXCLUSION_PROJECTION)
+            .sort({ createdAt: -1, _id: -1 })
+            .limit(limit)
+            .toArray()) as unknown as OfferTierCaseDbRow[])
+        : [];
+
+      const claimed: Array<PartnerVisibleCaseResult & { _id: ObjectId }> = claimedRows.map((row) => ({
+        tier: 'claimed' as const,
+        accountId: row.accountId,
+        createdAt: row.createdAt,
+        case: toClaimedTierCase(row),
+        _id: row._id,
+      }));
+      const offered: Array<PartnerVisibleCaseResult & { _id: ObjectId }> = offerRows.map((row) => ({
+        tier: 'offer' as const,
+        accountId: row.accountId,
+        createdAt: row.createdAt,
+        case: toOfferTierCase(row),
+        _id: row._id,
+      }));
+
+      const merged = [...claimed, ...offered].sort(compareDesc).slice(0, limit);
+      return merged.map(({ tier, accountId, createdAt, case: c }) => ({
+        tier,
+        accountId,
+        createdAt,
+        case: c,
+      }) as PartnerVisibleCaseResult);
     },
 
     /**
@@ -293,42 +575,92 @@ export function createRecoveryCasesRepo(db: Db) {
       return collection().countDocuments(buildPartnerOrgQuery(partnerOrganizationId, filters));
     },
 
+    /**
+     * PDM-3's unclaimed-branch narrowing applies to the claim match clause too: this
+     * must only succeed against a case visible via `unclaimedCaseVisiblePredicate()`,
+     * the same predicate `buildPartnerOrgQuery`/`findByIdForPartnerOrg` use, so a claim
+     * can never succeed against a case this org could not also have seen via list/
+     * detail. Note for §18.8(a)(1)/C-A: the caller's audited `fromStatus` for a claim
+     * is always the literal `'open'`, because this match clause requires it — never a
+     * value re-derived from a separate, possibly-stale pre-read.
+     */
     async claimForPartnerOrg(
       partnerOrganizationId: string,
       caseId: string,
     ): Promise<RecoveryCaseDocument | null> {
       if (!ObjectId.isValid(caseId)) return null;
       // SR-011-1a: project police-report fields out of this write-path read-back too —
-      // every partner-facing response (`serializeSecurityRecoveryCase`) must be built
-      // from a row that never had these fields loaded.
+      // every partner-facing response must be built from a row that never had these
+      // fields loaded. `accountId` IS fetched here (needed internally for
+      // `scheduleCustomerRecoveryCaseChange` and PDM-8 audit logging) — the route layer
+      // is responsible for never letting it reach the HTTP response (PDM-1), via
+      // `toClaimedTierView`/`serializeClaimedTierRecoveryCase`.
       const result = await collection().findOneAndUpdate(
-        { _id: new ObjectId(caseId), partnerOrganizationId: null, status: 'open' },
+        { _id: new ObjectId(caseId), ...unclaimedCaseVisiblePredicate() },
         { $set: { partnerOrganizationId, status: 'investigating', updatedAt: new Date() } },
         { returnDocument: 'after', projection: POLICE_REPORT_FIELD_EXCLUSION_PROJECTION },
       );
       return result ? toCase(result as unknown as RecoveryCaseDbRow) : null;
     },
 
+    /**
+     * PDM-2/PDM-3 — tiered, two-step lookup: try the claimed-by-caller branch first
+     * (Tier 1 projection), then the shared unclaimed-open pool (offer-tier projection).
+     * Both branches share their predicate with `buildPartnerOrgQuery` (PDM-3 — list,
+     * count and detail cannot structurally diverge) and with PDM-4's 90-day wrap-up
+     * window. Returns a tagged result so the route layer picks the matching serializer;
+     * `accountId` is returned alongside (never inside) `case` — see the tier types'
+     * doc comments.
+     */
     async findByIdForPartnerOrg(
       partnerOrganizationId: string,
       caseId: string,
-    ): Promise<RecoveryCaseDocument | null> {
+    ): Promise<PartnerVisibleCaseResult | null> {
       if (!ObjectId.isValid(caseId)) return null;
-      // SR-011-1a: police-report fields excluded at the query level.
-      const row = await collection().findOne(
-        {
-          _id: new ObjectId(caseId),
-          $or: [{ partnerOrganizationId }, { partnerOrganizationId: null }],
-        },
-        { projection: POLICE_REPORT_FIELD_EXCLUSION_PROJECTION },
-      );
-      return row ? toCase(row as unknown as RecoveryCaseDbRow) : null;
+      const _id = new ObjectId(caseId);
+
+      const claimedRow = (await collection().findOne(
+        { _id, ...claimedCaseVisiblePredicate(partnerOrganizationId) },
+        { projection: CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION },
+      )) as unknown as ClaimedTierCaseDbRow | null;
+      if (claimedRow) {
+        return {
+          tier: 'claimed',
+          accountId: claimedRow.accountId,
+          createdAt: claimedRow.createdAt,
+          case: toClaimedTierCase(claimedRow),
+        };
+      }
+
+      const offerRow = (await collection().findOne(
+        { _id, ...unclaimedCaseVisiblePredicate() },
+        { projection: OFFER_TIER_FIELD_EXCLUSION_PROJECTION },
+      )) as unknown as OfferTierCaseDbRow | null;
+      if (offerRow) {
+        return {
+          tier: 'offer',
+          accountId: offerRow.accountId,
+          createdAt: offerRow.createdAt,
+          case: toOfferTierCase(offerRow),
+        };
+      }
+
+      return null;
     },
 
+    /**
+     * ADR-0006 §18.8 ruling (b), condition C-A: `expectedStatus` makes this a
+     * compare-and-set on the status the caller's pre-read actually observed, not a
+     * TOCTOU guess. The mutation filter now includes `status: expectedStatus`; a
+     * concurrent status change between the caller's pre-read and this call causes the
+     * match to miss (returns `null`), which the route layer must map to its existing
+     * `NOT_FOUND` response, never a 2xx (§18.8 C-B).
+     */
     async updateStatusForPartnerOrg(
       partnerOrganizationId: string,
       caseId: string,
       status: RecoveryCaseStatus,
+      expectedStatus: RecoveryCaseStatus,
     ): Promise<RecoveryCaseDocument | null> {
       if (!ObjectId.isValid(caseId)) return null;
       // SR-review fix: a case must already be claimed by this org (partnerOrganizationId
@@ -376,6 +708,8 @@ export function createRecoveryCasesRepo(db: Db) {
         {
           _id: new ObjectId(caseId),
           partnerOrganizationId,
+          // §18.8 C-A: compare-and-set on the status the caller's pre-read observed.
+          status: expectedStatus,
         },
         { $set: setFields },
         { returnDocument: 'after', projection: POLICE_REPORT_FIELD_EXCLUSION_PROJECTION },
