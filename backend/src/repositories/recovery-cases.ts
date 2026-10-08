@@ -427,6 +427,35 @@ function compareDesc(
 }
 
 /**
+ * SR-009S-6 — a claimed case may only move FORWARD through this lifecycle:
+ * `investigating` -> `tracking` -> `recovered`/`closed`, and `recovered` -> `closed`
+ * (an operator administratively closing a case whose asset was already recovered,
+ * per the `closedAt`-preservation note above). No entry here ever points back to an
+ * earlier stage. Without this, an operator could PATCH a `closed`/`recovered` case
+ * back to `investigating` (or any earlier status), defeating the PDM-4 90-day
+ * wrap-up window indefinitely by perpetually re-opening and re-closing a case. `open`
+ * is deliberately absent as a source: a claimed case is never `open` (claiming moves
+ * it straight to `investigating` via `claimForPartnerOrg`, not this map), and absent
+ * as a target: "reopening" is not a status change on an existing claimed case, it
+ * would require a fresh unclaimed case.
+ */
+export const RECOVERY_CASE_FORWARD_TRANSITIONS: Record<RecoveryCaseStatus, readonly RecoveryCaseStatus[]> = {
+  open: [],
+  investigating: ['tracking', 'recovered', 'closed'],
+  tracking: ['recovered', 'closed'],
+  recovered: ['closed'],
+  closed: [],
+};
+
+/** SR-009S-6 — true iff `to` is a permitted forward move from `from`. Used both by
+ * the route layer (to reject before writing an audit row) and defensively inside
+ * `updateStatusForPartnerOrg` itself, so the guarantee holds even if a future call
+ * site forgets the route-layer check. */
+export function isForwardStatusTransition(from: RecoveryCaseStatus, to: RecoveryCaseStatus): boolean {
+  return RECOVERY_CASE_FORWARD_TRANSITIONS[from].includes(to);
+}
+
+/**
  * Safely ANDs together filter fragments that may each independently carry a
  * top-level `$or` key (`claimedCaseVisiblePredicate()`/`unclaimedCaseVisiblePredicate()`
  * and `mongoCursorFilter()` both can). A naive object spread (`{ ...a, ...b }`) silently
@@ -663,6 +692,12 @@ export function createRecoveryCasesRepo(db: Db) {
       expectedStatus: RecoveryCaseStatus,
     ): Promise<RecoveryCaseDocument | null> {
       if (!ObjectId.isValid(caseId)) return null;
+      // SR-009S-6 — defense-in-depth: reject a backward/sideways transition even if the
+      // route layer's own check (security-cases.ts PATCH handler) were ever bypassed or
+      // forgotten by a future call site. The route layer is expected to reject this
+      // BEFORE writing the privileged_state_change audit row; this is a second,
+      // independent guard, not the primary one.
+      if (!isForwardStatusTransition(expectedStatus, status)) return null;
       // SR-review fix: a case must already be claimed by this org (partnerOrganizationId
       // must already equal the caller's org) before its status can be changed here. Claiming
       // an unclaimed case (partnerOrganizationId: null) is only permitted via

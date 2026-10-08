@@ -69,7 +69,20 @@ function matches(doc: RawDoc, filter: Record<string, unknown>): boolean {
       return (value as Array<Record<string, unknown>>).every((sub) => matches(doc, sub));
     }
     if (key === '_id') {
-      return doc._id instanceof ObjectId && (value as ObjectId).equals(doc._id);
+      if (value instanceof ObjectId) {
+        return doc._id instanceof ObjectId && value.equals(doc._id);
+      }
+      // Operator form, e.g. `{ $lt: new ObjectId(cursor.id) }` (lib/mongo-pagination.ts's
+      // `mongoCursorFilter`) — compare via hex-string ordering, which matches real
+      // MongoDB ObjectId ordering for ids generated in creation order (SR-009S-5).
+      const operatorValue = value as Record<string, unknown>;
+      const asHexOperators = Object.fromEntries(
+        Object.entries(operatorValue).map(([op, opVal]) => [
+          op,
+          opVal instanceof ObjectId ? opVal.toHexString() : opVal,
+        ]),
+      );
+      return matchesOperatorValue(doc._id.toHexString(), asHexOperators);
     }
     return matchesOperatorValue(doc[key], value);
   });
@@ -730,6 +743,51 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
 
       const detail = await repo.findByIdForPartnerOrg('org-1', id.toHexString());
 
+      expect(detail).toBeNull();
+    });
+  });
+
+  describe('SR-009S-5: listForPartnerOrg preserves the full visibility predicate across a non-null cursor', () => {
+    it('a page-2 request with a real cursor still hides a wrap-up-window-expired case (andFilters regression)', async () => {
+      // Regression for the pre-fix bug `andFilters()` replaced: `claimedCaseVisiblePredicate()`
+      // returns `{ partnerOrganizationId, $or: [...wrap-up-window conditions...] }`. A naive
+      // object spread of that together with `mongoCursorFilter()`'s own `$or` (used whenever
+      // a cursor is present) makes the LATER spread's `$or` key silently replace the EARLIER
+      // one — the org-id key survives (it isn't inside the `$or`), but the entire PDM-3/PDM-4
+      // wrap-up-window `$or` is lost. The visible symptom: a page-1 request (cursor: null,
+      // no $or collision) correctly hides an org's own case once it is more than 90 days past
+      // closure, but a page-2+ request (cursor present) would have let it reappear. All prior
+      // tests in this suite pass `cursor: null`, so this is the only test exercising the
+      // merged-`$and`-of-two-`$or`s path this org-scoping bug actually lived in.
+      const now = new Date('2026-08-10T00:00:00.000Z');
+      const longAgo = new Date(now);
+      longAgo.setUTCDate(longAgo.getUTCDate() - 120); // outside the 90-day wrap-up window
+      const newest = { _id: new ObjectId(), createdAt: new Date(now.getTime()) }; // org-1, page 1
+      const expired = { _id: new ObjectId(), createdAt: new Date(now.getTime() - 60_000) }; // org-1, must stay hidden on every page
+      const stillVisible = { _id: new ObjectId(), createdAt: new Date(now.getTime() - 120_000) }; // org-1, legitimately visible page-2 case
+
+      const { db } = createFakeDb([
+        baseDoc({ ...newest, partnerOrganizationId: 'org-1', status: 'investigating' }),
+        baseDoc({ ...expired, partnerOrganizationId: 'org-1', status: 'closed', closedAt: longAgo }),
+        baseDoc({ ...stillVisible, partnerOrganizationId: 'org-1', status: 'investigating' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const page1 = await repo.listForPartnerOrg('org-1', {}, 1, null);
+      expect(page1).toHaveLength(1);
+      expect(page1[0]!.case.id).toBe(newest._id.toHexString());
+
+      const cursor = { createdAt: page1[0]!.createdAt, id: page1[0]!.case.id };
+      const page2 = await repo.listForPartnerOrg('org-1', {}, 10, cursor);
+
+      // Must contain org-1's other legitimately-visible older case, and must NOT contain the
+      // wrap-up-window-expired case, even though it sorts between the cursor position and the
+      // still-visible case — exactly where the lost `$or` would have let it leak back in.
+      expect(page2.map((r) => r.case.id)).toEqual([stillVisible._id.toHexString()]);
+      expect(page2.map((r) => r.case.id)).not.toContain(expired._id.toHexString());
+
+      // The detail route must agree with list — PDM-3's "cannot structurally diverge" guarantee.
+      const detail = await repo.findByIdForPartnerOrg('org-1', expired._id.toHexString());
       expect(detail).toBeNull();
     });
   });

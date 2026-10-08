@@ -1078,6 +1078,125 @@ describe('routes/security-cases', () => {
     });
   });
 
+  // SR-009S-6 — forward-only status transitions: a claimed case may not be moved
+  // back to an earlier status (defeats the PDM-4 90-day wrap-up window otherwise).
+  describe('SR-009S-6 — PATCH enforces forward-only status transitions', () => {
+    it('rejects moving a closed case back to investigating with 409, not 2xx', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({
+        partnerOrgId: 'org-123',
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: 'org-123',
+            status: 'closed',
+            closedAt: new Date(),
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${harness.token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'investigating' }),
+      });
+      expect(res.status).toBe(409);
+
+      const stored = harness.cases.find((c) => c.id === caseId);
+      expect(stored?.status).toBe('closed');
+      expect(harness.accessLogCalls.filter((c) => c.kind === 'stateChange')).toHaveLength(0);
+    });
+
+    it('rejects moving a recovered case back to tracking with 409', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({
+        partnerOrgId: 'org-123',
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: 'org-123',
+            status: 'recovered',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${harness.token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'tracking' }),
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it('still allows the legitimate forward recovered -> closed transition', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({
+        partnerOrgId: 'org-123',
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: 'org-123',
+            status: 'recovered',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${harness.token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'closed' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { status: string };
+      expect(body.status).toBe('closed');
+    });
+
+    it('still allows skipping directly from investigating to recovered (forward, not sequential)', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({
+        partnerOrgId: 'org-123',
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: 'org-123',
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${harness.token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'recovered' }),
+      });
+      expect(res.status).toBe(200);
+    });
+  });
+
   it('returns 403 when operator has no partner organization', async () => {
     const env = fakeEnv();
     const operatorId = randomUUID();

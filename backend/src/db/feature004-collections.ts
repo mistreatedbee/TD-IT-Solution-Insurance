@@ -224,7 +224,14 @@ export const assetsJsonSchemaValidator: Document = {
   },
 };
 
-/** database-addendum-001.md §1.3 — admin privileged-read audit trail (ADR-0006 R-1). */
+/** database-addendum-001.md §1.3 — admin privileged-read audit trail (ADR-0006 R-1).
+ *
+ * ADR-0006 §18.4/§18.7 item 5 — widened to a third row type, `privileged_state_change`,
+ * which records an operator DECISION (a claim or a status transition) rather than a
+ * read/disclosure. Same collection, same join key, same retention clock, per §18.2's
+ * "extend, don't fork" ruling (confirmed by cybersecurity-architect, §18.8). See
+ * `repositories/admin-access-log.ts`'s `AdminAccessEventType`/`AdminAccessResourceType`
+ * for the row shapes this schema must accept. */
 const adminAccessLogJsonSchemaBase: Document = {
   bsonType: 'object',
   required: [
@@ -238,9 +245,9 @@ const adminAccessLogJsonSchemaBase: Document = {
   ],
   properties: {
     eventType: {
-      enum: ['privileged_data_access', 'privileged_bulk_access'],
+      enum: ['privileged_data_access', 'privileged_bulk_access', 'privileged_state_change'],
       description:
-        'Row-type discriminator. Same two values as app.audit_event_type after migrations/032.',
+        'Row-type discriminator. Same three values as app.audit_event_type after ADR-0006 §18.4/§18.7 item 5.',
     },
     actorAccountId: {
       bsonType: 'string',
@@ -262,17 +269,31 @@ const adminAccessLogJsonSchemaBase: Document = {
       description:
         'Soft reference to Supabase app.accounts.id. Non-null on privileged_data_access; null on privileged_bulk_access (enforced below).',
     },
-    resourceType: { enum: ['policy', 'asset'] },
+    resourceType: {
+      enum: ['policy', 'asset', 'recovery_case'],
+      description:
+        'ADR-0006 §18.7 item 5 — widened to add recovery_case for the Security Company Dashboard partner-case audit trail (PDM-8).',
+    },
     resourceId: {
       bsonType: ['objectId', 'null'],
       description:
-        'References policies._id or assets._id per resourceType. Null for list-level / call-scoped rows.',
+        'References policies._id, assets._id, or recovery_cases._id per resourceType. Null for list-level / call-scoped rows.',
     },
     resultCount: {
       bsonType: ['int', 'long', 'null'],
       minimum: 0,
       description:
-        'R-1. Set on privileged_bulk_access only (including 0); null on every privileged_data_access row.',
+        'R-1. Set on privileged_bulk_access only (including 0); null on every privileged_data_access and privileged_state_change row.',
+    },
+    fromStatus: {
+      bsonType: ['string', 'null'],
+      description:
+        'ADR-0006 §18.4 — required (non-null) iff eventType === privileged_state_change. Null on every other row type.',
+    },
+    toStatus: {
+      bsonType: ['string', 'null'],
+      description:
+        'ADR-0006 §18.4 — required (non-null) iff eventType === privileged_state_change. Null on every other row type.',
     },
     endpoint: {
       bsonType: 'string',
@@ -319,6 +340,23 @@ export const adminAccessLogJsonSchemaValidator: Document = {
               { $eq: ['$targetAccountId', null] },
               { $ne: ['$resultCount', null] },
               { $gte: ['$resultCount', 0] },
+            ],
+          },
+        },
+        // ADR-0006 §18.4 — a decision (claim / status transition): always names a
+        // subject and a concrete resourceId (no "bulk" variant of a decision), always
+        // carries both fromStatus and toStatus, and never carries resultCount. Mirrors
+        // `repositories/admin-access-log.ts`'s `assertInvariants()` for
+        // `privileged_state_change` exactly.
+        {
+          $expr: {
+            $and: [
+              { $eq: ['$eventType', 'privileged_state_change'] },
+              { $ne: ['$targetAccountId', null] },
+              { $ne: ['$resourceId', null] },
+              { $eq: ['$resultCount', null] },
+              { $ne: ['$fromStatus', null] },
+              { $ne: ['$toStatus', null] },
             ],
           },
         },

@@ -22,6 +22,7 @@ import {
   serializeOfferTierRecoveryCase,
   serializeClaimedTierRecoveryCase,
   toClaimedTierView,
+  isForwardStatusTransition,
   type PartnerVisibleCaseResult,
 } from '../repositories/recovery-cases.js';
 import { scheduleCustomerRecoveryCaseChange } from '../lib/recovery-case-notifications.js';
@@ -307,6 +308,15 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
           return;
         }
         const expectedStatus = existing.case.status;
+
+        // SR-009S-6 — reject a backward/sideways status transition (e.g. closed ->
+        // investigating) BEFORE writing any audit row: this is a semantic validation
+        // failure, not a "the case isn't visible to you" case, so it is reported as
+        // CONFLICT (409), distinct from the NOT_FOUND branches above/below.
+        if (!isForwardStatusTransition(expectedStatus, bodyParsed.data.status)) {
+          next(apiError('CONFLICT', { message: 'Case status cannot move backward.' }));
+          return;
+        }
 
         // (3) write the decision record before the mutation (§18.8 ruling (b)).
         // `fromStatus` is the status this handler's own pre-read observed —
