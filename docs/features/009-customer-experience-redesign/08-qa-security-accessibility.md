@@ -139,3 +139,20 @@ G-7 close. QA additions for §2 Phase 8: assert `accountId` absent from every `/
 response; assert an unclaimed case's list and detail responses omit `notes`/`assetId`/`lastLocationAt` (the
 claim response, now assigned to the caller, may include them);
 assert detail on an unclaimed non-`open` case returns 404.
+
+---
+
+## 7. Stage 8 — Security Operations slice, chaired review (appended 2026-10-08, `cybersecurity-architect`)
+
+*Append-only. §1–§6 are unchanged.*
+
+Full record: [`security-review-security-operations.md`](security-review-security-operations.md). **Verdict: CONDITIONAL
+SIGN-OFF (chair); joint gate incomplete; not pilot-ready.** This covers the Security Operations slice only, not the rest of Feature 009.
+
+Status against §6's table, from reading the code: PDM-1, PDM-3, PDM-5 and PDM-7 are **implemented**. PDM-2 is **implemented on read
+paths**, with write-path read-backs still open (SR-009S-3). `accountId` is kept in the fetch for audit, which is accepted as DEV-009S-1 and
+needs compliance concurrence. PDM-4 is **implemented**, but a status-regression bypass remains (SR-009S-6). PDM-8 is **implemented, but
+the `admin_access_log` validator rejects every row it writes** (SR-009S-1, blocking). PDM-9 in-app copy is **implemented**, and the
+privacy-notice update is not verified. PDM-6 and the executed agreement are **still open**.
+QA additions for §2 Phase 8: exact-key response allowlists per tier (SR-009S-2), C-B fail-closed on claim/PATCH (SR-009S-4), cursor
+page-2 cross-tenant regression (SR-009S-5).
