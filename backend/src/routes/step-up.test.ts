@@ -436,6 +436,66 @@ describe('ADR-0012 step-up authentication', () => {
     server.close();
   });
 
+  /**
+   * Regression: ADR-0012 §2.4's client contract (`useStepUpRetry` on the
+   * frontend) retries the ORIGINAL blocked request with the SAME
+   * Idempotency-Key after a successful step-up verify — not a fresh one.
+   * The test above never actually exercises that: its `createInvitations`
+   * helper mints a brand-new `randomUUID()` key on every call, so its final
+   * "retry" is a different logical request that happens to succeed because
+   * MFA is now fresh, not a true reuse of the blocked attempt's key. That
+   * blind spot is exactly how the real bug (requireIdempotencyKey running
+   * BEFORE requireStepUp, caching the 401 against the key, then replaying
+   * that cached 401 forever on every same-key retry regardless of step-up
+   * state) shipped undetected. This test uses one fixed key for both calls.
+   */
+  it('retrying with the SAME Idempotency-Key after step-up succeeds, not the cached 401', async () => {
+    const idempotencyKey = randomUUID();
+    const body = JSON.stringify({ email: 'newadmin@example.com', userType: 'support_agent' });
+
+    const first = await fetch(`${baseUrl}/invitations`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+        'idempotency-key': idempotencyKey,
+      },
+      body,
+    });
+    expect(first.status).toBe(401);
+    expect((await first.json()).error.code).toBe('STEP_UP_REQUIRED');
+
+    const challengeRes = await fetch(`${baseUrl}/auth/mfa/step-up/challenge`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({}),
+    });
+    const { stepUpChallengeToken } = (await challengeRes.json()) as { stepUpChallengeToken: string };
+
+    const verifyRes = await fetch(`${baseUrl}/auth/mfa/step-up/verify`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ stepUpChallengeToken, code: CORRECT_CODE }),
+    });
+    expect(verifyRes.status).toBe(200);
+
+    // The retry replays the SAME idempotency-key + body — this must reach
+    // the real handler and succeed (201), not replay a cached 401 from the
+    // blocked first attempt.
+    const retry = await fetch(`${baseUrl}/invitations`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+        'idempotency-key': idempotencyKey,
+      },
+      body,
+    });
+    expect(retry.status, JSON.stringify(await retry.clone().json())).toBe(201);
+
+    server.close();
+  });
+
   it('rejects a wrong code and leaves the action blocked', async () => {
     const challengeRes = await fetch(`${baseUrl}/auth/mfa/step-up/challenge`, {
       method: 'POST',

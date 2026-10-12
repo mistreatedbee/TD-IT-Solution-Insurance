@@ -35,12 +35,27 @@ export function createInvitationsRouter(ctx: AppContext): Router {
     authenticate,
     requireUserType('admin'),
     createRateLimiter(ctx.kv, { attempts: INVITATIONS_CREATE_LIMIT.attempts, windowSeconds: INVITATIONS_CREATE_LIMIT.windowSeconds }, (req) => `invitations-create:${req.auth!.accountId}`),
-    requireIdempotencyKey('POST /v1/invitations', ctx.idempotency),
     // ADR-0012 §2.3: refactored onto the shared requireStepUp middleware —
     // identical semantics (same 15-minute window, same live app.sessions
     // read) to the inline SR-11 check this replaces, now reusable by a
     // second consumer instead of copy-pasted.
+    //
+    // Must run BEFORE requireIdempotencyKey, not after. requireIdempotencyKey
+    // patches `res.json` to cache whatever response this request eventually
+    // produces, keyed on the caller's Idempotency-Key — if requireStepUp ran
+    // second and rejected with 401 STEP_UP_REQUIRED, that patched res.json
+    // would cache the 401 itself. ADR-0012 §2.4's client contract explicitly
+    // retries the SAME request with the SAME Idempotency-Key after the user
+    // completes step-up verification — with the old ordering, that retry hit
+    // requireIdempotencyKey first, found the cached 401, and replayed it
+    // verbatim without ever reaching requireStepUp again. No amount of
+    // re-verifying could ever get past it; only a brand-new Idempotency-Key
+    // (i.e. restarting the whole form submission) would. Running step-up
+    // first means a STEP_UP_REQUIRED rejection never reaches the idempotency
+    // middleware at all, so nothing gets cached until the request actually
+    // clears step-up and reaches the real handler.
     requireStepUp(ctx, STEP_UP_WINDOW_SECONDS.invitationIssuance),
+    requireIdempotencyKey('POST /v1/invitations', ctx.idempotency),
     validateBody(createSchema),
     async (req, res, next) => {
       try {
