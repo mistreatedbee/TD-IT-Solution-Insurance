@@ -967,6 +967,171 @@ describe('POST /auth/reset-password/confirm — SR-007-1 push-token regression',
 });
 
 /**
+ * Regression: an admin/staff account that forgets its password before ever
+ * completing MFA enrollment has no verified TOTP factor yet — unconditionally
+ * requiring a code at `/auth/reset-password/confirm` left that account with
+ * no way to finish a reset (the UI has no enrollment ticket to act on and no
+ * code to enter). `routes/auth.ts`'s privileged branch now mirrors the same
+ * `findVerifiedTotpFactor` check login already uses (:410/:589) to decide
+ * whether a factor exists before demanding a challenge for it.
+ */
+describe('POST /auth/reset-password/confirm — privileged account MFA-enrollment-state branching', () => {
+  const privilegedAccountId = randomUUID();
+  const privilegedEmail = 'new-admin@example.com';
+  const privilegedResetToken = 'valid-privileged-reset-token';
+  const privilegedNewPassword = 'a-fine-privileged-password-14chars';
+  const privilegedUserAccessToken = 'privileged-recovery-access-token-stand-in';
+
+  function fakePrivilegedResetSupabase(opts: { hasVerifiedFactor: boolean }): SupabaseAdmin {
+    const notUsed = (name: string) => (): never => {
+      throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+    };
+    return {
+      raw: {} as SupabaseAdmin['raw'],
+      createUser: notUsed('createUser'),
+      deleteUser: notUsed('deleteUser'),
+      verifyPassword: notUsed('verifyPassword'),
+      enrollTotpFactor: notUsed('enrollTotpFactor'),
+      challengeTotpFactor: notUsed('challengeTotpFactor'),
+      verifyTotpFactor: notUsed('verifyTotpFactor'),
+      async findVerifiedTotpFactor(userAccessToken) {
+        expect(userAccessToken).toBe(privilegedUserAccessToken);
+        return opts.hasVerifiedFactor ? { factorId: 'factor-1' } : null;
+      },
+      async updateUserPassword(userAccessToken, password) {
+        expect(userAccessToken).toBe(privilegedUserAccessToken);
+        expect(password).toBe(privilegedNewPassword);
+      },
+      generateEmailVerificationLink: notUsed('generateEmailVerificationLink'),
+      sendSignupConfirmationEmail: notUsed('sendSignupConfirmationEmail'),
+      sendPasswordRecoveryEmail: notUsed('sendPasswordRecoveryEmail'),
+      sendInvitationEmail: notUsed('sendInvitationEmail'),
+      getUserByEmail: notUsed('getUserByEmail'),
+      getUserFromAccessToken: notUsed('getUserFromAccessToken'),
+      isUserEmailConfirmed: notUsed('isUserEmailConfirmed'),
+      verifySignupToken: notUsed('verifySignupToken'),
+      generatePasswordResetLink: notUsed('generatePasswordResetLink'),
+      async verifyRecoveryToken(email, tokenHash) {
+        if (email !== privilegedEmail || tokenHash !== privilegedResetToken) return null;
+        return { userId: privilegedAccountId, userAccessToken: privilegedUserAccessToken };
+      },
+      mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+    } as unknown as SupabaseAdmin;
+  }
+
+  function createFakeResetMfaTokensRepo(): AppContext['resetMfaTokens'] {
+    const records = new Map<string, { id: string; tokenHash: string; accountId: string; resetTokenHash: string; expiresAt: Date; usedAt: Date | null }>();
+    let nextId = 0;
+    return {
+      async create(record) {
+        const id = String(++nextId);
+        const full = { id, usedAt: null, ...record };
+        records.set(record.tokenHash, full);
+        return full;
+      },
+      async findByTokenHash(tokenHash) {
+        return records.get(tokenHash) ?? null;
+      },
+      async tryMarkUsed(id, usedAt) {
+        for (const record of records.values()) {
+          if (record.id === id && record.usedAt === null) {
+            record.usedAt = usedAt;
+            return true;
+          }
+        }
+        return false;
+      },
+    };
+  }
+
+  it('completes immediately (no MFA step) for a privileged account with no verified TOTP factor yet', async () => {
+    const accounts = createFakeAccountsRepo({
+      id: privilegedAccountId,
+      email: privilegedEmail,
+      userType: 'admin',
+      accountState: 'active',
+      mfaRequired: true,
+      partnerOrganizationId: null,
+    });
+    const disableAllForAccountCalls: string[] = [];
+    const pushTokensFake = {
+      async register(): Promise<never> {
+        throw new Error('not used in this test');
+      },
+      async disableForDevice(): Promise<never> {
+        throw new Error('not used in this test');
+      },
+      async disableAllForAccount(accId: string) {
+        disableAllForAccountCalls.push(accId);
+        return 1;
+      },
+      async listEnabledForAccount(): Promise<never> {
+        throw new Error('not used in this test');
+      },
+    };
+
+    const ctx = buildMinimalCtx({
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase: fakePrivilegedResetSupabase({ hasVerifiedFactor: false }),
+      pushTokens: pushTokensFake as unknown as AppContext['pushTokens'],
+      resetMfaTokens: createFakeResetMfaTokensRepo(),
+    });
+
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      const response = await fetch(`${baseUrl}/auth/reset-password/confirm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ email: privilegedEmail, resetToken: privilegedResetToken, newPassword: privilegedNewPassword }),
+      });
+      const body = (await response.json()) as {
+        message?: string;
+        allSessionsRevoked?: boolean;
+        mfaVerificationRequired?: boolean;
+      };
+      expect(response.status, JSON.stringify(body)).toBe(200);
+      expect(body.mfaVerificationRequired).toBeUndefined();
+      expect(body.allSessionsRevoked).toBe(true);
+      expect(disableAllForAccountCalls).toEqual([privilegedAccountId]);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('still requires an MFA-verify step for a privileged account that already completed enrollment', async () => {
+    const accounts = createFakeAccountsRepo({
+      id: privilegedAccountId,
+      email: privilegedEmail,
+      userType: 'admin',
+      accountState: 'active',
+      mfaRequired: true,
+      partnerOrganizationId: null,
+    });
+
+    const ctx = buildMinimalCtx({
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase: fakePrivilegedResetSupabase({ hasVerifiedFactor: true }),
+      resetMfaTokens: createFakeResetMfaTokensRepo(),
+    });
+
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      const response = await fetch(`${baseUrl}/auth/reset-password/confirm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ email: privilegedEmail, resetToken: privilegedResetToken, newPassword: privilegedNewPassword }),
+      });
+      const body = (await response.json()) as { mfaVerificationRequired?: boolean; mfaVerificationToken?: string };
+      expect(response.status, JSON.stringify(body)).toBe(200);
+      expect(body.mfaVerificationRequired).toBe(true);
+      expect(typeof body.mfaVerificationToken).toBe('string');
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+});
+
+/**
  * INC-003 F-2 regression: `POST /auth/reset-password/request` must select
  * the redirect URL from one of two server-configured, allow-listed
  * constants (`env.passwordResetRedirectUrl` / `...RedirectUrlWeb`) based

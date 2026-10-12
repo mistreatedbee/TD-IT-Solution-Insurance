@@ -864,7 +864,18 @@ export function createAuthRouter(ctx: AppContext): Router {
           return;
         }
 
-        if (isPrivilegedUserType(account.userType)) {
+        // A privileged account only has a second factor to verify once it has
+        // actually completed enrollment (the same `findVerifiedTotpFactor`
+        // check login uses at :410/:589 to decide between a login-time MFA
+        // challenge and `mfaEnrollmentRequired`). An admin/staff account that
+        // forgets its password before ever logging in successfully has no
+        // verified factor yet — unconditionally demanding a TOTP code here
+        // left that account with no way to finish a reset at all, since the
+        // reset flow issues no enrollment ticket and the UI has no code to
+        // enter. Fall through to the same immediate-completion path as a
+        // non-privileged account in that case; the account still goes through
+        // normal MFA enrollment the next time it logs in.
+        if (isPrivilegedUserType(account.userType) && (await ctx.supabase.findVerifiedTotpFactor(userAccessToken))) {
           const mfaToken = await issueResetMfaVerificationToken(ctx.resetMfaTokens, account.id, resetTokenForPrivileged);
           await ctx.kv.set(
             `reset-mfa-pending:${mfaToken.token}`,
