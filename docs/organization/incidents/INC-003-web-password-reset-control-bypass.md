@@ -837,6 +837,146 @@ This matches the A-5 doc's own analysis. A-18 and A-19 are **Layer 2** capabilit
 
 ---
 
+## 13. Stage 8 security review of §12 / commit `079f93c` (`cybersecurity-architect`, 2026-10-15)
+
+Cites §11 (actions A-10 … A-23) and §12 (`authentication-engineer`'s remediation record). §§1–12 are unaltered. I read
+the shipped files myself; I did not rely on §12's prose. The orchestrator reports backend 60/60 test files and web
+125/125 tests passing, with both typechecks clean. I did not re-run them. Nothing here is a code change and nothing
+is committed. Implementation verification is still `security-engineer`'s, per §5's routing. This section is the
+architecture verdict.
+
+### 13.1 Verdicts
+
+| Action | Verdict | Status after this review |
+|---|---|---|
+| **A-10** | **CONDITIONAL** | Fixed and deployable once C-2 is met. Stays **OPEN** until C-1 and C-3 are met |
+| **A-23** | **PASS** | **Closed pending deploy check** (C-2) |
+| **A-13** | **PASS** | **Closed pending deploy check** (C-6). The recovery-variant residual moves to new A-24 |
+| **A-17** (code limb) | **PASS** | Code limb closed. Console limb **re-scoped**, see C-5. A-17 stays OPEN on that limb only |
+| **A-19** (interim) | **CONDITIONAL** | Detection logic accepted. Not an operative control until C-4 is met. Stays **OPEN** |
+| **A-18** claim | **CONFIRMED** | No client-side GoTrue-direct path exists to re-route. A-18 stays **OPEN** (console + A-21), unchanged |
+| §12.6 item 3 (reset `token_hash`) | **CONFIRMED by code** (not verified live) | New action **A-24**, see §13.5 |
+
+**No defect in `079f93c` blocks merge.** **Deploy is blocked on C-2.** **A-10's closure is blocked on C-1 (defect D-1).**
+
+### 13.2 A-10: what holds
+
+- **The authentication time is read from the earliest `amr` timestamp. That choice is correct and load-bearing.**
+  - GoTrue upserts `mfa_amr_claims` per `(session, method)` and refreshes the timestamp when the same method is re-added in the same session.
+  - Within an existing session, TOTP verification is the only method that can be re-added. An attacker who holds a stale session and their own GoTrue-direct factor (C-10 / A-19) can therefore move the `totp` entry to "now".
+  - The first-factor entry (`password` / `otp` / `recovery`) is only ever written when a session is created. Taking `min()` pins the check to it.
+  - Using the latest `amr` entry, or `iat`, would be bypassable. **Do not "simplify" this to `max()` or `iat`.** I am recording that as a design constraint.
+- **`amr` spoofing.** The payload is decoded only after `getUserFromAccessToken` (GoTrue `GET /user`) has accepted the token. That call validates the signature, so an `amr` cannot be altered without failing it. A token with no `amr`, malformed `amr`, non-numeric timestamps or non-JWT structure returns `null`, and with a watermark present `null` means refused. **Fail-closed is confirmed** (`gotrue-session-revocation.ts:64-97`).
+- **Clock skew.** The watermark is Postgres `now()` and the `amr` timestamp is GoTrue's clock. Both run on Supabase infrastructure, and the comparison is floored to whole seconds.
+  - The residual is a session authenticated less than about 1 s + skew before a revocation surviving it. It is not exploitable as a timing attack, because the attacker does not choose when the victim revokes.
+  - The reverse case, a fresh sign-in within the skew window being refused, fails safe.
+  - **Accepted residual. Owner: `cybersecurity-architect`.** No action.
+- **Revocation reasons.**
+  - `logout_all`, `admin_forced`, `rotation_reuse_detected`, `device_mismatch` and `password_reset` advance the watermark. `logout` and `rotated` correctly do not.
+  - The `admin_forced` per-session revoke in `/session/refresh` (`session.ts:158`) also advances it, but only when the account is already suspended or deactivated. That is harmless.
+  - Admin transitions are filtered on `actor_account_id is not null`. The only writer today is `transitionAccountState` (`accounts.ts:419`). Approving a pending account would also advance the watermark, which fails safe.
+- **Ordering in the exchange.** The check runs after the customer-only and account-state gates and before `findVerifiedTotpFactor`, so neither minting branch can be reached (`auth.ts:403-421`).
+- **Regression to legitimate sign-in.** None found. Web sign-in always performs a fresh password grant (`signInWithSupabase`, `src/customer/supabase/auth.ts:188-201`), so `amr` is newer than any watermark. No web code re-exchanges a stored GoTrue session.
+- **Information leak.** The stale-token response is `REFRESH_TOKEN_INVALID`, distinct from `INVALID_CREDENTIALS`. Only a party already holding a GoTrue-valid token for that account can observe the difference, and it tells them nothing beyond "you were evicted". **Accepted.** Propagation logs carry the account id and trigger only. Confirmed.
+
+### 13.3 A-10 / A-23: defects and conditions
+
+**D-1 (defect, blocks A-10 closure). The `password_reset` watermark only advances if the account had at least one unrevoked session row.**
+- **Mechanism.** `revokeAllForAccount` updates only `where revoked_at is null` (`repositories/sessions.ts:122-131`). The watermark reads `max(revoked_at)` over rows with an account-wide reason (`:155-167`). If the account's existing rows were all already closed by `logout` or `rotated`, the reset writes nothing and the watermark does not move.
+- **Why this is the common case, not an edge case.** That state is typical for a forgot-password user: they are logged out, so every row is already revoked.
+- **Attack scenario.** An attacker holds the victim's browser GoTrue session (a C-series localStorage theft). The victim resets their password *because* they suspect compromise. The attacker's session is not refused at the exchange. This is the §4 "revocation limb" scenario again, at Layer 1.
+- **Tests miss it.** Every N-2/N-3 test seeds an active session first (`auth.test.ts:667-680`), so the zero-row case is untested.
+- **Mitigation that is not ours to rely on.** GoTrue's own `PUT /user` password path is understood to sign out the user's *other* GoTrue sessions. That is upstream behaviour we have not verified (add it to A-22). The reset paths also do **not** call `propagateRevocationToGoTrue` (`auth.ts:910-919`, `985-994`), so §12.1's "authoritative" claim does not hold for this reason.
+- **C-1 (required before A-10 closes).**
+  - Make the reset write a watermark source that does not depend on there being live rows. Acceptable options: include `max(created_at)` of `password_reset_completed` in `app.account_audit_log` in the watermark, or add a dedicated `accounts.sessions_revoked_before` column. `backend-architect` chooses.
+  - Add `propagateRevocationToGoTrue` to both reset completion paths.
+  - Add a test with zero active rows.
+
+**C-2 (required before deploy; owners `database-architect` + `devops-engineer`). Verify the `SELECT` grant on `app.account_state_transitions`.**
+- **Why it is required.** The backend role only `INSERT`s into this table today, with no `RETURNING` (`accounts.ts:418-423`). Migrations 001–029 are not in the repo, so the grant cannot be confirmed from here.
+- **Blast radius if the grant is missing.** Every `/auth/supabase/exchange` call 5xxs, not just calls for accounts with a watermark, because the query always runs. **All customer web sign-in breaks.**
+- **How to check.** Run `select has_table_privilege(current_user, 'app.account_state_transitions', 'SELECT')` *as the backend's connection role* on the live project. If it returns false, add a forward migration with the grant. Record the result in this document.
+- **Ruling: the fail-closed behaviour is correct and must not be changed to fail-open to work around a missing grant.**
+- **Index.** The partial index on `app.sessions (account_id, revoked_at desc) where revoked_reason in (…)` (§12.6 item 1) is recommended, not required, at current scale.
+
+**C-3 (required before A-10 closes). Fold the watermark into the other endpoints that accept a GoTrue user token.**
+- **The gap.** `POST /auth/reset-password/confirm`'s `recoveryAccessToken` branch (`auth.ts:839-856`) does no staleness check. If GoTrue propagation failed, a stale holder could set a new password there and then sign in fresh. That defeats eviction without ever touching the exchange.
+- **Fix.** Apply `isGoTrueSessionStale` in that branch. It belongs naturally with A-12's `amr=recovery` check, and `backend-architect` may close both together.
+- **Recommended, not required.** Re-check the watermark when the pending MFA challenge or enrolment that the exchange issued is completed (`/auth/mfa/challenge` `auth.ts:668-721`, `/mfa/enroll/verify`). Today there is a time-of-check/time-of-use window as long as the challenge TTL. A successful GoTrue sign-out already mitigates it, because `verifyTotpFactor` against a deleted session fails.
+
+**Low follow-ups (non-blocking; owner `backend-architect` unless stated):**
+- **Propagation failures need an alert.** They are only a `console.warn`. While A-18 / A-19 are open, a failed propagation leaves a Layer-2-capable session alive during a suspension. Owner: `site-reliability-engineer`.
+- **Side effects of `signOutAllUserSessions`.** It works by minting and verifying a magic link (`db/supabase.ts:458-485`). Two consequences:
+  - **(a) Fake logins in the audit trail.** Each call writes a GoTrue login to `auth.audit_log_entries` and updates `last_sign_in_at` for the subject. Anyone running A-6-style forensics must know these entries are system-generated. Owner: `security-engineer`, to note this in the IR runbook.
+  - **(b) Unintended email confirmation.** On an unconfirmed user, verifying a magic link may set `email_confirmed_at`. Skip propagation for `pending_verification` subjects, or confirm GoTrue's behaviour under A-22.
+- **Comment placement.** In `repositories/sessions.ts:143-154`, the ADR-0012 INV-1 comment for `touchMfaVerifiedAt` now sits above `findRevocationWatermark`. Move it back above `touchMfaVerifiedAt`.
+
+**A-23 specifically.**
+- **What I checked.** Every admin state change writes the transition row and then propagates, including reactivation. The 409 path returns before either. The watermark refuses a GoTrue session minted during a suspension after reactivation.
+- **Ban on suspend.** Not implementing it (§12.5) is the right call to defer. The oracle trade-off is real. It needs a `backend-architect` design and the A-22 live check, not an implementation guess.
+- **Verdict.** A-23 **PASS**, closed pending C-2.
+
+### 13.4 A-13 / A-17: callback
+
+**What I confirmed** (`src/pages/CustomerAuthCallbackPage.tsx`):
+- The raw `#access_token` branch is gone.
+- The lingering-session `getSession()` branch is gone.
+- `type` is allow-listed before any SDK call, both on the page and inside `verifySupabaseEmailLink`.
+- Neither the `token_hash` path nor the PKCE path signs the visitor in. `signOut({ scope: 'local' })` also revokes that one GoTrue session on the server, and it does not touch the user's other sessions.
+- The URL is scrubbed before any branch runs.
+- No call to `/auth/supabase/exchange` remains on the page.
+
+**Login CSRF at `/auth/callback` is closed for the signup, PKCE and raw-token variants.**
+
+**Residuals (accepted for this action, tracked elsewhere):**
+- **Recovery variant.** A forged recovery `token_hash` still plants a browser recovery session. This is unchanged, as §12.2 says. It moves to **A-24**, whose preferred fix removes it.
+- **The A-17 allow-list labels links; it does not check the token's real type.** `type=signup` falls back to verifying as type `email` (`auth.ts:260-262`), which GoTrue also accepts for magic-link hashes. No impact today, because no sign-in follows, but the guarantee is "no sign-in", not "only signup tokens". Recorded so nobody relies on it as a token-type control.
+- **Pre-scrub exposure.** Credentials sit in the URL until JavaScript runs. With no `Referrer-Policy` in place (A-15, open), any sub-resource fetched first sees them. A-15 remains the control.
+
+**C-5 (A-17 console limb, owner `cto` with `devops-engineer`). The console item conflicts with A-10.**
+- **The conflict.** "Disable magic-link/OTP sign-in" is not an independent console toggle; Supabase ties it to the email provider. If it could be disabled, it would break `mintTransientUserAccessToken`, and with it A-10/A-23 propagation and every other existing caller. Propagation would then fail silently, as a warning only.
+- **Ruling.** Withdraw that limb. Rely on the callback allow-list now and on A-21 structurally. Do **not** apply it in the A-22 console session without a code change first.
+
+**C-6 (deploy check, owner `security-engineer`).** On the deployed web build, confirm two things:
+- a `type=signup` link and a `type=magiclink` link both end on `/auth/email-verified` or the error state, with no backend session issued;
+- the address bar is clean afterwards.
+
+### 13.5 A-19 interim; A-18 claim; the `token_hash` defect
+
+**A-19 reconciliation: CONDITIONAL.**
+- **What is accepted.** The script is read-only, uses the service role, and prints ids only. A failed `listFactors` aborts the run with exit 1, which fails loud. The one-event-per-factor matching does not hide a second factor: either way, the account produces a finding.
+- **C-4 (required before this counts as a control).**
+  - **(a) Flag every verified factor that is not TOTP** (`phone`, `webauthn`). The product only issues TOTP. Today the filter (`mfa-factor-reconciliation.ts:70-72`) silently ignores a GoTrue-direct phone or WebAuthn factor, and that factor yields the same AAL2 lockout as C-10. Alternatively, A-22 confirms those factor types are disabled on the project and the confirmation is recorded here.
+  - **(b) Scheduling and alert routing** are done by `site-reliability-engineer`.
+  - **(c) The first run is triaged** by `security-engineer`.
+- **Scale note (non-blocking).** The script makes one Admin API call per account.
+
+**A-18 claim: CONFIRMED.**
+- **What I searched.** Under `src/`: `.updateUser(`, `.mfa.`, `reauthenticate`, `signInWithOtp`, `setSession(`, `resetPasswordForEmail`, `unenroll`, and any raw `/auth/v1` or `/factors` fetch.
+- **What remains.** The only live Supabase Auth calls are `signUp`, `signInWithPassword`, `resend`, `verifyOtp`, `exchangeCodeForSession`, `getSession` and `signOut`. None of them changes a password or a factor.
+- **Conclusion.** A-18 and A-19 are Layer-2 capabilities of the published anon key, as A-5 §3 says. Interim mitigation is in the console (A-22 items 1, 2, 10). The structural fix is A-21.
+
+**`CustomerResetPasswordPage` never reads `token_hash`: CONFIRMED by code, not verified live.**
+- **The broken chain.** `PASSWORD_RESET_REDIRECT_URL_WEB` is `…/reset-password`. `buildConfirmationUrl` appends `token_hash`, `type` and `email` to `redirect_to` (`supabase/functions/auth-send-email/lib/confirmation-url.ts:17-24`). The page only calls `getSession()` (`CustomerResetPasswordPage.tsx:54-66`), so a genuine web recovery link lands on "Reset link required".
+- **Why tests missed it.** The F-9 tests mock `getSession`.
+- **Not introduced by `079f93c`.** It dates from the F-2/F-3 commits. It also means the §6 A-1 "DONE" and §9's A-7 PASS describe correct *control* behaviour, not a working end-to-end web reset. The security controls fail **closed**: no password changes without the backend.
+- **Security impact (Medium).** The page does not scrub the URL, and the token is never consumed. A **live, unused recovery token** therefore stays in the address bar and history and in any `Referer` (no `Referrer-Policy`, A-15) until it expires, along with the user's email address.
+- **New action A-24.** Owners: `authentication-engineer` + `backend-architect`; `devops-engineer` for the live check. Severity: High (availability of the only self-service reset), Medium (security). Due 2026-10-22.
+  - **Required fix (option b of §12.6 item 3).** `/reset-password` reads `token_hash` and `email`, scrubs the URL immediately, and submits them to the backend's existing `resetToken` branch of `/auth/reset-password/confirm` (server-side `verifyRecoveryToken`).
+  - **What this fix also achieves.** It creates no browser recovery session. That removes the A-13 recovery-CSRF residual and this page's dependence on A-12's "any GoTrue token" acceptance.
+  - **Option (a) is rejected as the end state.** Repointing the variable to `/auth/callback?type=recovery` keeps the browser recovery session. It is acceptable only as a same-day stopgap, and only if `cto` wants reset working before (b) ships.
+  - **Tests.** F-9 must gain a test where the page is loaded with `?token_hash=…&type=recovery&email=…` and **no** mocked session.
+
+### 13.6 Register effect
+
+- **Closed pending deploy check:** A-23 (C-2), A-13 (C-6), and the A-17 code limb.
+- **Still OPEN:** A-10 (C-1, C-3; deploy gated on C-2), A-17 console limb (C-5), A-19 (C-4), A-18 (unchanged).
+- **New:** A-24.
+
+INC-003's overall status is unchanged. It is **OPEN**, and the conditions in §11 still apply.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
