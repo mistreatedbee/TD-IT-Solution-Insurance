@@ -7,6 +7,7 @@
  */
 import type { Queryable } from './types.js';
 import type { SessionRecord, SessionRepo, SessionRevokedReason } from '../lib/refresh-session.js';
+import { ACCOUNT_WIDE_REVOCATION_REASONS } from '../lib/gotrue-session-revocation.js';
 
 interface Row {
   id: string;
@@ -144,6 +145,27 @@ export function createSessionRepo(db: Queryable): SessionRepo {
     // absolute_expires_at, and the `revoked_at is null` guard means a
     // revoked session silently no-ops rather than resurrecting step-up
     // freshness on a session that can no longer be used anyway.
+    // INC-003 A-10/A-23. Both sources are durable rows the revocation sites
+    // already write — no schema change. (b) is what records a reactivation,
+    // which revokes no session row, so a GoTrue session minted *during* a
+    // suspension is still refused after the account is reactivated. Only
+    // admin-driven transitions carry an actor (transitionAccountState
+    // requires one), so the actor filter keeps any future system-written
+    // transition (e.g. email verification) from silently advancing it.
+    async findRevocationWatermark(accountId) {
+      const result = await db.query<{ watermark: Date | null }>(
+        `select greatest(
+           (select max(revoked_at) from app.sessions
+             where account_id = $1 and revoked_reason::text = any($2::text[])),
+           (select max(created_at) from app.account_state_transitions
+             where account_id = $1 and actor_account_id is not null)
+         ) as watermark`,
+        [accountId, [...ACCOUNT_WIDE_REVOCATION_REASONS]],
+      );
+      const value = result.rows[0]?.watermark ?? null;
+      return value ? new Date(value) : null;
+    },
+
     async touchMfaVerifiedAt(id, at) {
       await db.query(
         `update app.sessions

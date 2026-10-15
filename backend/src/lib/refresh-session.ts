@@ -100,6 +100,16 @@ export interface SessionRepo {
    * the caller is expected to have already checked `revokedAt` itself.
    */
   touchMfaVerifiedAt(id: string, at: Date): Promise<void>;
+  /**
+   * INC-003 A-10/A-23 — the account's revocation watermark: the latest of
+   * (a) any `revoked_at` on this account's sessions whose reason is
+   * account-wide (`ACCOUNT_WIDE_REVOCATION_REASONS` in
+   * lib/gotrue-session-revocation.ts) and (b) any admin-driven
+   * `app.account_state_transitions` row (suspend, deactivate, reactivate).
+   * `null` when neither exists. `/auth/supabase/exchange` refuses any GoTrue
+   * session authenticated before it.
+   */
+  findRevocationWatermark(accountId: string): Promise<Date | null>;
 }
 
 function idleTtlSecondsFor(surface: SessionSurface): number {

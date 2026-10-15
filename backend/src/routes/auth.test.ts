@@ -36,6 +36,7 @@ import type { AppContext } from '../context.js';
 import type { AccountRow, AccountStatus, UserType, AccountState } from '../repositories/accounts.js';
 import type { EnrollmentTicketRecord, EnrollmentTicketRepo } from '../lib/enrollment-ticket.js';
 import type { SessionRecord, SessionRepo } from '../lib/refresh-session.js';
+import { ACCOUNT_WIDE_REVOCATION_REASONS } from '../lib/gotrue-session-revocation.js';
 import type { SupabaseAdmin } from '../db/supabase.js';
 import type { Env } from '../config/env.js';
 
@@ -84,7 +85,7 @@ function createFakeEnrollmentTicketRepo(): EnrollmentTicketRepo {
   };
 }
 
-function createFakeSessionRepo(): SessionRepo {
+function createFakeSessionRepo(opts: { stateTransitionWatermark?: () => Date | null } = {}): SessionRepo {
   const rows = new Map<string, SessionRecord>();
   return {
     async insertNew(input) {
@@ -163,6 +164,24 @@ function createFakeSessionRepo(): SessionRepo {
       if (row && row.revokedAt === null) {
         row.mfaVerifiedAt = at;
       }
+    },
+    // Mirrors repositories/sessions.ts: latest account-wide revocation on
+    // this account's rows, or an (injected) admin state-transition time.
+    async findRevocationWatermark(accountId) {
+      const candidates: number[] = [];
+      for (const row of rows.values()) {
+        if (
+          row.accountId === accountId &&
+          row.revokedAt !== null &&
+          row.revokedReason !== null &&
+          ACCOUNT_WIDE_REVOCATION_REASONS.includes(row.revokedReason)
+        ) {
+          candidates.push(row.revokedAt.getTime());
+        }
+      }
+      const transition = opts.stateTransitionWatermark?.() ?? null;
+      if (transition) candidates.push(transition.getTime());
+      return candidates.length > 0 ? new Date(Math.max(...candidates)) : null;
     },
   };
 }
@@ -448,6 +467,7 @@ describe('POST /auth/supabase/exchange — SR-006-1 MFA-bypass regression', () =
       generatePasswordResetLink: notUsed('generatePasswordResetLink'),
       verifyRecoveryToken: notUsed('verifyRecoveryToken'),
       mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+      signOutAllUserSessions: notUsed('signOutAllUserSessions'),
     };
   }
 
@@ -524,6 +544,172 @@ describe('POST /auth/supabase/exchange — SR-006-1 MFA-bypass regression', () =
       expect(verifyResponse.status, JSON.stringify(verifyBody)).toBe(200);
       expect(verifyBody.accessToken).toBeTruthy();
       expect(verifyBody.refreshToken).toBeTruthy();
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+});
+
+/**
+ * INC-003 A-10 / A-23 regression (A-5 threat model §4.2 N-1/N-2/N-3): a
+ * browser-resident GoTrue session authenticated BEFORE an account-wide
+ * revocation (logout-all, admin suspend/reactivate, SR-8 reuse, FR-20
+ * mismatch) must not be re-minted into a backend session by
+ * `/auth/supabase/exchange`. Fails against the pre-fix handler, which only
+ * asked GoTrue "is this token valid right now?".
+ */
+describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermark', () => {
+  const ACCOUNT_ID = randomUUID();
+  const EMAIL = 'watermark-customer@example.com';
+
+  function gotrueJwt(payload: Record<string, unknown>): string {
+    const enc = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
+    return `${enc({ alg: 'HS256', typ: 'JWT' })}.${enc(payload)}.signature-not-checked-by-this-fake`;
+  }
+
+  function fakeSupabase(validTokens: Set<string>, calls: string[]): SupabaseAdmin {
+    const notUsed = (name: string) => (): never => {
+      throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+    };
+    return {
+      raw: {} as SupabaseAdmin['raw'],
+      createUser: notUsed('createUser'),
+      deleteUser: notUsed('deleteUser'),
+      verifyPassword: notUsed('verifyPassword'),
+      enrollTotpFactor: notUsed('enrollTotpFactor'),
+      challengeTotpFactor: notUsed('challengeTotpFactor'),
+      verifyTotpFactor: notUsed('verifyTotpFactor'),
+      async findVerifiedTotpFactor() {
+        calls.push('findVerifiedTotpFactor');
+        return null;
+      },
+      updateUserPassword: notUsed('updateUserPassword'),
+      generateEmailVerificationLink: notUsed('generateEmailVerificationLink'),
+      sendSignupConfirmationEmail: notUsed('sendSignupConfirmationEmail'),
+      sendPasswordRecoveryEmail: notUsed('sendPasswordRecoveryEmail'),
+      sendInvitationEmail: notUsed('sendInvitationEmail'),
+      getUserByEmail: notUsed('getUserByEmail'),
+      async getUserFromAccessToken(accessToken) {
+        if (!validTokens.has(accessToken)) return null;
+        return { userId: ACCOUNT_ID, email: EMAIL, emailConfirmed: true };
+      },
+      isUserEmailConfirmed: notUsed('isUserEmailConfirmed'),
+      verifySignupToken: notUsed('verifySignupToken'),
+      generatePasswordResetLink: notUsed('generatePasswordResetLink'),
+      verifyRecoveryToken: notUsed('verifyRecoveryToken'),
+      mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+      signOutAllUserSessions: notUsed('signOutAllUserSessions'),
+    };
+  }
+
+  async function start(tokens: string[], opts: { stateTransitionAt?: Date } = {}) {
+    const calls: string[] = [];
+    const accounts = createFakeAccountsRepo({
+      id: ACCOUNT_ID,
+      email: EMAIL,
+      userType: 'customer',
+      accountState: 'active',
+      mfaRequired: false,
+      partnerOrganizationId: null,
+    });
+    const sessions = createFakeSessionRepo({ stateTransitionWatermark: () => opts.stateTransitionAt ?? null });
+    const auditLog = createFakeAuditLog();
+    const ctx = buildMinimalCtx({
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase: fakeSupabase(new Set(tokens), calls),
+      sessions,
+      auditLog: auditLog as unknown as AppContext['auditLog'],
+    });
+    return { ...(await startTestServer(ctx)), sessions, auditLog, calls };
+  }
+
+  async function exchange(baseUrl: string, accessToken: string) {
+    const response = await fetch(`${baseUrl}/auth/supabase/exchange`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ accessToken }),
+    });
+    return { response, body: (await response.json()) as Record<string, unknown> };
+  }
+
+  const nowSec = () => Math.floor(Date.now() / 1000);
+
+  it('N-1: a GoTrue session authenticated before logout-all is refused; a fresh sign-in afterwards is accepted', async () => {
+    const stale = gotrueJwt({ sub: ACCOUNT_ID, iat: nowSec(), amr: [{ method: 'password', timestamp: nowSec() - 3600 }] });
+    const fresh = gotrueJwt({ sub: ACCOUNT_ID, iat: nowSec(), amr: [{ method: 'password', timestamp: nowSec() + 1 }] });
+    const { server, baseUrl, sessions, auditLog, calls } = await start([stale, fresh]);
+    try {
+      // A backend session exists from an earlier exchange, then the owner
+      // presses "log out everywhere" (e.g. from the mobile app).
+      const first = await exchange(baseUrl, stale);
+      expect(first.response.status, JSON.stringify(first.body)).toBe(200);
+      await sessions.revokeAllForAccount(ACCOUNT_ID, 'logout_all');
+      calls.length = 0;
+
+      // The attacker refreshes the stolen GoTrue session — `iat` is new, but
+      // `amr` still records the original authentication time.
+      const replay = await exchange(baseUrl, stale);
+      expect(replay.response.status, JSON.stringify(replay.body)).toBe(401);
+      expect((replay.body.error as { code?: string }).code).toBe('REFRESH_TOKEN_INVALID');
+      expect(replay.body.accessToken).toBeUndefined();
+      // Refused before any factor lookup / minting path is reachable.
+      expect(calls).not.toContain('findVerifiedTotpFactor');
+      expect(auditLog.events.some((e) => e.eventType === 'login_failure' && e.accountId === ACCOUNT_ID)).toBe(true);
+
+      const relogin = await exchange(baseUrl, fresh);
+      expect(relogin.response.status, JSON.stringify(relogin.body)).toBe(200);
+      expect(relogin.body.accessToken).toBeTruthy();
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it.each(['admin_forced', 'rotation_reuse_detected', 'device_mismatch', 'password_reset'] as const)(
+    'N-2/N-3: a pre-existing GoTrue session is refused after a %s revocation',
+    async (reason) => {
+      const stale = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 60 }] });
+      const { server, baseUrl, sessions } = await start([stale]);
+      try {
+        expect((await exchange(baseUrl, stale)).response.status).toBe(200);
+        await sessions.revokeAllForAccount(ACCOUNT_ID, reason);
+        expect((await exchange(baseUrl, stale)).response.status).toBe(401);
+      } finally {
+        await new Promise((resolve) => server.close(() => resolve(undefined)));
+      }
+    },
+  );
+
+  it('single-session logout does NOT advance the watermark (other live sessions keep working)', async () => {
+    const token = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 60 }] });
+    const { server, baseUrl, sessions } = await start([token]);
+    try {
+      const first = await exchange(baseUrl, token);
+      expect(first.response.status).toBe(200);
+      await sessions.revoke(first.body.sessionId as string, 'logout');
+      expect((await exchange(baseUrl, token)).response.status).toBe(200);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('A-23: suspend -> reactivate refuses a GoTrue session minted DURING the suspension', async () => {
+    // GoTrue session obtained while suspended (e.g. a C-1 password grant);
+    // the reactivation's state-transition row is the watermark.
+    const duringSuspension = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 120 }] });
+    const { server, baseUrl } = await start([duringSuspension], { stateTransitionAt: new Date(Date.now() - 30_000) });
+    try {
+      expect((await exchange(baseUrl, duringSuspension)).response.status).toBe(401);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('fails closed: with a watermark present, a token whose authentication time cannot be read is refused', async () => {
+    const noAmr = gotrueJwt({ sub: ACCOUNT_ID, iat: nowSec() + 10 });
+    const { server, baseUrl } = await start(['opaque-not-a-jwt', noAmr], { stateTransitionAt: new Date(Date.now() - 1000) });
+    try {
+      expect((await exchange(baseUrl, noAmr)).response.status).toBe(401);
+      expect((await exchange(baseUrl, 'opaque-not-a-jwt')).response.status).toBe(401);
     } finally {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }

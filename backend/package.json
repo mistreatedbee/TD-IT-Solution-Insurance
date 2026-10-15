@@ -17,7 +17,8 @@
     "seed:test-accounts": "tsx scripts/seed-test-accounts.ts",
     "verify:mongo-catalog": "tsx scripts/verify-mongo-catalog.ts",
     "inc-001:location-inventory": "tsx scripts/inc-001-location-inventory.ts",
-    "retention:police-report-purge": "tsx scripts/police-report-retention-purge.ts"
+    "retention:police-report-purge": "tsx scripts/police-report-retention-purge.ts",
+    "inc-003:sr14b-mfa-reconciliation": "tsx scripts/sr14b-mfa-factor-reconciliation.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",

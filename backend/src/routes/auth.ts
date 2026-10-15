@@ -35,6 +35,7 @@ import { SupabaseUnavailableError } from '../db/supabase.js';
 import { issueEnrollmentTicket } from '../lib/enrollment-ticket.js';
 import { storePendingEnrollment } from '../lib/enrollment-pending-store.js';
 import { revokeJtisInKv } from '../lib/revocation.js';
+import { isGoTrueSessionStale } from '../lib/gotrue-session-revocation.js';
 import { notifyInBackground } from '../lib/customer-notification-service.js';
 import { notifyNewDeviceLoginIfNeeded } from '../lib/auth-login-notifications.js';
 import { scheduleCustomerLifecycleNotifications } from '../lib/customer-lifecycle-notifications.js';
@@ -396,6 +397,26 @@ export function createAuthRouter(ctx: AppContext): Router {
         }
         if (activeAccount.accountState === 'suspended' || activeAccount.accountState === 'deactivated') {
           next(apiError('ACCOUNT_SUSPENDED'));
+          return;
+        }
+
+        // INC-003 A-10/A-23 revocation watermark: a GoTrue session that was
+        // authenticated before the account's latest account-wide revocation
+        // (logout-all, admin suspend/deactivate/reactivate, SR-8 reuse,
+        // FR-20 mismatch, password reset) must not be re-minted into a new
+        // backend session — otherwise none of those revocations evict a
+        // holder of the browser GoTrue session (A-5 threat model §4).
+        // Checked before the MFA branch so neither minting path is reachable.
+        const revocationWatermark = await ctx.sessions.findRevocationWatermark(activeAccount.id);
+        if (isGoTrueSessionStale(accessToken, revocationWatermark)) {
+          await ctx.auditLog.record({
+            accountId: activeAccount.id,
+            eventType: 'login_failure',
+            attemptedIdentifier: activeAccount.email,
+            ipAddress: ip,
+            userAgent: req.header('user-agent') ?? null,
+          });
+          next(apiError('REFRESH_TOKEN_INVALID'));
           return;
         }
 

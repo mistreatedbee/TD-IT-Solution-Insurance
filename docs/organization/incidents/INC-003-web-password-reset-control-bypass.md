@@ -710,6 +710,133 @@ Per `cto`'s §10 instruction, every reachable bypass has its own action below, n
 
 ---
 
+## 12. Remediation status: A-10, A-13, A-17, A-19 (interim), A-23, and a correction on A-18 (`authentication-engineer`, 2026-10-15)
+
+Cites §11 (actions A-8 … A-23) and the A-5 threat model (§4.4, §5.4, §3 row C-10). §§1–11 are unaltered. The code is in the working tree and **not committed** (the orchestrator commits). **None of these actions is CLOSED.** Each one marked "fixed" below is **fixed — pending Stage 8 security review**. `security-engineer` verifies the implementation and `cybersecurity-architect` closes the action, as §5's routing requires. Nothing here is self-certified as closed.
+
+### 12.1 A-10 / A-23: backend revocation now reaches the browser GoTrue session. Status: fixed — pending Stage 8 security review
+
+Built to the A-5 doc's §4.4 properties 1, 2 and 4. Property 3 (a distinct audit event type) is still open, see §12.6.
+
+- **Revocation watermark at the exchange. This is the authoritative control.** `POST /auth/supabase/exchange` (`backend/src/routes/auth.ts:403-422`) now refuses a GoTrue access token whose session was *authenticated* before the account's watermark. It returns `401 REFRESH_TOKEN_INVALID` and writes a `login_failure` audit row carrying `accountId`. The check runs after the customer-only and account-state gates and before the TOTP branch, so neither minting path can be reached.
+  - **How the watermark is computed.** `SessionRepo.findRevocationWatermark` (`backend/src/repositories/sessions.ts:148-167`) takes `greatest()` of two existing durable rows, so no migration is needed:
+    - the latest `app.sessions.revoked_at` with reason `logout_all`, `admin_forced`, `rotation_reuse_detected`, `device_mismatch` or `password_reset`;
+    - the latest admin-driven `app.account_state_transitions.created_at`.
+  - **Why the state-transition row is included.** A reactivation revokes no session row, so the state-transition row is the only record of it. Including it means a GoTrue session minted *during* a suspension is still refused after reactivation, which is the A-23 / N-3 case.
+  - **Reasons that do not advance the watermark.** A single `logout` and `rotated` are per-session housekeeping and leave it unchanged.
+  - **How authentication time is read.** It is the earliest `amr[].timestamp` in the GoTrue JWT. GoTrue sets this when the session is created and keeps it across refreshes, unlike `iat`, which a thief resets just by refreshing (`backend/src/lib/gotrue-session-revocation.ts`).
+  - **Fail-closed rule.** If a watermark exists and the token's authentication time cannot be read, the session is refused.
+  - **Signature checking.** The JWT is decoded only after `getUserFromAccessToken` has had GoTrue accept the token, so the signature does not need to be re-verified.
+- **Propagation to GoTrue (defence in depth, best-effort).** The new `SupabaseAdmin.signOutAllUserSessions` (`backend/src/db/supabase.ts:476-485`) uses a transient user token to call GoTrue `POST /logout?scope=global`. It is called on:
+  - `POST /session/logout-all` (`backend/src/routes/session.ts:83`);
+  - SR-8 reuse and FR-20 mismatch detection in `/session/refresh` (`session.ts:145`);
+  - **every** admin state change, including suspend, deactivate and reactivate (`backend/src/routes/admin-accounts.ts:312`).
+
+  A GoTrue failure is logged with the account id and trigger only (never the email or a token) and does not fail the request. The backend revocation has already been committed by then, and the watermark does not depend on GoTrue being reachable.
+- **Tests: 26 new, backend total 522/522.**
+  - `backend/src/routes/auth.test.ts`, describe `INC-003 A-10/A-23 revocation watermark` (8 cases):
+    - N-1: logout-all, then a stale token is refused and a fresh sign-in is accepted;
+    - N-2/N-3: refused after each of `admin_forced`, `rotation_reuse_detected`, `device_mismatch` and `password_reset`;
+    - a single-session logout does not advance the watermark;
+    - suspend, then reactivate, then a GoTrue session minted during the suspension is refused;
+    - fail-closed on a token with no `amr` and on a non-JWT token.
+  - `backend/src/lib/gotrue-session-revocation.test.ts` (16 cases). Unit tests, including that the warning log contains no email.
+  - `backend/src/routes/session-logout-all.test.ts` (+2 cases):
+    - GoTrue sign-out is called;
+    - a GoTrue outage still returns 204.
+  - `backend/src/routes/admin-accounts.test.ts`: the suspend and reactivate cases now assert the GoTrue sign-out, and the 409 case asserts no sign-out.
+
+### 12.2 A-13 (and A-17 code limb): login CSRF at `/auth/callback`. Status: fixed — pending Stage 8 security review
+
+`src/pages/CustomerAuthCallbackPage.tsx` was reworked against the A-5 doc's §5.4 items 1–4:
+
+1. The raw `#access_token` branch is deleted.
+2. `type` is allow-listed to `signup` / `recovery` before any SDK call. The same guard is in `verifySupabaseEmailLink` (`ALLOWED_EMAIL_LINK_TYPES`, `src/customer/supabase/auth.ts`).
+3. Email verification **never signs the user in**. This applies to both the `token_hash` and the PKCE `code` paths. The GoTrue session that `verifyOtp` creates is cleared with `signOut({ scope: 'local' })`, the generic SR-006-2 `notify-email-verified` sync is fired, and the user is routed to `/auth/email-verified` and from there to `/login`. The page no longer calls `/auth/supabase/exchange` or `signInWithTokens` at all. The lingering-session `getSession()` re-mint branch is deleted.
+4. `token_hash` / `code` / fragment are stripped from the URL with `history.replaceState` on entry, so every exit, including the error state, leaves a clean URL.
+
+**Tests:** `src/pages/CustomerAuthCallbackPage.test.tsx` (9 cases):
+- raw `#access_token` is never exchanged, and the URL is scrubbed on the error path;
+- a bare load does not call `getSession`;
+- `magiclink` / `invite` / `email_change` / `email` are refused with no `verifyOtp` call;
+- signup and PKCE verification do not sign in;
+- recovery still routes to `/reset-password`.
+
+Web total: 125/125.
+
+**Residuals, stated so they are not assumed closed:**
+- **The `type=recovery` variant is unchanged.** A forged recovery `token_hash` still establishes a browser recovery session, so the victim could set a password on the attacker's account. The A-5 doc §5.2 rates this lower-impact. It cannot be removed while `/reset-password` depends on a browser recovery session (INC-003 F-3), so it rides on A-21.
+- **A-17's console limb (disable magic-link/OTP sign-in) is still OPEN** under A-22 item 3.
+- **The mobile `access_token` deep-link parity item (§5.4 item 5) stays with A-12.** It is not touched here.
+
+### 12.3 A-19 interim: SR-14(b) reconciliation, extended. Status: fixed (interim) — pending Stage 8 security review; scheduling OPEN
+
+SR-14(b)'s reconciliation had never been built. Repo-wide search on 2026-10-15 found no implementation. It now exists as a read-only control:
+
+- **Logic:** `backend/src/lib/mfa-factor-reconciliation.ts`. It runs two checks:
+  - (i) the original SR-14(b) check: an `mfa_required` account with no verified TOTP factor;
+  - (ii) the A-19 extension: a verified TOTP factor with no `mfa_enrolled` audit event for that account within `[factor.created_at − 60 s, + ENROLLMENT_TICKET_TTL_SECONDS + 60 s]`. That is the GoTrue-direct C-10 signature.
+
+  Each event can vouch for at most one factor, so an attacker factor enrolled right after a legitimate one is not hidden.
+- **Runner:** `backend/scripts/sr14b-mfa-factor-reconciliation.ts` (`npm run inc-003:sr14b-mfa-reconciliation`). It reads Postgres, plus the GoTrue Admin `mfa.listFactors` call with the service-role key (never the anon key). It writes nothing and removes no factor. The output contains account and factor ids only. Exit codes: 0 clean, 2 findings, 1 run failed.
+- **Tests:** `backend/src/lib/mfa-factor-reconciliation.test.ts` (6 cases).
+- **Still OPEN:**
+  - **Scheduling and alert routing** belong to `site-reliability-engineer`, the SR-14 owner pairing.
+  - **Triage of the first run** belongs to `security-engineer`. Factors that predate `mfa_enrolled` logging, or whose events were purged by the 12-month retention job, will show up as false positives.
+  - **A flagged factor is a suspected ATO.** It is investigated, never auto-deleted.
+  - **This is detection, not prevention.** The prevention side of A-19 is still A-21.
+
+### 12.4 A-18: correction to the framing I was given; no code change possible here. Status: OPEN
+
+I was asked to route web password change and TOTP enrolment through the backend, the same way F-3 was done. I read the code on 2026-10-15 and there is **no GoTrue-direct password-change or TOTP-enrolment call in the web bundle to re-route**:
+- The only "change password" on web is a link from `src/pages/customer/CustomerAccountSettingsPage.tsx:142` to `/forgot-password`, which is already backend-routed (F-1).
+- Web TOTP enrolment (`src/invitations/MfaEnrollmentStep.tsx`, `src/api/invitations.ts`) already calls the backend's `POST /mfa/enroll` and `/mfa/enroll/verify`.
+- No `updateUser` / `mfa.enroll` call exists under `src/` (grep 2026-10-15).
+
+This matches the A-5 doc's own analysis. A-18 and A-19 are **Layer 2** capabilities (A-5 §3 rows C-8/C-9/C-10): anyone holding the published anon key plus a session can call GoTrue `PUT /user` or `/factors` directly, whatever our bundle does. So no client-side re-routing can close them.
+- **What §12.1 does contribute.** The GoTrue global sign-out on suspend now ends an attacker's existing GoTrue session at the moment of suspension.
+- **What remains.** A-18's interim is still console configuration: Secure password change, Secure email change and A-3's floor of 14 (A-22 items 1, 2, 10), owned by project owner + `devops-engineer`. The structural fix is still A-21.
+
+### 12.5 Deliberately not done, and why (for `backend-architect` / `solution-architect`)
+
+- **GoTrue ban on suspend (A-5 §4.4 item 2, "preferably").** I did not implement it. Once a user is banned, GoTrue's password grant returns `user_banned`, and whether it checks the password before or after the ban is version-dependent. That leaves two outcomes, both bad:
+  - **If `/auth/login` maps `user_banned` to `ACCOUNT_SUSPENDED`:** that risks a suspension-state oracle with no password needed.
+  - **If it does not map it:** every suspended user's login turns into a lockout-counting `INVALID_CREDENTIALS`.
+
+  Choosing between those is a design call for `backend-architect`. It needs a live check against v2.195.0, which belongs in A-22. While suspended, an attacker who knows the password can still mint a fresh GoTrue session (C-1). The watermark still refuses that session at the exchange after reactivation, as tested in §12.1.
+- **A-21** (remove `supabase-js` from the web, retire the exchange, rotate the anon key) is an ADR for `solution-architect`, as §11 says. It is not attempted here.
+- **A-12, A-14, A-16, A-20** were not in this tasking and are untouched.
+
+### 12.6 Open items this work creates or exposes (owners named)
+
+1. **Database grant check before deploy.** Owners: `database-architect` + `devops-engineer`. The watermark query reads `app.account_state_transitions`. The backend role writes to it today, but its **SELECT** grant is not recorded anywhere in the repo. If the grant is missing, the exchange fails closed with a 5xx, which would break customer web sign-in. Verify the grant on the live project before deploying. Also consider a partial index on `app.sessions (account_id, revoked_at desc) where revoked_reason in (…)`. Today that half of the query relies on scanning the account's revoked rows, because `sessions_account_id_active` covers live rows only.
+2. **Distinct audit event for an exchange re-mint (A-5 §4.4 item 3).** Owners: `backend-architect` + `security-engineer` (detection rule, alongside ADR-0012 C-4). A refused stale re-mint is now visible as `login_failure` with an `accountId`. A *successful* exchange-minted session is still indistinguishable from `/auth/login` (`login_success`). Separating them needs a new `app.audit_event_type` value, which means a migration.
+3. **Possible functional defect on the web reset path, seen while tracing A-13. Not verified live.** Owner: `devops-engineer` (live check), then `backend-architect`. `PASSWORD_RESET_REDIRECT_URL_WEB` is `…/reset-password` (`render.yaml:47-48`), and the `auth-send-email` hook appends `token_hash`/`type` to `redirect_to` (`supabase/functions/auth-send-email/lib/confirmation-url.ts`). So a web recovery link most likely lands on `/reset-password?token_hash=…`. `CustomerResetPasswordPage` only reads `getSession()` and never consumes `token_hash`, so the user would see "Reset link required". There are two candidate fixes:
+   - point the env var at `/auth/callback?type=recovery`;
+   - preferably, have `/reset-password` hand `token_hash` + `email` to the backend's existing `resetToken` branch of `/auth/reset-password/confirm`, which also removes the browser recovery session from the §12.2 residual.
+4. **Console items.** A-22 items 3, 6 and 9 also bound how long a stale GoTrue session exists to be refused at all.
+
+### 12.7 Test evidence (run this session, 2026-10-15)
+
+| Suite | Before | After |
+|---|---|---|
+| `cd backend && npm test` | 58 files / 490 tests, all passing | **60 files / 522 tests, all passing** |
+| `cd backend && npx tsc --noEmit` | — | clean (the new script was also type-checked on its own) |
+| `cd backend && npm run lint` | — | 0 errors. Warnings are pre-existing `no-non-null-assertion`; the new files have none |
+| `npx vitest run` (web) | 29 files / 116 tests, all passing | **30 files / 125 tests, all passing** |
+| `npm run typecheck` (web) | — | clean |
+| `npm run lint` (web) | 5 errors, all pre-existing in `src/admin/pages/AdminDataPages.tsx` and `src/test/setup.ts`, untouched | unchanged; 0 errors or warnings in the files changed here |
+| `npm run check:adr-prohibitions` | — | PASS |
+
+**Action status after this section:**
+- **A-10, A-13, A-23:** fixed — pending Stage 8 security review.
+- **A-17:** code limb fixed — pending Stage 8; console limb OPEN.
+- **A-19:** interim detection fixed — pending Stage 8; scheduling OPEN.
+- **A-18:** OPEN (console + A-21).
+- **All other actions:** unchanged.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*

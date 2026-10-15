@@ -12,6 +12,7 @@ import { clientIp } from '../middleware/rate-limit.js';
 import { rotateRefreshToken, type SessionSurface } from '../lib/refresh-session.js';
 import { signAccessToken } from '../lib/jwt.js';
 import { revokeJtisInKv } from '../lib/revocation.js';
+import { propagateRevocationToGoTrue, type GoTrueRevocationTrigger } from '../lib/gotrue-session-revocation.js';
 import { REVOCATION_KEY_PREFIX } from '../db/redis.js';
 import { isPrivilegedUserType } from '../lib/policy.js';
 import { sha256Hex } from '../lib/crypto.js';
@@ -26,6 +27,22 @@ function surfaceFor(userType: string): SessionSurface {
 export function createSessionRouter(ctx: AppContext): Router {
   const router = Router();
   const authenticate = createAuthenticateMiddleware(ctx.env, ctx.kv);
+
+  // INC-003 A-10: best-effort end to end — the account lookup is inside the
+  // same guard as the GoTrue call, because the backend revocation this
+  // follows has already been committed and must not be reported as failed.
+  async function propagateRevocationForAccount(accountId: string, trigger: GoTrueRevocationTrigger): Promise<void> {
+    let email: string;
+    try {
+      const account = await ctx.accounts.findById(accountId);
+      if (!account) return;
+      email = account.email;
+    } catch {
+      console.warn(`[session] account lookup for GoTrue revocation failed (account ${accountId}, trigger=${trigger})`);
+      return;
+    }
+    await propagateRevocationToGoTrue(ctx.supabase, { accountId, email }, trigger);
+  }
 
   // ---------------------------------------------------------------
   // POST /session/logout
@@ -60,6 +77,10 @@ export function createSessionRouter(ctx: AppContext): Router {
         // to receive this account's notifications, not just its API access.
         await ctx.pushTokens.disableAllForAccount(auth.accountId);
         await ctx.auditLog.record({ accountId: auth.accountId, eventType: 'logout', ipAddress: clientIp(req) });
+        // INC-003 A-10: "log out everywhere" must also reach GoTrue sessions
+        // (web customer's browser session), not just backend rows. The
+        // exchange watermark already refuses them; this is defence in depth.
+        await propagateRevocationForAccount(auth.accountId, 'logout_all');
         res.status(204).send();
       } catch (err) {
         next(err);
@@ -118,6 +139,14 @@ export function createSessionRouter(ctx: AppContext): Router {
             eventType: 'session_family_revoked',
             ipAddress: clientIp(req),
           });
+          // INC-003 A-10 (A-5 threat model §4.2 N-2): SR-8/FR-20 detected
+          // theft — the thief's GoTrue session must not survive to re-mint.
+          if (result.accountId) {
+            await propagateRevocationForAccount(
+              result.accountId,
+              result.reason === 'reuse_detected' ? 'rotation_reuse_detected' : 'device_mismatch',
+            );
+          }
         }
         next(apiError('REFRESH_TOKEN_INVALID'));
         return;

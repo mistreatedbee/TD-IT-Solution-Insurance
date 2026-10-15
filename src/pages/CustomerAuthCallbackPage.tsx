@@ -2,24 +2,58 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Badge, Button, SectionHeading } from '../components';
 import { InlineAlert } from '../dashboard/components/ui';
-import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import {
-  exchangeSupabaseSession,
+  ALLOWED_EMAIL_LINK_TYPES,
   handleAlreadyVerifiedEmail,
   isVerificationLinkError,
   mapAuthCallbackError,
   verifySupabaseEmailLink,
 } from '../customer/supabase/auth';
 import { getSupabase } from '../customer/supabase/client';
-import { ApiError } from '../customer/api/errors';
 import { loadSignupEmail } from '../onboarding/onboardingStorage';
 
 type CallbackState = 'working' | 'verified' | 'error';
 
+/**
+ * Email-link landing page (signup verification and password-recovery links).
+ *
+ * INC-003 A-13 / A-17 (A-5 threat model §5): this page used to establish a
+ * session from ANY URL-borne credential — a raw `#access_token`, a
+ * `token_hash` of any OTP type, a PKCE `code`, or whatever GoTrue session
+ * happened to be lingering in `localStorage` — and then exchange it for a
+ * backend session and land the visitor on `/dashboard`. None of those were
+ * tied to anything this browser started, so a link carrying an attacker's
+ * token silently signed the victim into the ATTACKER's account (login CSRF).
+ * Now:
+ *  - the raw `#access_token` branch and the lingering-session branch are gone;
+ *  - `type` is allow-listed to `signup` / `recovery` before any SDK call;
+ *  - verifying an email NEVER signs anyone in: the GoTrue session verifyOtp
+ *    creates is cleared locally and the user is sent to sign in with their
+ *    password (`/auth/email-verified` → `/login`);
+ *  - credentials are stripped from the address bar / history on entry, so
+ *    no exit path (including the error state) leaves them in the URL.
+ * The `recovery` branch still leaves a browser recovery session for
+ * `/reset-password` to hand to the backend (INC-003 F-3) — removing that
+ * needs A-21 (no supabase-js in the browser), which is an ADR, not this fix.
+ */
+function scrubCredentialsFromUrl(): void {
+  if (typeof window === 'undefined') return;
+  const { pathname, search, hash } = window.location;
+  if (!search && !hash) return;
+  window.history.replaceState(window.history.state, '', pathname);
+}
+
+async function clearBrowserGoTrueSession(): Promise<void> {
+  try {
+    await getSupabase().auth.signOut({ scope: 'local' });
+  } catch {
+    /* best-effort — nothing on this page uses the session afterwards */
+  }
+}
+
 export function CustomerAuthCallbackPage() {
   const navigate = useNavigate();
-  const auth = useCustomerAuth();
   const [params] = useSearchParams();
   const [state, setState] = useState<CallbackState>('working');
   const [error, setError] = useState<string | null>(null);
@@ -30,87 +64,71 @@ export function CustomerAuthCallbackPage() {
     // SR-006-2: notify-email-verified now returns an identical response
     // regardless of account state, so this can no longer tell us whether the
     // email was actually already verified — it can only fire the backend's
-    // best-effort sync/notify side effect. Every caller of this helper
-    // reaches it only after independent evidence the link failed for
-    // reasons consistent with "already verified" (a Supabase verify error,
-    // or our own exchange saying ACCOUNT_NOT_ACTIVE for a token Supabase did
-    // recognise) — so it always proceeds to the reassurance page, which is
-    // now honest about not asserting a fact it cannot confirm.
-    async function redirectAlreadyVerified(email: string): Promise<true> {
-      try {
-        await handleAlreadyVerifiedEmail(email);
-      } catch {
-        /* best-effort — never block the redirect on this */
+    // best-effort sync/notify side effect. It then proceeds to the
+    // reassurance page, which is honest about not asserting a fact it cannot
+    // confirm and routes the user to sign in with their password.
+    async function redirectToSignIn(email: string | undefined): Promise<void> {
+      if (email) {
+        try {
+          await handleAlreadyVerifiedEmail(email);
+        } catch {
+          /* best-effort — never block the redirect on this */
+        }
       }
       if (!cancelled) {
-        navigate('/auth/email-verified', { replace: true, state: { email } });
-      }
-      return true;
-    }
-
-    async function completeWithSession(accessToken: string) {
-      try {
-        const result = await exchangeSupabaseSession(accessToken);
-        if (result.kind === 'mfa' || result.kind === 'enrollment') {
-          // An MFA-enrolled (or forced-re-enrollment) account cannot
-          // complete sign-in from this token-only callback page — there is
-          // no code-entry form here. Send them to the normal login page,
-          // which fully supports both branches (SR-006-1).
-          if (!cancelled) {
-            navigate('/login?redirect=%2Fdashboard', { replace: true });
-          }
-          return;
-        }
-        await auth.signInWithTokens(result.accessToken, result.refreshToken);
-        if (!cancelled) {
-          setState('verified');
-          navigate('/dashboard', { replace: true });
-        }
-      } catch (err) {
-        if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
-          const email = loadSignupEmail() ?? params.get('email') ?? undefined;
-          if (email && (await redirectAlreadyVerified(email))) {
-            return;
-          }
-        }
-        throw err;
+        setState('verified');
+        navigate('/auth/email-verified', { replace: true, state: email ? { email } : undefined });
       }
     }
 
     async function run() {
       try {
+        // Read once, then scrub — every later exit (success, redirect,
+        // error) leaves a credential-free URL behind.
         const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
         const callbackType = params.get('type') ?? hashParams.get('type');
         const tokenHash = params.get('token_hash') ?? hashParams.get('token_hash');
+        const code = params.get('code');
         const signupEmail =
           params.get('email') ??
           hashParams.get('email') ??
           loadSignupEmail() ??
           undefined;
+        scrubCredentialsFromUrl();
 
-        if (tokenHash && callbackType) {
+        // A-17: only the two link types the product issues on web. A
+        // magic-link / invite / email-change / bare `email` link must never
+        // reach the SDK from this page.
+        if (callbackType !== null && !ALLOWED_EMAIL_LINK_TYPES.has(callbackType)) {
+          throw new Error('This link is invalid or has expired.');
+        }
+
+        if (tokenHash) {
+          if (!callbackType) {
+            throw new Error('This link is invalid or has expired.');
+          }
           try {
-            const session = await verifySupabaseEmailLink(tokenHash, callbackType);
-            if (callbackType === 'recovery') {
-              navigate('/reset-password', { replace: true });
-              return;
-            }
-            if (!session?.access_token) {
-              throw new Error('Email verified but no session was returned.');
-            }
-            await completeWithSession(session.access_token);
-            return;
+            await verifySupabaseEmailLink(tokenHash, callbackType);
           } catch (verifyErr) {
             if (
+              callbackType === 'signup' &&
               signupEmail &&
               verifyErr instanceof Error &&
-              isVerificationLinkError(verifyErr) &&
-              (await redirectAlreadyVerified(signupEmail))
+              isVerificationLinkError(verifyErr)
             ) {
+              await redirectToSignIn(signupEmail);
               return;
             }
             throw verifyErr;
           }
+          if (callbackType === 'recovery') {
+            navigate('/reset-password', { replace: true });
+            return;
+          }
+          // A-13: verified — but do not sign in on the strength of a link.
+          await clearBrowserGoTrueSession();
+          await redirectToSignIn(signupEmail);
+          return;
         }
 
         if (callbackType === 'recovery') {
@@ -118,42 +136,26 @@ export function CustomerAuthCallbackPage() {
           return;
         }
 
-        const hashAccessToken = hashParams.get('access_token');
-        if (hashAccessToken) {
-          await completeWithSession(hashAccessToken);
-          return;
-        }
-
-        const code = params.get('code');
         if (code) {
+          // PKCE: only completes in the browser holding the code verifier.
+          // Still verification only — no sign-in (A-13 item 3).
           try {
-            const { data, error: exchangeError } = await getSupabase().auth.exchangeCodeForSession(code);
-            if (exchangeError || !data.session?.access_token) {
-              throw exchangeError ?? new Error('Could not complete sign-in from email link.');
-            }
-            await completeWithSession(data.session.access_token);
-            return;
+            const { error: exchangeError } = await getSupabase().auth.exchangeCodeForSession(code);
+            if (exchangeError) throw exchangeError;
           } catch (codeErr) {
-            if (
-              signupEmail &&
-              codeErr instanceof Error &&
-              isVerificationLinkError(codeErr) &&
-              (await redirectAlreadyVerified(signupEmail))
-            ) {
+            if (signupEmail && codeErr instanceof Error && isVerificationLinkError(codeErr)) {
+              await redirectToSignIn(signupEmail);
               return;
             }
             throw codeErr;
           }
-        }
-
-        const { data, error: sessionError } = await getSupabase().auth.getSession();
-        if (sessionError) throw sessionError;
-        if (data.session?.access_token) {
-          await completeWithSession(data.session.access_token);
+          await clearBrowserGoTrueSession();
+          await redirectToSignIn(signupEmail);
           return;
         }
 
-        if (signupEmail && (await redirectAlreadyVerified(signupEmail))) {
+        if (signupEmail) {
+          await redirectToSignIn(signupEmail);
           return;
         }
 
@@ -169,7 +171,7 @@ export function CustomerAuthCallbackPage() {
     return () => {
       cancelled = true;
     };
-  }, [auth, navigate, params]);
+  }, [navigate, params]);
 
   if (state === 'error') {
     return (

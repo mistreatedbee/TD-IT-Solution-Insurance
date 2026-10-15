@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { apiError } from '../lib/errors.js';
 import { revokeJtisInKv } from '../lib/revocation.js';
+import { propagateRevocationToGoTrue } from '../lib/gotrue-session-revocation.js';
 import { AUDIT_LOG_READ_LIMIT, DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { buildPage, parsePaginationQuery } from '../lib/pagination.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
@@ -300,6 +301,19 @@ export function createAdminAccountsRouter(ctx: AppContext): Router {
           await revokeJtisInKv(ctx.kv, revokedIds);
           await ctx.pushTokens.disableAllForAccount(subjectId);
         }
+
+        // INC-003 A-23 (A-5 threat model §4.2 N-3 / §11): every admin state
+        // change also terminates the subject's GoTrue sessions. On suspend/
+        // deactivate that stops a browser GoTrue session being used directly
+        // against GoTrue while suspended; on reactivation it kills any
+        // GoTrue session minted *during* the suspension. The authoritative
+        // control is the exchange watermark (this transition's
+        // account_state_transitions row); this is defence in depth.
+        await propagateRevocationToGoTrue(
+          ctx.supabase,
+          { accountId: subjectId, email: subject.email },
+          toState === 'active' ? 'admin_reactivated' : 'admin_forced',
+        );
 
         res.status(200).json(serializeDetail(updated));
       } catch (err) {

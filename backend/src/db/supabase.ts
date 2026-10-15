@@ -154,6 +154,15 @@ export interface SupabaseAdmin {
    * after the single call that needs it.
    */
   mintTransientUserAccessToken(email: string): Promise<string>;
+  /**
+   * INC-003 A-10/A-23 — terminates EVERY GoTrue session the user holds
+   * (including a browser-resident one this backend never issued), via GoTrue
+   * `POST /logout?scope=global` with a transient user-scoped token minted
+   * the same way as `mintTransientUserAccessToken` (the transient session
+   * is itself among those revoked). Throws `SupabaseUnavailableError` on any
+   * failure; callers treat it as best-effort (lib/gotrue-session-revocation.ts).
+   */
+  signOutAllUserSessions(email: string): Promise<void>;
   raw: SupabaseClient;
 }
 
@@ -462,6 +471,17 @@ export function getSupabaseAdmin(env: Env): SupabaseAdmin {
         const body = (await response.json()) as { access_token: string };
         return body.access_token;
       });
+    },
+
+    async signOutAllUserSessions(email) {
+      const userAccessToken = await (cached as SupabaseAdmin).mintTransientUserAccessToken(email);
+      const response = await gotrueFetch(env, '/logout?scope=global', {
+        method: 'POST',
+        authToken: userAccessToken,
+      });
+      if (!response.ok) {
+        throw new SupabaseUnavailableError(`logout scope=global returned ${response.status}`);
+      }
     },
   };
 

@@ -239,8 +239,23 @@ export function mapEmailActionToOtpType(action: string): EmailOtpType {
   }
 }
 
-/** Verify an email link token_hash (works across browsers; no PKCE verifier required). */
+/**
+ * INC-003 A-17: the only email-link types the web product issues. Anything
+ * else (`magiclink`, `invite`, `email_change`, bare `email`) is a
+ * session-establishing path no review approved and is refused before any
+ * SDK call — here and in `CustomerAuthCallbackPage`.
+ */
+export const ALLOWED_EMAIL_LINK_TYPES: ReadonlySet<string> = new Set(['signup', 'recovery']);
+
+/**
+ * Verify an email link token_hash (works across browsers; no PKCE verifier
+ * required — which is exactly why its result must never be used to sign the
+ * visitor in, INC-003 A-13).
+ */
 export async function verifySupabaseEmailLink(tokenHash: string, actionType: string) {
+  if (!ALLOWED_EMAIL_LINK_TYPES.has(actionType)) {
+    throw new Error('This link is invalid or has expired.');
+  }
   const primaryType = mapEmailActionToOtpType(actionType);
   const typesToTry: EmailOtpType[] =
     primaryType === 'signup'
