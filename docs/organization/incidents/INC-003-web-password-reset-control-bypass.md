@@ -1218,6 +1218,98 @@ The login path is unaffected. `/auth/login` always passes a fresh password-grant
 
 ---
 
+## 17. Final Stage 8 re-review of §16 (`cybersecurity-architect`, 2026-10-15)
+
+Cites §15 (my conditions) and §16 (`authentication-engineer`'s response). §§1–16 are unaltered. I read the shipped code myself. The orchestrator reports backend 531/531 and web 134/134 tests passing, with both typechecks clean; I did not re-run them. No code was changed and nothing is committed.
+
+### 17.1 What I verified
+
+- **C-7 is met.**
+  - `CustomerResetPasswordPage.tsx` has exactly two credential sources: the URL link (`:86-96`) and router state (`:97-107`). Anything else renders `no-session` (`:108-114`).
+  - The page no longer imports `getSupabase`.
+  - `ResetCredential` is link-only (`src/customer/api/auth.ts:104`).
+  - No caller under `src/` sends `recoveryAccessToken` any more.
+- **The router-state token is cleared after it is read.** The page calls `navigate(location.pathname, { replace: true, state: null })` right after copying the token (`:104`).
+  - I checked one risk with this pattern: under React StrictMode, the effect runs twice and the second run could see the cleared state. `src/` does not use StrictMode, so that cannot happen.
+- **The recovery callback uses only the URL's email.** `linkEmail` is taken from the query or fragment only, with no `loadSignupEmail()` fallback (`CustomerAuthCallbackPage.tsx:117-124`).
+- **GoTrue sign-out now runs before the audit insert** on both reset paths (`auth.ts:948` → `:953` and `:1029` → `:1034`).
+- **The cutoff is re-checked when an MFA step completes.** The check runs before any TOTP call:
+  - `/auth/mfa/challenge` (`auth.ts:688-696`) invalidates the challenge and returns 410;
+  - `/mfa/enroll/verify` (`mfa.ts:171-178`) clears the pending enrolment.
+
+  No legitimate flow regresses. `/auth/login` and invitation enrolment both carry a freshly minted GoTrue token, so its sign-in time is always after any cutoff.
+- **The "this link can only be used once" message** now appears only for redemption-class errors (§16.5).
+
+**One consequence for C-2 (stated here, not a new defect).** The cutoff query now also runs on `/auth/mfa/challenge` and `/mfa/enroll/verify`. Both are on the **privileged** login path. A missing grant, or an RLS filter, therefore no longer affects only customer web sign-in. It would also:
+- 5xx every admin, security-company and support login, if a grant is missing (fail closed);
+- silently drop part of the cutoff for those logins, if RLS filters the rows (fail open).
+
+C-2's smoke test (§15.2 item 3) must therefore **also** include one staff MFA login and one enrolment verify on the deployed backend.
+
+### 17.2 Verdicts
+
+| Action | Verdict | Status |
+|---|---|---|
+| **A-10** | **PASS** | **Closed pending deploy check.** C-2 as extended in §15.2 and §17.1 |
+| **A-23** | **PASS** | **Closed pending deploy check** (C-2) |
+| **A-24** | **PASS** | **Closed pending deploy check.** `devops-engineer` runs a live end-to-end reset for both a customer and a staff account (staff must hit the TOTP step). The web confirm limb of A-1/F-3 is only actually working once this is confirmed |
+| **A-13** | **PASS** (unchanged) | **Closed pending deploy check** (C-6) |
+| **A-17** | Code limb PASS | Code limb closed. Console limb **OPEN** under C-5 |
+| **A-19** | **CONDITIONAL** (unchanged) | **OPEN** (C-4) |
+| **A-18** | Claim confirmed (unchanged) | **OPEN** (console + A-21) |
+| **A-12** | Not reviewed in this pass; scope narrowed | **OPEN**. Since C-7, the web client can no longer submit `recoveryAccessToken`. Two things remain: the backend still accepts any GoTrue token, and mobile deep-link parity. Owner: `backend-architect` |
+
+**No blocking defects remain in the code under review.** Everything left is a deploy check, console or configuration work, or a separately owned action.
+
+### 17.3 INC-003 overall status after this commit: **OPEN**
+
+**Closed pending deploy check.** Each moves to CLOSED when its check is recorded in this document.
+
+| Item | Deploy check | Owner of the check |
+|---|---|---|
+| A-10, A-23 | C-2: `SELECT` grants **and** RLS behaviour on `app.account_state_transitions` and `app.account_audit_log` for the backend role. Then the smoke test: a customer reset with zero live sessions refuses a pre-reset token at the exchange, **plus** one staff MFA login and one enrolment verify | `database-architect` + `devops-engineer` |
+| A-24 | Live end-to-end web reset, customer **and** staff (the staff run must hit the TOTP step) | `devops-engineer` |
+| A-13, A-17 code limb | C-6: on the deployed web, crafted `signup` / `magiclink` links issue no session and leave a clean URL | `security-engineer` |
+
+**Still OPEN**, as recorded in this document; I have not re-checked other documents for status changes since §11.
+
+| ID | What remains | Owner |
+|---|---|---|
+| A-6 | P0: production auth-log check for prior exploitation. §7's "no breach" conclusion is still provisional on this | `security-engineer` + project owner |
+| A-3 | Supabase password floor of 14 + leaked-password protection, applied to the live project | `devops-engineer` + project owner |
+| A-8 | Published anon key opens the GoTrue password grant; interim fix is tighter rate limits | `security-engineer` + project owner |
+| A-9 | Void Feature 006's anon-key acceptance; `cto` explicitly accepts or rejects the residual | `cybersecurity-architect` → `cto` |
+| A-11 | Relabel the guard test as code hygiene; add an anon-key bundle check | `automation-qa-engineer` |
+| A-12 | Backend accepts any GoTrue token as `recoveryAccessToken`; mobile deep-link parity | `backend-architect` |
+| A-14 | Plaintext password in `sessionStorage` / password replay loop | `authentication-engineer` |
+| A-15 | CSP + `Referrer-Policy: no-referrer` | `frontend-architect` + `devops-engineer` |
+| A-16 | GoTrue-direct signup/resend bypass backend limits, audit and consent | `authentication-engineer`; consent → `compliance-specialist` |
+| A-17 console limb | C-5: withdraw "disable magic-link"; it conflicts with A-10's sign-out | `cto` + `devops-engineer` |
+| A-18 | GoTrue `PUT /user` reachable at Layer 2; interim fix is console "secure password/email change" | project owner + `devops-engineer` |
+| A-19 | C-4: flag non-TOTP verified factors; scheduling and alert routing; first-run triage | `authentication-engineer`; `site-reliability-engineer`; `security-engineer` |
+| A-20 | Customers with TOTP enrolled cannot reset their password; SR-24 still absent | `backend-architect` + `authentication-engineer` |
+| A-21 | ADR: remove supabase-js from web, retire the exchange, rotate the anon key. This is the structural fix for A-8/A-16/A-18/A-19 | `solution-architect` (ADR), `cto` (ratify) |
+| A-22 | 12-item live-config verification. Item 6 (GoTrue session time-box) must be **at most 12 months**; the §15.2 audit-retention residual depends on it | `security-engineer` + project owner; `devops-engineer` records |
+| §7 | Concurrence on the compliance position (incl. the dependencies in A-5 doc §12) | `compliance-specialist` |
+
+**Non-blocking follow-ups.** These do not hold the incident open on their own:
+
+| Follow-up | Owner |
+|---|---|
+| Alert routing for `[ALERT:gotrue_revocation_propagation_failed]` | `site-reliability-engineer` |
+| IR-runbook note that system sign-outs write GoTrue "login" entries | `security-engineer` |
+| Staff password-length retry token (§15.4) | `backend-architect` |
+| Partial index on revoked `app.sessions` rows | `database-architect` |
+| Distinct audit event for exchange-minted sessions (§12.6 item 2) | `backend-architect` + `security-engineer` |
+| Ban-on-suspend design (§12.5) | `backend-architect` |
+
+**Closure rule (restating §11, unchanged).** INC-003 closes only when all of the following hold:
+- A-3 and A-6 are closed;
+- every item A-8 … A-24 is closed or has been transferred to a successor incident by `cto`;
+- `compliance-specialist` has concurred on §7.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
