@@ -311,7 +311,7 @@ export function createAdminAccountsRouter(ctx: AppContext): Router {
         // account_state_transitions row); this is defence in depth.
         await propagateRevocationToGoTrue(
           ctx.supabase,
-          { accountId: subjectId, email: subject.email },
+          { accountId: subjectId, email: subject.email, accountState: subject.accountState },
           toState === 'active' ? 'admin_reactivated' : 'admin_forced',
         );
 

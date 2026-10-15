@@ -36,7 +36,7 @@ import type { AppContext } from '../context.js';
 import type { AccountRow, AccountStatus, UserType, AccountState } from '../repositories/accounts.js';
 import type { EnrollmentTicketRecord, EnrollmentTicketRepo } from '../lib/enrollment-ticket.js';
 import type { SessionRecord, SessionRepo } from '../lib/refresh-session.js';
-import { ACCOUNT_WIDE_REVOCATION_REASONS } from '../lib/gotrue-session-revocation.js';
+import { ACCOUNT_WIDE_REVOCATION_REASONS, WATERMARK_AUDIT_EVENT_TYPES } from '../lib/gotrue-session-revocation.js';
 import type { SupabaseAdmin } from '../db/supabase.js';
 import type { Env } from '../config/env.js';
 
@@ -85,7 +85,9 @@ function createFakeEnrollmentTicketRepo(): EnrollmentTicketRepo {
   };
 }
 
-function createFakeSessionRepo(opts: { stateTransitionWatermark?: () => Date | null } = {}): SessionRepo {
+function createFakeSessionRepo(
+  opts: { stateTransitionWatermark?: () => Date | null; auditWatermark?: () => Date | null } = {},
+): SessionRepo {
   const rows = new Map<string, SessionRecord>();
   return {
     async insertNew(input) {
@@ -181,6 +183,10 @@ function createFakeSessionRepo(opts: { stateTransitionWatermark?: () => Date | n
       }
       const transition = opts.stateTransitionWatermark?.() ?? null;
       if (transition) candidates.push(transition.getTime());
+      // INC-003 §13 D-1: watermark audit events (password_reset_completed,
+      // session_family_revoked), independent of any live session row.
+      const audit = opts.auditWatermark?.() ?? null;
+      if (audit) candidates.push(audit.getTime());
       return candidates.length > 0 ? new Date(Math.max(...candidates)) : null;
     },
   };
@@ -567,6 +573,8 @@ describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermar
     return `${enc({ alg: 'HS256', typ: 'JWT' })}.${enc(payload)}.signature-not-checked-by-this-fake`;
   }
 
+  const RESET_PASSWORD = 'a-brand-new-customer-password';
+
   function fakeSupabase(validTokens: Set<string>, calls: string[]): SupabaseAdmin {
     const notUsed = (name: string) => (): never => {
       throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
@@ -583,7 +591,10 @@ describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermar
         calls.push('findVerifiedTotpFactor');
         return null;
       },
-      updateUserPassword: notUsed('updateUserPassword'),
+      async updateUserPassword(_token, password) {
+        expect(password).toBe(RESET_PASSWORD);
+        calls.push('updateUserPassword');
+      },
       generateEmailVerificationLink: notUsed('generateEmailVerificationLink'),
       sendSignupConfirmationEmail: notUsed('sendSignupConfirmationEmail'),
       sendPasswordRecoveryEmail: notUsed('sendPasswordRecoveryEmail'),
@@ -598,7 +609,26 @@ describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermar
       generatePasswordResetLink: notUsed('generatePasswordResetLink'),
       verifyRecoveryToken: notUsed('verifyRecoveryToken'),
       mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
-      signOutAllUserSessions: notUsed('signOutAllUserSessions'),
+      async signOutAllUserSessions(email) {
+        calls.push(`signOutAllUserSessions:${email}`);
+      },
+    };
+  }
+
+  /** Audit fake that remembers WHEN each watermark-type event was written. */
+  function createTimedAuditLog() {
+    const events: Array<{ accountId: string | null; eventType: string; at: Date }> = [];
+    return {
+      events,
+      async record(event: { accountId: string | null; eventType: string }) {
+        events.push({ ...event, at: new Date() });
+      },
+      latestWatermarkEvent(): Date | null {
+        const times = events
+          .filter((e) => (WATERMARK_AUDIT_EVENT_TYPES as readonly string[]).includes(e.eventType))
+          .map((e) => e.at.getTime());
+        return times.length > 0 ? new Date(Math.max(...times)) : null;
+      },
     };
   }
 
@@ -612,13 +642,17 @@ describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermar
       mfaRequired: false,
       partnerOrganizationId: null,
     });
-    const sessions = createFakeSessionRepo({ stateTransitionWatermark: () => opts.stateTransitionAt ?? null });
-    const auditLog = createFakeAuditLog();
+    const auditLog = createTimedAuditLog();
+    const sessions = createFakeSessionRepo({
+      stateTransitionWatermark: () => opts.stateTransitionAt ?? null,
+      auditWatermark: () => auditLog.latestWatermarkEvent(),
+    });
     const ctx = buildMinimalCtx({
       accounts: accounts as unknown as AppContext['accounts'],
       supabase: fakeSupabase(new Set(tokens), calls),
       sessions,
       auditLog: auditLog as unknown as AppContext['auditLog'],
+      pushTokens: { disableAllForAccount: async () => 0 } as unknown as AppContext['pushTokens'],
     });
     return { ...(await startTestServer(ctx)), sessions, auditLog, calls };
   }
@@ -699,6 +733,77 @@ describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermar
     const { server, baseUrl } = await start([duringSuspension], { stateTransitionAt: new Date(Date.now() - 30_000) });
     try {
       expect((await exchange(baseUrl, duringSuspension)).response.status).toBe(401);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  async function confirmReset(baseUrl: string, recoveryAccessToken: string) {
+    const response = await fetch(`${baseUrl}/auth/reset-password/confirm`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+      body: JSON.stringify({ recoveryAccessToken, newPassword: RESET_PASSWORD }),
+    });
+    return { response, body: (await response.json()) as Record<string, unknown> };
+  }
+
+  it('§13 D-1/C-1: a password reset by a user with ZERO live sessions still evicts a stolen GoTrue session', async () => {
+    // Victim is logged out everywhere (no app.sessions row at all), the
+    // attacker holds an older browser GoTrue session, the victim resets.
+    const stolen = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 3600 }] });
+    const recovery = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'otp', timestamp: nowSec() }] });
+    const { server, baseUrl, calls } = await start([stolen, recovery]);
+    try {
+      const reset = await confirmReset(baseUrl, recovery);
+      expect(reset.response.status, JSON.stringify(reset.body)).toBe(200);
+      expect(calls).toContain('updateUserPassword');
+      // C-1: the reset also propagates to GoTrue.
+      expect(calls).toContain(`signOutAllUserSessions:${EMAIL}`);
+
+      const replay = await exchange(baseUrl, stolen);
+      expect(replay.response.status, JSON.stringify(replay.body)).toBe(401);
+      expect(replay.body.accessToken).toBeUndefined();
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('§13 D-1: a session-family revocation that found no live row still advances the watermark', async () => {
+    const stolen = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 60 }] });
+    const { server, baseUrl, auditLog } = await start([stolen]);
+    try {
+      await auditLog.record({ accountId: ACCOUNT_ID, eventType: 'session_family_revoked' });
+      expect((await exchange(baseUrl, stolen)).response.status).toBe(401);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('§13 C-3: /reset-password/confirm refuses a recoveryAccessToken from a GoTrue session that predates the watermark', async () => {
+    const stale = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 120 }] });
+    const fresh = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'otp', timestamp: nowSec() }] });
+    const { server, baseUrl, calls } = await start([stale, fresh], { stateTransitionAt: new Date(Date.now() - 30_000) });
+    try {
+      const refused = await confirmReset(baseUrl, stale);
+      expect(refused.response.status, JSON.stringify(refused.body)).toBe(404);
+      expect((refused.body.error as { code?: string }).code).toBe('RESET_TOKEN_INVALID');
+      expect(calls).not.toContain('updateUserPassword');
+
+      const accepted = await confirmReset(baseUrl, fresh);
+      expect(accepted.response.status, JSON.stringify(accepted.body)).toBe(200);
+      expect(calls).toContain('updateUserPassword');
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('§13 C-3: fails closed on an unreadable recoveryAccessToken when a watermark exists', async () => {
+    const { server, baseUrl, calls } = await start(['opaque-recovery-token'], {
+      stateTransitionAt: new Date(Date.now() - 1000),
+    });
+    try {
+      expect((await confirmReset(baseUrl, 'opaque-recovery-token')).response.status).toBe(404);
+      expect(calls).not.toContain('updateUserPassword');
     } finally {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
@@ -1061,6 +1166,8 @@ describe('POST /auth/reset-password/confirm — SR-007-1 push-token regression',
   const resetNewPassword = 'a-new-customer-password';
   const resetUserAccessToken = 'recovery-user-access-token-stand-in';
 
+  const resetSignOutCalls: string[] = [];
+
   function fakeResetSupabase(): SupabaseAdmin {
     const notUsed = (name: string) => (): never => {
       throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
@@ -1092,6 +1199,9 @@ describe('POST /auth/reset-password/confirm — SR-007-1 push-token regression',
         return { userId: resetAccountId, userAccessToken: resetUserAccessToken };
       },
       mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+      async signOutAllUserSessions(email) {
+        resetSignOutCalls.push(email);
+      },
     };
   }
 
@@ -1146,6 +1256,8 @@ describe('POST /auth/reset-password/confirm — SR-007-1 push-token regression',
       // The load-bearing assertion: disableAllForAccount was actually
       // invoked, with the reset account's id, exactly once.
       expect(pushTokensFake.disableAllForAccountCalls).toEqual([resetAccountId]);
+      // INC-003 §13 C-1: the reset also reaches every GoTrue session.
+      expect(resetSignOutCalls).toEqual([resetEmail]);
     } finally {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
@@ -1168,7 +1280,7 @@ describe('POST /auth/reset-password/confirm — privileged account MFA-enrollmen
   const privilegedNewPassword = 'a-fine-privileged-password-14chars';
   const privilegedUserAccessToken = 'privileged-recovery-access-token-stand-in';
 
-  function fakePrivilegedResetSupabase(opts: { hasVerifiedFactor: boolean }): SupabaseAdmin {
+  function fakePrivilegedResetSupabase(opts: { hasVerifiedFactor: boolean; signOutCalls?: string[] }): SupabaseAdmin {
     const notUsed = (name: string) => (): never => {
       throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
     };
@@ -1178,8 +1290,12 @@ describe('POST /auth/reset-password/confirm — privileged account MFA-enrollmen
       deleteUser: notUsed('deleteUser'),
       verifyPassword: notUsed('verifyPassword'),
       enrollTotpFactor: notUsed('enrollTotpFactor'),
-      challengeTotpFactor: notUsed('challengeTotpFactor'),
-      verifyTotpFactor: notUsed('verifyTotpFactor'),
+      async challengeTotpFactor() {
+        return { challengeId: 'challenge-1' };
+      },
+      async verifyTotpFactor(_t, _f, _c, code) {
+        return code === '123456';
+      },
       async findVerifiedTotpFactor(userAccessToken) {
         expect(userAccessToken).toBe(privilegedUserAccessToken);
         return opts.hasVerifiedFactor ? { factorId: 'factor-1' } : null;
@@ -1202,6 +1318,9 @@ describe('POST /auth/reset-password/confirm — privileged account MFA-enrollmen
         return { userId: privilegedAccountId, userAccessToken: privilegedUserAccessToken };
       },
       mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+      async signOutAllUserSessions(email: string) {
+        opts.signOutCalls?.push(email);
+      },
     } as unknown as SupabaseAdmin;
   }
 
@@ -1311,6 +1430,45 @@ describe('POST /auth/reset-password/confirm — privileged account MFA-enrollmen
       expect(response.status, JSON.stringify(body)).toBe(200);
       expect(body.mfaVerificationRequired).toBe(true);
       expect(typeof body.mfaVerificationToken).toBe('string');
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('INC-003 §13 C-1: the MFA-gated completion path also signs the account out of every GoTrue session', async () => {
+    const accounts = createFakeAccountsRepo({
+      id: privilegedAccountId,
+      email: privilegedEmail,
+      userType: 'admin',
+      accountState: 'active',
+      mfaRequired: true,
+      partnerOrganizationId: null,
+    });
+    const signOutCalls: string[] = [];
+    const ctx = buildMinimalCtx({
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase: fakePrivilegedResetSupabase({ hasVerifiedFactor: true, signOutCalls }),
+      resetMfaTokens: createFakeResetMfaTokensRepo(),
+      pushTokens: { disableAllForAccount: async () => 0 } as unknown as AppContext['pushTokens'],
+    });
+
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      const confirm = await fetch(`${baseUrl}/auth/reset-password/confirm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ email: privilegedEmail, resetToken: privilegedResetToken, newPassword: privilegedNewPassword }),
+      });
+      const { mfaVerificationToken } = (await confirm.json()) as { mfaVerificationToken: string };
+      expect(signOutCalls).toHaveLength(0); // nothing applied yet (SR-6)
+
+      const verify = await fetch(`${baseUrl}/auth/reset-password/mfa-verify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ mfaVerificationToken, code: '123456' }),
+      });
+      expect(verify.status, await verify.clone().text()).toBe(200);
+      expect(signOutCalls).toEqual([privilegedEmail]);
     } finally {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }

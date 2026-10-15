@@ -35,7 +35,7 @@ import { SupabaseUnavailableError } from '../db/supabase.js';
 import { issueEnrollmentTicket } from '../lib/enrollment-ticket.js';
 import { storePendingEnrollment } from '../lib/enrollment-pending-store.js';
 import { revokeJtisInKv } from '../lib/revocation.js';
-import { isGoTrueSessionStale } from '../lib/gotrue-session-revocation.js';
+import { isGoTrueSessionStale, propagateRevocationToGoTrue } from '../lib/gotrue-session-revocation.js';
 import { notifyInBackground } from '../lib/customer-notification-service.js';
 import { notifyNewDeviceLoginIfNeeded } from '../lib/auth-login-notifications.js';
 import { scheduleCustomerLifecycleNotifications } from '../lib/customer-lifecycle-notifications.js';
@@ -880,6 +880,21 @@ export function createAuthRouter(ctx: AppContext): Router {
           return;
         }
 
+        // INC-003 §13 C-3: a caller-held GoTrue token is accepted here as
+        // "proof of recovery". Without this check, a GoTrue session the
+        // owner already revoked (logout-all, suspension, an earlier reset)
+        // could set a new password here and then sign in fresh, defeating the
+        // eviction without ever touching /auth/supabase/exchange. Same
+        // watermark, same fail-closed rule. (The resetToken branch is
+        // verified server-side by GoTrue and mints its own fresh session.)
+        if (recoveryAccessToken) {
+          const watermark = await ctx.sessions.findRevocationWatermark(account.id);
+          if (isGoTrueSessionStale(recoveryAccessToken, watermark)) {
+            next(apiError('RESET_TOKEN_INVALID'));
+            return;
+          }
+        }
+
         if (!isPasswordValidForUserType(newPassword, isPrivilegedUserType(account.userType) ? 'privileged' : 'customer')) {
           next(apiError('VALIDATION_ERROR', { details: ['password does not meet the minimum length requirement'] }));
           return;
@@ -917,6 +932,13 @@ export function createAuthRouter(ctx: AppContext): Router {
         // straight through the legitimate owner's reset.
         await ctx.pushTokens.disableAllForAccount(account.id);
         await ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_completed', ipAddress: clientIp(req) });
+        // INC-003 §13 C-1: terminate every GoTrue session too (defence in
+        // depth; the audit row above is what advances the watermark).
+        await propagateRevocationToGoTrue(
+          ctx.supabase,
+          { accountId: account.id, email: account.email, accountState: account.accountState },
+          'password_reset',
+        );
         notifyInBackground(
           'auth.password.changed',
           ctx.authNotifications.notifyPasswordChanged({ accountId: account.id }),
@@ -992,6 +1014,12 @@ export function createAuthRouter(ctx: AppContext): Router {
         // sweep just because the account also required a TOTP step.
         await ctx.pushTokens.disableAllForAccount(account.id);
         await ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_completed', ipAddress: clientIp(req) });
+        // INC-003 §13 C-1: same as the customer branch of /confirm.
+        await propagateRevocationToGoTrue(
+          ctx.supabase,
+          { accountId: account.id, email: account.email, accountState: account.accountState },
+          'password_reset',
+        );
         notifyInBackground(
           'auth.password.changed',
           ctx.authNotifications.notifyPasswordChanged({ accountId: account.id }),

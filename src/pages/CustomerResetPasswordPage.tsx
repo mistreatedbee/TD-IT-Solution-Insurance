@@ -1,9 +1,9 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button, Input, SectionHeading } from '../components';
 import { InlineAlert } from '../dashboard/components/ui';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
-import { resetPasswordConfirm, resetPasswordMfaVerify } from '../customer/api/auth';
+import { resetPasswordConfirm, resetPasswordMfaVerify, type ResetCredential } from '../customer/api/auth';
 import { ApiError } from '../customer/api/errors';
 import { mapUserFacingError } from '../lib/user-facing-errors';
 import { getSupabase } from '../customer/supabase/client';
@@ -25,10 +25,42 @@ const MFA_TOKEN_TTL_SECONDS = 5 * 60;
 
 type Step = 'loading' | 'no-session' | 'password' | 'mfa' | 'success';
 
+/** Router state `CustomerAuthCallbackPage` hands over for a recovery link. */
+export interface ResetLinkRouterState {
+  resetToken?: string;
+  email?: string;
+}
+
+/**
+ * INC-003 A-24 (§13.5): the `auth-send-email` hook appends
+ * `token_hash` / `type` / `email` to the redirect URL, so a genuine web
+ * recovery link lands here as `/reset-password?token_hash=…&type=recovery&email=…`.
+ * Read them once, scrub the address bar immediately (a live, unused
+ * recovery token must not sit in history or a Referer), and hand them to the
+ * backend's `resetToken` branch of `/auth/reset-password/confirm`, which
+ * verifies the token server-side. No browser recovery session is created on
+ * this path. Returns `null` when the URL carries no recovery link.
+ */
+function takeRecoveryLinkFromUrl(): { kind: 'link'; resetToken: string; email: string } | 'invalid' | null {
+  if (typeof window === 'undefined') return null;
+  const search = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const tokenHash = search.get('token_hash') ?? hash.get('token_hash');
+  const type = search.get('type') ?? hash.get('type');
+  const email = search.get('email') ?? hash.get('email');
+  if (window.location.search || window.location.hash) {
+    window.history.replaceState(window.history.state, '', window.location.pathname);
+  }
+  if (!tokenHash) return null;
+  if ((type !== null && type !== 'recovery') || !email) return 'invalid';
+  return { kind: 'link', resetToken: tokenHash, email: email.trim().toLowerCase() };
+}
+
 export function CustomerResetPasswordPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [step, setStep] = useState<Step>('loading');
-  const [recoveryAccessToken, setRecoveryAccessToken] = useState<string | null>(null);
+  const [credential, setCredential] = useState<ResetCredential | null>(null);
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -52,17 +84,40 @@ export function CustomerResetPasswordPage() {
   );
 
   useEffect(() => {
+    // 1. Recovery link straight from the email (A-24, preferred path).
+    const fromUrl = takeRecoveryLinkFromUrl();
+    if (fromUrl === 'invalid') {
+      setStep('no-session');
+      return;
+    }
+    if (fromUrl) {
+      setCredential(fromUrl);
+      setStep('password');
+      return;
+    }
+    // 2. Recovery link forwarded by /auth/callback in router state (never the URL).
+    const state = (location.state ?? null) as ResetLinkRouterState | null;
+    if (state?.resetToken && state.email) {
+      setCredential({ kind: 'link', resetToken: state.resetToken, email: state.email.trim().toLowerCase() });
+      setStep('password');
+      return;
+    }
+    // 3. Legacy fallback: a browser recovery session established elsewhere
+    // (e.g. a GoTrue-default-template link). Only read here to hand the
+    // backend a bearer credential (INC-003 F-3); removable with A-21.
     void getSupabase()
       .auth.getSession()
       .then(({ data }) => {
         if (!mountedRef.current) return;
         const token = data.session?.access_token ?? null;
-        setRecoveryAccessToken(token);
+        setCredential(token ? { kind: 'session', recoveryAccessToken: token } : null);
         setStep(token ? 'password' : 'no-session');
       })
       .catch(() => {
         if (mountedRef.current) setStep('no-session');
       });
+    // Run once on mount: the URL is scrubbed by the first run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Tick once a second while an MFA deadline or rate-limit cooldown is active,
@@ -93,10 +148,14 @@ export function CustomerResetPasswordPage() {
     // reset. Never auto-sign-in from here — clear the local Supabase
     // recovery session too, so nothing lingers client-side, and send the
     // user to a normal login.
-    try {
-      await getSupabase().auth.signOut();
-    } catch {
-      /* best-effort local cleanup only */
+    // The link path (A-24) never creates a browser session, so there is
+    // nothing to clear and no reason to touch supabase-js at all.
+    if (credential?.kind === 'session') {
+      try {
+        await getSupabase().auth.signOut();
+      } catch {
+        /* best-effort local cleanup only */
+      }
     }
     navigate('/login', { replace: true });
   }
@@ -113,14 +172,14 @@ export function CustomerResetPasswordPage() {
       setPasswordError("Passwords don't match.");
       return;
     }
-    if (!recoveryAccessToken) {
+    if (!credential) {
       setStep('no-session');
       return;
     }
 
     setSubmittingPassword(true);
     try {
-      const result = await resetPasswordConfirm({ recoveryAccessToken, newPassword: password });
+      const result = await resetPasswordConfirm(credential, password);
       if (result.mfaVerificationRequired && result.mfaVerificationToken) {
         // INC-003 F-4 (SR-6): privileged/staff account — the password is
         // parked server-side, not yet applied, until a live TOTP code is
@@ -135,7 +194,17 @@ export function CustomerResetPasswordPage() {
       }
       await endAndRedirectToLoginWithSuccess();
     } catch (err) {
-      setPasswordError(mapUserFacingError(err, { context: 'password-reset' }));
+      const message = mapUserFacingError(err, { context: 'password-reset' });
+      // A recovery link is single-use: the backend redeems it with GoTrue
+      // before it can check the password against the account's minimum, so
+      // any failure after submission means the link is spent. Say so,
+      // rather than inviting a retry that can only fail. (Server stays the
+      // only length authority — F-6.)
+      setPasswordError(
+        credential.kind === 'link'
+          ? `${message} For your security this reset link can only be used once — request a new link to try again.`
+          : message,
+      );
     } finally {
       if (mountedRef.current) setSubmittingPassword(false);
     }

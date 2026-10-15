@@ -121,14 +121,19 @@ describe('CustomerAuthCallbackPage (INC-003 A-13 / A-17)', () => {
     expect(backendCalls(fetchMock).some((u) => u.includes('/auth/supabase/exchange'))).toBe(false);
   });
 
-  it('recovery link still establishes the recovery session and routes to /reset-password (F-3 unchanged)', async () => {
-    verifyOtpMock.mockResolvedValue({ data: { session: { access_token: 'recovery-token' } }, error: null });
-    renderAt('/auth/callback?token_hash=hash-3&type=recovery');
+  it('A-24: a recovery link is NOT redeemed in the browser; the token is forwarded to /reset-password in router state', async () => {
+    renderAt('/auth/callback?token_hash=hash-3&type=recovery&email=user%40example.com');
 
     await waitFor(() => expect(screen.getByText('Reset password page')).toBeInTheDocument());
-    expect(verifyOtpMock).toHaveBeenCalledWith({ token_hash: 'hash-3', type: 'recovery' });
-    expect(signOutMock).not.toHaveBeenCalled();
+    // No browser recovery session is planted (closes the §13.4 recovery-CSRF residual).
+    expect(verifyOtpMock).not.toHaveBeenCalled();
     expect(backendCalls(fetchMock).some((u) => u.includes('/auth/supabase/exchange'))).toBe(false);
     expect(window.location.search).toBe('');
+  });
+
+  it('A-24: a recovery link without the email is refused', async () => {
+    renderAt('/auth/callback?token_hash=hash-4&type=recovery');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Link problem' })).toBeInTheDocument());
+    expect(verifyOtpMock).not.toHaveBeenCalled();
   });
 });

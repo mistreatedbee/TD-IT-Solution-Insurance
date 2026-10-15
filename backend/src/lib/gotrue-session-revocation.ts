@@ -96,8 +96,26 @@ export function isGoTrueSessionStale(accessToken: string, watermark: Date | null
   return authenticatedAt < Math.floor(watermark.getTime() / 1000);
 }
 
+/**
+ * INC-003 §13 D-1 — audit events that also advance the watermark. Session
+ * rows alone are not enough: `revokeAllForAccount` only touches rows that
+ * are still live, so a password reset by a user who is already logged out
+ * everywhere (the normal forgot-password case), or an SR-8/FR-20 detection
+ * whose whole family was already closed, writes no `revoked_at` at all.
+ * These audit rows are written unconditionally by those flows.
+ * `session_family_revoked` is written for both reuse and device mismatch.
+ */
+export const WATERMARK_AUDIT_EVENT_TYPES = ['password_reset_completed', 'session_family_revoked'] as const;
+
+/**
+ * Stable log tag for alerting (INC-003 §13 low follow-up). Alert rules
+ * should match this exact string; do not reword it.
+ */
+export const GOTRUE_PROPAGATION_FAILURE_LOG_TAG = '[ALERT:gotrue_revocation_propagation_failed]';
+
 export type GoTrueRevocationTrigger =
   | 'logout_all'
+  | 'password_reset'
   | 'admin_forced'
   | 'admin_reactivated'
   | 'rotation_reuse_detected'
@@ -110,15 +128,21 @@ export type GoTrueRevocationTrigger =
  */
 export async function propagateRevocationToGoTrue(
   supabase: Pick<SupabaseAdmin, 'signOutAllUserSessions'>,
-  subject: { accountId: string; email: string },
+  subject: { accountId: string; email: string; accountState?: string },
   trigger: GoTrueRevocationTrigger,
 ): Promise<boolean> {
+  // INC-003 §13 low follow-up (b): the sign-out mints and verifies a magic
+  // link, which may mark an unconfirmed email as confirmed. An account still
+  // in pending_verification must not be confirmed as a side effect of a
+  // revocation; the exchange refuses pending accounts anyway, and the
+  // watermark still applies once it is activated.
+  if (subject.accountState === 'pending_verification') return false;
   try {
     await supabase.signOutAllUserSessions(subject.email);
     return true;
   } catch (err) {
-    console.warn(
-      `[gotrue-session-revocation] GoTrue global sign-out failed for account ${subject.accountId} ` +
+    console.error(
+      `${GOTRUE_PROPAGATION_FAILURE_LOG_TAG} GoTrue global sign-out failed for account ${subject.accountId} ` +
         `(trigger=${trigger}); the exchange watermark still applies. ${err instanceof Error ? err.name : 'Error'}`,
     );
     return false;

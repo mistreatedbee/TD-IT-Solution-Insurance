@@ -12,7 +12,11 @@ import { clientIp } from '../middleware/rate-limit.js';
 import { rotateRefreshToken, type SessionSurface } from '../lib/refresh-session.js';
 import { signAccessToken } from '../lib/jwt.js';
 import { revokeJtisInKv } from '../lib/revocation.js';
-import { propagateRevocationToGoTrue, type GoTrueRevocationTrigger } from '../lib/gotrue-session-revocation.js';
+import {
+  GOTRUE_PROPAGATION_FAILURE_LOG_TAG,
+  propagateRevocationToGoTrue,
+  type GoTrueRevocationTrigger,
+} from '../lib/gotrue-session-revocation.js';
 import { REVOCATION_KEY_PREFIX } from '../db/redis.js';
 import { isPrivilegedUserType } from '../lib/policy.js';
 import { sha256Hex } from '../lib/crypto.js';
@@ -33,15 +37,19 @@ export function createSessionRouter(ctx: AppContext): Router {
   // follows has already been committed and must not be reported as failed.
   async function propagateRevocationForAccount(accountId: string, trigger: GoTrueRevocationTrigger): Promise<void> {
     let email: string;
+    let accountState: string;
     try {
       const account = await ctx.accounts.findById(accountId);
       if (!account) return;
       email = account.email;
+      accountState = account.accountState;
     } catch {
-      console.warn(`[session] account lookup for GoTrue revocation failed (account ${accountId}, trigger=${trigger})`);
+      console.error(
+        `${GOTRUE_PROPAGATION_FAILURE_LOG_TAG} account lookup for GoTrue revocation failed (account ${accountId}, trigger=${trigger})`,
+      );
       return;
     }
-    await propagateRevocationToGoTrue(ctx.supabase, { accountId, email }, trigger);
+    await propagateRevocationToGoTrue(ctx.supabase, { accountId, email, accountState }, trigger);
   }
 
   // ---------------------------------------------------------------

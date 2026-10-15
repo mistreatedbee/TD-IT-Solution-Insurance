@@ -33,9 +33,9 @@ type CallbackState = 'working' | 'verified' | 'error';
  *    password (`/auth/email-verified` → `/login`);
  *  - credentials are stripped from the address bar / history on entry, so
  *    no exit path (including the error state) leaves them in the URL.
- * The `recovery` branch still leaves a browser recovery session for
- * `/reset-password` to hand to the backend (INC-003 F-3) — removing that
- * needs A-21 (no supabase-js in the browser), which is an ADR, not this fix.
+ * A `recovery` link is not redeemed here at all (INC-003 A-24): its
+ * token_hash is forwarded to `/reset-password` in router state and verified
+ * server-side by the backend, so no browser recovery session is planted.
  */
 function scrubCredentialsFromUrl(): void {
   if (typeof window === 'undefined') return;
@@ -107,11 +107,23 @@ export function CustomerAuthCallbackPage() {
           if (!callbackType) {
             throw new Error('This link is invalid or has expired.');
           }
+          if (callbackType === 'recovery') {
+            // INC-003 A-24: do NOT redeem a recovery link in the browser —
+            // that planted a browser recovery session, which is what made a
+            // forged recovery link a login-CSRF vector (§13.4 residual).
+            // Hand the token to /reset-password in router state (never the
+            // URL); it submits it to the backend's server-side resetToken
+            // verification.
+            if (!signupEmail) {
+              throw new Error('This link is invalid or has expired.');
+            }
+            navigate('/reset-password', { replace: true, state: { resetToken: tokenHash, email: signupEmail } });
+            return;
+          }
           try {
             await verifySupabaseEmailLink(tokenHash, callbackType);
           } catch (verifyErr) {
             if (
-              callbackType === 'signup' &&
               signupEmail &&
               verifyErr instanceof Error &&
               isVerificationLinkError(verifyErr)
@@ -120,10 +132,6 @@ export function CustomerAuthCallbackPage() {
               return;
             }
             throw verifyErr;
-          }
-          if (callbackType === 'recovery') {
-            navigate('/reset-password', { replace: true });
-            return;
           }
           // A-13: verified — but do not sign in on the strength of a link.
           await clearBrowserGoTrueSession();

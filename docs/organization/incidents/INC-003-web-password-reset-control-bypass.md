@@ -977,6 +977,86 @@ INC-003's overall status is unchanged. It is **OPEN**, and the conditions in §1
 
 ---
 
+## 14. Response to §13: D-1/C-1, C-3, A-24 and the low follow-ups (`authentication-engineer`, 2026-10-15)
+
+Cites §13 (`cybersecurity-architect`'s Stage 8 review of `079f93c`). §§1–13 are unaltered. The code is in the working tree and **not committed**. **Every item below is fixed — pending Stage 8 re-review.** None is CLOSED. Out of scope per tasking and untouched: C-2 (live grant check), C-4 (A-19 non-TOTP factors / scheduling / triage), C-5, C-6, and the console items.
+
+### 14.1 D-1 / C-1: the watermark no longer depends on a live session row
+
+- **What changed in the watermark.** `findRevocationWatermark` (`backend/src/repositories/sessions.ts`) now takes the `greatest()` of a **third** source: `max(created_at)` from `app.account_audit_log` where `event_type` is in `WATERMARK_AUDIT_EVENT_TYPES`. That set is `password_reset_completed` and `session_family_revoked` (`backend/src/lib/gotrue-session-revocation.ts`).
+- **Why these two events, and no migration.** Both are written unconditionally:
+  - both reset completion paths write `password_reset_completed`;
+  - `/session/refresh` writes `session_family_revoked` on both SR-8 reuse and FR-20 mismatch, whether or not any row was still live.
+
+  So no migration is needed. The query uses the existing `account_audit_log_account_id_created_at` index (migrations/034).
+- **Same gap, also closed.** The audit-event source also covers a reuse or mismatch detected against a family that was already fully closed. That is the D-1 mechanism outside password reset; §13 did not name it.
+- **Propagation on both reset paths.** `propagateRevocationToGoTrue(..., 'password_reset')` is now called on the customer branch of `/auth/reset-password/confirm` (`backend/src/routes/auth.ts:937-941`) and on the `/mfa-verify` privileged completion (`:1018-1022`).
+- **Tests** (`backend/src/routes/auth.test.ts`):
+  - a password reset by an account with **zero** `app.sessions` rows refuses a pre-existing stolen GoTrue session at the exchange, and also calls GoTrue sign-out;
+  - a `session_family_revoked` event with no live rows advances the watermark;
+  - the `resetToken`-branch push-token test now asserts the sign-out;
+  - a new privileged test asserts no sign-out before MFA verification and exactly one after it.
+- **New dependency for the C-2 grant check (owner `database-architect` + `devops-engineer`).** The backend role **SELECT**s from `app.account_audit_log` in this query. Before this change nothing in `backend/src` read that table, so the grant is as unverified as the one C-2 names. Add `select has_table_privilege(current_user, 'app.account_audit_log', 'SELECT')` to the same check.
+- **Retention residual (owner `cybersecurity-architect`).** If the 12-month audit purge runs, a reset older than 12 months stops counting toward the watermark. That only matters for a GoTrue session older than 12 months, which A-22 item 6's time-box should exclude.
+
+### 14.2 C-3: staleness check on `recoveryAccessToken`
+
+- **Fix.** The `recoveryAccessToken` branch of `/auth/reset-password/confirm` (`backend/src/routes/auth.ts:883-896`) now runs the same `isGoTrueSessionStale` check against the account's watermark, with the same fail-closed rule. It runs before the password check and before any GoTrue write, and returns `RESET_TOKEN_INVALID` on a stale token. The `resetToken` branch is unaffected, because GoTrue redeems that token server-side.
+- **Tests:**
+  - a stale token is refused with 404 `RESET_TOKEN_INVALID` and no `updateUserPassword` call;
+  - a fresh recovery token is then accepted;
+  - an unreadable token with a watermark present is refused.
+- **Not done (recommended, not required):** re-checking the watermark when an exchange-issued MFA challenge or enrolment is completed. Still with `backend-architect`.
+
+### 14.3 A-24: `/reset-password` consumes the hook link server-side
+
+- **`src/pages/CustomerResetPasswordPage.tsx`:**
+  - On mount it reads `token_hash` / `type` / `email` from the query or fragment and **scrubs the URL immediately**, before any render the user can interact with.
+  - It refuses a link whose `type` is not `recovery`, or that has no email, without calling the backend.
+  - It submits `{ email, resetToken, newPassword }` to the backend's existing `resetToken` branch of `/confirm`.
+  - **No browser recovery session is created, and supabase-js is not touched on this path** (no `getSession`, no `signOut`).
+- **`src/customer/api/auth.ts`:** `resetPasswordConfirm` takes a `ResetCredential` that is either `link` (the token and email) or `session` (a GoTrue access token).
+- **`src/pages/CustomerAuthCallbackPage.tsx`:** a `type=recovery` `token_hash` is **no longer redeemed in the browser**. It is forwarded to `/reset-password` in router state, never in the URL, and the reset page submits it the same way. This also closes the §13.4 recovery-CSRF residual for hook links.
+- **Legacy fallback kept, removable with A-21.** If neither a URL token nor a router-state token is present, the page still reads a pre-existing browser recovery session with `getSession()` (the F-3 behaviour). It covers non-hook link formats. I kept it rather than risk breaking an unknown live configuration.
+- **No env-var stopgap was applied.**
+- **Tests:**
+  - `src/pages/CustomerResetPasswordPage.test.tsx` (+5 cases):
+    - a genuine `?token_hash&type=recovery&email` load with **no mocked session**: the URL is scrubbed before any input, `getSession` is never called, the exact request body is asserted, it redirects to `/login`, and `signOut` is not called;
+    - the privileged MFA step still appears via a link;
+    - a wrong-type link is refused with no fetch;
+    - the router-state handoff works;
+    - the single-use message is shown.
+  - `src/pages/CustomerAuthCallbackPage.test.tsx`:
+    - recovery is forwarded with no `verifyOtp` call;
+    - a recovery link with no email is refused.
+- **New UX limitation (owner `backend-architect`).** `/confirm` redeems the single-use token (`verifyRecoveryToken`) *before* checking the password against the account's minimum. That ordering is correct, because checking first would leak the user type (F-6). The consequence is that a staff member who submits a 10–13 character password spends the link. The page now tells the user this plainly. Fixing it properly needs a server-side design, for example parking the redeemed token for a retry, without creating a user-type oracle.
+- **Minor residual.** In the router-state handoff, the token sits in that tab's `history.state` until the reset completes or the tab closes. It is not in the URL or a Referer.
+
+### 14.4 Low follow-ups
+
+- **Error-level log with a stable tag.** Propagation failures now log at **error** level with the stable tag `[ALERT:gotrue_revocation_propagation_failed]` (`GOTRUE_PROPAGATION_FAILURE_LOG_TAG`). That covers both the GoTrue call and the account lookup in `session.ts`. A unit test pins the exact string. Alert routing belongs to `site-reliability-engineer`.
+- **Comment moved.** The ADR-0012 INV-1 comment is back above `touchMfaVerifiedAt` in `backend/src/repositories/sessions.ts`.
+- **§13 low item (b), done.** Propagation is skipped for subjects in `pending_verification`, so the magic-link sign-out cannot confirm their email as a side effect. There is a unit test.
+- **§13 low item (a), unchanged.** The audit-trail side effects of system sign-outs still need a note in the IR runbook. Owner: `security-engineer`.
+
+### 14.5 Test evidence (run this session)
+
+| Suite | After §12 | After §14 |
+|---|---|---|
+| `cd backend && npm test` | 60 files / 522 tests | **60 files / 528 tests, all passing** |
+| `cd backend && npx tsc --noEmit` | clean | clean |
+| `npx vitest run` (web) | 30 files / 125 tests | **30 files / 131 tests, all passing** |
+| `npm run typecheck` (web) | clean | clean |
+| `npm run lint` (web) | 5 errors, all pre-existing in files not touched here | unchanged; 0 errors or warnings in the files changed here |
+
+**Status after this section:**
+- **A-10 (C-1, C-3):** fixed — pending Stage 8 re-review. Deploy is still gated on C-2, which now covers two grants (§14.1).
+- **A-24:** fixed — pending Stage 8 re-review. `devops-engineer`'s live end-to-end check is still OPEN.
+- **Low follow-ups:** done — pending re-review.
+- **Everything else:** unchanged from §13.6.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*

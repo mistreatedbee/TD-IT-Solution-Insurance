@@ -105,8 +105,11 @@ export interface SessionRepo {
    * (a) any `revoked_at` on this account's sessions whose reason is
    * account-wide (`ACCOUNT_WIDE_REVOCATION_REASONS` in
    * lib/gotrue-session-revocation.ts) and (b) any admin-driven
-   * `app.account_state_transitions` row (suspend, deactivate, reactivate).
-   * `null` when neither exists. `/auth/supabase/exchange` refuses any GoTrue
+   * `app.account_state_transitions` row (suspend, deactivate, reactivate)
+   * and (c) any `app.account_audit_log` row of a type in
+   * `WATERMARK_AUDIT_EVENT_TYPES` (password reset completed, session family
+   * revoked) — (c) covers revocations that found no live row to revoke
+   * (INC-003 §13 D-1). `null` when none exists. `/auth/supabase/exchange` refuses any GoTrue
    * session authenticated before it.
    */
   findRevocationWatermark(accountId: string): Promise<Date | null>;

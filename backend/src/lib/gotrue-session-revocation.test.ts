@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   ACCOUNT_WIDE_REVOCATION_REASONS,
+  GOTRUE_PROPAGATION_FAILURE_LOG_TAG,
   gotrueSessionAuthenticatedAt,
   isGoTrueSessionStale,
   propagateRevocationToGoTrue,
@@ -73,8 +74,8 @@ describe('propagateRevocationToGoTrue', () => {
     expect(signOutAllUserSessions).toHaveBeenCalledWith('e@example.com');
   });
 
-  it('never throws, and never logs the email, when GoTrue fails', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  it('never throws, logs at ERROR with the stable alert tag, and never logs the email, when GoTrue fails', async () => {
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
       const result = await propagateRevocationToGoTrue(
         { signOutAllUserSessions: async () => Promise.reject(new Error('boom secret-ish detail')) },
@@ -84,10 +85,24 @@ describe('propagateRevocationToGoTrue', () => {
       expect(result).toBe(false);
       const logged = warn.mock.calls.flat().join(' ');
       expect(logged).toContain('acct-1');
+      expect(logged.startsWith(GOTRUE_PROPAGATION_FAILURE_LOG_TAG)).toBe(true);
+      expect(GOTRUE_PROPAGATION_FAILURE_LOG_TAG).toBe('[ALERT:gotrue_revocation_propagation_failed]');
       expect(logged).not.toContain('victim@example.com');
       expect(logged).not.toContain('secret-ish');
     } finally {
       warn.mockRestore();
     }
+  });
+
+  it('skips pending_verification subjects (the magic-link sign-out could confirm their email)', async () => {
+    const signOutAllUserSessions = vi.fn(async () => undefined);
+    await expect(
+      propagateRevocationToGoTrue(
+        { signOutAllUserSessions },
+        { accountId: 'a', email: 'e@example.com', accountState: 'pending_verification' },
+        'password_reset',
+      ),
+    ).resolves.toBe(false);
+    expect(signOutAllUserSessions).not.toHaveBeenCalled();
   });
 });
