@@ -4,10 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
-import { configureCustomerClient } from '../api/client';
+import { configureCustomerClient, getConfiguredAccessToken } from '../api/client';
 import { getAccountMe, logout, verifyMfaChallenge } from '../api/auth';
 import { ApiError } from '../api/errors';
 import { getOrCreateWebDeviceId } from './deviceId';
@@ -58,18 +59,28 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [account, setAccount] = useState<import('../api/auth').AccountMe | null>(null);
 
+  // ADR-0014 G-2: revoke the backend session BEFORE clearing local tokens —
+  // the logout call needs the bearer token (and, if it has expired, the
+  // refresh token for one refresh-and-retry). The guard stops the client's
+  // onSessionTerminated callback (fired if that refresh fails) re-entering.
+  const signingOutRef = useRef(false);
   const signOut = useCallback(async () => {
-    const refresh = readRefreshToken();
-    clearRefreshToken();
-    setAccessToken(null);
-    setAccount(null);
-    setStatus('signed-out');
-    if (refresh) {
-      try {
-        await logout(refresh);
-      } catch {
-        /* local session already cleared */
+    if (signingOutRef.current) return;
+    signingOutRef.current = true;
+    try {
+      if (readRefreshToken() || getConfiguredAccessToken()) {
+        try {
+          await logout();
+        } catch {
+          /* best effort — the local session is cleared below regardless */
+        }
       }
+    } finally {
+      clearRefreshToken();
+      setAccessToken(null);
+      setAccount(null);
+      setStatus('signed-out');
+      signingOutRef.current = false;
     }
     try {
       const { getSupabase } = await import('../supabase/client');

@@ -75,6 +75,16 @@ export const RESEND_VERIFICATION_LIMIT = {
   perAccountWindowSeconds: 60 * 60,
 } as const;
 
+/** INC-003 A-16: per-IP ceiling on `POST /auth/resend-verification`. The
+ * per-email cooldown/ceiling above only bounds abuse of ONE address; this
+ * bounds sweeping many addresses from one client (same shape and values as
+ * NOTIFY_EMAIL_VERIFIED_IP_LIMIT, SR-006-2). New value — pending
+ * `cybersecurity-architect` ratification. */
+export const RESEND_VERIFICATION_IP_LIMIT = {
+  attempts: 20,
+  windowSeconds: 15 * 60,
+} as const;
+
 /** SR-006-2: `POST /auth/notify-email-verified` previously carried only a
  * per-email cooldown, which bounds abuse of one victim address but does
  * nothing against enumeration sweeping many addresses from one source. This

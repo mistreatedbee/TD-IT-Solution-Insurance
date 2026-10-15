@@ -37,7 +37,7 @@ import type { AccountRow, AccountStatus, UserType, AccountState } from '../repos
 import type { EnrollmentTicketRecord, EnrollmentTicketRepo } from '../lib/enrollment-ticket.js';
 import type { SessionRecord, SessionRepo } from '../lib/refresh-session.js';
 import { ACCOUNT_WIDE_REVOCATION_REASONS, WATERMARK_AUDIT_EVENT_TYPES } from '../lib/gotrue-session-revocation.js';
-import type { SupabaseAdmin } from '../db/supabase.js';
+import { SupabaseUserAlreadyExistsError, type SupabaseAdmin } from '../db/supabase.js';
 import type { Env } from '../config/env.js';
 
 function fakeEnv(): Env {
@@ -1301,7 +1301,11 @@ describe('POST /auth/reset-password/confirm — SR-007-1 push-token regression',
       enrollTotpFactor: notUsed('enrollTotpFactor'),
       challengeTotpFactor: notUsed('challengeTotpFactor'),
       verifyTotpFactor: notUsed('verifyTotpFactor'),
-      findVerifiedTotpFactor: notUsed('findVerifiedTotpFactor'),
+      // INC-003 A-20: the factor check now runs for every user type; this
+      // customer has none, so the reset completes immediately.
+      async findVerifiedTotpFactor() {
+        return null;
+      },
       async updateUserPassword(userAccessToken, password) {
         expect(userAccessToken).toBe(resetUserAccessToken);
         expect(password).toBe(resetNewPassword);
@@ -1556,6 +1560,67 @@ describe('POST /auth/reset-password/confirm — privileged account MFA-enrollmen
     }
   });
 
+  it('INC-003 A-20: a CUSTOMER with a verified TOTP factor gets the same MFA step (not an UPSTREAM_UNAVAILABLE dead end), and the password is applied only after a valid code', async () => {
+    const accounts = createFakeAccountsRepo({
+      id: privilegedAccountId,
+      email: privilegedEmail,
+      userType: 'customer',
+      accountState: 'active',
+      mfaRequired: false, // customers opt in; not required
+      partnerOrganizationId: null,
+    });
+    const signOutCalls: string[] = [];
+    const supabase = fakePrivilegedResetSupabase({ hasVerifiedFactor: true, signOutCalls });
+    const updateSpy = vi.spyOn(supabase, 'updateUserPassword');
+    const disabled: string[] = [];
+    const ctx = buildMinimalCtx({
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase,
+      resetMfaTokens: createFakeResetMfaTokensRepo(),
+      pushTokens: {
+        disableAllForAccount: async (id: string) => {
+          disabled.push(id);
+          return 0;
+        },
+      } as unknown as AppContext['pushTokens'],
+    });
+
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      const confirm = await fetch(`${baseUrl}/auth/reset-password/confirm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ email: privilegedEmail, resetToken: privilegedResetToken, newPassword: privilegedNewPassword }),
+      });
+      const confirmBody = (await confirm.json()) as { mfaVerificationRequired?: boolean; mfaVerificationToken?: string };
+      expect(confirm.status, JSON.stringify(confirmBody)).toBe(200);
+      expect(confirmBody.mfaVerificationRequired).toBe(true);
+      // SR-6 semantics: nothing applied, nothing revoked yet.
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(disabled).toEqual([]);
+
+      const wrong = await fetch(`${baseUrl}/auth/reset-password/mfa-verify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ mfaVerificationToken: confirmBody.mfaVerificationToken, code: '000000' }),
+      });
+      expect(wrong.status).toBe(400);
+      expect(updateSpy).not.toHaveBeenCalled();
+
+      const verify = await fetch(`${baseUrl}/auth/reset-password/mfa-verify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ mfaVerificationToken: confirmBody.mfaVerificationToken, code: '123456' }),
+      });
+      expect(verify.status, await verify.clone().text()).toBe(200);
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      expect(disabled).toEqual([privilegedAccountId]);
+      expect(signOutCalls).toEqual([privilegedEmail]);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
   it('INC-003 §13 C-1: the MFA-gated completion path also signs the account out of every GoTrue session', async () => {
     const accounts = createFakeAccountsRepo({
       id: privilegedAccountId,
@@ -1727,5 +1792,201 @@ describe('POST /auth/reset-password/request — INC-003 F-2 per-client redirect 
     } finally {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
+  });
+});
+
+/**
+ * INC-003 A-16: web signup / resend now go through the backend instead of
+ * GoTrue-direct. Pins: the per-client allow-listed verification redirect
+ * (never a caller URL), consent still required server-side, and uniform
+ * responses (no account enumeration) — including for an auth user created by
+ * the pre-A-16 browser signUp that has no app.accounts row.
+ */
+describe('POST /auth/signup + /auth/resend-verification — INC-003 A-16', () => {
+  const WEB_VERIFY_URL = 'https://web.example.test/auth/callback?type=signup';
+  const MOBILE_VERIFY_URL = 'tditinsurance://verify-email';
+
+  function harness(opts: {
+    existingAuthUser?: boolean;
+    accounts?: Array<{ email: string; accountState: AccountState }>;
+    sendFails?: boolean;
+  } = {}) {
+    const sent: Array<{ email: string; redirectTo: string }> = [];
+    const created: string[] = [];
+    const rows = new Map<string, AccountRow>();
+    for (const a of opts.accounts ?? []) {
+      rows.set(a.email, {
+        id: randomUUID(),
+        userType: 'customer',
+        accountState: a.accountState,
+        email: a.email,
+        phone: null,
+        mfaRequired: false,
+        partnerOrganizationId: null,
+        invitedBy: null,
+        createdAt: new Date(),
+      });
+    }
+    const notUsed = (name: string) => (): never => {
+      throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+    };
+    const supabase = new Proxy(
+      {
+        async createUser(email: string) {
+          if (opts.existingAuthUser) throw new SupabaseUserAlreadyExistsError();
+          created.push(email);
+          return { userId: randomUUID() };
+        },
+        async sendSignupConfirmationEmail(email: string, redirectTo: string) {
+          sent.push({ email, redirectTo });
+          if (opts.sendFails) throw new Error('hook down');
+        },
+      } as Record<string, unknown>,
+      { get: (target, prop: string) => (prop in target ? target[prop] : notUsed(prop)) },
+    ) as unknown as SupabaseAdmin;
+    const accounts = {
+      async findByEmail(email: string) {
+        return rows.get(email) ?? null;
+      },
+      async createCustomerAccount(id: string, email: string) {
+        const row: AccountRow = {
+          id,
+          userType: 'customer',
+          accountState: 'pending_verification',
+          email,
+          phone: null,
+          mfaRequired: false,
+          partnerOrganizationId: null,
+          invitedBy: null,
+          createdAt: new Date(),
+        };
+        rows.set(email, row);
+        return row;
+      },
+    };
+    const ctx = buildMinimalCtx({
+      env: { ...fakeEnv(), emailVerificationRedirectUrl: MOBILE_VERIFY_URL, emailVerificationRedirectUrlWeb: WEB_VERIFY_URL },
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase,
+    });
+    return { ctx, sent, created, rows };
+  }
+
+  async function post(baseUrl: string, path: string, body: unknown) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+  }
+
+  async function withServer<T>(ctx: AppContext, fn: (baseUrl: string) => Promise<T>): Promise<T> {
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      return await fn(baseUrl);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  }
+
+  const PASSWORD = 'a-good-long-password';
+
+  it('client "web" uses the web allow-listed redirect; omitted client keeps the mobile one', async () => {
+    const h = harness();
+    await withServer(h.ctx, async (baseUrl) => {
+      expect((await post(baseUrl, '/auth/signup', { email: 'web@example.com', password: PASSWORD, consentAccepted: true, client: 'web' })).status).toBe(202);
+      expect((await post(baseUrl, '/auth/signup', { email: 'mob@example.com', password: PASSWORD, consentAccepted: true })).status).toBe(202);
+    });
+    expect(h.sent).toEqual([
+      { email: 'web@example.com', redirectTo: WEB_VERIFY_URL },
+      { email: 'mob@example.com', redirectTo: MOBILE_VERIFY_URL },
+    ]);
+  });
+
+  it('never uses a caller-supplied redirect smuggled into the body', async () => {
+    const h = harness();
+    await withServer(h.ctx, async (baseUrl) => {
+      await post(baseUrl, '/auth/signup', {
+        email: 'x@example.com',
+        password: PASSWORD,
+        consentAccepted: true,
+        client: 'web',
+        redirectTo: 'https://attacker.example/steal',
+        emailRedirectTo: 'https://attacker.example/steal',
+      });
+    });
+    expect(h.sent).toEqual([{ email: 'x@example.com', redirectTo: WEB_VERIFY_URL }]);
+  });
+
+  it('consent is still required server-side (unchanged semantics)', async () => {
+    const h = harness();
+    await withServer(h.ctx, async (baseUrl) => {
+      expect((await post(baseUrl, '/auth/signup', { email: 'c@example.com', password: PASSWORD, client: 'web' })).status).toBe(400);
+      expect(
+        (await post(baseUrl, '/auth/signup', { email: 'c@example.com', password: PASSWORD, consentAccepted: false, client: 'web' })).status,
+      ).toBe(400);
+    });
+    expect(h.created).toEqual([]);
+  });
+
+  it('no enumeration: new email, registered app account, and auth-only user (pre-A-16 browser signup) all get the identical 202', async () => {
+    const fresh = harness();
+    const registered = harness({ accounts: [{ email: 'taken@example.com', accountState: 'active' }] });
+    const authOnly = harness({ existingAuthUser: true });
+    const bodies = await Promise.all([
+      withServer(fresh.ctx, (b) => post(b, '/auth/signup', { email: 'new@example.com', password: PASSWORD, consentAccepted: true, client: 'web' })),
+      withServer(registered.ctx, (b) => post(b, '/auth/signup', { email: 'taken@example.com', password: PASSWORD, consentAccepted: true, client: 'web' })),
+      withServer(authOnly.ctx, (b) => post(b, '/auth/signup', { email: 'legacy@example.com', password: PASSWORD, consentAccepted: true, client: 'web' })),
+    ]);
+    for (const r of bodies) expect(r.status).toBe(202);
+    expect(bodies[1]!.body).toEqual(bodies[0]!.body);
+    expect(bodies[2]!.body).toEqual(bodies[0]!.body);
+    // The auth-only case sends nothing (no mail-bombing via /signup) and creates no app row.
+    expect(authOnly.sent).toEqual([]);
+    expect(authOnly.rows.size).toBe(0);
+  });
+
+  it('resend: identical 202 for unknown, pending, and active accounts; only pending is mailed, with the web redirect', async () => {
+    const h = harness({
+      accounts: [
+        { email: 'pending@example.com', accountState: 'pending_verification' },
+        { email: 'active@example.com', accountState: 'active' },
+      ],
+    });
+    const results = await withServer(h.ctx, async (baseUrl) => [
+      await post(baseUrl, '/auth/resend-verification', { email: 'nobody@example.com', client: 'web' }),
+      await post(baseUrl, '/auth/resend-verification', { email: 'pending@example.com', client: 'web' }),
+      await post(baseUrl, '/auth/resend-verification', { email: 'active@example.com', client: 'web' }),
+    ]);
+    for (const r of results) {
+      expect(r.status).toBe(202);
+      expect(r.body).toEqual(results[0]!.body);
+    }
+    expect(h.sent).toEqual([{ email: 'pending@example.com', redirectTo: WEB_VERIFY_URL }]);
+  });
+
+  it('resend: a delivery failure for a pending account is still the uniform 202 (no 503 oracle)', async () => {
+    const h = harness({ accounts: [{ email: 'pending@example.com', accountState: 'pending_verification' }], sendFails: true });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const r = await withServer(h.ctx, (b) => post(b, '/auth/resend-verification', { email: 'pending@example.com', client: 'web' }));
+      expect(r.status).toBe(202);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('resend: a per-IP ceiling bounds sweeping many different addresses', async () => {
+    const h = harness();
+    const statuses = await withServer(h.ctx, async (baseUrl) => {
+      const out: number[] = [];
+      for (let i = 0; i < 21; i += 1) {
+        out.push((await post(baseUrl, '/auth/resend-verification', { email: `sweep-${i}@example.com`, client: 'web' })).status);
+      }
+      return out;
+    });
+    expect(statuses.slice(0, 20).every((st) => st === 202)).toBe(true);
+    expect(statuses[20]).toBe(429);
   });
 });

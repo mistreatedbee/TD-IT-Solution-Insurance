@@ -1,18 +1,17 @@
 import { FormEvent, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Badge, Button, Input, SectionHeading } from '../components';
 import { ArrowLink } from '../components/ArrowLink';
 import { InlineAlert } from '../dashboard/components/ui';
 import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { SupabaseAuthConfigNotice } from '../customer/components/SupabaseAuthConfigNotice';
-import { resendSignupVerification, signUpWithSupabase } from '../customer/supabase/auth';
+import { resendVerificationEmail, signup } from '../customer/api/auth';
 import { mapUserFacingError } from '../lib/user-facing-errors';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 10;
 
 export function CustomerSignupPage() {
-  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -49,11 +48,10 @@ export function CustomerSignupPage() {
 
     setLoading(true);
     try {
-      const result = await signUpWithSupabase(trimmedEmail, password);
-      if (result === 'already_verified') {
-        navigate('/auth/email-verified', { replace: true, state: { email: trimmedEmail } });
-        return;
-      }
+      // INC-003 A-16: backend signup. The response is deliberately identical
+      // for new and already-registered addresses, so always show the same
+      // "check your email" state (no enumeration).
+      await signup({ email: trimmedEmail, password, consentAccepted: true });
       setSubmitted(true);
     } catch (err) {
       setFormError(mapUserFacingError(err, { context: 'signup' }));
@@ -66,7 +64,7 @@ export function CustomerSignupPage() {
     setFormError(null);
     setLoading(true);
     try {
-      await resendSignupVerification(email.trim());
+      await resendVerificationEmail(email.trim());
     } catch (err) {
       setFormError(mapUserFacingError(err, { context: 'verify' }));
     } finally {

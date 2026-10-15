@@ -17,7 +17,7 @@ import { ApiError } from '../../customer/api/errors';
 import { createPolicy, listPolicies, type Policy } from '../../customer/api/policies';
 import { formatPlanPrice, listPlans, type PlanCatalogItem } from '../../customer/api/plans';
 import { useCustomerAuth } from '../../customer/auth/CustomerAuthProvider';
-import { resendSignupVerification, signUpWithSupabase } from '../../customer/supabase/auth';
+import { resendVerificationEmail, signup } from '../../customer/api/auth';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { COMPANY_CONTACT } from '../../lib/companyContact';
 import {
@@ -35,11 +35,6 @@ import {
   type AccountType,
   type OnboardingStep,
 } from '../../onboarding/onboardingStorage';
-import {
-  clearPendingSignupAuth,
-  loadPendingSignupAuth,
-  savePendingSignupAuth,
-} from '../../onboarding/pendingSignupAuth';
 import { OnboardingProgress } from './OnboardingProgress';
 import { OnboardingShell } from './OnboardingShell';
 
@@ -47,6 +42,9 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 10;
 
 const POLL_INTERVAL_MS = 10_000;
+
+/** Pre-INC-003-A-14 builds stored `{ email, password }` here. Never written now. */
+const LEGACY_PENDING_SIGNUP_AUTH_KEY = 'td_signup_pending_auth';
 
 const ONBOARDING_PLAN_ICONS: Record<string, LucideIcon> = {
   essential: ShieldCheckIcon,
@@ -130,40 +128,26 @@ export function CustomerOnboardingPage() {
       .finally(() => setPlansLoading(false));
   }, [step]);
 
+  // INC-003 A-14: the wizard used to keep the user's plaintext password in
+  // sessionStorage and replay it as a GoTrue password grant every 10 s while
+  // waiting for email verification. No credential is held any more: once the
+  // user has opened the verification link they sign in once, on this step,
+  // with the password they just chose. The only automatic check left is for
+  // an already-signed-in account, and it uses the existing backend session —
+  // never a stored password.
   const tryAdvanceFromVerification = useCallback(async (): Promise<boolean> => {
-    if (auth.status === 'signed-in') {
-      const me = await auth.refreshAccount();
-      if (me?.accountState === 'active') {
-        clearPendingSignupAuth();
-        setStep('plan');
-        setError(null);
-        return true;
-      }
-    }
-
-    const creds = loadPendingSignupAuth();
-    if (!creds) return false;
-
-    try {
-      const result = await auth.loginWithPassword(creds.email, creds.password);
-      if (result.kind === 'tokens') {
-        await auth.signInWithTokens(result.accessToken, result.refreshToken);
-        const me = await auth.refreshAccount();
-        if (me?.accountState === 'active') {
-          clearPendingSignupAuth();
-          setStep('plan');
-          setError(null);
-          return true;
-        }
-      }
-    } catch {
-      /* still pending */
+    if (auth.status !== 'signed-in') return false;
+    const me = await auth.refreshAccount();
+    if (me?.accountState === 'active') {
+      setStep('plan');
+      setError(null);
+      return true;
     }
     return false;
   }, [auth]);
 
   useEffect(() => {
-    if (step !== 'verify') return;
+    if (step !== 'verify' || auth.status !== 'signed-in') return;
 
     void tryAdvanceFromVerification();
     const timer = window.setInterval(() => {
@@ -171,7 +155,16 @@ export function CustomerOnboardingPage() {
     }, POLL_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
-  }, [step, tryAdvanceFromVerification]);
+  }, [step, auth.status, tryAdvanceFromVerification]);
+
+  // INC-003 A-14: purge any record a pre-fix build left behind in this tab.
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem(LEGACY_PENDING_SIGNUP_AUTH_KEY);
+    } catch {
+      /* storage unavailable — nothing to purge */
+    }
+  }, []);
 
   useEffect(() => {
     const draft = loadAssetDraft();
@@ -200,15 +193,48 @@ export function CustomerOnboardingPage() {
     }
     setLoading(true);
     try {
-      const result = await signUpWithSupabase(trimmed, password);
-      if (result === 'already_verified') {
-        navigate('/auth/email-verified', { replace: true, state: { email: trimmed } });
-        return;
-      }
-      savePendingSignupAuth(trimmed, password);
+      // INC-003 A-16: backend signup (consent enforced server-side too). The
+      // response is identical for new and registered addresses.
+      await signup({ email: trimmed, password, consentAccepted: true });
+      // INC-003 A-14: the password is NOT kept anywhere. Clear it from
+      // component state too; the verify step asks for it once, after the
+      // link has been opened.
+      setPassword('');
+      setConfirmPassword('');
+      setLoginEmail(trimmed);
+      setLoginPassword('');
       setStep('verify');
     } catch (err) {
       setError(mapUserFacingError(err, { context: 'signup' }));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // INC-003 A-14: one explicit sign-in after verification, replacing the
+  // stored-password replay loop.
+  async function handleVerifiedSignIn(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await auth.loginWithPassword(loginEmail.trim(), loginPassword);
+      if (result.kind === 'tokens') {
+        await auth.signInWithTokens(result.accessToken, result.refreshToken);
+        setLoginPassword('');
+        const me = await auth.refreshAccount();
+        if (me?.accountState === 'active') {
+          setStep('plan');
+        }
+      } else {
+        setError('Additional verification is required. Use the login page to finish signing in.');
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
+        setError('Still waiting for verification — open the link in your email first, then try again.');
+      } else {
+        setError(mapUserFacingError(err, { context: 'auth' }));
+      }
     } finally {
       setLoading(false);
     }
@@ -439,14 +465,11 @@ export function CustomerOnboardingPage() {
             title="Check your inbox"
             size="md"
             className="mt-4"
-            subtitle="Open the verification link we sent you — we will continue automatically once it is confirmed."
+            subtitle="Open the verification link we sent you, then sign in below to continue."
           />
           <p className="mt-3 text-sm text-text-secondary">
             Can&apos;t find it? Check your spam or promotions folder. Verification emails from a new
             domain sometimes land there at first.
-          </p>
-          <p className="mt-2 text-sm text-text-secondary">
-            We check every few seconds — no need to refresh your inbox.
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Button
@@ -456,7 +479,7 @@ export function CustomerOnboardingPage() {
                 setError(null);
                 setLoading(true);
                 try {
-                  await resendSignupVerification(email.trim() || auth.account?.email || '');
+                  await resendVerificationEmail(email.trim() || auth.account?.email || '');
                 } catch (err) {
                   setError(mapUserFacingError(err, { context: 'verify' }));
                 } finally {
@@ -466,26 +489,20 @@ export function CustomerOnboardingPage() {
             >
               Resend email
             </Button>
-            <Button
-              loading={loading}
-              onClick={async () => {
-                setLoading(true);
-                setError(null);
-                try {
-                  const advanced = await tryAdvanceFromVerification();
-                  if (!advanced) {
-                    setError(
-                      'Still waiting for verification — open the link in your email first, then try again.',
-                    );
-                  }
-                } finally {
-                  setLoading(false);
-                }
-              }}
-            >
+          </div>
+          <form className="mt-6 space-y-3" onSubmit={handleVerifiedSignIn} noValidate>
+            <p className="text-sm font-semibold text-text-primary">Verified? Sign in to continue</p>
+            <Input label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
+            <Input
+              label="Password"
+              type="password"
+              value={loginPassword}
+              onChange={(e) => setLoginPassword(e.target.value)}
+            />
+            <Button type="submit" fullWidth loading={loading}>
               I&apos;ve verified — continue
             </Button>
-          </div>
+          </form>
           {error ? (
             <div className="mt-4">
               <InlineAlert tone="warning">{error}</InlineAlert>

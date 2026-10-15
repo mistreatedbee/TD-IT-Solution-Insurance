@@ -17,6 +17,7 @@ import {
   RESET_PASSWORD_MFA_VERIFY_LIMIT,
   SIGNUP_LIMIT,
   RESEND_VERIFICATION_LIMIT,
+  RESEND_VERIFICATION_IP_LIMIT,
   NOTIFY_EMAIL_VERIFIED_IP_LIMIT,
   isPrivilegedUserType,
 } from '../lib/policy.js';
@@ -31,7 +32,7 @@ import {
   consumeResetMfaVerificationToken,
 } from '../lib/reset-mfa-verification.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
-import { SupabaseUnavailableError } from '../db/supabase.js';
+import { SupabaseUnavailableError, SupabaseUserAlreadyExistsError } from '../db/supabase.js';
 import { issueEnrollmentTicket } from '../lib/enrollment-ticket.js';
 import { storePendingEnrollment } from '../lib/enrollment-pending-store.js';
 import { revokeJtisInKv } from '../lib/revocation.js';
@@ -77,7 +78,17 @@ export function createAuthRouter(ctx: AppContext): Router {
     email: z.string().email(),
     password: z.string().min(1),
     consentAccepted: z.literal(true),
+    // INC-003 A-16: closed discriminator selecting a server-configured,
+    // allow-listed verification redirect (same rule as F-2). Defaults to
+    // 'mobile' so the existing mobile client is unchanged.
+    client: z.enum(['web', 'mobile']).optional().default('mobile'),
   });
+
+  function verificationRedirectFor(client: 'web' | 'mobile'): string {
+    return client === 'web'
+      ? ctx.env.emailVerificationRedirectUrlWeb ?? ctx.env.emailVerificationRedirectUrl
+      : ctx.env.emailVerificationRedirectUrl;
+  }
 
   router.post(
     '/auth/signup',
@@ -85,7 +96,7 @@ export function createAuthRouter(ctx: AppContext): Router {
     validateBody(signupSchema),
     async (req, res, next) => {
       try {
-        const { email, password } = req.body as z.infer<typeof signupSchema>;
+        const { email, password, client } = req.body as z.infer<typeof signupSchema>;
         const normalizedEmail = email.trim().toLowerCase();
 
         if (!isPasswordValidForUserType(password, 'customer')) {
@@ -98,13 +109,26 @@ export function createAuthRouter(ctx: AppContext): Router {
         const existing = await ctx.accounts.findByEmail(normalizedEmail);
         if (!existing) {
           try {
-            const created = await ctx.supabase.createUser(normalizedEmail, password, false);
+            let created;
+            try {
+              created = await ctx.supabase.createUser(normalizedEmail, password, false);
+            } catch (err) {
+              // INC-003 A-16: an auth user with no app.accounts row (created
+              // by the pre-A-16 browser signUp). Answer exactly as for any
+              // other already-registered address — the uniform 202 below —
+              // rather than a 503 that would reveal it. No email is sent from
+              // here (that would let /signup be used to mail-bomb an
+              // address); /auth/resend-verification, with its cooldowns, is
+              // the path for a genuinely unverified owner.
+              if (err instanceof SupabaseUserAlreadyExistsError) {
+                res.status(202).json({ message: 'If this email is new, check your inbox to verify your account.' });
+                return;
+              }
+              throw err;
+            }
             await ctx.accounts.createCustomerAccount(created.userId, normalizedEmail);
             try {
-              await ctx.supabase.sendSignupConfirmationEmail(
-                normalizedEmail,
-                ctx.env.emailVerificationRedirectUrl,
-              );
+              await ctx.supabase.sendSignupConfirmationEmail(normalizedEmail, verificationRedirectFor(client));
             } catch (emailErr) {
               // Account creation succeeded — do not fail the signup response (FR-5/AC-2).
               // Email delivery is best-effort; ops can resend from Supabase or fix the hook/SMTP.
@@ -179,13 +203,27 @@ export function createAuthRouter(ctx: AppContext): Router {
   // ---------------------------------------------------------------
   // POST /auth/resend-verification
   // ---------------------------------------------------------------
-  const resendSchema = z.object({ email: z.string().email() });
+  const resendSchema = z.object({
+    email: z.string().email(),
+    client: z.enum(['web', 'mobile']).optional().default('mobile'),
+  });
+  const RESEND_ACCEPTED = {
+    message: 'If this account needs verifying, check your inbox.',
+    retryAfterSeconds: RESEND_VERIFICATION_LIMIT.cooldownSeconds,
+  };
   router.post(
     '/auth/resend-verification',
+    // INC-003 A-16: per-IP ceiling so one client cannot sweep many addresses
+    // (the per-email limits below only protect a single address).
+    createRateLimiter(
+      ctx.kv,
+      { attempts: RESEND_VERIFICATION_IP_LIMIT.attempts, windowSeconds: RESEND_VERIFICATION_IP_LIMIT.windowSeconds },
+      (req) => `resend-verify:ip:${clientIp(req)}`,
+    ),
     validateBody(resendSchema),
     async (req, res, next) => {
       try {
-        const { email } = req.body as z.infer<typeof resendSchema>;
+        const { email, client } = req.body as z.infer<typeof resendSchema>;
         const normalizedEmail = email.trim().toLowerCase();
 
         const cooldown = await checkRateLimit(ctx.kv, `resend-verify-cooldown:${normalizedEmail}`, {
@@ -203,12 +241,19 @@ export function createAuthRouter(ctx: AppContext): Router {
 
         const account = await ctx.accounts.findByEmail(normalizedEmail);
         if (account && account.accountState === 'pending_verification') {
-          await ctx.supabase.sendSignupConfirmationEmail(
-            normalizedEmail,
-            ctx.env.emailVerificationRedirectUrl,
-          );
+          // INC-003 A-16: best-effort, so a GoTrue/hook failure cannot turn
+          // into a 503 that only ever happens for a pending account (an
+          // existence oracle). The response below is uniform regardless.
+          try {
+            await ctx.supabase.sendSignupConfirmationEmail(normalizedEmail, verificationRedirectFor(client));
+          } catch (sendErr) {
+            console.warn(
+              `[auth/resend-verification] confirmation email failed for account ${account.id}: ` +
+                (sendErr instanceof Error ? sendErr.name : 'Error'),
+            );
+          }
         }
-        res.status(202).json({ message: 'If this account needs verifying, check your inbox.', retryAfterSeconds: RESEND_VERIFICATION_LIMIT.cooldownSeconds });
+        res.status(202).json(RESEND_ACCEPTED);
       } catch (err) {
         next(err);
       }
@@ -921,7 +966,16 @@ export function createAuthRouter(ctx: AppContext): Router {
         // enter. Fall through to the same immediate-completion path as a
         // non-privileged account in that case; the account still goes through
         // normal MFA enrollment the next time it logs in.
-        if (isPrivilegedUserType(account.userType) && (await ctx.supabase.findVerifiedTotpFactor(userAccessToken))) {
+        // INC-003 A-20: the gate is "has a verified TOTP factor", for EVERY
+        // user type — not only privileged ones. GoTrue refuses `PUT /user`
+        // from an AAL1 (recovery) session on an MFA-enabled user
+        // (`insufficient_aal`), so before this a customer who had opted in to
+        // TOTP could not reset at all (surfaced as UPSTREAM_UNAVAILABLE).
+        // Same SR-6 mechanism staff already use: park the password, verify a
+        // live TOTP code against the recovery session at /mfa-verify (which
+        // raises that session to AAL2), then apply it. A customer without a
+        // factor is unchanged (immediate completion below).
+        if (await ctx.supabase.findVerifiedTotpFactor(userAccessToken)) {
           const mfaToken = await issueResetMfaVerificationToken(ctx.resetMfaTokens, account.id, resetTokenForPrivileged);
           await ctx.kv.set(
             `reset-mfa-pending:${mfaToken.token}`,

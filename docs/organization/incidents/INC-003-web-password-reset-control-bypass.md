@@ -1310,6 +1310,131 @@ C-2's smoke test (§15.2 item 3) must therefore **also** include one staff MFA l
 
 ---
 
+## 18. A-14, A-16, A-20, plus ADR-0014 G-1 / G-2 (`authentication-engineer`, 2026-10-15)
+
+Cites §11 (actions A-14, A-16, A-20) and §17.3 (current owner table). It also cites ADR-0014 (`docs/organization/adr/0014-web-identity-through-backend-remove-browser-supabase-sdk.md`, Proposed) §5.2 G-1 and G-2. §§1–17 are unaltered, and I did not edit ADR-0014. The code is in the working tree and **not committed**. **Every item below is fixed — pending Stage 8 review.** None is CLOSED. A-21 (removing supabase-js) is untouched. The callback page still verifies signup links with `verifyOtp` in the browser; that is ADR-0014 Phase 1 (W-6), not this batch.
+
+### 18.1 A-14: plaintext password in `sessionStorage`. Status: fixed — pending Stage 8 review
+
+- **Where it was.**
+  - `src/onboarding/pendingSignupAuth.ts` wrote `{ email, password, expiresAt }` to `sessionStorage['td_signup_pending_auth']`.
+  - `CustomerOnboardingPage.tsx` wrote that record after signup, then replayed the password as a GoTrue password grant on entering the verify step and every 10 s after that.
+- **Why it existed.** The wizard needed to notice that email verification had happened.
+- **Fix: ADR-0014 G-3's recommended option. No new endpoint.**
+  - **The module is deleted, not just unreferenced.**
+  - **The wizard holds no credential.** After the backend signup it clears the password fields from component state and pre-fills the email.
+  - **Advancing the verify step.** The step now shows an inline "Verified? Sign in to continue" form. The user enters the password once, after opening the link, through the existing `loginWithPassword` path. An unverified account gets "Still waiting for verification", mapped from `ACCOUNT_NOT_ACTIVE`.
+  - **The automatic poll** survives only for an already-signed-in account, and it uses the backend session (`refreshAccount`), never a password.
+  - **Leftover records.** A record left by a pre-fix build in an open tab is purged when the page mounts.
+- **The UX cost, which ADR-0014 §13 Q-4 already puts to `cto`:** the user types their password one more time.
+- **Tests:**
+  - `src/pages/onboarding/CustomerOnboardingPage.test.tsx` (new, 6 cases):
+    - after signup, no `sessionStorage` or `localStorage` value contains the password;
+    - no background `loginWithPassword` call happens on entering the verify step;
+    - the explicit sign-in calls it exactly once, with the typed password;
+    - a legacy record is purged.
+  - `src/lib/inc-003-a14-a16-guards.test.ts`: the module is absent, nothing writes the legacy key, and no `Storage.setItem` call passes a password-named value. Like F-9(b), this is a code-hygiene guard (A-11).
+
+### 18.2 A-16 + ADR-0014 G-1: web signup and resend through the backend. Status: fixed — pending Stage 8 review
+
+**Web client:**
+- `CustomerSignupPage` and the onboarding wizard now call `signup()` → `POST /v1/auth/signup` and `resendVerificationEmail()` → `POST /v1/auth/resend-verification` (`src/customer/api/auth.ts`).
+- `signUpWithSupabase` and `resendSignupVerification` (`supabase.auth.signUp` / `.resend`) are **deleted** from `src/customer/supabase/auth.ts`.
+- **Response handling.** The client no longer branches on Supabase's `identities.length === 0` "already verified" signal. Every signup now shows the same "check your email" state, matching the backend's uniform 202.
+
+**Backend (`backend/src/routes/auth.ts`):**
+- **G-1, exactly as ADR-0014 specifies.**
+  - Both routes take `client: z.enum(['web','mobile']).optional().default('mobile')`, so mobile builds already released are unchanged.
+  - That value is mapped server-side to `EMAIL_VERIFICATION_REDIRECT_URL_WEB` or to the existing mobile URL. A caller-supplied URL is never read; Zod strips it.
+- **No account enumeration on the signup path.**
+  - **Before:** an `auth.users` row with no `app.accounts` row (created by the pre-A-16 browser signup) made `createUser` fail. Every Supabase error was wrapped as `SupabaseUnavailableError`, so the response was a **503** for a registered address against a 202 for a new one.
+  - **New error class:** `createUser` now throws a distinct `SupabaseUserAlreadyExistsError` (`backend/src/db/supabase.ts`).
+  - **Response:** the route answers that case with the identical 202 and sends **no** email, so `/signup` cannot be used to mail-bomb an address.
+- **No account enumeration on the resend path.**
+  - **The 503 is gone.** A resend for a pending account is now best-effort. Before, a GoTrue or hook failure surfaced as a 503 that only ever happened for pending accounts.
+  - **New per-IP limit.** Resend gains a per-IP ceiling: `RESEND_VERIFICATION_IP_LIMIT`, 20 per 15 min, the same values as `NOTIFY_EMAIL_VERIFIED_IP_LIMIT`. This also discharges ADR-0014 G-6 for this route. **It is a new policy value and needs `cybersecurity-architect` ratification.**
+- **`redirect_to` query parameter (found while wiring G-1).** GoTrue reads the email-link redirect from the `redirect_to` *query* parameter, which is where supabase-js puts it. The mediation layer was sending it only in the JSON body (`/resend` as `options.emailRedirectTo`, `/recover` as `redirect_to`), where GoTrue may ignore it and fall back to the Site URL. Both calls now also send it as a query parameter.
+  - **Why it matters:** this may be what actually made F-2 and G-1 take effect in production. **Not verified live.** Include it in A-24's live reset and ADR-0014 G-4's live check.
+  - **Risk if wrong:** none. If a URL is not on the allow-list, GoTrue falls back to the Site URL, as it may do today.
+
+**Consent — semantics unchanged; referred to `compliance-specialist`, not decided here:**
+- **What is the same.** Both web forms still require the checkbox client-side, and the client now sends `consentAccepted: true`. The type is a literal `true`, so it can never be defaulted.
+- **What is new.** The backend's existing `z.literal(true)` check now applies to web signups too. Before, web signups bypassed it entirely (A-5 §12, first bullet).
+- **For compliance to judge.** The backend **validates** consent but **records no evidence of it**: there is no timestamp, notice version or IP in `app.accounts` or the audit log. Whether POPIA needs a durable consent record is `compliance-specialist`'s call. So is the status of web accounts created before this fix, which never passed the server-side check.
+
+**Tests:**
+- **Backend:** `backend/src/routes/auth.test.ts`, describe `INC-003 A-16`, 7 cases:
+  - web vs mobile redirect, mirroring F-2;
+  - smuggled `redirectTo` / `emailRedirectTo` ignored;
+  - consent still required (missing or false → 400, no user created);
+  - an identical 202 body for a new address, a registered address and an auth-only legacy user, with no mail sent in the legacy case;
+  - resend gives an identical 202 for unknown, pending and active accounts, and mails only the pending one;
+  - a send failure still returns 202;
+  - the 21st resend from one IP returns 429.
+- **Backend:** `backend/src/db/__tests__/supabase-redirect-param.test.ts` (2 cases): `redirect_to` is in the query string for `/resend` and `/recover`.
+- **Web:** `src/pages/CustomerSignupPage.test.tsx` (2 cases) and the onboarding tests: exact request bodies; `supabase.auth.signUp` / `.resend` never called; no request without consent.
+- **Guard:** the guard test fails if `.auth.signUp(` or `.auth.resend(` reappears under `src/`.
+
+**Owner action required (G-1), not done here.**
+- **What is declared.** `EMAIL_VERIFICATION_REDIRECT_URL_WEB` is declared **without a value** in `render.yaml` and `render-staging.yaml` (`sync: false`) and in `backend/.env.example`.
+- **What the project owner must do:**
+  1. In each Render environment, set it to that environment's web origin + `/auth/callback?type=signup`.
+  2. **Add that URL to Supabase Auth → URL configuration (redirect allow-list).** Otherwise GoTrue drops the redirect.
+- **Fallback if unset.** `loadEnv()` falls back to the production web callback, following the `PASSWORD_RESET_REDIRECT_URL_WEB` precedent. So staging must be set explicitly, or its links will point at the production web.
+- **Owners:** project owner + `devops-engineer`.
+
+### 18.3 ADR-0014 G-2: web logout never reached the backend. Status: fixed — pending Stage 8 review
+
+- **Fix to the client.** `logout()` in `src/customer/api/auth.ts` now goes through the authenticated client. It sends the bearer access token and, if that token has expired, refreshes once and retries. It previously sent `authenticated: false` with a body that the route ignores.
+- **Fix to sign-out.** `CustomerAuthProvider.signOut` now calls it **before** clearing the local tokens; it previously cleared them first. A re-entrancy guard stops the client's `onSessionTerminated` callback (fired if that refresh fails) from recursing.
+- **Unchanged.** The GoTrue `signOut()` (ADR-0014 W-10) is untouched; it is ADR-0014 Phase 1.
+- **Tests:** `src/customer/auth/CustomerAuthProvider.logout.test.tsx` (2 cases):
+  - `POST /session/logout` carries `Authorization: Bearer access-1`, and the stored refresh token is cleared afterwards;
+  - with an expired access token, the logout is retried with the refreshed token, so it still reaches the server.
+- **What this unblocks.** Per ADR-0014 §6, G-2 was a blocking precondition for Phase 1.
+
+### 18.4 A-20: TOTP-enrolled customers cannot reset. Status: fixed (web/backend) — pending Stage 8 review; mobile and SR-24 OPEN
+
+- **Fix: small, local, and the same mechanism as SR-6 / ADR-0012.**
+  - `POST /auth/reset-password/confirm` now applies its "verified TOTP factor → park the password, require `/mfa-verify`" branch to **every** user type with a verified factor, not only privileged ones (`backend/src/routes/auth.ts`, the `findVerifiedTotpFactor` gate).
+  - The KV handoff (`reset-mfa-pending:`), the 5-minute token, the 5-per-15-minute limit, the single-use consumption and the revoke / push / GoTrue-sign-out / audit sequence are all existing code. None of it changed.
+  - Customers without a factor still complete immediately.
+- **Enumeration.** No oracle is added: the response is only visible to someone holding a valid recovery token.
+- **Web.** The reset page already renders the TOTP step for any `mfaVerificationRequired` response, without knowing the user type (F-4/F-6). No web change was needed.
+- **Tests** (`backend/src/routes/auth.test.ts`):
+  - a customer with a verified factor gets `mfaVerificationRequired`, with no password applied and nothing revoked;
+  - a wrong code returns 400 and still applies nothing;
+  - the right code applies the password once, disables push tokens and signs out of GoTrue;
+  - the existing no-factor customer test now asserts that the factor check returns `null` and completion is immediate.
+- **Still OPEN. Not built, because each needs a decision:**
+  1. **Mobile second step. Owner: `mobile-engineer`.** `mobile/app/(auth)/reset-password.tsx:50-57` treats `mfaVerificationRequired` as a defensive error ("privileged only"). A TOTP-enrolled customer resetting **on mobile** now sees that error instead of a 503 dead end. That is still a dead end, but an honest one, and it can be completed on web. Mobile needs the same code-entry step as web F-4.
+  2. **Lost authenticator. Proposal for `backend-architect` + `cybersecurity-architect`; SR-24.** A customer who has lost their TOTP device still cannot reset by self-service, and it would be wrong to bypass MFA for them. Options to decide between:
+     - **(a) Recovery codes.** Issue them at enrolment and accept one in place of TOTP at `/mfa-verify`. They are hashed at rest and single-use. This needs a new table and enrolment UX.
+     - **(b) Support-assisted reset per SR-24.** Out-of-band proofing, dual control, a notification at initiation, a cancel window, `admin_forced` revocation, then re-enrolment. Customers would need a lighter variant of the staff process.
+     - **(c) Allow a second TOTP factor** (SR-24's own scope reduction).
+
+     I recommend (a) for customers, with (b) as the fallback. Both are design decisions and neither is built.
+  3. **Live check (GoTrue).** Confirm on the deployed project that verifying a TOTP code against the recovery session's *original* access token raises that session to AAL2, so `PUT /user` succeeds without the new token GoTrue returns from `/factors/{id}/verify`. The staff path has always relied on this. Add it to A-24's live end-to-end check for both staff and a TOTP-enrolled customer. **Owner: `devops-engineer`.**
+
+### 18.5 Test evidence (run this session)
+
+| Suite | Before this batch | After |
+|---|---|---|
+| `cd backend && npm test` | 60 files / 531 tests | **61 files / 541 tests, all passing** |
+| `cd backend && npx tsc --noEmit` | clean | clean |
+| `npx vitest run` (web) | 30 files / 134 tests | **34 files / 149 tests, all passing** |
+| `npm run typecheck` (web) | clean | clean |
+| `npm run lint` (web) | 5 errors, all pre-existing in files not touched here | Unchanged: still the same 5 pre-existing errors, and 0 errors in changed files. The new warnings are `no-non-null-assertion` in the new test files, the same pattern the existing tests use |
+
+**Status after this section:**
+- **A-14:** fixed — pending Stage 8 review.
+- **A-16:** fixed — pending Stage 8 review. The consent-evidence question goes to `compliance-specialist`. The owner sets the env var and the allow-list.
+- **G-1, G-2:** fixed — pending Stage 8 review.
+- **A-20:** backend and web fixed — pending Stage 8 review. Mobile step, SR-24 / lost-authenticator design, and the live AAL2 check are OPEN.
+- **Everything else:** unchanged from §17.3.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
