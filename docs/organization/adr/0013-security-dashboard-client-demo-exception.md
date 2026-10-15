@@ -62,6 +62,28 @@ If accepted, the exception is:
 - It does not authorize the demo to represent the dispatch model or a partner integration as
   decided — the talk track must describe the product as pre-launch and the partner as fictional.
 
+## Note (2026-10-15) — item 1 built; one real gap found, not resolved here
+
+`backend/scripts/seed-demo-security-dashboard.ts` and its teardown mode now exist (requirement 1
+below is satisfied), with 18 tests, independently re-verified clean. Building teardown surfaced a
+real gap in the Teardown section below: ADR-0006's AUD-11 reserves `admin_access_log` deletion for
+a separate, cluster-provisioned purge-user credential — the application's standard `MONGODB_URI`
+role has `find`+`insert` only, by design, so no application bug or insider can delete evidence of
+an access. If the live demo session causes the operator account to actually browse or claim any
+fake case through the real routes (the point of doing a live demo), the resulting
+`admin_access_log` rows **cannot be deleted by this script's teardown** — `deleteMatching` reports
+this distinctly (`permissionDenied: true`) rather than silently succeeding or widening the app
+credential's role to work around it.
+
+**Consequence for the go/no-go and for Teardown step 2 below:** "confirm zero rows remain for the
+demo org, the demo accounts, and the demo cases" will not fully hold for `admin_access_log` rows
+if the demo was actually exercised live. Whoever runs the go/no-go needs to explicitly accept one
+of: (a) those rows age out under the existing 12-month retention ceiling rather than being deleted
+same-day, (b) `database-architect` runs the separate purge-user credential before closing this
+ADR, or (c) the rows are tagged `legalHold`-equivalent and tracked rather than deleted. This is not
+resolved here — `database-architect` owns the choice, per the Required actions item 1 instruction
+not to decide it unilaterally.
+
 ## Required actions before this can run
 
 1. A dedicated demo seed script (or a `--demo` mode on the existing script) that: creates only the
