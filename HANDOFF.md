@@ -14,6 +14,12 @@ record. Where it disagrees with the code, **trust the code** and flag the discre
   `mobile/src/config/features.ts`, `src/lib/features.ts`, `render.yaml`, `render-staging.yaml`,
   `docs/organization/{adr,incidents,cto-status,runbooks,gates}/`, the payment/GPS scorecards, and the
   header/status blocks of every `docs/features/*` folder.
+- **Update, later 2026-10-15 (orchestrator, executed):** after the INC-003 remediation commits on
+  this branch (through `93af9a8`), **backend 541/541 tests in 61 files** and **web 149/149 in 34
+  files** pass, with `tsc --noEmit` clean for both. Mobile was **not** executed (no `node_modules`
+  in the session); no mobile files changed in those commits. INC-003 status now lives in its
+  §§12–19; ADR-0014 (A-21) is filed as **Proposed**. The note below is the original refresh
+  author's, kept for audit.
 - **No shell was available this session.** `npm test` was **not** run for backend, mobile, or web.
   **Test counts below are unverified.** What *was* counted (by file listing, not by execution):
   **58 backend test files** (`backend/src/**/*.test.ts`), **50 mobile test files**, **29 web test
@@ -224,8 +230,9 @@ run against production — ADR-0013 is Proposed).
 | 0011 | Marketing-origin privileged login — risk acceptance (R-LU-3) | Accepted 2026-09-09; **review date 2026-10-09 has passed** — no review recorded that I found |
 | 0012 | Step-up authentication for privileged actions | Accepted 2026-09-23; SU-FU-1 implemented 2026-10-02 (§9); C-4/C-5 open (block F017 D-2 Stage 8) |
 | 0013 | Security Dashboard client demo — time-boxed exception | **Proposed — NOT authorised.** Needs the business owner's present, explicit go/no-go; `cto` refused to authorise autonomously (2026-10-13). Demo seed + teardown built (2026-10-15 note); open `admin_access_log` teardown gap (AUD-11) for `database-architect`. |
+| 0014 | Web identity through backend only — remove browser supabase-js, retire exchange and published anon key (INC-003 A-21) | **Proposed** 2026-10-15; `cybersecurity-architect` concurred with conditions (INC-003 §19.4); awaiting `authentication-engineer` / `compliance-specialist` concurrence and `cto` ratification. |
 
-Reserved, no file: 0004, 0005, 0007 (FU-08 third persistence surface), **0010 (payment gateway — do not open until a sub-review artefact lands, `cto` §9 of the scorecard)**. Pending: A-21 (remove browser supabase-js) ADR from `solution-architect`.
+Reserved, no file: 0004, 0005, 0007 (FU-08 third persistence surface), **0010 (payment gateway — do not open until a sub-review artefact lands, `cto` §9 of the scorecard)**. A-21 (remove browser supabase-js) is now ADR-0014 (Proposed). Next free number: 0015.
 
 ---
 

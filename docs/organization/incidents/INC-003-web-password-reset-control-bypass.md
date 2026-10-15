@@ -1435,6 +1435,213 @@ Cites §11 (actions A-14, A-16, A-20) and §17.3 (current owner table). It also 
 
 ---
 
+## 19. Stage 8 review of §18 (A-14, A-16, G-1, G-2, A-20) and ADR-0014 concurrence (`cybersecurity-architect`, 2026-10-15)
+
+This section cites §18 and ADR-0014. §§1–18 are unaltered, and I did not edit ADR-0014.
+
+- **Evidence.** I read the shipped code myself. The orchestrator reports backend 541/541 and web 149/149 tests passing, with both typechecks clean. I did not re-run them.
+- **No code changed. Nothing committed.**
+- **ADR-0014 is filed** at `docs/organization/adr/0014-web-identity-through-backend-remove-browser-supabase-sdk.md` (Proposed, 2026-10-15). It is the A-21 draft, six days late against the register. My concurrence is §19.4. ADR-0014 §12 asks reviewers to record their position in an appended ADR section. This §19.4 is that record until it is mirrored there, and a pointer section in the ADR should cite it.
+
+### 19.1 Verdicts
+
+| Item | Verdict | Status |
+|---|---|---|
+| **A-14** | **PASS** | **Closed pending deploy check.** `security-engineer` confirms the deployed onboarding wizard writes no password to any storage |
+| **A-16** (Layer 1: our bundle) | **CONDITIONAL** | Closed pending deploy check once **C-8** is met. Layer 2 (direct GoTrue `/signup`, `/resend`, `/recover` with the anon key) is **transferred to ADR-0014 Phase 4**. It is no longer tracked as an A-16 code item |
+| **G-1** | **PASS** | Deploy gated on **C-8** |
+| **G-2** | **PASS** | **Closed pending deploy check.** A deployed web sign-out produces a `logout` audit row and revokes the backend session |
+| **`RESEND_VERIFICATION_IP_LIMIT` = 20 / 15 min** | **RATIFIED** | Policy value, owner `cybersecurity-architect` |
+| **A-20** (backend/web) | **PASS** | **Closed pending deploy check:** the §18.4 item 3 live AAL2 check, for a TOTP-enrolled customer as well as staff. The mobile step and the lost-authenticator design move to new action **A-25** |
+
+**No blocking code defect.** C-8 gates the deploy of the A-16/G-1 change. C-9 gates the *application* of A-3, not this deploy.
+
+### 19.2 Findings
+
+**A-14: the fix holds.**
+- `pendingSignupAuth` is gone.
+- Nothing under `src/` writes the legacy key. The only reference is the purge constant (`CustomerOnboardingPage.tsx:47`).
+- The password fields are cleared after signup (`:198-205`).
+- Sign-in is explicit and happens once (`:221`, `:248`).
+- **Interim note.** That sign-in still runs `loginWithPassword` → GoTrue password grant → exchange (ADR-0014 W-4) until Phase 1. Accepted as interim.
+
+**A-16 / G-1: the routes are correct and leak nothing.**
+- **Redirect.** `client` is a closed enum mapped server-side (`auth.ts:84-91`, `:208`). No caller-supplied URL is read.
+- **Signup.** A registered address, a new address and a legacy auth-only address all receive the same 202. The legacy case sends no mail (`:109-151`), and `SupabaseUserAlreadyExistsError` is keyed on GoTrue error *codes*, not strings (`db/supabase.ts:224-226`).
+- **Resend.**
+  - The per-email cooldown and ceiling are spent before the account lookup, so the 429 is uniform.
+  - Send failures are swallowed, so the 503 oracle is gone.
+  - The new per-IP ceiling runs first.
+  - Logs carry the account id only.
+- **Pre-existing residual: signup timing.** A new address costs `createUser` + DB insert + `/resend`; a known address returns at once. That gap is a timing oracle under FR-5. It predates this change, but web traffic raises its profile. Owner `backend-architect`, Low: equalise the latency, or defer the work until after the response.
+- **Pre-existing residual: PII in a log.** The signup email-failure log at `auth.ts:136-139` prints the email address. Owner `backend-architect`, Low.
+
+**Ratification of `RESEND_VERIFICATION_IP_LIMIT` (20 / 15 min).**
+- **Per-address.** Abuse is already bounded per address by the per-email cooldown and ceiling.
+- **Sweeps.** The per-IP ceiling bounds a sweep across many addresses. It mirrors `NOTIFY_EMAIL_VERIFIED_IP_LIMIT`, which suits an unauthenticated route of the same class.
+- **Shared IPs.** Carrier-grade NAT can put many users behind one address. Twenty resends per 15 min from one address is well above legitimate demand for a rare action.
+- **Status: ratified.** It may be tightened, never loosened, without re-ratification.
+- **Still open from G-6.** `/auth/verify-email` still has **no** per-IP limiter (`auth.ts:165`).
+
+**C-8 (pre-deploy for the A-16/G-1 change; owners `devops-engineer` + `mobile-architect`). The `redirect_to` query-parameter fix is not risk-free.**
+- **Why §18.2's "risk if wrong: none" does not hold.**
+  - **Before:** GoTrue very likely ignored the body-only `redirect_to` and used the Site URL, the web origin. If so, mobile users' verification and reset emails have in practice been landing on **web** and completing there.
+  - **After:** once the query parameter is honoured, **mobile users start receiving `tditinsurance://` deep links.** Those do not open on desktop. ADR-0014 G-4 also records that `mobile/app/verify-email.tsx:23` reads `token` while the hook appends `token_hash`.
+  - **Effect:** shipping this can therefore *break* mobile verification and reset in production.
+- **Classification.** This is an availability regression, not a security one. It fails closed, and allow-listing is unchanged.
+- **What must happen before deploy:**
+  1. Live end-to-end checks of a mobile-originated signup verification and a mobile-originated reset, with the new parameter. Alternatively, ship the G-4 mobile `token_hash` fix at the same time.
+  2. `EMAIL_VERIFICATION_REDIRECT_URL_WEB` set **explicitly** on staging. The fallback points at the production web.
+  3. The new URL added to the Supabase redirect allow-list.
+
+**C-9 (blocks *applying* A-3, not this deploy; owner `cto`, with `devops-engineer` and `backend-architect`). A-3's project-wide floor of 14 conflicts with the customer policy of 10.**
+- **The conflict.** A Supabase minimum of 14 applies to every user. With it applied, backend customer signup and reset for 10–13-character passwords fail at GoTrue (`weak_password`).
+- **How that fails.**
+  - `createUser` and `updateUserPassword` wrap the error as `SupabaseUnavailableError`, so the user sees **503 `UPSTREAM_UNAVAILABLE`**.
+  - On reset, that happens *after* the single-use link has been redeemed.
+- **Decision needed before A-3 is applied:** either
+  - **(a)** raise the customer minimum to 14 (permitted: "tightenable, not loosenable") and update the web and mobile hints; or
+  - **(b)** set the project floor to 10 and accept that the backend is the only authority for 14 on privileged accounts until ADR-0014 Phase 4.
+
+  I recommend **(a)**. Phase 4 is the point where Layer 2 password writes stop, so until then the floor is the only backstop on those writes.
+- **Separately, Low:** map GoTrue `weak_password` to `VALIDATION_ERROR`, not 503. Owner `backend-architect`.
+
+**G-2: the fix holds.**
+- `logout()` goes through the authenticated client with one refresh-and-retry (`src/customer/api/auth.ts:174-176`).
+- `signOut` calls it before clearing tokens, and the re-entrancy guard prevents the `onSessionTerminated` loop (`CustomerAuthProvider.tsx:66-91`).
+- The GoTrue `signOut()` still runs; it is W-10 and Phase 1 removes it.
+- ADR-0014's Phase 1 precondition on G-2 is met in code.
+
+**A-20: the fix is correct.** The gate is now "has a verified TOTP factor", for every user type (`auth.ts:969-987`). It reuses the SR-6 mechanism unchanged. The response is visible only to someone holding a valid recovery credential, so it adds no user-type oracle. A customer with no factor is unchanged. Two observations:
+- **TOTP guess amplification. This predates A-20, which extends it to customers.**
+  - **The mechanism.** `RESET_PASSWORD_MFA_VERIFY_LIMIT` is keyed per `mfaVerificationToken` (5 attempts per 15 min). Each new `/confirm` issues a fresh token.
+  - **Through emailed links:** an attacker who controls the mailbox gets about 3 links/hr (the reset-request limit) × 5 attempts, so about 15 guesses/hr.
+  - **Through `recoveryAccessToken`** (mobile legacy only, since C-7): about 5 tokens × 5 attempts per 15 min per GoTrue token.
+  - **There is no account-scoped TOTP-failure ceiling** across `/auth/mfa/challenge`, `/mfa/enroll/verify` and `/reset-password/mfa-verify`.
+  - **Recommended action. Owner `backend-architect`; detection owner `security-engineer`, tying into ADR-0012 C-4.**
+    - Add an account-keyed failure ceiling.
+    - Invalidate earlier pending reset-MFA tokens for the account when a new one is issued.
+  - **Not blocking.** It requires prior mailbox compromise, which is the scenario SR-6 defends, and the ceiling is a hardening.
+- **Lost authenticator (A-25). My position on §18.4 item 2:**
+  - **(a) Recovery codes:** concur as the primary customer path. The design must include all of the following:
+    - generated at enrolment and shown once;
+    - stored as slow hashes, single-use;
+    - using one triggers a notification and a full revocation (sessions, push, GoTrue);
+    - the user is prompted to re-enrol;
+    - an audit event that is distinct from a TOTP success.
+  - **(b) Support-assisted SR-24 variant:** concur as the fallback.
+  - **(c) A second factor:** acceptable only as an optional complement, because it does not help a user who never enrolled one.
+  - **Design review.** The (a) design needs its own Stage 8 review. It is a new credential class.
+
+### 19.3 Consequences for ADR-0014 discovered in this batch (for `solution-architect`)
+
+- **Phase 3 precondition: backfill legacy auth-only users.**
+  - **The gap.** Accounts created by browser `signUp` before this change may have an `auth.users` row and no `app.accounts` row. Today the exchange creates the row just in time (`auth.ts` exchange, `createCustomerAccount`). `/auth/signup` now answers them with a mail-less 202.
+  - **The consequence.** Once G-5 retires the exchange, these users cannot sign in or re-register.
+  - **What is needed.** Phase 3 needs either a backfill, or a just-in-time creation path in `/auth/login`, with its own review.
+- **§7 table corrections** (the author corrects in place, per the ADR's rule):
+  - A-20 is no longer "not affected"; see §18.4;
+  - A-14 is done ahead of Phase 1;
+  - A-16's Layer 1 is largely done ahead of Phase 1 (signup and resend; the W-4 onboarding sign-in remains).
+
+### 19.4 ADR-0014: `cybersecurity-architect` concurrence
+
+**Overall: CONCUR with the decision (§2 items 1–6), subject to the conditions below.** These are ratification-level comments for `cto`, not blocking defects in the ADR text.
+
+- **§3 rejections.** I concur with all four.
+  - §3.3, the proxy, is correctly rejected. A forwarding proxy *is* a published key under a new name.
+  - §3.4, removing the SDK but keeping the key, is correctly allowed only as the dated soak.
+- **§4.2 CSRF reasoning.** Concur. One addition for RR-1: FR-20 device binding gives **no** protection against XSS on web. `getOrCreateWebDeviceId` lives in the same `localStorage` as the refresh token, so a script that steals one steals both. State it in RR-1 so nobody counts it as a control.
+- **Session model (§2 item 6, §4, Q-5).** **Concur:** bearer tokens now, httpOnly cookies deferred to the §11 trigger (common registrable domain or same-origin `/api`). The cross-site reasoning is right: `vercel.app` and `onrender.com` are both public suffixes, so cookies would be third-party. Conditions:
+  1. **A-15 (CSP + `Referrer-Policy: no-referrer`) ships no later than the Phase 1 deployment.**
+     - Phase 1 makes the customer refresh token the *only* web credential (90-day cap, `localStorage`).
+     - CSP is the main control left against stealing it.
+     - I am raising A-15 from "should" to a **Phase 1 exit criterion**.
+  2. **§4.3's `sessionStorage` question is decided jointly with A-15 before Phase 4,** not left open-ended. My provisional position is to keep `localStorage`, but require refresh-token rotation (already in place) plus an absolute cap reviewed down from 90 days, once CSP is live.
+  3. **The access token stays in memory only.** Any proposal to persist it reopens this section.
+- **Q-1 (A-9 residual window). My recommendation to `cto`: explicitly ACCEPT, with a hard end date. Do not reject.**
+  - **Why rejecting does not help.** Rejection, meaning pulling web signup, **would not reduce the risk.** Layer 2 is account-level, not web-level (A-5 §8). The key is already in every shipped bundle, CDN cache and the browser history of every past visitor. Pulling signup stops new web accounts, and nothing else. Every C-1/C-8/C-9/C-10 path stays open for every existing account, mobile-only accounts included.
+  - **The real decision is the date.** The only thing that reduces the risk is Phase 4. So the question for `cto` is how soon Phase 4 happens, not whether the residual is accepted.
+  - **Conditions I attach to the acceptance:**
+    - **(i) End date.** **2026-11-30** for Phase 4, or the date `cto` sets.
+    - **(ii) Interim controls.** The acceptance is conditional on the A-22 console session completing by **2026-10-22**: Secure password change, Secure email change, rate limits, the C-9-resolved floor, the session time-box, and item 11's key-format answer.
+    - **(iii) Running controls.** It is also conditional on A-6 and the A-19 reconciliation (C-4) being run and scheduled.
+    - **(iv) Lapse rule.** If any date in (i)–(iii) slips, the acceptance **lapses automatically** and returns to `cto`. There is no silent carry-over, per A-5 §10 item 4. Each renewal is recorded in INC-003 with the reason.
+- **Phase 4 exit criteria (§6).** Strengthen them. With the old key, the following must be refused, not just `/token?grant_type=password`:
+  - `POST /signup`, `/recover`, `/resend`, `/otp`, `/verify`;
+  - `PUT /user`;
+  - `POST /factors`.
+
+  Also record that no other publishable or anon key is enabled on the project. Confirm that the `auth-send-email` hook and the backend's service-role path still work. Only then is "Layer 2 closed" demonstrated, not assumed.
+- **Phase 3.**
+  - **Add** the §19.3 backfill as a precondition.
+  - **Purge mechanism.** Choose one that does not write a per-user system "login" into `auth.audit_log_entries`, such as a time-boxed bulk revocation via `auth.sessions` maintenance or the key rotation itself. If per-user sign-out is used, `security-engineer` must record the run window so A-6-style forensics can exclude it.
+  - **The A-10 watermark stays,** per G-5. Concur.
+- **RR dispositions.**
+  - **RR-1, RR-3:** concur; I own them.
+  - **RR-4 and RR-5:** concur that they go to `cto` and A-22. RR-5 matters more after this batch, because all web signup and resend traffic now leaves from the backend's egress IP.
+  - **RR-7:** concur with the compliance referral.
+  - **RR-8:** concur, Low.
+  - **RR-9:** concur. `cto`'s go decision for Phase 4 should cite the strengthened exit criteria above.
+- **Stage 8 for the phases.** Phases 0–3 each come back to this gate, as §6 says. I will treat the Phase 1 PR's capability guard (A-11, `@supabase/` and key patterns in the bundle and lockfile) as a **required** Stage 8 check for that PR.
+
+### 19.5 INC-003 status after this commit: **OPEN**
+
+**Closed pending deploy check.** Each item moves to CLOSED when its check is recorded here.
+
+| Item | Deploy check | Owner of the check |
+|---|---|---|
+| A-10, A-23 | C-2 (§15.2 / §17.1): grants and RLS on `app.account_state_transitions` and `app.account_audit_log`; then the smoke test (customer, plus one staff MFA login and one enrolment verify) | `database-architect` + `devops-engineer` |
+| A-24 | Live web reset for a customer and for staff (staff must reach the TOTP step) | `devops-engineer` |
+| A-20 | Live AAL2 check: a TOTP-enrolled customer completes a reset via `/mfa-verify` and `PUT /user` succeeds (do it in the same run as A-24) | `devops-engineer` |
+| A-13, A-17 code limb | C-6: crafted `signup` / `magiclink` links issue no session and leave a clean URL | `security-engineer` |
+| A-14 | The deployed onboarding wizard stores no password | `security-engineer` |
+| G-2 | A deployed web sign-out reaches `/session/logout` (audit row plus revoked backend session) | `security-engineer` |
+| A-16 Layer 1, G-1 | **C-8:** live mobile verify and reset with `redirect_to` honoured, or the G-4 mobile fix shipped alongside; staging env var set explicitly; web URL allow-listed | `devops-engineer` + `mobile-architect`; project owner (allow-list) |
+
+**Still OPEN.**
+
+| ID | What remains | Owner |
+|---|---|---|
+| A-6 (P0) | Production auth-log check for prior exploitation; §7 depends on it | `security-engineer` + project owner |
+| A-3 | Floor + leaked-password protection. **Blocked on C-9** (customer minimum 10 vs floor 14) | `cto` decides C-9; then `devops-engineer` + project owner |
+| A-8 | Anon-key password grant. Interim: rate limits (A-22). Structural: ADR-0014 Phase 4 | `security-engineer` + project owner |
+| A-9 | `cto` accepts or rejects the residual window. Recommendation and conditions are in §19.4 Q-1 | `cto` |
+| A-11 | Relabel the guard; add the capability check (required at the ADR-0014 Phase 1 Stage 8) | `automation-qa-engineer` |
+| A-12 | Backend accepts any GoTrue token; mobile legacy `access_token` | `backend-architect` + `mobile-architect` |
+| A-15 | CSP + `Referrer-Policy`. **Now a Phase 1 exit criterion** (§19.4) | `frontend-architect` + `devops-engineer` |
+| A-16 Layer 2 | Transferred to ADR-0014 Phase 4. Consent-evidence and historic-account questions referred | `solution-architect` / `cto`; `compliance-specialist` |
+| A-17 console limb | C-5: withdraw (moot after Phase 1) | `cto` + `devops-engineer` |
+| A-18 | Layer 2 `PUT /user`. Console interim; Phase 4 | project owner + `devops-engineer` |
+| A-19 | C-4: non-TOTP factors | `authentication-engineer` |
+| A-19 | C-4: scheduling and alert routing | `site-reliability-engineer` |
+| A-19 | C-4: first-run triage | `security-engineer` |
+| A-21 | ADR-0014 **filed (Proposed)**. Concurrence of `cybersecurity-architect` recorded (§19.4); `authentication-engineer` and `compliance-specialist` pending; `cto` ratification (2026-10-16 target, Q-8) | `solution-architect`; `cto` |
+| A-22 | Live-config verification, including item 11 (key format) and item 6 (time-box ≤ 12 months). Must complete by **2026-10-22** for the §19.4 Q-1 acceptance to hold | `security-engineer` + project owner; `devops-engineer` records |
+| **A-25 (new)** | A-20 remainder: (i) mobile TOTP step for customer reset; (ii) customer lost-authenticator path (recovery codes primary, SR-24 variant fallback) with its own Stage 8; (iii) account-scoped TOTP-failure ceiling + invalidate earlier reset-MFA tokens (§19.2) | (i) `mobile-engineer`; (ii) `backend-architect` + `cybersecurity-architect`; (iii) `backend-architect`, detection `security-engineer` |
+| §7 | Compliance concurrence, plus the A-16 consent-evidence referral | `compliance-specialist` |
+
+**Non-blocking follow-ups**, carried from §17.3 plus this batch:
+
+| Follow-up | Owner |
+|---|---|
+| Alert routing for the propagation-failure tag | `site-reliability-engineer` |
+| IR-runbook note on system sign-outs | `security-engineer` |
+| Staff password-length retry token | `backend-architect` |
+| Partial index on revoked sessions | `database-architect` |
+| Distinct audit event for exchange-minted sessions | `backend-architect` + `security-engineer` |
+| Ban-on-suspend design | `backend-architect` |
+| Signup timing equalisation; email-address PII in the signup failure log; GoTrue `weak_password` → `VALIDATION_ERROR` | `backend-architect` |
+| Per-IP limiter on `/auth/verify-email` (G-6 remainder) | `backend-architect` |
+| Phase 3 backfill of auth-only users (§19.3) | `solution-architect` / `backend-architect` |
+
+**Closure rule (unchanged).** INC-003 closes when all of the following hold:
+- A-3 and A-6 are closed;
+- every item A-8 … A-25 is closed or has been transferred to a successor incident by `cto`;
+- `compliance-specialist` has concurred on §7.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
