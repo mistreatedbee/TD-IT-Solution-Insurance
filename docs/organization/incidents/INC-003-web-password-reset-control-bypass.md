@@ -1057,6 +1057,94 @@ Cites §13 (`cybersecurity-architect`'s Stage 8 review of `079f93c`). §§1–13
 
 ---
 
+## 15. Stage 8 re-review of §14 / commit `d38a8a5` (`cybersecurity-architect`, 2026-10-15)
+
+Cites §13 (my conditions) and §14 (`authentication-engineer`'s response). §§1–14 are unaltered. I read the shipped code myself. The orchestrator reports backend 528/528 and web 131/131 tests passing, with both typechecks clean; I did not re-run them. No code was changed and nothing is committed.
+
+### 15.1 Verdicts
+
+| Action | Verdict | Status |
+|---|---|---|
+| **A-10** | **PASS** | **Closed pending deploy check:** C-2 as extended in §15.2, plus the smoke test in §15.2 |
+| **A-23** | **PASS** (unchanged from §13) | **Closed pending deploy check** (C-2) |
+| **A-13** | **PASS** | **Closed pending deploy check** (C-6). The §13.4 recovery-CSRF residual is now closed for hook links by A-24 |
+| **A-24** | **CONDITIONAL** | Moves to closed pending deploy check once C-7 is met. The deploy check is `devops-engineer`'s live end-to-end reset, customer and staff |
+| **A-17** | Unchanged | Code limb closed. Console limb stays under C-5 |
+| **A-19** | Unchanged | **CONDITIONAL** (C-4) |
+| **A-18** | Unchanged | **OPEN** (console + A-21) |
+| §13 low items | **Accepted** | Alert tag, comment placement and the `pending_verification` skip are done. Still open: alert routing (`site-reliability-engineer`) and the IR-runbook note (`security-engineer`) |
+
+**Nothing blocks merge or deploy beyond C-2.** C-7 blocks A-24's closure only. The exposure it addresses predates this commit.
+
+### 15.2 A-10: C-1 and C-3 met; C-2 extended
+
+- **C-1 is met.**
+  - `findRevocationWatermark` now also reads `max(created_at)` of `password_reset_completed` and `session_family_revoked` in `app.account_audit_log` (`repositories/sessions.ts:155-169`).
+  - `auditLog.record` is an awaited `INSERT` that throws on failure (`repositories/audit-log.ts:177-185`). So the source is not written best-effort.
+  - Both reset completion paths now propagate to GoTrue (`auth.ts:937-941`, `1018-1022`).
+  - The zero-live-row test exists.
+  - §14.1's extension to an already-closed family under SR-8/FR-20 is correct, and I accept it.
+- **C-3 is met.** The `recoveryAccessToken` branch runs the stale-session check before the length check and before any GoTrue write (`auth.ts:890-896`). A stale token returns `RESET_TOKEN_INVALID`, the same code as an unknown account, so the check adds no oracle.
+- **C-2 is extended. Owners: `database-architect` + `devops-engineer`. Required before deploy.** Run all checks as the backend's connection role.
+  1. **Privileges.** `has_table_privilege(current_user, 'app.account_state_transitions', 'SELECT')` and the same for `'app.account_audit_log'`. A missing grant fails **closed** with a 5xx on every exchange, which breaks all customer web sign-in. Fix it with a grant migration, never by changing the code to fail open.
+  2. **Row-level security. This is new, and it is the more dangerous failure.** Migration 030 shows that `app.*` tables in this schema use RLS. If RLS is enabled on either table, and the backend role is not the owner, not `bypassrls`, and has no permissive policy, then the `max()` subqueries silently return `NULL`. The watermark would then quietly lose that source. That **fails open**: D-1 comes back with no error and no log line. Check `relrowsecurity` for both tables and the role's `rolbypassrls` or the applicable policies.
+  3. **Smoke test** on the deployed backend. Use a test customer with zero live sessions. Complete a reset, then confirm that a pre-reset GoTrue token is refused at `/auth/supabase/exchange` with 401 `REFRESH_TOKEN_INVALID`. This is the only check that proves items 1 and 2 end to end.
+
+  Record the results in this document. A-10 and A-23 become CLOSED on that record.
+- **The 12-month audit purge is an accepted residual. Owner: `cybersecurity-architect`.** Once the purge deletes the audit row, a reset older than 12 months stops counting. It matters only for a GoTrue session older than 12 months that survived the GoTrue sign-out the reset itself now performs. **Dependency:** A-22 item 6 must set the GoTrue session time-box to **at most 12 months**. If the console cannot do that, this residual reopens as a condition on A-10.
+- **Low, non-blocking (owner `backend-architect`).**
+  - **Propagation order.** On both reset paths, propagation runs after the audit insert. If the insert throws, the password has changed and no GoTrue sign-out happens. Move propagation ahead of the audit write, or make the two independent.
+  - **MFA-completion re-check.** Re-checking the watermark when an exchange-issued MFA challenge or enrolment completes is still recommended, per §13.3.
+
+### 15.3 A-24: the link path is correct; the legacy fallback must go (C-7)
+
+- **The link path is correct.**
+  - **No browser session is involved.** The page reads `token_hash`, `type` and `email`, scrubs the URL, and refuses anything that is not a recovery link. It submits to the `resetToken` branch, and `verifyRecoveryToken` redeems the token server-side. There is no `getSession` and no `signOut` on this path.
+  - **The callback no longer redeems recovery links** (`CustomerAuthCallbackPage.tsx:110-121`). So for hook links, a forged recovery link no longer plants a browser session.
+- **C-7 (required for A-24 closure; owner `authentication-engineer`). Delete the `getSession()` fallback** (`CustomerResetPasswordPage.tsx:105-118`), or keep it only after A-12's server-side `amr=recovery` check has landed. §14.3 says the fallback covers non-hook link formats. By the code, no legitimate flow reaches it:
+  - **(a) Hook links never reach it.** They arrive with `token_hash`, so the link path (step 1) or router state (step 2) handles them.
+  - **(b) A GoTrue default-template recovery link cannot produce a session here either.**
+    - It would arrive as an implicit `#access_token`, because the backend's `/recover` call carries no PKCE challenge.
+    - `takeRecoveryLinkFromUrl` scrubs the fragment before `getSupabase()` is ever called on this page.
+    - The client is configured `flowType: 'pkce'` (`src/customer/supabase/client.ts:31-37`), and supabase-js refuses implicit callbacks in that mode. I am treating that refusal as version-dependent, but either of these two facts is enough on its own.
+  - **(c) PKCE `code` links never reach it.** The callback treats them as verification only and signs out.
+  - **What the fallback actually returns.** The only session `getSession()` can return here is a **persisted ordinary login session**: `persistSession: true`, and `signInWithPassword` leaves the GoTrue session in `localStorage` after the exchange.
+  - **Why that is exploitable.** The backend accepts any GoTrue token as `recoveryAccessToken`; that is A-12. So anyone at a logged-in browser, or any XSS, can open `/reset-password` directly and set a customer's password with no old password and no proof of mailbox control. C-3 does not stop this, because the session is fresh.
+  - **Severity.** This is not a regression: 079f93c behaved the same way. But the fallback now serves only that path, so A-24 does not close while it remains.
+  - **Test required.** A persisted non-recovery session, with no link and no router state, must yield `no-session`.
+- **Router-state token residency is an accepted residual. Recommended fix, non-blocking.**
+  - **The residual.** `history.state` is never cleared after the page reads it. Browser session-restore can persist it to disk, so an unredeemed `token_hash` can outlive the tab for up to GoTrue's OTP expiry. It is single-use and bound to the email address, and it never appears in the URL or a `Referer`, which is a clear improvement over §13.5.
+  - **The fix.** Once the token is copied into component state, call `navigate(location.pathname, { replace: true, state: null })`. If the user reloads, they reopen the email link, which is still unredeemed.
+- **Minor (non-blocking).** For recovery links, the callback falls back to `loadSignupEmail()` (`CustomerAuthCallbackPage.tsx:92-96`) when the URL carries no email. GoTrue binds the token to the address, so a mismatched address can only fail; it cannot be misused. Still, use the URL email only, so a shared browser cannot pick up another person's stored address.
+
+### 15.4 Staff password-length catch: accepted residual, fails closed
+
+- **The ordering is correct.** Redeeming the token before checking the length is required by F-6. Checking the length first, from email plus a bogus token, would be a user-type oracle that needs no proof of the mailbox.
+- **The cost is availability only.** A 10–13-character staff password spends the link. The staff member has to request another one, which consumes the 3-per-hour reset quota. No security control is weakened.
+- **Recommended fix. Owner `backend-architect`, Low.**
+  - When a successful redemption is followed by `VALIDATION_ERROR`, park the redeemed GoTrue access token in KV under a short-lived, single-use retry token. That is the same pattern `reset-mfa-pending:` already uses.
+  - This creates no oracle, because the caller has already proved possession of the token.
+  - Until then, the web hint stays at 10. **Do not raise it per user type.** Raising it uniformly to 14 is a product call, not a security requirement.
+- **Message wording (minor).** The page's "this link can only be used once" message is shown on every failure (`CustomerResetPasswordPage.tsx:203-207`). Some failures happen before the link is redeemed: `RATE_LIMITED`, network errors and `UPSTREAM_UNAVAILABLE`. Show the message only on `VALIDATION_ERROR`, `RESET_TOKEN_EXPIRED` or `RESET_TOKEN_INVALID`.
+
+### 15.5 Register effect
+
+- **Closed pending deploy check:**
+  - **A-10, A-23:** C-2 as extended in §15.2: grants, RLS and the smoke test.
+  - **A-13:** C-6.
+  - **A-17 code limb.**
+- **A-24 joins that list once C-7 is met.** It then also needs `devops-engineer`'s live end-to-end check.
+- **Still OPEN:**
+  - A-17 console limb (C-5);
+  - A-19 (C-4);
+  - A-18;
+  - A-12, which C-7 depends on unless the fallback is deleted;
+  - the §15.2 retention dependency on A-22 item 6.
+
+INC-003 overall remains **OPEN**.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
