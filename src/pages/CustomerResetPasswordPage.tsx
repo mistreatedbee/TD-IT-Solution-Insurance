@@ -6,7 +6,6 @@ import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { resetPasswordConfirm, resetPasswordMfaVerify, type ResetCredential } from '../customer/api/auth';
 import { ApiError } from '../customer/api/errors';
 import { mapUserFacingError } from '../lib/user-facing-errors';
-import { getSupabase } from '../customer/supabase/client';
 
 // FR-15 / INC-003 F-6: this is a UX hint only, matching the customer
 // minimum. The backend is the sole authority on the real minimum, which is
@@ -99,23 +98,20 @@ export function CustomerResetPasswordPage() {
     const state = (location.state ?? null) as ResetLinkRouterState | null;
     if (state?.resetToken && state.email) {
       setCredential({ kind: 'link', resetToken: state.resetToken, email: state.email.trim().toLowerCase() });
+      // INC-003 §15.3: clear it from history.state at once, so an unredeemed
+      // token is not persisted by session-restore. A reload means reopening
+      // the (still unredeemed) email link.
+      navigate(location.pathname, { replace: true, state: null });
       setStep('password');
       return;
     }
-    // 3. Legacy fallback: a browser recovery session established elsewhere
-    // (e.g. a GoTrue-default-template link). Only read here to hand the
-    // backend a bearer credential (INC-003 F-3); removable with A-21.
-    void getSupabase()
-      .auth.getSession()
-      .then(({ data }) => {
-        if (!mountedRef.current) return;
-        const token = data.session?.access_token ?? null;
-        setCredential(token ? { kind: 'session', recoveryAccessToken: token } : null);
-        setStep(token ? 'password' : 'no-session');
-      })
-      .catch(() => {
-        if (mountedRef.current) setStep('no-session');
-      });
+    // INC-003 §15.3 C-7: no other path. The former getSession() fallback was
+    // deleted outright: the only session it could ever find here was an
+    // ordinary persisted LOGIN session, and the backend accepts any GoTrue
+    // token as recoveryAccessToken (A-12) — so a logged-in browser or any XSS
+    // could set a new password with no old password and no mailbox proof.
+    // Without a recovery link there is nothing to submit.
+    setStep('no-session');
     // Run once on mount: the URL is scrubbed by the first run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -143,20 +139,11 @@ export function CustomerResetPasswordPage() {
   const mfaChallengeExpired = mfaSecondsRemaining === 0;
 
   async function endAndRedirectToLogin() {
-    // INC-003 F-7: the backend already revokes every session
-    // (`sessions.revokeAllForAccount` + push-token sweep) on a completed
-    // reset. Never auto-sign-in from here — clear the local Supabase
-    // recovery session too, so nothing lingers client-side, and send the
-    // user to a normal login.
-    // The link path (A-24) never creates a browser session, so there is
-    // nothing to clear and no reason to touch supabase-js at all.
-    if (credential?.kind === 'session') {
-      try {
-        await getSupabase().auth.signOut();
-      } catch {
-        /* best-effort local cleanup only */
-      }
-    }
+    // INC-003 F-7: the backend already revokes every session (backend rows,
+    // GoTrue sessions, push tokens) on a completed reset. Never auto-sign-in
+    // from here — send the user to a normal login. The link path (A-24)
+    // never creates a browser session, so there is nothing to clear and this
+    // page does not touch supabase-js at all (C-7).
     navigate('/login', { replace: true });
   }
 
@@ -196,12 +183,15 @@ export function CustomerResetPasswordPage() {
     } catch (err) {
       const message = mapUserFacingError(err, { context: 'password-reset' });
       // A recovery link is single-use: the backend redeems it with GoTrue
-      // before it can check the password against the account's minimum, so
-      // any failure after submission means the link is spent. Say so,
-      // rather than inviting a retry that can only fail. (Server stays the
-      // only length authority — F-6.)
+      // before it can check the password against the account's minimum
+      // (F-6), so these failures mean the link is spent. Failures that
+      // happen BEFORE redemption (rate limit, network, upstream outage)
+      // leave it usable and must not say otherwise (INC-003 §15.4).
+      const linkSpent =
+        err instanceof ApiError &&
+        (err.code === 'VALIDATION_ERROR' || err.code === 'RESET_TOKEN_EXPIRED' || err.code === 'RESET_TOKEN_INVALID');
       setPasswordError(
-        credential.kind === 'link'
+        linkSpent
           ? `${message} For your security this reset link can only be used once — request a new link to try again.`
           : message,
       );

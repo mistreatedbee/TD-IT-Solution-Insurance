@@ -1145,6 +1145,79 @@ INC-003 overall remains **OPEN**.
 
 ---
 
+## 16. Response to §15: C-7, router-state clearing, propagation order, callback email, MFA-completion re-check (`authentication-engineer`, 2026-10-15)
+
+Cites §15 (`cybersecurity-architect`'s re-review of `d38a8a5`). §§1–15 are unaltered. The code is in the working tree and **not committed**. **Every item below is fixed — pending Stage 8 re-review.** None is CLOSED. Not touched, per tasking: C-2 (grants, RLS and the smoke test), C-4, C-5, C-6, the console items, and the §15.4 server-side retry token (`backend-architect`).
+
+### 16.1 C-7: `getSession()` fallback deleted outright
+
+- **Fix.** `src/pages/CustomerResetPasswordPage.tsx` now has exactly two credential sources: the recovery link in the URL, or the router-state handoff from `/auth/callback`. With neither, the page renders "Reset link required".
+  - The `getSession()` branch has been deleted, not gated. This page no longer imports `getSupabase` at all.
+  - `signOut()` was removed as well; the link path never creates a browser session.
+- **The capability is removed from the API client too.** `ResetCredential` in `src/customer/api/auth.ts` is now link-only. The web client has no code path left that can submit a browser GoTrue session as `recoveryAccessToken`.
+- **Tests:** `src/pages/CustomerResetPasswordPage.test.tsx`.
+  - Every test now runs with a **persisted ordinary login session** present in the mocked supabase client.
+  - The new case §15.3 C-7 covers "logged-in session, no link, no router state". It asserts:
+    - the page shows "Reset link required";
+    - there is no password form and no "Update password" button;
+    - `getSession` is never called;
+    - `fetch` is never called.
+  - The happy path asserts the request body is `{ email, resetToken, newPassword }` with no `recoveryAccessToken`, and that neither `getSession` nor `signOut` is called.
+
+### 16.2 Router-state token cleared from history
+
+- Once the page has copied the token into component state, it calls `navigate(location.pathname, { replace: true, state: null })`.
+- **Test:** a location-state probe asserts the state becomes `null` once the form is shown.
+- A reload therefore lands on "Reset link required", and the user reopens the email link, which is still unredeemed.
+
+### 16.3 GoTrue sign-out now runs before the audit insert, on both reset paths
+
+- **Where.** On both reset paths (`backend/src/routes/auth.ts`: the customer branch of `/confirm`, and the `/mfa-verify` completion), `propagateRevocationToGoTrue` now runs **before** the `password_reset_completed` insert.
+- **What is unchanged.** The insert is still awaited and still throws on failure, so a failed insert still returns 5xx.
+- **Test** (`auth.test.ts`, "§15.2: GoTrue sign-out runs BEFORE the audit insert"): with the audit insert forced to fail, it asserts:
+  - the response is 500;
+  - the sign-out call is recorded before the failed insert.
+
+### 16.4 Callback uses only the URL's email for recovery links
+
+- **Fix.** The recovery branch of `src/pages/CustomerAuthCallbackPage.tsx` now reads the email only from the link's own query or fragment. It never falls back to `loadSignupEmail()`.
+- **Test:** a stored signup email belonging to someone else, plus a recovery link with no email, leads to the "Link problem" state and no `verifyOtp` call.
+
+### 16.5 §15.4 wording fix (minor)
+
+- **Fix.** The "this reset link can only be used once" text is now shown only on `VALIDATION_ERROR`, `RESET_TOKEN_EXPIRED` or `RESET_TOKEN_INVALID`.
+- **Test:** a `RATE_LIMITED` failure does not show it.
+
+### 16.6 MFA-completion re-check (§13.3 / §15.2 optional item): done
+
+The fix was small and local, so I did it. Both handlers now re-run `isGoTrueSessionStale(pending.userAccessToken, findRevocationWatermark(accountId))` **before** the TOTP challenge or verify:
+- `POST /auth/mfa/challenge` (`backend/src/routes/auth.ts`). A stale token invalidates the challenge and returns 410 `MFA_CHALLENGE_EXPIRED`.
+- `POST /mfa/enroll/verify` (`backend/src/routes/mfa.ts`). A stale token clears the pending enrolment and returns `MFA_ENROLLMENT_NOT_FOUND`. No factor is verified, no `mfa_enrolled` audit row is written, and no session is minted.
+
+Tests:
+- `auth.test.ts`, "an exchange-issued MFA challenge cannot be completed after a revocation lands": no `verifyTotpFactor` call and no tokens are returned.
+- `auth.test.ts`, "an enrolment cannot be completed … after a revocation lands mid-enrolment".
+
+The login path is unaffected. `/auth/login` always passes a fresh password-grant token, which is newer than any watermark.
+
+### 16.7 Test evidence (run this session)
+
+| Suite | After §14 | After §16 |
+|---|---|---|
+| `cd backend && npm test` | 60 files / 528 tests | **60 files / 531 tests, all passing** |
+| `cd backend && npx tsc --noEmit` | clean | clean |
+| `npx vitest run` (web) | 30 files / 131 tests | **30 files / 134 tests, all passing** |
+| `npm run typecheck` (web) | clean | clean |
+| `npm run lint` (web) | 5 errors, all pre-existing in files not touched here | unchanged; the changed web files lint clean |
+
+**Status after this section:**
+- **A-24 (C-7 met):** fixed — pending Stage 8 re-review. After that it still needs `devops-engineer`'s live end-to-end reset, customer and staff.
+- **A-10:** the §15.2 low items (propagation order, MFA-completion re-check) are done — pending re-review. Deploy is still gated on C-2 as extended in §15.2 (grants, RLS, smoke test).
+- **A-12:** no longer on A-24's critical path for the web, because the web client can no longer submit a `recoveryAccessToken`. It stays OPEN for the mobile deep link and for the backend's acceptance of any GoTrue token (`backend-architect`).
+- **Everything else:** unchanged from §15.5.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*

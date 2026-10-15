@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CustomerResetPasswordPage } from './CustomerResetPasswordPage';
 
@@ -8,8 +8,10 @@ function jsonResponse(body: unknown, status = 200, headers?: Record<string, stri
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers }));
 }
 
+// INC-003 §15.3 C-7: the browser holds an ordinary persisted LOGIN session
+// in every test below. The page must never read or use it.
 const signOutMock = vi.fn().mockResolvedValue({ error: null });
-let sessionAccessToken: string | null = 'recovery-access-token-1';
+let sessionAccessToken: string | null = 'persisted-login-session-token';
 const getSessionMock = vi.fn(() =>
   Promise.resolve({
     data: { session: sessionAccessToken ? { access_token: sessionAccessToken } : null },
@@ -25,9 +27,13 @@ vi.mock('../customer/supabase/client', () => ({
   }),
 }));
 
-function renderPage() {
+const LINK_QUERY = '?token_hash=hash-abc&type=recovery&email=user%40example.com';
+
+/** Renders the page as reached from a genuine recovery email link (A-24). */
+function renderPage(query: string = LINK_QUERY) {
+  window.history.replaceState(null, '', `/reset-password${query}`);
   return render(
-    <MemoryRouter initialEntries={['/reset-password']}>
+    <MemoryRouter initialEntries={[`/reset-password${query}`]}>
       <Routes>
         <Route path="/reset-password" element={<CustomerResetPasswordPage />} />
         <Route path="/login" element={<div>Login page</div>} />
@@ -51,7 +57,7 @@ function codeInput(): HTMLInputElement {
 
 describe('CustomerResetPasswordPage (INC-003 F-3/F-4/F-6/F-7)', () => {
   beforeEach(() => {
-    sessionAccessToken = 'recovery-access-token-1';
+    sessionAccessToken = 'persisted-login-session-token';
     signOutMock.mockClear();
     getSessionMock.mockClear();
   });
@@ -61,18 +67,34 @@ describe('CustomerResetPasswordPage (INC-003 F-3/F-4/F-6/F-7)', () => {
     window.history.replaceState(null, '', '/');
   });
 
-  it('shows the "request a new link" state when no recovery session exists', async () => {
+  it('shows the "request a new link" state when there is no recovery link', async () => {
     sessionAccessToken = null;
-    renderPage();
+    renderPage('');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Reset link required' })).toBeInTheDocument());
   });
 
-  it('customer happy path: calls confirm with the recovery access token, then redirects to /login with no auto-sign-in', async () => {
+  it('§15.3 C-7: a logged-in browser session alone can NEVER reach the password form or submit', async () => {
+    // A persisted ordinary login session exists (sessionAccessToken is set),
+    // but there is no link in the URL and nothing in router state.
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage('');
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Reset link required' })).toBeInTheDocument());
+    expect(screen.queryByRole('heading', { name: 'Choose a new password' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Update password' })).not.toBeInTheDocument();
+    expect(document.querySelectorAll('input[type="password"]')).toHaveLength(0);
+    expect(getSessionMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('customer happy path: calls confirm with the link token (never a browser session), then redirects to /login with no auto-sign-in', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       expect(url).toContain('/auth/reset-password/confirm');
       expect(init?.headers).toMatchObject({ 'Idempotency-Key': expect.any(String) });
       const body = JSON.parse(String(init?.body));
-      expect(body).toEqual({ recoveryAccessToken: 'recovery-access-token-1', newPassword: 'longenoughpassword' });
+      expect(body).toEqual({ email: 'user@example.com', resetToken: 'hash-abc', newPassword: 'longenoughpassword' });
+      expect(body.recoveryAccessToken).toBeUndefined();
       return jsonResponse({ message: 'Password reset complete.', allSessionsRevoked: true });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -86,12 +108,12 @@ describe('CustomerResetPasswordPage (INC-003 F-3/F-4/F-6/F-7)', () => {
     await user.type(confirm, 'longenoughpassword');
     await user.click(screen.getByRole('button', { name: 'Update password' }));
 
-    // F-7: no auto-sign-in — the local Supabase session is torn down and the
-    // page redirects straight to a normal login, never establishing a
-    // session itself (no call to `auth.signInWithTokens` or the exchange
-    // endpoint exists anywhere in this component).
+    // F-7: no auto-sign-in — the page redirects straight to a normal login,
+    // never establishing a session itself, and (C-7) never touches the
+    // browser's GoTrue session at all.
     await waitFor(() => expect(screen.getByText('Login page')).toBeInTheDocument());
-    expect(signOutMock).toHaveBeenCalledTimes(1);
+    expect(signOutMock).not.toHaveBeenCalled();
+    expect(getSessionMock).not.toHaveBeenCalled();
   });
 
   it('does not gate on the server-side privileged minimum client-side (F-6): a 12-char password is submitted, and a VALIDATION_ERROR is rendered verbatim rather than inferring user type', async () => {
@@ -155,7 +177,7 @@ describe('CustomerResetPasswordPage (INC-003 F-3/F-4/F-6/F-7)', () => {
     await user.click(screen.getByRole('button', { name: 'Verify and finish' }));
 
     await waitFor(() => expect(screen.getByText('Login page')).toBeInTheDocument());
-    expect(signOutMock).toHaveBeenCalledTimes(1);
+    expect(signOutMock).not.toHaveBeenCalled();
   });
 
   it('surfaces the mfa-verify rate limit (5/15min) as a real UI state, not a silent failure', async () => {
@@ -280,6 +302,48 @@ describe('CustomerResetPasswordPage (INC-003 F-3/F-4/F-6/F-7)', () => {
       await user.click(screen.getByRole('button', { name: 'Update password' }));
       await waitFor(() => expect(screen.getByText('Login page')).toBeInTheDocument());
       expect(getSessionMock).not.toHaveBeenCalled();
+    });
+
+    it('§15.3: the router-state token is cleared from history state as soon as it is read', async () => {
+      sessionAccessToken = null;
+      let lastState: unknown = 'unset';
+      function StateProbe() {
+        lastState = useLocation().state;
+        return null;
+      }
+      render(
+        <MemoryRouter
+          initialEntries={[{ pathname: '/reset-password', state: { resetToken: 'hash-from-callback', email: 'user@example.com' } }]}
+        >
+          <StateProbe />
+          <Routes>
+            <Route path="/reset-password" element={<CustomerResetPasswordPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await waitFor(() => screen.getByRole('heading', { name: 'Choose a new password' }));
+      await waitFor(() => expect(lastState).toBeNull());
+    });
+
+    it('§15.4: a failure BEFORE redemption (rate limit) does not claim the link is spent', async () => {
+      sessionAccessToken = null;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(() =>
+          jsonResponse({ error: { code: 'RATE_LIMITED', message: 'Too many requests. Please try again later.' } }, 429, {
+            'Retry-After': '60',
+          }),
+        ),
+      );
+      const user = userEvent.setup();
+      renderWithLink('?token_hash=hash-abc&type=recovery&email=user%40example.com');
+      await waitFor(() => screen.getByRole('heading', { name: 'Choose a new password' }));
+      const { password, confirm } = passwordInputs();
+      await user.type(password, 'longenoughpassword');
+      await user.type(confirm, 'longenoughpassword');
+      await user.click(screen.getByRole('button', { name: 'Update password' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Update password' })).not.toBeDisabled());
+      expect(screen.queryByText(/can only be used once/)).not.toBeInTheDocument();
     });
 
     it('a failed submission tells the user the single-use link is spent', async () => {

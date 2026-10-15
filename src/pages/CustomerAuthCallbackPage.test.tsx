@@ -131,7 +131,9 @@ describe('CustomerAuthCallbackPage (INC-003 A-13 / A-17)', () => {
     expect(window.location.search).toBe('');
   });
 
-  it('A-24: a recovery link without the email is refused', async () => {
+  it('A-24 / §15.3: a recovery link without the email is refused — the stored signup email is never used', async () => {
+    // Another person's signup email is stored in this (shared) browser.
+    sessionStorage.setItem('td-signup-email', 'someone-else@example.com');
     renderAt('/auth/callback?token_hash=hash-4&type=recovery');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Link problem' })).toBeInTheDocument());
     expect(verifyOtpMock).not.toHaveBeenCalled();

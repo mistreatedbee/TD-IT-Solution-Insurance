@@ -14,6 +14,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
+import { isGoTrueSessionStale } from '../lib/gotrue-session-revocation.js';
 import { apiError } from '../lib/errors.js';
 import { validateBody } from '../lib/validation.js';
 import { createOptionalAuthenticateMiddleware } from '../middleware/authenticate.js';
@@ -164,6 +165,15 @@ export function createMfaRouter(ctx: AppContext): Router {
         });
         if (!attempt.allowed) {
           next(apiError('RATE_LIMITED', undefined, attempt.resetSeconds));
+          return;
+        }
+
+        // INC-003 §13.3/§15.2: same time-of-check/time-of-use re-check as
+        // /auth/mfa/challenge — an enrolment issued from a GoTrue session that
+        // has since been revoked must not complete (or mint a session).
+        if (isGoTrueSessionStale(pending.userAccessToken, await ctx.sessions.findRevocationWatermark(pending.accountId))) {
+          await clearPendingVerification(ctx.kv, enrollmentId);
+          next(apiError('MFA_ENROLLMENT_NOT_FOUND'));
           return;
         }
 

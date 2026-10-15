@@ -685,6 +685,16 @@ export function createAuthRouter(ctx: AppContext): Router {
         return;
       }
 
+      // INC-003 §13.3/§15.2 (time-of-check/time-of-use): a revocation that
+      // lands between the exchange/login issuing this challenge and its
+      // completion must still win. Re-check the watermark against the GoTrue
+      // token the challenge was issued for.
+      if (isGoTrueSessionStale(pending.userAccessToken, await ctx.sessions.findRevocationWatermark(pending.accountId))) {
+        await invalidateMfaChallenge(ctx.kv, mfaChallengeToken);
+        next(apiError('MFA_CHALLENGE_EXPIRED'));
+        return;
+      }
+
       let verified: boolean;
       try {
         verified = await ctx.supabase.verifyTotpFactor(pending.userAccessToken, pending.factorId, pending.gotrueChallengeId, code);
@@ -931,14 +941,16 @@ export function createAuthRouter(ctx: AppContext): Router {
         // receiving this account's notifications (incl. theft_critical)
         // straight through the legitimate owner's reset.
         await ctx.pushTokens.disableAllForAccount(account.id);
-        await ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_completed', ipAddress: clientIp(req) });
-        // INC-003 §13 C-1: terminate every GoTrue session too (defence in
-        // depth; the audit row above is what advances the watermark).
+        // INC-003 §13 C-1 / §15.2: terminate every GoTrue session BEFORE the
+        // audit insert, so a failing insert (which still throws -> 5xx) can
+        // never leave the password changed with no GoTrue sign-out. The
+        // audit row below is what advances the watermark.
         await propagateRevocationToGoTrue(
           ctx.supabase,
           { accountId: account.id, email: account.email, accountState: account.accountState },
           'password_reset',
         );
+        await ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_completed', ipAddress: clientIp(req) });
         notifyInBackground(
           'auth.password.changed',
           ctx.authNotifications.notifyPasswordChanged({ accountId: account.id }),
@@ -1013,13 +1025,13 @@ export function createAuthRouter(ctx: AppContext): Router {
         // (MFA-gated) completion path, and it must not skip the push-token
         // sweep just because the account also required a TOTP step.
         await ctx.pushTokens.disableAllForAccount(account.id);
-        await ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_completed', ipAddress: clientIp(req) });
-        // INC-003 §13 C-1: same as the customer branch of /confirm.
+        // INC-003 §13 C-1 / §15.2: same ordering as the customer branch of /confirm.
         await propagateRevocationToGoTrue(
           ctx.supabase,
           { accountId: account.id, email: account.email, accountState: account.accountState },
           'password_reset',
         );
+        await ctx.auditLog.record({ accountId: account.id, eventType: 'password_reset_completed', ipAddress: clientIp(req) });
         notifyInBackground(
           'auth.password.changed',
           ctx.authNotifications.notifyPasswordChanged({ accountId: account.id }),

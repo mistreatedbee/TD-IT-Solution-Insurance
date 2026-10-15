@@ -114,10 +114,14 @@ export function CustomerAuthCallbackPage() {
             // Hand the token to /reset-password in router state (never the
             // URL); it submits it to the backend's server-side resetToken
             // verification.
-            if (!signupEmail) {
+            // INC-003 §15.3: the address must come from the link itself,
+            // never the stored signup email (a shared browser could hold
+            // someone else's).
+            const linkEmail = params.get('email') ?? hashParams.get('email');
+            if (!linkEmail) {
               throw new Error('This link is invalid or has expired.');
             }
-            navigate('/reset-password', { replace: true, state: { resetToken: tokenHash, email: signupEmail } });
+            navigate('/reset-password', { replace: true, state: { resetToken: tokenHash, email: linkEmail } });
             return;
           }
           try {

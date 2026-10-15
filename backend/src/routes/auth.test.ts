@@ -575,7 +575,11 @@ describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermar
 
   const RESET_PASSWORD = 'a-brand-new-customer-password';
 
-  function fakeSupabase(validTokens: Set<string>, calls: string[]): SupabaseAdmin {
+  function fakeSupabase(
+    validTokens: Set<string>,
+    calls: string[],
+    opts: { hasFactor?: boolean; signOutFails?: boolean } = {},
+  ): SupabaseAdmin {
     const notUsed = (name: string) => (): never => {
       throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
     };
@@ -585,11 +589,16 @@ describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermar
       deleteUser: notUsed('deleteUser'),
       verifyPassword: notUsed('verifyPassword'),
       enrollTotpFactor: notUsed('enrollTotpFactor'),
-      challengeTotpFactor: notUsed('challengeTotpFactor'),
-      verifyTotpFactor: notUsed('verifyTotpFactor'),
+      async challengeTotpFactor() {
+        return { challengeId: 'gotrue-challenge-1' };
+      },
+      async verifyTotpFactor(_t, _f, _c, code) {
+        calls.push('verifyTotpFactor');
+        return code === '123456';
+      },
       async findVerifiedTotpFactor() {
         calls.push('findVerifiedTotpFactor');
-        return null;
+        return opts.hasFactor ? { factorId: 'factor-1' } : null;
       },
       async updateUserPassword(_token, password) {
         expect(password).toBe(RESET_PASSWORD);
@@ -611,6 +620,7 @@ describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermar
       mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
       async signOutAllUserSessions(email) {
         calls.push(`signOutAllUserSessions:${email}`);
+        if (opts.signOutFails) throw new Error('gotrue down');
       },
     };
   }
@@ -632,7 +642,10 @@ describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermar
     };
   }
 
-  async function start(tokens: string[], opts: { stateTransitionAt?: Date } = {}) {
+  async function start(
+    tokens: string[],
+    opts: { stateTransitionAt?: Date; hasFactor?: boolean; auditFailsOn?: string } = {},
+  ) {
     const calls: string[] = [];
     const accounts = createFakeAccountsRepo({
       id: ACCOUNT_ID,
@@ -643,13 +656,23 @@ describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermar
       partnerOrganizationId: null,
     });
     const auditLog = createTimedAuditLog();
+    if (opts.auditFailsOn) {
+      const original = auditLog.record.bind(auditLog);
+      auditLog.record = async (event) => {
+        if (event.eventType === opts.auditFailsOn) {
+          calls.push(`auditFailed:${event.eventType}`);
+          throw new Error('audit insert failed');
+        }
+        return original(event);
+      };
+    }
     const sessions = createFakeSessionRepo({
       stateTransitionWatermark: () => opts.stateTransitionAt ?? null,
       auditWatermark: () => auditLog.latestWatermarkEvent(),
     });
     const ctx = buildMinimalCtx({
       accounts: accounts as unknown as AppContext['accounts'],
-      supabase: fakeSupabase(new Set(tokens), calls),
+      supabase: fakeSupabase(new Set(tokens), calls, { hasFactor: opts.hasFactor }),
       sessions,
       auditLog: auditLog as unknown as AppContext['auditLog'],
       pushTokens: { disableAllForAccount: async () => 0 } as unknown as AppContext['pushTokens'],
@@ -792,6 +815,60 @@ describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermar
       const accepted = await confirmReset(baseUrl, fresh);
       expect(accepted.response.status, JSON.stringify(accepted.body)).toBe(200);
       expect(calls).toContain('updateUserPassword');
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('§15.2: GoTrue sign-out runs BEFORE the audit insert, and a failing insert still fails the request', async () => {
+    const recovery = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'otp', timestamp: nowSec() }] });
+    const { server, baseUrl, calls } = await start([recovery], { auditFailsOn: 'password_reset_completed' });
+    try {
+      const reset = await confirmReset(baseUrl, recovery);
+      expect(reset.response.status).toBe(500);
+      const signOutAt = calls.indexOf(`signOutAllUserSessions:${EMAIL}`);
+      const auditAt = calls.indexOf('auditFailed:password_reset_completed');
+      expect(signOutAt).toBeGreaterThanOrEqual(0);
+      expect(auditAt).toBeGreaterThan(signOutAt);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('§15.2: an exchange-issued MFA challenge cannot be completed after a revocation lands', async () => {
+    const token = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 60 }] });
+    const { server, baseUrl, sessions, calls } = await start([token], { hasFactor: true });
+    try {
+      const first = await exchange(baseUrl, token);
+      expect(first.response.status, JSON.stringify(first.body)).toBe(200);
+      expect(first.body.mfaRequired).toBe(true);
+
+      // Owner revokes everything while the attacker sits on the challenge.
+      await sessions.insertNew({
+        id: randomUUID(),
+        accountId: ACCOUNT_ID,
+        refreshTokenHash: 'h',
+        deviceId: null,
+        deviceName: null,
+        ipAddress: null,
+        userAgent: null,
+        familyId: randomUUID(),
+        expiresAt: new Date(Date.now() + 60_000),
+        absoluteExpiresAt: new Date(Date.now() + 60_000),
+        mfaVerifiedAt: null,
+      });
+      await sessions.revokeAllForAccount(ACCOUNT_ID, 'logout_all');
+
+      const response = await fetch(`${baseUrl}/auth/mfa/challenge`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mfaChallengeToken: first.body.mfaChallengeToken, code: '123456' }),
+      });
+      const body = (await response.json()) as Record<string, unknown>;
+      expect(response.status, JSON.stringify(body)).toBe(410);
+      expect((body.error as { code?: string }).code).toBe('MFA_CHALLENGE_EXPIRED');
+      expect(body.accessToken).toBeUndefined();
+      expect(calls).not.toContain('verifyTotpFactor');
     } finally {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
@@ -1144,6 +1221,50 @@ describe('POST /auth/login SR-14 forced-re-enrollment (api-design.md §11 Amendm
     const secondEnrollBody = (await secondEnrollAttempt.json()) as { error?: { code: string } };
     expect(secondEnrollAttempt.status).toBe(401);
     expect(secondEnrollBody.error?.code).toBe('ENROLLMENT_TICKET_INVALID');
+  });
+
+  it('INC-003 §15.2: an enrolment cannot be completed (or mint a session) after a revocation lands mid-enrolment', async () => {
+    const loginBody = (await (
+      await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: TEST_EMAIL, password: TEST_PASSWORD }),
+      })
+    ).json()) as { enrollmentTicket: string };
+    const enrollBody = (await (
+      await fetch(`${baseUrl}/mfa/enroll`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enrollmentTicket: loginBody.enrollmentTicket }),
+      })
+    ).json()) as { enrollmentId: string };
+
+    // An account-wide revocation (e.g. logout-all from another device) lands
+    // before the code is entered.
+    await ctx.sessions.insertNew({
+      id: randomUUID(),
+      accountId,
+      refreshTokenHash: 'other-device',
+      deviceId: null,
+      deviceName: null,
+      ipAddress: null,
+      userAgent: null,
+      familyId: randomUUID(),
+      expiresAt: new Date(Date.now() + 60_000),
+      absoluteExpiresAt: new Date(Date.now() + 60_000),
+      mfaVerifiedAt: null,
+    });
+    await ctx.sessions.revokeAllForAccount(accountId, 'logout_all');
+
+    const verifyResponse = await fetch(`${baseUrl}/mfa/enroll/verify`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+      body: JSON.stringify({ enrollmentId: enrollBody.enrollmentId, code: '123456' }),
+    });
+    const verifyBody = (await verifyResponse.json()) as { accessToken?: string; error?: { code: string } };
+    expect(verifyBody.error?.code, JSON.stringify(verifyBody)).toBe('MFA_ENROLLMENT_NOT_FOUND');
+    expect(verifyBody.accessToken).toBeUndefined();
+    expect(auditLog.events.some((e) => e.eventType === 'mfa_enrolled')).toBe(false);
   });
 });
 

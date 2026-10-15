@@ -95,26 +95,20 @@ export interface ResetPasswordConfirmResult {
 }
 
 /**
- * What `/reset-password` submits as proof of recovery.
- * - `link` (INC-003 A-24, preferred): the email link's `token_hash` + email,
- *   verified server-side by the backend's `resetToken` branch — no browser
- *   recovery session ever exists.
- * - `session` (INC-003 F-3, legacy fallback): the access token of a browser
- *   recovery session; goes away with A-21.
+ * What `/reset-password` submits as proof of recovery: the email link's
+ * `token_hash` + email, verified server-side by the backend's `resetToken`
+ * branch (INC-003 A-24). The web client deliberately has NO way to submit a
+ * browser GoTrue session as `recoveryAccessToken` any more (INC-003 §15.3
+ * C-7): the only such session a browser holds is an ordinary login session.
  */
-export type ResetCredential =
-  | { kind: 'link'; resetToken: string; email: string }
-  | { kind: 'session'; recoveryAccessToken: string };
+export type ResetCredential = { kind: 'link'; resetToken: string; email: string };
 
 /** `POST /auth/reset-password/confirm`. */
 export async function resetPasswordConfirm(
   credential: ResetCredential,
   newPassword: string,
 ): Promise<ResetPasswordConfirmResult> {
-  const body =
-    credential.kind === 'link'
-      ? { email: credential.email, resetToken: credential.resetToken, newPassword }
-      : { recoveryAccessToken: credential.recoveryAccessToken, newPassword };
+  const body = { email: credential.email, resetToken: credential.resetToken, newPassword };
   return apiFetch<ResetPasswordConfirmResult>('/auth/reset-password/confirm', {
     method: 'POST',
     body,
