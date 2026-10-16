@@ -67,15 +67,31 @@ function loadJson(path) {
 }
 
 // --- 1. Discover the full set of EXPO_PUBLIC_FEATURE_* flags the app reads ---
+// INC-004: Expo only inlines a literal `process.env.EXPO_PUBLIC_*` member access at bundle
+// time. The old `featureEnabled('EXPO_PUBLIC_FEATURE_X')` string form read `process.env[key]`
+// dynamically, which is NOT inlined, so every gated flag silently shipped ON. Discovery now
+// requires the static form, and the legacy string form is reported as a violation.
+const MIN_EXPECTED_FLAGS = 7;
+
 function discoverFlags() {
-  const content = readFileSync(featuresPath, 'utf8');
+  // Strip comments first so explanatory text (e.g. a note quoting `process.env[key]`) is not scanned as code.
+  const content = readFileSync(featuresPath, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
   const flags = new Set();
   for (const match of content.matchAll(
-    /featureEnabled\(\s*['"](EXPO_PUBLIC_FEATURE_[A-Z0-9_]+)['"]\s*,?\s*\)/g,
+    /featureEnabled\(\s*process\.env\.(EXPO_PUBLIC_FEATURE_[A-Z0-9_]+)\s*,?\s*\)/g,
   )) {
     flags.add(match[1]);
   }
-  return [...flags].sort();
+  const dynamicReads = [];
+  for (const match of content.matchAll(/featureEnabled\(\s*['"]([^'"]+)['"]\s*,?\s*\)/g)) {
+    dynamicReads.push(match[1]);
+  }
+  if (/process\.env\s*\[/.test(content)) {
+    dynamicReads.push('process.env[...]');
+  }
+  return { flags: [...flags].sort(), dynamicReads };
 }
 
 // --- 2. Resolve eas.json build profiles, following `extends` per-key merge ---
@@ -154,7 +170,18 @@ function loadManifestWaiversByFlag() {
 }
 
 function main() {
-  const flags = discoverFlags();
+  const { flags, dynamicReads } = discoverFlags();
+  const discoveryErrors = [];
+  if (dynamicReads.length > 0) {
+    discoveryErrors.push(
+      `features.ts reads flags dynamically (${dynamicReads.join(', ')}); Expo does not inline these, so they ship fail-open. Use a literal process.env.EXPO_PUBLIC_FEATURE_* access (INC-004).`,
+    );
+  }
+  if (flags.length < MIN_EXPECTED_FLAGS) {
+    discoveryErrors.push(
+      `only ${flags.length} flag(s) discovered in features.ts; at least ${MIN_EXPECTED_FLAGS} are expected. A check that finds nothing must fail, not pass (INC-004).`,
+    );
+  }
   const profiles = loadProfiles();
   const waiversByFlag = loadManifestWaiversByFlag();
 
@@ -193,6 +220,13 @@ function main() {
   );
 
   let failed = false;
+
+  if (discoveryErrors.length > 0) {
+    failed = true;
+    for (const message of discoveryErrors) {
+      console.error(`[verify-eas-feature-flags] FAIL — ${message}`);
+    }
+  }
 
   if (missingFlagErrors.length > 0) {
     failed = true;
