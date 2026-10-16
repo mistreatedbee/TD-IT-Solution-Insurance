@@ -1096,6 +1096,224 @@ the ordering caveat disclosed at the top of this section.
 
 ---
 
+## 18. `compliance-specialist` independent concurrence (2026-10-16, satisfies I-2)
+
+Written by a session dispatched as an independent instance of `compliance-specialist`, per `cto`'s
+condition I-2 (§16.1). It cites §§1.3, 2, 5, 6, 9 (RR-7), 12, 15 and 16. It was checked against the
+working tree on `main` at `3ca8e03`. §§1–17 are unaltered.
+
+**How the review was done.** I read the sources in this order: §§1–13 of this ADR; Feature 001
+`business-requirements.md` §§3, 4 and 9; `10-data-protection-contract-obligations.md` §§1–10; the
+CT-1 letter as sent; ADR-0006 §0 and AUD-1…AUD-12; `PrivacyPolicyPage.tsx`; and the backend
+signup, verify, resend, notify-email-verified and account-repository code. I formed the findings in
+18.2–18.6 before I read §15's text. Two facts about the order, stated so `cto` can weigh them: a
+heading listing of this file, taken to find §§1–13, showed §15's subsection titles. My dispatch
+message also summarised §15's RR-7 conclusion in one sentence. I read §15's body only after the
+source reading, and §17 only to place this section.
+
+**Verdict: CONCUR WITH CONDITIONS.** I independently reach §15's conclusions on every point. On
+three points I amend them (18.2, 18.4, 18.6). None of the amendments reverses the decision, and none
+blocks anything this ADR does. **§15.2's RR-7 ruling may now be cited, but only together with 18.2,
+which narrows what it establishes.** This section discharges **I-2**.
+
+### 18.1 What I verified in code (on `main`, `3ca8e03`)
+
+- **The consent gate exists but leaves no trace.** `consentAccepted: z.literal(true)` is at
+  `backend/src/routes/auth.ts:80`. Nothing persists it: there is no `consent` match anywhere in
+  `backend/src` outside that schema line, its tests and the unrelated location-consent log.
+  `createCustomerAccount` (`backend/src/repositories/accounts.ts:197-207`) inserts id, type, state and
+  email only.
+- **The checkbox copy.** It reads *"I agree to the Terms of Service and Privacy Policy"*
+  (`src/pages/CustomerSignupPage.tsx:157-167`) and *"I agree to the Terms and Privacy Policy"*
+  (`src/pages/onboarding/CustomerOnboardingPage.tsx:438-441`). It is a single, mandatory box.
+- **The linked notice.** `src/pages/PrivacyPolicyPage.tsx:37-41` says the policy *"does not yet
+  cover every type of processing an account involves."*
+- **Web signup and resend already go through the backend** (A-16: `src/customer/api/auth.ts:48-57`
+  sends `consentAccepted` and `client: 'web'`). Web **login** on the onboarding wizard still uses
+  `signInWithSupabase` and the exchange (`CustomerAuthProvider.tsx:177`). The GoTrue session in
+  `localStorage` is therefore still live for that path.
+- **Four writers create a customer account or activate it, and none of them writes an audit row:**
+  - `/auth/signup` (`auth.ts:129`);
+  - `/auth/verify-email` (`:189`);
+  - `/auth/notify-email-verified`, which **creates** the `app.accounts` row for a GoTrue-only user
+    (`:337`) and activates it (`:342`);
+  - the exchange (`:410`), until Phase 3 removes it.
+
+  `markEmailVerified` (`accounts.ts:262-268`) changes `pending_verification` to `active` and writes
+  no `app.account_state_transitions` row. `AuditEventType` (`audit-log.ts:41-63`) has no creation or
+  verification member.
+- **Unverified identities are never deleted.** I found no deletion or retention job for accounts
+  that are never verified, nor for GoTrue users that have no `app.accounts` row, in `backend/src` or
+  `backend/migrations`. The code itself states that such orphans exist (`auth.ts:116-126`).
+- **The backend does not pass the end user's IP to GoTrue.** `backend/src/db/supabase.ts` has no
+  forwarded-IP header.
+- **Two log lines carry a plaintext email address:** `auth.ts:136-139` (signup email failure) and
+  `:357-360` (notify-email-verified). Both go to Render's logs. The resend route at `:250-253` logs
+  the account id instead.
+
+### 18.2 RR-7: I concur with the lawful-basis ruling, and narrow what it establishes
+
+**Agreed, reached independently.**
+- Feature 001 §9.2 rules that customer account creation runs on **POPIA s11(1)(b)**: processing
+  necessary for actions to conclude a contract the data subject is seeking. It does not run on
+  consent.
+- §9.2 also forbids treating a bundled, mandatory tick as consent. The shipped checkbox is exactly
+  that: one mandatory box covering the terms and the privacy policy. So it **cannot be s11(1)(a)
+  consent on any cohort.** What it can be is evidence that the user accepted the terms and saw the
+  notice.
+- The historic GoTrue-direct web cohort therefore does **not** lack a lawful basis because it
+  skipped the server-side `z.literal(true)` check. That check was never the basis.
+- §15.2's further point is also correct. Because the backend stores nothing, **no account on any
+  client** holds durable evidence of accepting the terms. The gap is platform-wide (PM-5). It is not
+  specific to the web cohort.
+
+**Amendment 1: scope. "Not unlawful on that account" covers s11 only.** POPIA lawfulness requires
+all eight conditions in Chapter 3, and s18 (openness) is **not** met for any account on any cohort:
+- the only notice linked at signup states that it does not cover account processing;
+- the account notice (`compliance-review-supabase.md` C-7) remains unshipped.
+
+This does not make the historic cohort worse than any other cohort. It does mean that no document
+may cite §15.2 or this section as "historic accounts are POPIA-compliant." The correct statement is:
+*"the s11 lawful basis for account creation does not depend on the consent checkbox, for any
+cohort; the s18 notice remains owed for every cohort under C-7."* The CT-1 §9.3 containment (no
+real customer PII until CT-1 closes) is what keeps this a pre-go-live gap and not a live one. I
+cannot verify from the repository that the containment has held.
+
+**Amendment 2: s11(1)(b) assumes the data subject started the signup. For never-verified accounts,
+nothing shows that.**
+- **Why the basis is weak there.** s11(1)(b) covers processing done *at the data subject's
+  request*. A signup can be submitted for someone else's address through the backend
+  (`consentAccepted: true` is just a field in the request) or through Layer 2 (C-3). Until the
+  address holder verifies, nothing shows they asked for anything.
+- **Why §15.2's remedy does not reach them.** Asking for acceptance at next sign-in never reaches
+  an address holder who never verifies and never signs in.
+- **The remedy is retention limitation (s14), not consent.** That is condition **CS-4** below. It
+  applies to every client and every route, not only the web cohort.
+- **Verified accounts are different.** Verifying is an act by the address holder. For them,
+  s11(1)(b) together with the PM-5 re-acceptance is sufficient, as §15.2 says.
+
+**Amendment 3: under the operator framing, this ruling is our analysis and the Client adopts it.**
+- **The ruling predates the contract framing.** Feature 001 §9.2 (2026-08) was written as if the
+  platform were the responsible party. Under TDIT-2026-09 the Client is the responsible party and
+  NextWave is the operator (`10-data-protection-contract-obligations.md` §1). The responsible party
+  chooses the lawful basis.
+- **The conclusion stands either way.** It does not change if the Client adopts it.
+- **It must still be recorded.** `11-documented-client-instructions.md` does not mention the lawful
+  basis for account creation. Recorded as a referral to the CT-4 follow-up (**CS-5**).
+
+**PM-5 copy constraint (my authority over consent and disclosure copy).** When PM-5 builds the
+versioned acceptance record, it must replace the single box with two distinct elements:
+- an acceptance of the **Terms of Service**, which is the contract;
+- an acknowledgement that the user has **read the Privacy Notice**, which is s18.
+
+Neither may be worded as "agree to the Privacy Policy." Users read a privacy notice; they do not
+agree to it. Wording it as an agreement repeats the consent/notice confusion that RR-7 grew out of.
+
+### 18.3 CS-1 and CS-2: still accurate. Re-affirmed, with CS-1's scope corrected
+
+- **CS-1: accurate.** The union has no creation or verification event, and the routes write none
+  (18.1). **Scope correction:** CS-1 as written names three routes. It must cover **every writer in
+  18.1**, including `/auth/notify-email-verified` (`:337`, `:342`) and the exchange (`:410`) while
+  it lives. Otherwise the route that backfills historic GoTrue-only accounts leaves no trace of the
+  backfill. Where the write goes (route or repository) is `backend-architect`'s call. Two
+  constraints apply:
+  - the uniform-response rule (SR-006-2) binds `/auth/notify-email-verified` exactly as it binds
+    signup;
+  - the write must not create a timing difference between branches.
+- **CS-1 retention: I concur with 12 months for the IP/user-agent-bearing audit rows.** I add one
+  recommendation, which does not block Phase 1:
+  - **The issue.** Activation is a BR-5 state change.
+    `compliance-review-supabase.md` §6.1.2 puts state transitions on a separate, longer FU-04 clock.
+    Activation should therefore also be written to `app.account_state_transitions`. The schema
+    appears to allow a null actor: the watermark query at `sessions.ts:160-161` filters
+    `actor_account_id is not null`.
+  - **Why it matters.** Without that row, "when did this account become active" cannot be
+    answered after 12 months, because `markEmailVerified` overwrites only `updated_at`.
+  - **Owner.** `database-architect`, decided with FU-04.
+- **CS-2: accurate, and more urgent than when written.**
+  - **Status of A-6.** The INC-003 register still shows A-6 as **OPEN** (INC-003 line 224). Yet
+    `main` contains the `e646fbc` merge, whose backend sign-out writes system "login" rows into
+    `auth.audit_log_entries` (INC-003 §20.2).
+  - **What I cannot verify.** I cannot tell from the repository whether the A-6 queries or a table
+    export ran before that merge.
+  - **If they did not.** The pollution CS-2 guards against has already started at small scale, and
+    the export is due now, not at Phase 3.
+  - **Addition to CS-2.** Phase 3's purge will be run by a human holding a privileged credential
+    against the identity store. Record it the way INC-003 §21 recorded production access: who ran
+    it, which credential, what ran, the time window and the number of affected users. Do it under
+    the CT-4 instruction regime. Do not pass a production credential through agent chat (§21's
+    standing rule).
+
+### 18.4 CT-1: no conflict. One forward note on the CT-1b addendum
+
+- **Route, not location.** I agree with §15.3. CT-1 §B ¶3 item 4 says web data "is fetched live
+  from item 1". That is inaccurate today for customer web login only, because the browser calls
+  item 2 directly. The error is in the route, not the location. Item 2 (Supabase, Frankfurt) was
+  scheduled, no operator is added, and the consent sought for items 1, 2, 5 and 6 is unaffected.
+- **No corrective letter is needed.**
+- **The schedule stays inside what was sought after Phase 1:**
+  - Supabase will see the backend's egress IP, not the data subject's. That narrows item 2.
+  - Plaintext signup passwords will transit item 1, as mobile's already do.
+  - CS-1's new audit rows are "IP addresses … authentication audit records", already listed in
+    item 2.
+
+  No supplementary disclosure is triggered.
+- **Forward note on CT-1b.** If the CT-1b signed addendum is executed **before** Phase 1 deploys,
+  its annexed schedule should carry one accurate line on item 4: until Phase 1, customer web sign-in
+  contacts item 2 directly. §A of the letter sets the standard: "a consent obtained on a wrong
+  schedule is not consent to what we actually do." The error does not change the scope of consent,
+  but a signed annex should not repeat a known inaccuracy.
+
+### 18.5 ADR-0006: no conflict. I agree with §15.5
+
+- **ADR-0006 is not engaged.** It governs privileged access to another account's data, and this
+  ADR adds no privileged read path.
+- **The effect is positive.** After Phase 1 every web customer session is backend-minted, so
+  AUD-1's `actorSessionId` is always available. AUD-4's server-derived-identifier rule loses a
+  parallel GoTrue session that it never governed.
+- **Caveat on CS-1's rows.** They will be written by a credential that INC-003 §21 found to be
+  `rolbypassrls` and able to `UPDATE`/`DELETE` the audit table. AUD-11 is unenforced, as RR-6 of
+  ADR-0006 already records. CS-1 is still required. Until SR-3 lands, though, its rows are not
+  tamper-evident, and no s23 response or s22 scoping may present them as if they were.
+
+### 18.6 Privacy notice, Phase 3/4 notices, and INC-003 §7
+
+- **Privacy notice.** I concur with §15.4, including the forward constraint that C-7 must describe
+  the post-Phase-1 flow.
+- **Phases 3 and 4.** I concur that neither phase needs notice to data subjects under s18 or to the
+  Client under clause 19. Both are security measures that change no purpose, recipient, location or
+  data category.
+- **INC-003 §7.** §15.7 states a working s19 position and correctly disclaims it as not a
+  determination on §7. I re-affirm that disclaimer and do not extend it. INC-003 §7 stays open until
+  A-6 returns.
+- **Amendment.** §15.7 treats `cto`'s 2026-11-30 A-9 date as the Layer 2 s19 remediation date. That
+  holds only while the A-9 acceptance holds. Its condition (ii) is the A-22 console session by
+  **2026-10-22**, and A-6 has no recorded run (18.3). If 2026-10-22 passes without that session, the
+  acceptance lapses, and the s19 position returns to "engaged, no dated remediation" on that date.
+  It does not wait for 2026-11-30.
+
+### 18.7 Conditions
+
+| ID | Condition | Owner | When |
+|---|---|---|---|
+| **CS-1** *(re-affirmed, scope corrected, 18.3)* | Audit events for account creation and activation. Write them from **every** writer in 18.1, including `/auth/notify-email-verified` and the exchange while it lives. Uniform-response and timing constraints apply. 12-month retention | `backend-architect` + `database-architect` | Phase 1 exit (unchanged) |
+| **CS-2** *(re-affirmed, extended, 18.3)* | Before any purge, run the A-6 and A-22 item 12 queries or export the table. Use a mechanism that writes no per-user "login" rows, or record the run window. **Added:** an INC-003 §21-style execution record. **Urgency raised:** if A-6 did not run before the `e646fbc` merge, export now | `security-engineer` + project owner; `devops-engineer` | Phase 3 precondition; export **now** |
+| **CS-3** *(new, recommended)* | Replace the plaintext email in `auth.ts:136-139` and `:357-360` with the account id, as `:250-253` already does. Phase 1 sends all web signup traffic through `:136-139` | `backend-engineer` | Phase 1. Non-blocking |
+| **CS-4** *(new, 18.2 Amendment 2)* | **Retention for never-verified identities.** Delete any customer account still in `pending_verification` 30 days after its last verification email. Also delete any GoTrue user with no confirmed email and no `app.accounts` row 30 days after creation. Both the `app.accounts` row and the `auth.users` row go. Use an automated, logged job, per Feature 001 §9.3's method. The 30-day figure is my ruling as operator, to go into the CT-4 instruction set for the Client's adoption | `database-architect` + `backend-architect` | Before the CT-1 containment lifts (go-live). Not a Phase 1 criterion |
+| **CS-5** *(new, referral)* | Record the s11(1)(b) basis for customer account creation, with 18.2's narrowing, in the CT-4 documented-client-instructions follow-up for the Client's adoption | `compliance-specialist` + `cto` | With the next CT-4 revision |
+| PM-5 copy constraint | Two separate elements, terms acceptance and privacy-notice acknowledgement, never "agree to the Privacy Policy" (18.2) | `compliance-specialist` with `ui-designer` | When PM-5 is built |
+| CS-1b *(recommendation)* | Also record activation in `app.account_state_transitions` on the FU-04 clock (18.3) | `database-architect` | With FU-04 |
+
+**Signed:** `compliance-specialist`, independent session, 2026-10-16. **CONCUR WITH CONDITIONS.**
+- I independently reach §15's conclusions on RR-7, CS-1, CS-2, CT-1, ADR-0006 and Phases 3 and 4.
+- RR-7 is narrowed by 18.2. Cite this section together with §15.2, never §15.2 alone.
+- CS-1 and CS-2 are re-affirmed, with CS-1's scope corrected and CS-2 extended.
+- CS-3, CS-4 and CS-5 are added. None reverses the decision, and none blocks ratification or
+  Phase 1, except that CS-1 remains a Phase 1 exit criterion.
+- This section discharges **I-2**.
+
+---
+
 *Filed by `solution-architect`, 2026-10-15, as INC-003 action A-21 (draft). This document is shared
 and append-only once committed. Reviewers respond in new sections that cite the section they address.
 The author corrects their own sections in place, keeping superseded text marked void.*
