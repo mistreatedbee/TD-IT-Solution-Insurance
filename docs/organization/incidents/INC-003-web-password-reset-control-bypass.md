@@ -2734,6 +2734,81 @@ Stage 10 (§29.5) is unaffected by this review and still pending.
 
 ---
 
+## 31. C-12 / B-1 fix: GoTrue-verified identity binding on reset and verify, and `RESET_COMPLETION_FAILED` (`backend-engineer`, 2026-10-16)
+
+**Scope.** This section responds to §30.2 B-1, §30.3 C-12, and the first §30 advisory (post-redemption 5xx).
+The changes are uncommitted on `main` (base `6da3401`). **Every item below is pending Stage 8 review**
+(`cybersecurity-architect`) and implementation verification (`security-engineer`, per §30). I made no changes to
+`mobile/` code or `src/` web code. The only file I touched under `mobile/` is the OpenAPI contract.
+
+### 31.1 How accounts link to GoTrue users
+
+`app.accounts.id` is the GoTrue `auth.users.id`, with the same primary key. See
+`docs/features/001-authentication/architecture/data-model-approach.md` §38. The code relies on the same
+convention: `createCustomerAccount(created.userId, …)` and `findById(supabaseUser.userId)` in `routes/auth.ts`.
+So the binding check is `account.id === <GoTrue-returned user id>`.
+
+### 31.2 What changed
+
+| Item | Change (file) |
+|---|---|
+| GoTrue user id surfaced | `verifySignupToken` used to return `boolean`. It now returns `{ userId: string \| null } \| null`. `verifyRecoveryToken`'s `userId` is now `string \| null`. Both read `user.id` defensively and never assume it is present. (`backend/src/db/supabase.ts`) |
+| `/auth/reset-password/confirm` | The account is now resolved by the **verified** GoTrue user id (`findById`), never by the client email. The route then requires `account.id === verifiedUserId` **and** `account.email === submitted email`. This applies to both branches: `resetToken` uses `recovery.userId`, and `recoveryAccessToken` uses `getUserFromAccessToken().userId`. On a mismatch the route returns `RESET_TOKEN_INVALID` (404), which is the same response as "no such account". (`backend/src/routes/auth.ts`) |
+| No side effects on mismatch | The check runs before the factor lookup, the MFA park, `updateUserPassword`, `revokeAllForAccount`, push-token disable, GoTrue sign-out, the audit write and the notification. None of these run, for either account. |
+| No enumeration | The account is resolved from the token holder's own verified id, so the response cannot depend on whether the submitted (victim) email is registered. The test asserts that the status, code and message are identical for a registered and an unregistered email. |
+| Alert | `[ALERT:recovery_identity_mismatch]` is logged via `console.warn`. It carries `route`, `requestId`, `verifiedUserId`, `accountId` and `submittedEmailAccountId`: **ids only, never an email, token or password.** The test asserts this. The tags are exported as constants (`RECOVERY_IDENTITY_MISMATCH_LOG_TAG` / `RECOVERY_IDENTITY_UNBOUND_LOG_TAG`). |
+| Missing user id: fail closed | If GoTrue accepts the token but returns no `user.id` (on either route), the backend does nothing to any account and returns the route's invalid/expired error. It logs `[ALERT:recovery_identity_unbound]`. **On `/confirm` that link is already consumed.** The user must request a new one. This is deliberate: fail closed beats acting on an unbound email. |
+| MFA-deferred path | The parked `reset-mfa-pending:*` KV record now carries `verifiedUserId`. Before any TOTP challenge or verify call, token consumption or side effect, `/mfa-verify` requires that `verifiedUserId` is present, equals the MFA token's `accountId`, and equals the resolved account's id. If the id is missing (a record parked before this change, or a tampered record), the result is unbound → `RESET_TOKEN_INVALID`. A mismatch also returns `RESET_TOKEN_INVALID`, with the mismatch alert. **Rollout note:** a reset parked for TOTP at the moment of deploy (a TTL-bounded window) fails closed, and that user must restart the reset. |
+| `/auth/verify-email` | Same pattern. The account is resolved by `verified.userId`. If its email differs from the submitted one, the route returns `RESET_TOKEN_EXPIRED` (410, its existing invalid/expired error). No `markEmailVerified` and no welcome notification run, and the mismatch alert fires. A missing id fails closed in the same way, with the unbound alert. If the token holder's GoTrue user has no app account, the route still returns 200 with no side effects, as before. |
+| §30 advisory | A new catalogue code, `RESET_COMPLETION_FAILED` (500). On `/confirm`'s `resetToken` branch, any non-4xx error thrown **after** GoTrue redeemed the link is converted to this code, and the original cause is logged server-side. Examples are a GoTrue password write failure, a DB or KV failure, an audit insert failure, or a factor-lookup outage. Pre-redemption errors are unchanged (`UPSTREAM_UNAVAILABLE` 503 / `INTERNAL_ERROR` 500), and so are post-redemption 4xx such as `VALIDATION_ERROR`. The `recoveryAccessToken` branch is unchanged, because nothing single-use is consumed on it. (`backend/src/lib/errors.ts`, `routes/auth.ts`) |
+| Contract | `mobile/openapi/identity-service.yaml` `/auth/reset-password/confirm` now documents `500 RESET_COMPLETION_FAILED` (do not offer a retry with the same link) and states that its 503 is pre-redemption and retryable. |
+
+### 31.3 Tests
+
+There are 10 new tests in `backend/src/routes/auth.test.ts`, in the describe block "INC-003 C-12 / B-1". Their
+fakes model G-4 `token_hash` semantics: GoTrue ignores the email. That is the configuration in which the old
+implicit binding disappears. The tests cover:
+
+- `/confirm`: a hash for A submitted with B's email. Every side effect is asserted absent (password write, session
+  revoke, push disable, GoTrue sign-out, audit, notification, MFA park), and the alert contains ids only.
+- The mismatch response is identical to the response for an unregistered email.
+- The matching case completes and touches A only.
+- A response with no user id fails closed.
+- The `recoveryAccessToken` branch: a GoTrue user who is not B cannot act on B.
+- The MFA path: a mismatch parks nothing, and the matching case parks `verifiedUserId` and completes for A.
+- The MFA completion re-check: a tampered or missing `verifiedUserId` fails closed with zero TOTP calls and no side
+  effects.
+- `/verify-email`: the mismatch case, and the matching case together with the no-id case.
+- `RESET_COMPLETION_FAILED`: a post-redemption GoTrue failure and a post-redemption DB failure each return it. A
+  pre-redemption 503 and a post-redemption 400 are unchanged.
+
+**Mutation check:** I reverted the binding to `findByEmail` and disabled the MFA re-check. 7 of the 10 new tests
+then failed. I restored the code before the final run.
+
+**Results:** `cd backend && npm test`: **65 files, 643/643 passed** (633 before this change, +10).
+`npx tsc --noEmit`: clean. `eslint` on the changed files: 0 errors (non-null-assertion warnings only, in the
+existing style).
+
+### 31.4 Residuals and hand-offs
+
+- **Mobile (`mobile-engineer`), not done here by instruction.** `reset-password.tsx` should map
+  `RESET_COMPLETION_FAILED` to "your link may have been used; try signing in with your new password" and drop the
+  link, not offer a retry. Until it does, the code is handled as a generic 500.
+- **`/mfa-verify` has the same post-consumption pattern.** It consumes the MFA token before
+  `updateUserPassword`, so a 5xx after that point is also non-retryable. It was outside the §30 advisory's
+  wording and is left unchanged. I recommend the same mapping as a follow-up.
+- **The C-9 `weak_password` → `VALIDATION_ERROR` mapping (`backend-architect`) is still open.** Until it lands, a
+  GoTrue weak-password rejection on `/confirm` now surfaces as `RESET_COMPLETION_FAILED`, not as a retryable 503.
+  That is accurate for the client (the link is spent), but it is still not the right user message.
+- **The live G-4 `/verify` check (§30 C-8 precondition (a)) is unaffected.** This change makes the backend safe
+  under either call shape.
+- **C-12 status: implemented, pending Stage 8 review and `security-engineer` verification.** C-11 and C-13 are
+  untouched.
+
+**Signed:** `backend-engineer`, 2026-10-16. Pending Stage 8.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*

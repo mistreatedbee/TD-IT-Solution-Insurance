@@ -717,7 +717,30 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
-        '503': { $ref: '#/components/responses/UpstreamUnavailable' }
+        '500':
+          description: >
+            `RESET_COMPLETION_FAILED` (INC-003 §30 advisory / §31): a server-side
+            failure AFTER GoTrue redeemed the single-use reset link (resetToken
+            branch). The link is consumed, so retrying it cannot succeed, and
+            the password may or may not have been changed. Clients must not
+            offer "try again" with the same link; suggest signing in with the
+            new password or requesting a new reset link. Other 500s
+            (`INTERNAL_ERROR`) are pre-redemption.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: >
+            `UPSTREAM_UNAVAILABLE`. On the resetToken branch this is returned
+            only BEFORE the reset link is redeemed (GoTrue /verify
+            unreachable), so it is safe to retry with the same link. On the
+            recoveryAccessToken branch nothing single-use is consumed, so it is
+            also retryable. See api-design.md §6.
+          headers:
+            Retry-After: { $ref: '#/components/headers/RetryAfter' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /auth/reset-password/mfa-verify:
     post:

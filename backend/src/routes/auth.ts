@@ -6,7 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { resolveCustomerAccountAfterSupabaseAuth } from '../lib/sync-email-verification.js';
-import { apiError } from '../lib/errors.js';
+import { ApiError, apiError } from '../lib/errors.js';
 import { validateBody, isPasswordValidForUserType } from '../lib/validation.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 import {
@@ -40,6 +40,41 @@ import { isGoTrueSessionStale, propagateRevocationToGoTrue } from '../lib/gotrue
 import { notifyInBackground } from '../lib/customer-notification-service.js';
 import { notifyNewDeviceLoginIfNeeded } from '../lib/auth-login-notifications.js';
 import { scheduleCustomerLifecycleNotifications } from '../lib/customer-lifecycle-notifications.js';
+
+/**
+ * INC-003 C-12 / B-1 — stable alert tags. Alert rules match these exact
+ * strings; do not reword them. Log lines carry ids and the route only, never
+ * an email address or any token.
+ *
+ * - `mismatch`: GoTrue redeemed a token for user X, but the request names an
+ *   account that is not X (e.g. an attacker's own recovery hash submitted with
+ *   a victim's email). Nothing is done to either account.
+ * - `unbound`: GoTrue accepted the token but returned no user id, or a parked
+ *   MFA-deferred reset carries no verified user id. Failed closed.
+ */
+export const RECOVERY_IDENTITY_MISMATCH_LOG_TAG = '[ALERT:recovery_identity_mismatch]';
+export const RECOVERY_IDENTITY_UNBOUND_LOG_TAG = '[ALERT:recovery_identity_unbound]';
+
+function logRecoveryIdentityAlert(
+  tag: typeof RECOVERY_IDENTITY_MISMATCH_LOG_TAG | typeof RECOVERY_IDENTITY_UNBOUND_LOG_TAG,
+  route: string,
+  ids: { requestId?: string; verifiedUserId: string | null; accountId: string | null; submittedEmailAccountId?: string | null },
+): void {
+  // eslint-disable-next-line no-console
+  console.warn(
+    `${tag} route=${route} requestId=${ids.requestId ?? 'none'} verifiedUserId=${ids.verifiedUserId ?? 'none'} ` +
+      `accountId=${ids.accountId ?? 'none'}` +
+      (ids.submittedEmailAccountId !== undefined ? ` submittedEmailAccountId=${ids.submittedEmailAccountId ?? 'none'}` : ''),
+  );
+}
+
+/** Shape of the KV record that parks an MFA-deferred reset (SR-6 / A-20). */
+interface PendingResetMfaRecord {
+  newPassword: string;
+  userAccessToken: string;
+  /** INC-003 C-12: the GoTrue user id the reset token was redeemed for. */
+  verifiedUserId?: string;
+}
 
 const GENERIC_ACCEPTED = { message: 'If this request can be actioned, you will receive an email shortly.' };
 
@@ -170,9 +205,9 @@ export function createAuthRouter(ctx: AppContext): Router {
         return;
       }
       const normalizedEmail = email.trim().toLowerCase();
-      let ok: boolean;
+      let verified: { userId: string | null } | null;
       try {
-        ok = await ctx.supabase.verifySignupToken(normalizedEmail, token);
+        verified = await ctx.supabase.verifySignupToken(normalizedEmail, token);
       } catch (err) {
         if (err instanceof SupabaseUnavailableError) {
           next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
@@ -180,11 +215,38 @@ export function createAuthRouter(ctx: AppContext): Router {
         }
         throw err;
       }
-      if (!ok) {
+      if (!verified) {
         next(apiError('RESET_TOKEN_EXPIRED')); // "link expired or already used" — same shape, generic catalogue entry
         return;
       }
-      const account = await ctx.accounts.findByEmail(normalizedEmail);
+      // INC-003 C-12 / B-1: act only on the account GoTrue redeemed the token
+      // for. The account row's id IS the GoTrue user id (Feature 001
+      // data-model: app.accounts.id references auth.users.id), so resolve by
+      // that id and require the submitted email to match it, rather than
+      // resolving by the client-supplied email. Resolving by the verified id
+      // also means the response depends only on the token holder's own
+      // account, never on whether the submitted email is registered.
+      if (!verified.userId) {
+        logRecoveryIdentityAlert(RECOVERY_IDENTITY_UNBOUND_LOG_TAG, 'POST /v1/auth/verify-email', {
+          requestId: req.requestId,
+          verifiedUserId: null,
+          accountId: null,
+        });
+        next(apiError('RESET_TOKEN_EXPIRED'));
+        return;
+      }
+      const account = await ctx.accounts.findById(verified.userId);
+      if (account && account.email.trim().toLowerCase() !== normalizedEmail) {
+        const submittedEmailAccount = await ctx.accounts.findByEmail(normalizedEmail);
+        logRecoveryIdentityAlert(RECOVERY_IDENTITY_MISMATCH_LOG_TAG, 'POST /v1/auth/verify-email', {
+          requestId: req.requestId,
+          verifiedUserId: verified.userId,
+          accountId: account.id,
+          submittedEmailAccountId: submittedEmailAccount?.id ?? null,
+        });
+        next(apiError('RESET_TOKEN_EXPIRED'));
+        return;
+      }
       if (account) {
         await ctx.accounts.markEmailVerified(account.id);
         if (account.userType === 'customer') {
@@ -872,6 +934,7 @@ export function createAuthRouter(ctx: AppContext): Router {
     requireIdempotencyKey('POST /v1/auth/reset-password/confirm', ctx.idempotency),
     validateBody(resetConfirmSchema),
     async (req, res, next) => {
+      let redeemedResetToken = false;
       try {
         const { email, resetToken, recoveryAccessToken, newPassword } = req.body as z.infer<
           typeof resetConfirmSchema
@@ -890,6 +953,9 @@ export function createAuthRouter(ctx: AppContext): Router {
         let normalizedEmail: string;
         let userAccessToken: string;
         let resetTokenForPrivileged: string;
+        // INC-003 C-12 / B-1: the GoTrue user the presented credential belongs
+        // to. This, not the client-supplied email, decides which account is acted on.
+        let verifiedUserId: string | null;
 
         if (recoveryAccessToken) {
           let userInfo;
@@ -909,6 +975,7 @@ export function createAuthRouter(ctx: AppContext): Router {
           normalizedEmail = userInfo.email;
           userAccessToken = recoveryAccessToken;
           resetTokenForPrivileged = recoveryAccessToken;
+          verifiedUserId = userInfo.userId || null;
         } else {
           normalizedEmail = email!.trim().toLowerCase();
           let recovery;
@@ -925,12 +992,43 @@ export function createAuthRouter(ctx: AppContext): Router {
             next(apiError('RESET_TOKEN_EXPIRED'));
             return;
           }
+          // From here on GoTrue has consumed the single-use link: a 5xx below
+          // is reported as RESET_COMPLETION_FAILED (see the catch), not as a
+          // retryable 503/500, because retrying this link cannot succeed.
+          redeemedResetToken = true;
           userAccessToken = recovery.userAccessToken;
           resetTokenForPrivileged = resetToken!;
+          verifiedUserId = recovery.userId;
         }
 
-        const account = await ctx.accounts.findByEmail(normalizedEmail);
+        // INC-003 C-12 / B-1: bind the verified GoTrue user to the account.
+        // Fail closed if GoTrue gave us no id. Resolve by that id (it is the
+        // account's primary key) and require the submitted email to match, so
+        // a token redeemed for user A can never act on account B, and the
+        // response is identical to "no such account" (RESET_TOKEN_INVALID):
+        // nothing about B is enumerated and nothing is done to A or B.
+        if (!verifiedUserId) {
+          logRecoveryIdentityAlert(RECOVERY_IDENTITY_UNBOUND_LOG_TAG, 'POST /v1/auth/reset-password/confirm', {
+            requestId: req.requestId,
+            verifiedUserId: null,
+            accountId: null,
+          });
+          next(apiError('RESET_TOKEN_INVALID'));
+          return;
+        }
+        const account = await ctx.accounts.findById(verifiedUserId);
         if (!account) {
+          next(apiError('RESET_TOKEN_INVALID'));
+          return;
+        }
+        if (account.id !== verifiedUserId || account.email.trim().toLowerCase() !== normalizedEmail) {
+          const submittedEmailAccount = await ctx.accounts.findByEmail(normalizedEmail);
+          logRecoveryIdentityAlert(RECOVERY_IDENTITY_MISMATCH_LOG_TAG, 'POST /v1/auth/reset-password/confirm', {
+            requestId: req.requestId,
+            verifiedUserId,
+            accountId: account.id,
+            submittedEmailAccountId: submittedEmailAccount?.id ?? null,
+          });
           next(apiError('RESET_TOKEN_INVALID'));
           return;
         }
@@ -979,7 +1077,7 @@ export function createAuthRouter(ctx: AppContext): Router {
           const mfaToken = await issueResetMfaVerificationToken(ctx.resetMfaTokens, account.id, resetTokenForPrivileged);
           await ctx.kv.set(
             `reset-mfa-pending:${mfaToken.token}`,
-            JSON.stringify({ newPassword, userAccessToken }),
+            JSON.stringify({ newPassword, userAccessToken, verifiedUserId } satisfies PendingResetMfaRecord),
             Math.round((mfaToken.expiresAt.getTime() - Date.now()) / 1000),
           );
           res.status(200).json({ mfaVerificationRequired: true, mfaVerificationToken: mfaToken.token });
@@ -1011,6 +1109,22 @@ export function createAuthRouter(ctx: AppContext): Router {
         );
         res.status(200).json({ message: 'Password reset complete.', allSessionsRevoked: true });
       } catch (err) {
+        // INC-003 §30 advisory: a server-side failure after GoTrue redeemed
+        // the single-use link gets a distinct, non-retryable code. 4xx
+        // ApiErrors pass through unchanged; pre-redemption failures keep their
+        // existing mapping (503 UPSTREAM_UNAVAILABLE / 500).
+        const isClientError = err instanceof ApiError && err.statusCode < 500;
+        if (redeemedResetToken && !isClientError) {
+          const e = err as Error;
+          // eslint-disable-next-line no-console
+          console.error(
+            `[error] requestId=${req.requestId} code=RESET_COMPLETION_FAILED cause follows (post-redemption)`,
+            e?.message,
+            e?.stack,
+          );
+          next(apiError('RESET_COMPLETION_FAILED'));
+          return;
+        }
         next(err);
       }
     },
@@ -1048,10 +1162,34 @@ export function createAuthRouter(ctx: AppContext): Router {
           next(apiError('RESET_TOKEN_EXPIRED'));
           return;
         }
-        const pending = JSON.parse(pendingRaw) as { newPassword: string; userAccessToken: string };
+        const pending = JSON.parse(pendingRaw) as PendingResetMfaRecord;
+
+        // INC-003 C-12: the parked reset must carry the GoTrue user id that
+        // /confirm verified, and it must still match the account the MFA
+        // token is bound to. A record without it (written before this change,
+        // or tampered) fails closed. Checked BEFORE any TOTP call, token
+        // consumption or account side effect.
+        if (!pending.verifiedUserId) {
+          logRecoveryIdentityAlert(RECOVERY_IDENTITY_UNBOUND_LOG_TAG, 'POST /v1/auth/reset-password/mfa-verify', {
+            requestId: req.requestId,
+            verifiedUserId: null,
+            accountId: found.accountId,
+          });
+          next(apiError('RESET_TOKEN_INVALID'));
+          return;
+        }
+        if (pending.verifiedUserId !== found.accountId) {
+          logRecoveryIdentityAlert(RECOVERY_IDENTITY_MISMATCH_LOG_TAG, 'POST /v1/auth/reset-password/mfa-verify', {
+            requestId: req.requestId,
+            verifiedUserId: pending.verifiedUserId,
+            accountId: found.accountId,
+          });
+          next(apiError('RESET_TOKEN_INVALID'));
+          return;
+        }
 
         const account = await ctx.accounts.findById(found.accountId);
-        if (!account) {
+        if (!account || account.id !== pending.verifiedUserId) {
           next(apiError('RESET_TOKEN_INVALID'));
           return;
         }

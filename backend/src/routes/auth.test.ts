@@ -28,7 +28,7 @@ import express, { type Express } from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 
-import { createAuthRouter } from './auth.js';
+import { createAuthRouter, RECOVERY_IDENTITY_MISMATCH_LOG_TAG, RECOVERY_IDENTITY_UNBOUND_LOG_TAG } from './auth.js';
 import { createMfaRouter } from './mfa.js';
 import { errorHandler, requestIdMiddleware } from '../middleware/error-handler.js';
 import { InMemoryKeyValueStore } from '../db/redis.js';
@@ -37,7 +37,7 @@ import type { AccountRow, AccountStatus, UserType, AccountState } from '../repos
 import type { EnrollmentTicketRecord, EnrollmentTicketRepo } from '../lib/enrollment-ticket.js';
 import type { SessionRecord, SessionRepo } from '../lib/refresh-session.js';
 import { ACCOUNT_WIDE_REVOCATION_REASONS, WATERMARK_AUDIT_EVENT_TYPES } from '../lib/gotrue-session-revocation.js';
-import { SupabaseUserAlreadyExistsError, type SupabaseAdmin } from '../db/supabase.js';
+import { SupabaseUnavailableError, SupabaseUserAlreadyExistsError, type SupabaseAdmin } from '../db/supabase.js';
 import type { Env } from '../config/env.js';
 
 function fakeEnv(): Env {
@@ -1988,5 +1988,427 @@ describe('POST /auth/signup + /auth/resend-verification — INC-003 A-16', () =>
     });
     expect(statuses.slice(0, 20).every((st) => st === 202)).toBe(true);
     expect(statuses[20]).toBe(429);
+  });
+});
+
+/**
+ * INC-003 C-12 / finding B-1 (§30.2). The reset and verify routes must act
+ * only on the account GoTrue redeemed the token for, never on the account the
+ * client-supplied email names. These fakes model the ADR-0014 G-4
+ * `token_hash` semantics in which GoTrue resolves the user from the hash and
+ * IGNORES the email: that is exactly the configuration in which the old
+ * code's implicit email binding disappeared. A hash for account A submitted
+ * with account B's email must leave B (and A) completely untouched.
+ */
+describe('INC-003 C-12 / B-1 — GoTrue-verified user is bound to the account acted on', () => {
+  const A = { id: randomUUID(), email: 'attacker-a@example.com' };
+  const B = { id: randomUUID(), email: 'victim-b@example.com' };
+  const UNREGISTERED_EMAIL = 'nobody@example.com';
+  const NEW_PASSWORD = 'a-new-customer-password';
+  const HASH_A = 'recovery-hash-for-A';
+  const HASH_NO_ID = 'recovery-hash-gotrue-returns-no-user-id';
+  const SIGNUP_HASH_A = 'signup-hash-for-A';
+  const SIGNUP_HASH_NO_ID = 'signup-hash-gotrue-returns-no-user-id';
+  const ACCESS_TOKEN_X = 'gotrue-access-token-for-unlinked-user';
+
+  interface Harness {
+    ctx: AppContext;
+    kv: InMemoryKeyValueStore;
+    spies: {
+      updateUserPassword: string[];
+      signOut: string[];
+      revokeAll: string[];
+      pushDisable: string[];
+      audit: Array<{ accountId: string | null; eventType: string }>;
+      passwordChangedNotices: string[];
+      markEmailVerified: string[];
+      welcome: string[];
+      resetMfaTokensCreated: string[];
+      totpVerifyCalls: number;
+    };
+  }
+
+  function makeHarness(opts: { factorUserIds?: string[]; updateUserPasswordThrows?: Error; findByIdThrowsAfter?: number; verifyRecoveryThrows?: Error } = {}): Harness {
+    const spies: Harness['spies'] = {
+      updateUserPassword: [],
+      signOut: [],
+      revokeAll: [],
+      pushDisable: [],
+      audit: [],
+      passwordChangedNotices: [],
+      markEmailVerified: [],
+      welcome: [],
+      resetMfaTokensCreated: [],
+      totpVerifyCalls: 0,
+    };
+    const rows = [A, B].map(
+      (a): AccountRow => ({
+        id: a.id,
+        userType: 'customer',
+        accountState: 'active',
+        email: a.email,
+        phone: null,
+        mfaRequired: false,
+        partnerOrganizationId: null,
+        invitedBy: null,
+        createdAt: new Date(),
+      }),
+    );
+    let findByIdCalls = 0;
+    const accounts = {
+      async findById(id: string) {
+        findByIdCalls += 1;
+        if (opts.findByIdThrowsAfter !== undefined && findByIdCalls > opts.findByIdThrowsAfter) {
+          throw new Error('simulated database failure');
+        }
+        return rows.find((r) => r.id === id) ?? null;
+      },
+      async findByEmail(email: string) {
+        return rows.find((r) => r.email === email.trim().toLowerCase()) ?? null;
+      },
+      async markEmailVerified(id: string) {
+        spies.markEmailVerified.push(id);
+      },
+    };
+    const notUsed = (name: string) => (): never => {
+      throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+    };
+    const uatFor = (userId: string | null) => `uat-${userId ?? 'none'}`;
+    const factorUsers = new Set(opts.factorUserIds ?? []);
+    const supabase = {
+      raw: {} as SupabaseAdmin['raw'],
+      // token_hash semantics: the email argument is ignored.
+      async verifyRecoveryToken(_email: string, tokenHash: string) {
+        if (opts.verifyRecoveryThrows) throw opts.verifyRecoveryThrows;
+        if (tokenHash === HASH_A) return { userId: A.id, userAccessToken: uatFor(A.id) };
+        if (tokenHash === HASH_NO_ID) return { userId: null, userAccessToken: uatFor(null) };
+        return null;
+      },
+      async verifySignupToken(_email: string, tokenHash: string) {
+        if (tokenHash === SIGNUP_HASH_A) return { userId: A.id };
+        if (tokenHash === SIGNUP_HASH_NO_ID) return { userId: null };
+        return null;
+      },
+      async getUserFromAccessToken(token: string) {
+        // A GoTrue user that is NOT B, but whose GoTrue email claims B's address.
+        if (token === ACCESS_TOKEN_X) return { userId: randomUUID(), email: B.email, emailConfirmed: true };
+        return null;
+      },
+      async findVerifiedTotpFactor(userAccessToken: string) {
+        for (const id of factorUsers) if (userAccessToken === uatFor(id)) return { factorId: `factor-${id}` };
+        return null;
+      },
+      async challengeTotpFactor() {
+        return { challengeId: 'challenge-1' };
+      },
+      async verifyTotpFactor(_t: string, _f: string, _c: string, code: string) {
+        spies.totpVerifyCalls += 1;
+        return code === '123456';
+      },
+      async updateUserPassword(userAccessToken: string) {
+        if (opts.updateUserPasswordThrows) throw opts.updateUserPasswordThrows;
+        spies.updateUserPassword.push(userAccessToken);
+      },
+      async signOutAllUserSessions(email: string) {
+        spies.signOut.push(email);
+      },
+      createUser: notUsed('createUser'),
+      deleteUser: notUsed('deleteUser'),
+      verifyPassword: notUsed('verifyPassword'),
+      enrollTotpFactor: notUsed('enrollTotpFactor'),
+      generateEmailVerificationLink: notUsed('generateEmailVerificationLink'),
+      sendSignupConfirmationEmail: notUsed('sendSignupConfirmationEmail'),
+      sendPasswordRecoveryEmail: notUsed('sendPasswordRecoveryEmail'),
+      sendInvitationEmail: notUsed('sendInvitationEmail'),
+      getUserByEmail: notUsed('getUserByEmail'),
+      isUserEmailConfirmed: notUsed('isUserEmailConfirmed'),
+      generatePasswordResetLink: notUsed('generatePasswordResetLink'),
+      mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+    } as unknown as SupabaseAdmin;
+
+    const mfaRecords = new Map<string, { id: string; tokenHash: string; accountId: string; resetTokenHash: string; expiresAt: Date; usedAt: Date | null }>();
+    let nextId = 0;
+    const resetMfaTokens: AppContext['resetMfaTokens'] = {
+      async create(record) {
+        spies.resetMfaTokensCreated.push(record.accountId);
+        const full = { id: String(++nextId), usedAt: null, ...record };
+        mfaRecords.set(record.tokenHash, full);
+        return full;
+      },
+      async findByTokenHash(tokenHash) {
+        return mfaRecords.get(tokenHash) ?? null;
+      },
+      async tryMarkUsed(id, usedAt) {
+        for (const r of mfaRecords.values()) {
+          if (r.id === id && r.usedAt === null) {
+            r.usedAt = usedAt;
+            return true;
+          }
+        }
+        return false;
+      },
+    };
+
+    const kv = new InMemoryKeyValueStore();
+    const ctx = buildMinimalCtx({
+      kv,
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase,
+      resetMfaTokens,
+      sessions: {
+        async revokeAllForAccount(accountId: string) {
+          spies.revokeAll.push(accountId);
+          return [];
+        },
+        async findRevocationWatermark() {
+          return null;
+        },
+      } as unknown as AppContext['sessions'],
+      pushTokens: {
+        async disableAllForAccount(accountId: string) {
+          spies.pushDisable.push(accountId);
+          return 0;
+        },
+      } as unknown as AppContext['pushTokens'],
+      auditLog: {
+        async record(event: { accountId: string | null; eventType: string }) {
+          spies.audit.push(event);
+        },
+      } as unknown as AppContext['auditLog'],
+      authNotifications: {
+        async notifyPasswordChanged(input: { accountId: string }) {
+          spies.passwordChangedNotices.push(input.accountId);
+        },
+      } as unknown as AppContext['authNotifications'],
+      onboardingNotifications: {
+        async notifyWelcomeIfNeeded(accountId: string) {
+          spies.welcome.push(accountId);
+        },
+      } as unknown as AppContext['onboardingNotifications'],
+    });
+    return { ctx, kv, spies };
+  }
+
+  function expectNoSideEffects(h: Harness) {
+    expect(h.spies.updateUserPassword).toEqual([]);
+    expect(h.spies.signOut).toEqual([]);
+    expect(h.spies.revokeAll).toEqual([]);
+    expect(h.spies.pushDisable).toEqual([]);
+    expect(h.spies.audit).toEqual([]);
+    expect(h.spies.passwordChangedNotices).toEqual([]);
+    expect(h.spies.markEmailVerified).toEqual([]);
+    expect(h.spies.welcome).toEqual([]);
+  }
+
+  async function post(baseUrl: string, path: string, body: unknown) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+      body: JSON.stringify(body),
+    });
+    const json = (await response.json()) as Record<string, unknown> & { error?: { code?: string } };
+    return { status: response.status, body: json };
+  }
+
+  /** Every alert line must carry ids only: no email, no token, no password. */
+  function alertLines(warnSpy: ReturnType<typeof vi.spyOn>, tag: string): string[] {
+    const lines = warnSpy.mock.calls.map((c) => c.map(String).join(' ')).filter((l) => l.includes(tag));
+    for (const line of lines) {
+      for (const secret of [A.email, B.email, UNREGISTERED_EMAIL, HASH_A, HASH_NO_ID, SIGNUP_HASH_A, NEW_PASSWORD, 'uat-']) {
+        expect(line).not.toContain(secret);
+      }
+    }
+    return lines;
+  }
+
+  async function withServer<T>(h: Harness, fn: (baseUrl: string) => Promise<T>): Promise<T> {
+    const { server, baseUrl } = await startTestServer(h.ctx);
+    try {
+      return await fn(baseUrl);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  }
+
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it('/confirm: a hash redeemed for A, submitted with B\'s email, does nothing to A or B and alerts with ids only', async () => {
+    const h = makeHarness();
+    await withServer(h, async (baseUrl) => {
+      const res = await post(baseUrl, '/auth/reset-password/confirm', { email: B.email, resetToken: HASH_A, newPassword: NEW_PASSWORD });
+      expect(res.status).toBe(404);
+      expect(res.body.error?.code).toBe('RESET_TOKEN_INVALID');
+    });
+    expectNoSideEffects(h);
+    expect(h.spies.resetMfaTokensCreated).toEqual([]);
+    const lines = alertLines(warnSpy, RECOVERY_IDENTITY_MISMATCH_LOG_TAG);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain(`verifiedUserId=${A.id}`);
+    expect(lines[0]).toContain(`submittedEmailAccountId=${B.id}`);
+  });
+
+  it('/confirm: the mismatch response is identical to an unregistered email (no enumeration of B)', async () => {
+    const h = makeHarness();
+    await withServer(h, async (baseUrl) => {
+      const registered = await post(baseUrl, '/auth/reset-password/confirm', { email: B.email, resetToken: HASH_A, newPassword: NEW_PASSWORD });
+      const unregistered = await post(baseUrl, '/auth/reset-password/confirm', { email: UNREGISTERED_EMAIL, resetToken: HASH_A, newPassword: NEW_PASSWORD });
+      expect(unregistered.status).toBe(registered.status);
+      expect(unregistered.body.error?.code).toBe(registered.body.error?.code);
+      expect((unregistered.body.error as { message?: string }).message).toBe((registered.body.error as { message?: string }).message);
+    });
+    expectNoSideEffects(h);
+  });
+
+  it('/confirm: the matching case (hash for A, email A) still completes, acting on A only', async () => {
+    const h = makeHarness();
+    await withServer(h, async (baseUrl) => {
+      const res = await post(baseUrl, '/auth/reset-password/confirm', { email: A.email, resetToken: HASH_A, newPassword: NEW_PASSWORD });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body.allSessionsRevoked).toBe(true);
+    });
+    expect(h.spies.updateUserPassword).toEqual([`uat-${A.id}`]);
+    expect(h.spies.revokeAll).toEqual([A.id]);
+    expect(h.spies.pushDisable).toEqual([A.id]);
+    expect(h.spies.signOut).toEqual([A.email]);
+    expect(h.spies.audit).toEqual([expect.objectContaining({ accountId: A.id, eventType: 'password_reset_completed' })]);
+    await vi.waitFor(() => expect(h.spies.passwordChangedNotices).toEqual([A.id]));
+    expect(alertLines(warnSpy, RECOVERY_IDENTITY_MISMATCH_LOG_TAG)).toHaveLength(0);
+  });
+
+  it('/confirm: GoTrue accepting the hash but returning no user id fails closed (no side effects, unbound alert)', async () => {
+    const h = makeHarness();
+    await withServer(h, async (baseUrl) => {
+      const res = await post(baseUrl, '/auth/reset-password/confirm', { email: A.email, resetToken: HASH_NO_ID, newPassword: NEW_PASSWORD });
+      expect(res.status).toBe(404);
+      expect(res.body.error?.code).toBe('RESET_TOKEN_INVALID');
+    });
+    expectNoSideEffects(h);
+    expect(alertLines(warnSpy, RECOVERY_IDENTITY_UNBOUND_LOG_TAG)).toHaveLength(1);
+  });
+
+  it('/confirm (recoveryAccessToken branch): a GoTrue user that is not B cannot act on B even if its email claims B', async () => {
+    const h = makeHarness();
+    await withServer(h, async (baseUrl) => {
+      const res = await post(baseUrl, '/auth/reset-password/confirm', { recoveryAccessToken: ACCESS_TOKEN_X, newPassword: NEW_PASSWORD });
+      expect(res.status).toBe(404);
+      expect(res.body.error?.code).toBe('RESET_TOKEN_INVALID');
+    });
+    expectNoSideEffects(h);
+  });
+
+  it('MFA-deferred path: hash for A with B\'s email parks nothing for B; matching case parks verifiedUserId and completes for A', async () => {
+    const h = makeHarness({ factorUserIds: [A.id, B.id] });
+    await withServer(h, async (baseUrl) => {
+      const mismatch = await post(baseUrl, '/auth/reset-password/confirm', { email: B.email, resetToken: HASH_A, newPassword: NEW_PASSWORD });
+      expect(mismatch.status).toBe(404);
+      expect(mismatch.body.mfaVerificationToken).toBeUndefined();
+      expect(h.spies.resetMfaTokensCreated).toEqual([]);
+      expectNoSideEffects(h);
+
+      const ok = await post(baseUrl, '/auth/reset-password/confirm', { email: A.email, resetToken: HASH_A, newPassword: NEW_PASSWORD });
+      expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+      expect(ok.body.mfaVerificationRequired).toBe(true);
+      expect(h.spies.resetMfaTokensCreated).toEqual([A.id]);
+      const parked = JSON.parse((await h.kv.get(`reset-mfa-pending:${String(ok.body.mfaVerificationToken)}`))!) as { verifiedUserId?: string };
+      expect(parked.verifiedUserId).toBe(A.id);
+      expectNoSideEffects(h);
+
+      const done = await post(baseUrl, '/auth/reset-password/mfa-verify', { mfaVerificationToken: ok.body.mfaVerificationToken, code: '123456' });
+      expect(done.status, JSON.stringify(done.body)).toBe(200);
+    });
+    expect(h.spies.updateUserPassword).toEqual([`uat-${A.id}`]);
+    expect(h.spies.revokeAll).toEqual([A.id]);
+    expect(h.spies.pushDisable).toEqual([A.id]);
+    expect(h.spies.signOut).toEqual([A.email]);
+    expect(h.spies.audit.map((e) => e.accountId)).toEqual([A.id]);
+  });
+
+  it('MFA-deferred completion re-checks the parked identity: a record whose verifiedUserId is not the token\'s account, or is missing, fails closed before any TOTP call', async () => {
+    const h = makeHarness({ factorUserIds: [A.id] });
+    await withServer(h, async (baseUrl) => {
+      for (const tamper of [{ verifiedUserId: B.id }, { verifiedUserId: undefined }]) {
+        const ok = await post(baseUrl, '/auth/reset-password/confirm', { email: A.email, resetToken: HASH_A, newPassword: NEW_PASSWORD });
+        expect(ok.body.mfaVerificationRequired).toBe(true);
+        const key = `reset-mfa-pending:${String(ok.body.mfaVerificationToken)}`;
+        const parked = JSON.parse((await h.kv.get(key))!) as Record<string, unknown>;
+        await h.kv.set(key, JSON.stringify({ ...parked, ...tamper }), 600);
+
+        const res = await post(baseUrl, '/auth/reset-password/mfa-verify', { mfaVerificationToken: ok.body.mfaVerificationToken, code: '123456' });
+        expect(res.status).toBe(404);
+        expect(res.body.error?.code).toBe('RESET_TOKEN_INVALID');
+      }
+    });
+    expect(h.spies.totpVerifyCalls).toBe(0);
+    expectNoSideEffects(h);
+    expect(alertLines(warnSpy, RECOVERY_IDENTITY_MISMATCH_LOG_TAG)).toHaveLength(1);
+    expect(alertLines(warnSpy, RECOVERY_IDENTITY_UNBOUND_LOG_TAG)).toHaveLength(1);
+  });
+
+  it('/verify-email: a signup hash for A submitted with B\'s email does not verify B, welcome B, or touch A', async () => {
+    const h = makeHarness();
+    await withServer(h, async (baseUrl) => {
+      const res = await post(baseUrl, '/auth/verify-email', { email: B.email, token: SIGNUP_HASH_A });
+      expect(res.status).toBe(410);
+      expect(res.body.error?.code).toBe('RESET_TOKEN_EXPIRED');
+    });
+    expectNoSideEffects(h);
+    const lines = alertLines(warnSpy, RECOVERY_IDENTITY_MISMATCH_LOG_TAG);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('route=POST /v1/auth/verify-email');
+  });
+
+  it('/verify-email: matching case verifies A; a GoTrue response with no user id fails closed', async () => {
+    const h = makeHarness();
+    await withServer(h, async (baseUrl) => {
+      const noId = await post(baseUrl, '/auth/verify-email', { email: A.email, token: SIGNUP_HASH_NO_ID });
+      expect(noId.status).toBe(410);
+      expect(h.spies.markEmailVerified).toEqual([]);
+      expect(alertLines(warnSpy, RECOVERY_IDENTITY_UNBOUND_LOG_TAG)).toHaveLength(1);
+
+      const ok = await post(baseUrl, '/auth/verify-email', { email: A.email, token: SIGNUP_HASH_A });
+      expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    });
+    expect(h.spies.markEmailVerified).toEqual([A.id]);
+    await vi.waitFor(() => expect(h.spies.welcome).toEqual([A.id]));
+  });
+
+  it('§30 advisory: a 5xx after the reset link was redeemed is RESET_COMPLETION_FAILED; pre-redemption 503 and post-redemption 4xx are unchanged', async () => {
+    // Post-redemption: the GoTrue password write fails.
+    const failingWrite = makeHarness({ updateUserPasswordThrows: new SupabaseUnavailableError('update user password returned 500') });
+    await withServer(failingWrite, async (baseUrl) => {
+      const res = await post(baseUrl, '/auth/reset-password/confirm', { email: A.email, resetToken: HASH_A, newPassword: NEW_PASSWORD });
+      expect(res.status).toBe(500);
+      expect(res.body.error?.code).toBe('RESET_COMPLETION_FAILED');
+    });
+    // Post-redemption: a database failure resolving the account.
+    const failingDb = makeHarness({ findByIdThrowsAfter: 0 });
+    await withServer(failingDb, async (baseUrl) => {
+      const res = await post(baseUrl, '/auth/reset-password/confirm', { email: A.email, resetToken: HASH_A, newPassword: NEW_PASSWORD });
+      expect(res.status).toBe(500);
+      expect(res.body.error?.code).toBe('RESET_COMPLETION_FAILED');
+    });
+    // Pre-redemption: GoTrue /verify unavailable stays a retryable 503.
+    const preRedemption = makeHarness({ verifyRecoveryThrows: new SupabaseUnavailableError('verify recovery token returned 502') });
+    await withServer(preRedemption, async (baseUrl) => {
+      const res = await post(baseUrl, '/auth/reset-password/confirm', { email: A.email, resetToken: HASH_A, newPassword: NEW_PASSWORD });
+      expect(res.status).toBe(503);
+      expect(res.body.error?.code).toBe('UPSTREAM_UNAVAILABLE');
+    });
+    // Post-redemption 4xx: unchanged.
+    const shortPassword = makeHarness();
+    await withServer(shortPassword, async (baseUrl) => {
+      const res = await post(baseUrl, '/auth/reset-password/confirm', { email: A.email, resetToken: HASH_A, newPassword: 'short' });
+      expect(res.status).toBe(400);
+      expect(res.body.error?.code).toBe('VALIDATION_ERROR');
+    });
   });
 });

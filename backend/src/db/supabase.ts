@@ -142,8 +142,14 @@ export interface SupabaseAdmin {
   isUserEmailConfirmed(userId: string): Promise<boolean>;
   /** Verifies a signup-confirmation token against GoTrue directly (service-
    * role apikey, SR-4 — never the anon key), marking `auth.users` confirmed
-   * on success. */
-  verifySignupToken(email: string, tokenHash: string): Promise<boolean>;
+   * on success.
+   *
+   * INC-003 C-12 / B-1: returns the GoTrue user id the token was redeemed
+   * for, so the route can bind it to the account it acts on instead of
+   * trusting the client-supplied email. `null` = token invalid/expired.
+   * `{ userId: null }` = GoTrue accepted the token but its response carried
+   * no user id; callers MUST fail closed on that (no account side effects). */
+  verifySignupToken(email: string, tokenHash: string): Promise<{ userId: string | null } | null>;
   /** Generates Supabase's own recovery (password-reset) token/link. Same
    * SMTP caveat as `generateEmailVerificationLink` above, and the same
    * C-5.3 dashboard-governed-expiry caveat: this token's lifetime must be
@@ -153,8 +159,12 @@ export interface SupabaseAdmin {
   generatePasswordResetLink(email: string): Promise<{ tokenHash: string; actionLink: string }>;
   /** Verifies a recovery token, returning a transient user access token
    * (used immediately to complete the reset, then discarded) or `null` if
-   * the token is invalid/expired. */
-  verifyRecoveryToken(email: string, tokenHash: string): Promise<{ userId: string; userAccessToken: string } | null>;
+   * the token is invalid/expired.
+   *
+   * INC-003 C-12 / B-1: `userId` is the GoTrue user the token was redeemed
+   * for and is the ONLY identity the route may act on. It is `null` when
+   * GoTrue's response carried no `user.id`; callers MUST fail closed. */
+  verifyRecoveryToken(email: string, tokenHash: string): Promise<{ userId: string | null; userAccessToken: string } | null>;
   /**
    * Mints a transient GoTrue user access token for an already-authenticated
    * backend session's account, WITHOUT the user re-entering a password —
@@ -446,7 +456,14 @@ export function getSupabaseAdmin(env: Env): SupabaseAdmin {
         method: 'POST',
         body: JSON.stringify({ type: 'signup', token: tokenHash, email }),
       });
-      return response.ok;
+      if (!response.ok) {
+        return null;
+      }
+      // INC-003 C-12: POST /verify answers with a session ({ access_token,
+      // user }). Read the id defensively; an absent id is reported as null
+      // and the route fails closed rather than acting on the email.
+      const body = (await response.json().catch(() => null)) as { user?: { id?: unknown } } | null;
+      return { userId: typeof body?.user?.id === 'string' && body.user.id ? body.user.id : null };
     },
 
     async generatePasswordResetLink(email) {
@@ -473,8 +490,10 @@ export function getSupabaseAdmin(env: Env): SupabaseAdmin {
       if (!response.ok) {
         throw new SupabaseUnavailableError(`verify recovery token returned ${response.status}`);
       }
-      const body = (await response.json()) as { access_token: string; user: { id: string } };
-      return { userId: body.user.id, userAccessToken: body.access_token };
+      const body = (await response.json()) as { access_token: string; user?: { id?: unknown } };
+      // INC-003 C-12: never assume `user.id` is present; null => route fails closed.
+      const userId = typeof body.user?.id === 'string' && body.user.id ? body.user.id : null;
+      return { userId, userAccessToken: body.access_token };
     },
 
     async mintTransientUserAccessToken(email) {

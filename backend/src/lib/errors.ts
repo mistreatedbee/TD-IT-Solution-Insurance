@@ -68,6 +68,17 @@ export const ERROR_CATALOG = {
   },
   RESET_TOKEN_INVALID: { statusCode: 404, message: 'This link is invalid or has expired.' },
   RESET_TOKEN_EXPIRED: { statusCode: 410, message: 'This link has expired or was already used.' },
+  // INC-003 §30 advisory (C-12 follow-on): a server-side failure on
+  // /auth/reset-password/confirm AFTER GoTrue already redeemed the single-use
+  // reset link. Retrying the same link cannot succeed (it is consumed), and
+  // the password may or may not have been changed, so clients must not offer
+  // "try again" with this link. Distinct from UPSTREAM_UNAVAILABLE (503),
+  // which is only returned before redemption and is safe to retry.
+  RESET_COMPLETION_FAILED: {
+    statusCode: 500,
+    message:
+      'We could not finish resetting your password. Your link may already have been used: try signing in with your new password, or request a new reset link.',
+  },
   REFRESH_TOKEN_INVALID: { statusCode: 401, message: 'Your session has expired. Please log in again.' },
   ACCOUNT_SUSPENDED: { statusCode: 423, message: 'This account is currently unavailable.' },
   DEVICE_MISMATCH: {
