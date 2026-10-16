@@ -1452,3 +1452,22 @@ same session — same person, same day.
 
 **Filed by:** `cto`, 2026-09-30. **Discharges:** nothing. **Does not discharge:** D-1, D-4, D-6,
 C-1, C-2, C-6, C-7, or the §4(1) halt.
+
+---
+
+## 17. `cto` — premise correction: the §4(3) revert had no effect in the JS bundle (2026-10-16)
+
+Filed by the orchestrating session on the `cto` ruling of 2026-10-16; `cto` to confirm.
+
+**INC-004** (`INC-004-mobile-feature-flags-not-inlined.md`) records that `mobile/src/config/features.ts`
+read its flags with a dynamic `process.env[key]` lookup, which Expo does not inline, so every gated
+flag evaluated **ON** in any release bundle regardless of `eas.json`. Consequences for this record:
+
+- The §4(3) revert of the `playInternal` flags to `"false"` governed the Android **manifest permission**
+  (`app.config.ts` runs in Node and was correct) but **not** the JS flags, until `236fa8e` (2026-10-16).
+- Evidence in this record that treats a flag as "off" for a built artifact is not reliable for any
+  artifact built before `236fa8e`.
+- **Lifting the §4(1) halt now also requires INC-004 to close**, and the §4(5) no-upload rule is
+  extended to internal APK links.
+
+This section does not discharge or alter any earlier section; it supersedes none of them.

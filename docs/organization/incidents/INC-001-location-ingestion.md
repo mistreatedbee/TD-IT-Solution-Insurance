@@ -231,3 +231,15 @@ Appended, not rewritten. Raised during Stage 8 review of the mobile offline-tole
 **Containment unaffected.** The endpoint remains kill-switched and fails closed unless `LOCATION_INGESTION_ENABLED === 'true'` (`assets.ts:122`, `backend/src/config/env.ts:376-383`), consistent with §8's record of the switch being live in production. This note does not change A-7's blocking status or urgency: it still blocks re-enabling ingestion, and no re-enable happens without a chaired Stage 8. Anyone setting `LOCATION_INGESTION_ENABLED=true` before A-7 (and A-8/A-9) close reopens INC-002 territory and should escalate to `cto` immediately rather than proceeding.
 
 The client-side mitigation landed the same day (commit `c7ba6dd`): `handleConsentAccept` in `mobile/src/screens/assets/AssetDetailScreen.tsx` now reverts its optimistic local "tracking enabled" state if the server-side consent-grant call fails, so a transient failure no longer leaves the device believing it has consent the server never recorded. This is a client-side control only and does not substitute for A-7's server-side enforcement.
+
+---
+
+## 11. Pointer — INC-004: the A-12 client gate did not operate in release bundles (2026-10-16)
+
+Filed by the orchestrating session on the `cto` ruling of 2026-10-16; `cto` to confirm.
+
+A-12's client-side flag gating (`mobile/src/config/features.ts`) used a dynamic `process.env[key]`
+read that Expo does not inline, so the gated surfaces shipped ON in release bundles regardless of
+`eas.json`. Details, exposure window and actions are in `INC-004-mobile-feature-flags-not-inlined.md`.
+The server-side kill switch (`LOCATION_INGESTION_ENABLED`, §10) is a separate control and is not
+affected by this finding. This pointer changes no earlier section.
