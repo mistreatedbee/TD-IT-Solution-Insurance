@@ -461,6 +461,384 @@ appended section (§14 onward). Nobody edits §§1–13 in place.
 
 ---
 
+## 14. `authentication-engineer` concurrence (2026-10-16)
+
+This section cites §§2, 4, 5, 6 and 12, plus INC-003 §§18, 19 and 20. §§1–13 are unaltered.
+`cybersecurity-architect`'s concurrence is recorded at INC-003 §19.4 and is not mirrored here.
+
+> **Provenance, so `cto` can weigh it.** This section and §15 were prepared on 2026-10-16 at the
+> orchestrator's direction, to unblock the 2026-10-21 ratification target (INC-003 §20.4). The session
+> that wrote them is not an independent instance of `authentication-engineer` or `compliance-specialist`.
+> Its standing role is in the architecture chain that authored this ADR. Every claim below was checked
+> against the working tree on branch `claude/nice-bardeen-0j5x8y` on 2026-10-16. None is taken from §5's
+> description or from INC-003 §18's self-report. If `cto` decides that a required concurrence must come
+> from an independent session, either role may re-affirm, amend or withdraw this position in a later
+> section. Nothing here is binding on them beyond what the code shows.
+
+**Verdict: CONCUR WITH CONDITIONS.** No condition blocks ratification. Conditions AE-1…AE-4 are
+**Phase 1 exit criteria**. AE-5 is a defect outside this ADR's scope, and the merge-readiness ruling
+should hear about it.
+
+### 14.1 What I read
+
+- `backend/src/routes/auth.ts`:
+  - signup `:77-156`;
+  - verify-email `:161-201`;
+  - resend `:206-261`;
+  - exchange `:375-552`;
+  - login `:557-707`.
+- `backend/src/routes/session.ts:58-97`.
+- `backend/src/db/supabase.ts`: `verifyPassword :243-256` and the signup `/verify` body `:447`.
+- `backend/src/lib/sync-email-verification.ts:55-74`.
+- `backend/src/repositories/audit-log.ts:41-63`.
+- Web, customer:
+  - `src/customer/supabase/auth.ts` (all of it);
+  - `src/customer/api/auth.ts` (all of it);
+  - `src/customer/auth/CustomerAuthProvider.tsx` (all of it);
+  - `src/pages/onboarding/CustomerOnboardingPage.tsx:130-261`.
+- Web, privileged dashboards:
+  - `src/dashboard/api/auth.ts` and `src/dashboard/api/client.ts`;
+  - `src/dashboard/auth/DashboardAuthProvider.tsx:55-91`;
+  - `src/dashboard/auth/roleRouting.ts:95-140`.
+- I did **not** re-run the test suites. The orchestrator's figures (backend 541/541, web 149/149) are
+  in INC-003 §18.5.
+
+### 14.2 Does the ADR describe what was actually built? Yes, with drift that is recorded here and not edited into §5
+
+The §5 inventory was read at `62e973dd`, and its line numbers have since moved. The concurrency note at
+the top of this ADR asks the reviewer to record migrated rows in an appended section. This is that
+record.
+
+| Row | State on this branch, 2026-10-16 (verified) |
+|---|---|
+| W-1 | **Unchanged, still live.** `getSupabase()` is still imported by `CustomerAuthCallbackPage.tsx:13` and `CustomerAuthProvider.tsx:86` |
+| W-2 | **Migrated (A-16).** `signUpWithSupabase` is deleted (tombstone comment at `src/customer/supabase/auth.ts:151-154`). `signup()` at `src/customer/api/auth.ts:48-60` sends `consentAccepted` and `client: 'web'`. The backend route is at `auth.ts:93-156` |
+| W-3 | **Migrated (A-16).** `resendVerificationEmail()` is at `src/customer/api/auth.ts:64-70`. The backend route is at `auth.ts:214-261`, with the per-IP limiter at `:218-222` |
+| W-4 | **Still live.** `signInWithSupabase` (`src/customer/supabase/auth.ts:156-169`) is called from `CustomerAuthProvider.tsx:175-198`, which is reached from onboarding `:221` and `:248`. The MFA refusal that §5 places at onboarding `:228` is now at `:230` ("Use the login page") and `:254` ("Use the mobile app") |
+| W-5 | **Removed (A-14).** There is no stored password. The verify step asks for the password once (`:214-241`). This is G-3's recommended option, now built |
+| W-6 | **Still live:** `CustomerAuthCallbackPage.tsx:128` |
+| W-7 | **Still live:** `CustomerAuthCallbackPage.tsx:155` |
+| W-8 | **Still live:** `CustomerAuthCallbackPage.tsx:49` |
+| W-9 | **Still live.** The client is at `src/customer/supabase/auth.ts:36-102`. The route has moved to `auth.ts:381-552`, and its watermark is at `:455-466` |
+| W-10 | **Half done.** G-2 is fixed (see 14.3). The GoTrue global `signOut()` still runs after the backend logout (`CustomerAuthProvider.tsx:85-90`). Phase 1 removes it |
+| W-12 | **Still live.** `mapSupabaseAuthError` is at `src/customer/supabase/auth.ts:267-300`. The "waking up" copy §9 RR-4 cites is now at `:250` |
+| G-6 | **Half done.** Resend has its per-IP limiter (ratified at INC-003 §19.2). `/auth/verify-email` (`auth.ts:165`) still has none |
+
+**Behaviour versus description.** §5.1 says `/auth/verify-email` "mints nothing". That is correct
+(`:165-201`). §5.1 says signup's 202 is uniform. That is correct, and on this branch it is *more*
+uniform than §5 assumed: the legacy case where an auth user exists with no account row also gets the
+202, with no mail (`:116-126`). §5.2 G-4 describes the backend sending the link value in the `token`
+field. That is correct: `db/supabase.ts:447` sends `{ type: 'signup', token: tokenHash, email }`, so
+G-4's live check is still needed.
+
+### 14.3 G-1 and G-2: correct as built
+
+- **G-1.** Both routes use a closed `z.enum(['web','mobile']).optional().default('mobile')`
+  (`auth.ts:84`, `:208`). `verificationRedirectFor()` (`:87-91`) picks a server-side env value and
+  falls back to the mobile URL when `EMAIL_VERIFICATION_REDIRECT_URL_WEB` is unset. That matches
+  INC-003 §18.2, but it differs from §18.2's description of `loadEnv()`'s fallback (production web
+  callback) at the *route* level. Which fallback wins depends on whether `loadEnv()` fills
+  `emailVerificationRedirectUrlWeb` before the route sees it. I did not trace `config/env.ts`. Either
+  way, INC-003 §19.2's C-8 item 2 (set the value explicitly on staging) already makes the difference
+  irrelevant. A caller-supplied URL cannot be read, because Zod strips unknown keys. **PASS**, matching
+  INC-003 §19.1.
+- **G-2.** `logout()` (`src/customer/api/auth.ts:174-176`) goes through the authenticated client.
+  `signOut` calls it **before** clearing tokens, and a re-entrancy guard
+  (`CustomerAuthProvider.tsx:66-91`) stops the `onSessionTerminated` loop. `POST /session/logout`
+  (`session.ts:58-68`) revokes the session named by the bearer token, sets the KV JTI revocation and
+  writes a `logout` audit row. The Phase 1 precondition is **met in code**. Deploy verification stays
+  with `security-engineer` (INC-003 §19.5).
+
+### 14.4 Session, token and MFA handling in the target state (§4): concur
+
+- **One credential family.** After Phase 1, the web customer obtains sessions only from `/auth/login`
+  (`:564-707`) or `/auth/mfa/challenge`. Both run FR-11 lockout (`:574-626`), the FR-12 audit, the
+  `account_state` gate (`:648-651`) and SR-14(a)'s verified-factor gate (`:655-702`). That is exactly
+  the path mobile and the privileged web already use.
+- **The exchange's MFA parity work becomes moot.** SR-006-1 (`:468-547`) existed only because the
+  exchange was a second minting path.
+- **Device binding (FR-20) survives the move.** The web passes `getOrCreateWebDeviceId()` on login
+  (`src/customer/api/auth.ts:78`) and on refresh (`CustomerAuthProvider.tsx:131`).
+- **Surface classification.** Web customer sessions are classified under the `customerMobile` surface
+  (`session.ts:27-29`). "The web customer session works exactly as mobile" (§4.1) is therefore
+  literally true, idle TTL included. I record it so nobody later assumes a separate web-customer
+  idle policy exists.
+- **The access token stays in memory only,** as `cybersecurity-architect`'s condition 3 requires
+  (INC-003 §19.4).
+- **MFA enrolment.** The customer enrolment-ticket path on `/auth/login` (`:658-666`) is the same as
+  the exchange's (`:478-488`), so Phase 1 needs no enrolment contract change. G-3 feasibility:
+  confirmed, and already built (A-14).
+- **Phase 1 ownership.** I accept it, with `frontend-architect` reviewing the callback and provider
+  changes.
+
+### 14.5 Conditions (Phase 1 exit criteria)
+
+**AE-1. `/auth/login` must handle a correct password on an unverified account. Owners:
+`authentication-engineer`, with `cybersecurity-architect` deciding the error shape.**
+- **What happens today.** An unverified customer who uses the verify step's "Verified? Sign in"
+  form before opening the link calls the browser password grant. The GoTrue error never reaches the
+  backend's lockout counter.
+- **What Phase 1 would do.** After Phase 1 the same attempt goes to `/auth/login`. GoTrue refuses an
+  unconfirmed email's password grant with a 400. `verifyPassword` turns every 400 or 401 into `null`
+  (`db/supabase.ts:248-250`), so the route answers `INVALID_CREDENTIALS` and **counts the attempt
+  toward FR-11 lockout** (`auth.ts:599-625`).
+- **The result.** The user just chose that password and is told it is wrong. The wizard invites
+  retries, so they can lock themselves out. The `ACCOUNT_NOT_ACTIVE` branch the wizard relies on
+  (`CustomerOnboardingPage.tsx:233-234`) becomes unreachable, because it only fires from the exchange
+  (`auth.ts:439-442`).
+- **Required before Phase 1 ships.** Distinguish GoTrue's `email_not_confirmed` from a bad password in
+  `verifyPassword`. Then either:
+  - **(a)** answer it with `ACCOUNT_NOT_ACTIVE` without counting a lockout failure; or
+  - **(b)** keep the uniform `INVALID_CREDENTIALS` and change the wizard copy.
+
+  Option (a) is an enumeration signal **only if** GoTrue checks confirmation before it checks the
+  password. If it checks the password first, the signal is visible only to someone who already holds
+  the password, which is the same exposure the exchange has today. **Confirm GoTrue's check order in
+  G-4's live run before choosing (a).** Mobile already has this behaviour today. Fixing it in the
+  shared route fixes both clients, which satisfies §2 item 2's no-fork rule.
+
+**AE-2. The A-17 link-type allow-list and the backend-code error mapping must survive the directory
+deletion.**
+- **The risk.** §2 item 1 deletes `src/customer/supabase/` wholesale. §5 lists `notifyEmailAlreadyVerified`
+  as moving. It does **not** list the following, which the callback still needs after Phase 1:
+  - `ALLOWED_EMAIL_LINK_TYPES` (`:209`; the A-17 refusal of `magiclink`, `invite`, `email_change` and
+    bare `email` links);
+  - `mapAuthCallbackError`'s `ApiError`-code branches (`:247-259`);
+  - `isVerificationLinkError` (`:140-149`).
+- **Required.** Move them to `src/customer/api/` or the callback page, together with a test that the
+  callback refuses a `magiclink` link **with no backend call**. Otherwise the deletion silently drops
+  the A-13/A-17 control. That control is INC-003 deploy check C-6.
+
+**AE-3. Phase 1 must purge stale GoTrue sessions from the browser.**
+- **The gap.** `persistSession: true` has left a `sb-<project-ref>-auth-token` entry in the
+  `localStorage` of every returning web customer. After Phase 1 no code reads it, and nothing removes
+  it. It stays usable at Layer 2 until Phase 3 or 4 (§9 RR-3), and XSS can read it.
+- **Required.** On mount, purge it the same way A-14 purges its legacy key
+  (`CustomerOnboardingPage.tsx:160-167`): remove every `sb-*-auth-token` key, plus the PKCE
+  code-verifier key.
+- **Effect.** This shrinks RR-3 on the client side from "until Phase 3" to "until the user's next
+  visit". It does not replace Phase 3's server-side purge.
+
+**AE-4. Finish MFA completion in the onboarding wizard as part of W-4, not as follow-up.** Today both
+wizard sign-in handlers turn away an `mfa` result (`:230`, `:254`). Once `/auth/login` is the only path,
+the provider's `completeMfa` (`CustomerAuthProvider.tsx:200-206`) already exists, so wire it in. This
+closes the A-20-adjacent dead end §5.1 W-4 already names.
+
+### 14.6 AE-5: a defect outside this ADR, with the same class as G-2, on the privileged dashboards
+
+**Privileged web sign-out never reaches the backend. Severity: Medium. Proposed as a new INC-003
+action, owner `authentication-engineer`.**
+- **The code.** `src/dashboard/api/auth.ts:51-57` sends `POST /session/logout` with
+  `authenticated: false` and `{ refreshToken }` in the body. This is exactly the shape G-2 fixed on the
+  customer side.
+- **Why it fails.** `/session/logout` authenticates by bearer token only and ignores the body
+  (`session.ts:58`). The dashboard client attaches no token when `authenticated` is false
+  (`src/dashboard/api/client.ts:35-38`) and does not retry. `DashboardAuthProvider.signOut`
+  (`:65-78`) swallows the 401, and it clears the tokens *before* making the call.
+- **Effect.** An admin, security-company operator or call-centre agent who signs out gets a local
+  sign-out only. The backend session stays valid until its 15-minute idle or 8-hour absolute
+  expiry, and **no `logout` audit row is written for staff**.
+- **Severity reasoning.** A stolen privileged refresh token, for example via RR-1 XSS, survives the
+  victim's sign-out. That matters most on exactly the accounts SR-6 and ADR-0012 protect. The 15-minute
+  idle window bounds the harm.
+- **The fix is small, and the pattern already exists in this repo.** `roleRouting.ts:116-140` already
+  revokes a stale privileged refresh token correctly: it refreshes, then logs out with the bearer
+  token. Mirror G-2:
+  1. call `logout()` through the authenticated client before clearing tokens;
+  2. add a re-entrancy guard;
+  3. add a test.
+- **On scope.** This does not touch ADR-0014's decision. §1.3 and §4.3 call the privileged model
+  "already backend-only", and that remains true. The *call* is backend-only; it just never succeeds.
+- **Recommendation to `cto`.** Fix it on this branch before the merge in INC-003 §20.3. It is the
+  same size as G-2, it carries less deploy risk than C-2 or C-8, and it closes a staff-account gap. If
+  it is not fixed on this branch, register it.
+
+### 14.7 Position on the remaining §12 items
+
+- **Phases and order (§6).** Concur. I add the INC-003 §19.3 backfill to Phase 3. It matters to
+  authentication as much as to security: once G-5 removes the exchange, an auth-only legacy user has
+  **no** path to an account row. `/auth/login` would answer `INVALID_CREDENTIALS` (`:599`, because
+  `findByEmail` returns null), and `/auth/signup` answers a mail-less 202 (`:123-126`).
+- **G-5.** Concur. The watermark stays. `resolveCustomerAccountAfterSupabaseAuth`'s `emailConfirmed`
+  branch is also used by `/auth/login` (`:633-638`, which passes `supabaseAuthSucceeded` only), so the
+  helper stays and only the exchange's call site goes.
+- **§9 RR-8.** Concur, Low. `/auth/login` already creates such sessions for every mobile and privileged
+  login, so Phase 1 adds web volume, not a new class.
+
+**Signed:** `authentication-engineer` capacity (see the provenance note), 2026-10-16. **CONCUR WITH
+CONDITIONS.** AE-1…AE-4 are Phase 1 exit criteria. AE-5 is out of scope and referred to `cto` for the
+merge ruling. Nothing here blocks ratification.
+
+---
+
+## 15. `compliance-specialist` concurrence (2026-10-16)
+
+This section cites §§1.2, 6, 9 (RR-7) and 12. It also cites INC-003 §7, §18.2 and §20, A-5 §12, ADR-0006,
+`compliance-review-supabase.md`, `10-data-protection-contract-obligations.md` and the CT-1 letter
+(`correspondence/SENT-2026-09-14-ct-1-cross-border-consent-request.md`). §§1–14 are unaltered. The same
+provenance note as §14 applies.
+
+**Verdict: CONCUR WITH CONDITIONS.** Nothing in this ADR conflicts with an existing compliance ruling.
+The ADR moves the platform *toward* positions that are already recorded. No condition blocks
+ratification. CS-1 is a Phase 1 exit criterion. CS-2 is a Phase 3 precondition.
+
+**This is not my concurrence on INC-003 §7.** That concurrence is separately owed, and it stays open
+until A-6 returns (INC-003 §20.2).
+
+### 15.1 What I read
+
+- Feature 001 `business-requirements.md` §9.2: lawful basis for account creation.
+- `compliance-review-supabase.md`:
+  - §2 (data classification);
+  - §4.3.1 (no cross-border consent checkbox);
+  - §6.1–6.3 (the FR-12 record of authority; `auth.audit_log_entries` as an un-purgeable duplicate,
+    OI-4).
+- Feature 006 `business-requirements.md` PM-5: terms versioning, deferred to me.
+- The CT-1 letter as sent: §B ¶3, the schedule.
+- ADR-0006: AUD-1…AUD-12 and §10.
+- `src/pages/PrivacyPolicyPage.tsx`.
+- The backend signup, verify, resend and login routes, and the `AuditEventType` union
+  (`backend/src/repositories/audit-log.ts:41-63`).
+
+### 15.2 RR-7 (historic consent evidence): resolved as a POPIA question, re-scoped as an evidence question
+
+- **The lawful basis does not rest on `consentAccepted`.** Feature 001 §9.2 rules that customer account
+  creation runs on **s11(1)(b), necessity for a contract**. `compliance-review-supabase.md` §4.3.1
+  reserves consent for genuinely optional processing. The signup checkbox ("accept the terms and
+  privacy notice") is therefore an **acceptance of terms plus an s18 acknowledgement**, not
+  s11(1)(a) consent.
+- **Effect on historic accounts.** Web accounts created through GoTrue directly, without the backend's
+  `z.literal(true)` check, are **not processed unlawfully on that account**. No remediation is needed
+  for lawfulness.
+- **The real gap is platform-wide.** The backend *validates* the checkbox but stores nothing: no
+  timestamp, terms or notice version, or IP. This is true of every route, mobile and post-A-16 web
+  included (INC-003 §18.2; PM-5). So **no account on the platform** has durable acceptance evidence.
+  RR-7 is therefore not a web-cohort defect that this ADR could fix or leave unfixed. It is PM-5, which
+  is already mine.
+- **One cohort is genuinely different.** Accounts created through Layer 2, meaning a direct
+  `/signup` call with the anon key and no client UI, have no acceptance at all, not even a client-side
+  tick. They cannot be told apart from the rest.
+- **Ruling.** When PM-5's versioned terms-acceptance record is built, **every account that has no
+  record, from either cohort and on either client, is asked to accept at its next sign-in.** That one
+  remedy covers RR-7, the A-5 §12 first bullet and the INC-003 §18.2 consent referral. It does not
+  block this ADR, or Phase 1.
+
+### 15.3 Processing description: the ADR makes the sent CT-1 schedule accurate
+
+- **The mismatch today.** CT-1 §B ¶3 item 4, as sent to the Client, says the web dashboards "hold no
+  personal information at rest — all data is fetched live from item 1" (Render). For web customer
+  identity that is **inaccurate today**:
+  - the browser calls item 2 (Supabase) directly;
+  - it keeps a GoTrue session, which carries the email and user id, in `localStorage`.
+- **What Phase 1 changes.** It makes the statement true.
+- **No corrective letter is needed.** The *locations* are unchanged: Supabase in Frankfurt was already
+  scheduled as item 2. No new operator is introduced. The defect is in how the data travels, not where
+  it goes, so it does not alter the scope of the clause 19(c) consent sought.
+- **Record-keeping.** Record this in the register (`10-data-protection-contract-obligations.md`) as a
+  known inaccuracy, corrected when Phase 1 is deployed. I have not edited the register, because this
+  task is scoped to this ADR.
+- **Operators.** After Phase 1, web signup passwords pass through Render, as mobile's already do.
+  Item 1 of the sent schedule already covers this ("all personal information … passes through these
+  servers"). No change to an s21 operator agreement is needed. The Supabase DPA owner action is neither
+  helped nor worsened by this ADR.
+
+### 15.4 Privacy notice: no conflict, one forward constraint
+
+`PrivacyPolicyPage.tsx` states that it does not yet cover account processing. The account-processing
+notice is still owed (`compliance-review-supabase.md` C-7). This ADR therefore contradicts no published
+notice.
+
+**Forward constraint.** The C-7 notice must be written against the **post-Phase-1** flow:
+- browser → our API → identity store;
+- browser storage limited to the backend refresh token and the device identifier.
+
+It must not describe the current direct flow. If C-7 ships before Phase 1, it must not claim the
+browser never contacts the identity provider.
+
+### 15.5 Audit trail and ADR-0006: no conflict; one gap this ADR makes worse
+
+- **ADR-0006 is not engaged.** It governs privileged access to *another* account's data (AUD-1…AUD-12).
+  Nothing in this ADR adds a privileged read, and Phase 3's purge is a system operation, not
+  subject-data access. ADR-0006 §10's "ADR-0002 is not amended" holds here too.
+- **FR-12 coverage improves.** After Phase 1, every web customer login is an `app.account_audit_log`
+  event under FR-12, which is the record of authority under `compliance-review-supabase.md` §6.1. The
+  exchange was audited as well, so for login this is parity, not a gain.
+- **Minimisation gain.**
+  - **What GoTrue sees.** The backend does not forward the end user's IP to GoTrue (`db/supabase.ts`
+    has no `X-Forwarded-For`). After Phase 1, `auth.audit_log_entries`, `auth.sessions` and
+    Supabase's edge layer therefore record the **backend's egress address**, not the data subject's,
+    for web identity events.
+  - **Why that matters.** It reduces the personal information going into the store
+    `compliance-review-supabase.md` §6.2.1 found un-purgeable (OI-4). It also reduces what the
+    Cloudflare-class sub-processors in §5 of that review see.
+  - **Status.** Recorded as a benefit. It is not a reason to delay A-6, whose window predates all of
+    this.
+- **The gap. Condition CS-1, a Phase 1 exit criterion. Owners `backend-architect` +
+  `database-architect`.**
+  - **What is missing.** `AuditEventType` has **no** event for account creation, email verification or
+    verification resend (`audit-log.ts:41-63`). The signup, verify and resend routes write no audit row
+    (`auth.ts:93-261`).
+  - **Before A-16,** those web events were in GoTrue's log, at least, with the subject's IP.
+  - **After A-16 (already on this branch) and Phase 1,** they are in GoTrue's log under the backend's
+    IP, and **in our own log not at all**.
+  - **Effect.** "When, and from where, was this account created and verified?" can no longer be
+    answered for web accounts. That question belongs in an s23 access response and in s22 breach
+    scoping.
+  - **Required:**
+    - add `account_created` and `email_verified` (and `verification_email_resent` if wanted) to
+      `app.audit_event_type`, by forward migration as `035` did;
+    - write them with IP and user agent from `/auth/signup`, `/auth/verify-email` and
+      `/auth/resend-verification`;
+    - keep the uniform-response rule: the write must not change the response or its timing class;
+    - when PM-5 is built, its acceptance record attaches to `account_created`.
+  - **Retention.** This is the existing 12-month `app.account_audit_log` policy. No new retention
+    ruling is needed.
+
+### 15.6 Phase 3 purge and Phase 4 key retirement: no notice to data subjects, one sequencing precondition
+
+- **No notice to data subjects for either phase.** Both are security measures:
+  - neither changes the purpose of processing, a recipient, a location or the data collected, so s18
+    is not engaged;
+  - the only visible effect is a failed in-flight MFA challenge, at most (§13 Q-7), which is not a
+    processing change that needs telling.
+- **No notice to the Client under TDIT-2026-09 clause 19.** No operator is added or removed. A clause
+  19(b) breach notice is triggered only if A-6, or A-22 item 12, finds exploitation (INC-003 §20.2).
+  That does not depend on this ADR.
+- **Condition CS-2, a Phase 3 precondition.**
+  - **Sequencing.** Do not run Phase 3's purge until the A-6 queries and A-22 item 12's extended
+    customer-account query have been run, or the table exported. The reasoning is `cto`'s, from
+    INC-003 §20.2 about this branch's deploy: a system-generated sign-out writes into the exact table
+    those queries read. A bulk purge would do so at scale.
+  - **Mechanism.** I concur with `cybersecurity-architect` (INC-003 §19.4) that the purge should not
+    write a per-user "login" row. From a compliance standpoint, each such row adds personal information
+    to a log we cannot purge (OI-4), and it would show up as an unexplained sign-in in a subject's s23
+    access response.
+  - **If per-user sign-out is still chosen,** record the run window and the account count in INC-003, so
+    that an access response and any breach scoping can exclude those rows.
+- **Phase 4.** No compliance precondition beyond `cto`'s go decision. Retiring the key ends the
+  INC-003 §7 s19 exposure at Layer 2 (see 15.7).
+
+### 15.7 Effect on the INC-003 §7 position (not a determination on §7)
+
+- **s19 (security safeguards).** This ADR is the structural s19 remediation for Layer 2. Until
+  Phase 4, my position stays "s19 engaged, remediation in progress". `cto` accepted the A-9 residual
+  with an end date of 2026-11-30 (INC-003 §20.4). I treat that date as the **s19 remediation date**
+  for Layer 2. If the acceptance lapses under its own condition (iv), this position returns to "s19
+  engaged, no dated remediation" and I re-assess.
+- **s22.** Unchanged. It depends on A-6 and on A-22 item 12. Nothing in this ADR moves it.
+- **RR-1** (refresh token in `localStorage`). I concur with `cybersecurity-architect` that A-15 is a
+  Phase 1 exit criterion. It is also my s19 expectation for the only credential left on the web.
+
+**Signed:** `compliance-specialist` capacity (see the provenance note in §14), 2026-10-16. **CONCUR
+WITH CONDITIONS.**
+- CS-1: audit events for account creation and verification, a Phase 1 exit criterion.
+- CS-2: purge sequencing and mechanism, a Phase 3 precondition.
+- RR-7 is resolved as stated in 15.2 and folded into PM-5.
+
+Nothing here blocks ratification.
+
+---
+
 *Filed by `solution-architect`, 2026-10-15, as INC-003 action A-21 (draft). This document is shared
 and append-only once committed. Reviewers respond in new sections that cite the section they address.
 The author corrects their own sections in place, keeping superseded text marked void.*
