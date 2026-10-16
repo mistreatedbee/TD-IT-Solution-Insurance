@@ -1834,6 +1834,262 @@ it:**
 
 ---
 
+## 22. SR-3 role/grants design (`database-architect`, 2026-10-16)
+
+Produced against the schedule in §21's table ("Role + grants design... `database-architect`,
+2026-10-23"). **Design and SQL only — nothing below was run against production. No agent
+involved in producing this held a production credential.** Full SQL lives in
+`backend/migrations/036_sr3_least_privilege_app_role.sql`; this section is the narrative
+record and the answers to the specific questions `cto`/orchestrator posed.
+
+### 22.1 Table inventory (the cutover trap §21 names)
+
+Grepped `backend/src/repositories/*.ts` and `backend/src/routes/*.ts` (excluding
+`*.test.ts` fixture literals) for every `app.*` reference, then checked which repository
+modules actually connect to Postgres (`Queryable`/`pg`) versus MongoDB (ADR-0002 polyglot
+split — most repositories, including `alerts.ts`, `location-consent-log.ts`,
+`push-token-security-log.ts`, `notification-*`, `recovery-cases.ts`, `support-cases.ts`,
+`customer-profile*.ts`, `policy-status-history.ts`, `tracking-devices.ts`,
+`product-events.ts`, `plan-catalog.ts`, `location-events.ts`, `admin-access-log.ts`, are
+Mongo collections despite some doc-comments mentioning `app.account_audit_log` by name for
+contrast — they do not write to it). The actual Postgres-touching set, confirmed by reading
+every call site, not by the grep alone:
+
+| Table | Repository | Operations backend/src actually performs |
+|---|---|---|
+| `app.accounts` | `accounts.ts`, `auth.ts` | SELECT, INSERT, UPDATE |
+| `app.account_status_cache` | `accounts.ts` (read) + `app.sync_account_status_cache()` trigger (write) | SELECT (app code); INSERT/UPDATE (trigger body, fires as the caller — see 22.3) |
+| `app.sessions` | `sessions.ts` | SELECT, INSERT, UPDATE |
+| `app.account_state_transitions` | `accounts.ts` (insert), `sessions.ts` (read, watermark) | SELECT, INSERT |
+| `app.account_audit_log` | `audit-log.ts` (insert), `sessions.ts` (read, watermark) | SELECT, INSERT |
+| `app.invitations` | `invitations.ts` | SELECT, INSERT, UPDATE |
+| `app.enrollment_tickets` | `enrollment-tickets.ts` | SELECT, INSERT, UPDATE |
+| `app.reset_mfa_verification_tokens` | `reset-mfa-tokens.ts` | SELECT, INSERT, UPDATE |
+| `app.idempotency_keys` | `idempotency.ts` | SELECT, INSERT (`on conflict ... do nothing` — no UPDATE statement exists) |
+
+**No `DELETE` statement exists anywhere in `backend/src` against any `app.*` table** —
+confirmed by grep, not assumption. That is consistent with, not merely convenient for,
+AUD-11: it means withholding DELETE from the new role costs the application zero
+functionality.
+
+**Explicitly excluded, with reasons (do not grant these without a fresh review when the
+situation changes):**
+- `app.partner_organizations` — touched only by `backend/scripts/seed-test-accounts.ts`
+  (a dev seed tool, not reachable from any route). No runtime SELECT/INSERT exists.
+  `database-design.md` §5.5 already anticipates a future "admin browses partner orgs"
+  feature needing its own grant+policy later — not retrofitted here.
+- `app.retention_purge_runs` — exists only in paper-design docs
+  (`database-design.md` §2.6/§5.7); no `backend/src` code reads or writes it.
+  `backend/scripts/police-report-retention-purge.ts` operates on MongoDB, not this table.
+- `auth.*` (any table) — per requirement 6, never granted. No `backend/src` code reads
+  `auth.*` directly via `pg`; GoTrue Admin API access goes through `db/supabase.ts`'s
+  separate `service_role` `supabase-js` client, untouched by this design.
+
+**A gap worth recording plainly:** the original `CREATE TABLE`/`ENABLE ROW LEVEL SECURITY`
+statements for the baseline tables above are not present as applied migration files in
+this repo — `backend/migrations/` starts at `030`; the Stage 6 baseline and its addendum
+exist only as paper-design SQL under `docs/features/001-authentication/`. This design
+necessarily trusts that live column names match what those paper docs and
+`backend/src/repositories/*`'s column references describe. §21's live C-2 check already
+confirms this for two tables (`account_audit_log`, `account_state_transitions`); the
+remaining seven are unverified against production from this checkout. If a live column
+name diverges, applying `036` will fail loudly (a bad column/table reference is a hard
+Postgres error) rather than silently under- or over-granting — but it should still be
+applied against a staging/non-production copy first if one ever exists (none does today —
+see HANDOFF.md "Not built: staging environment").
+
+### 22.2 Why every table — not just the two audit tables — needs its own policy
+
+Every `app.*` table was designed on the assumption the backend connects as a role that
+bypasses RLS entirely (`database-design.md` §5 / `architecture/database-addendum-001.md`
+§5: RLS enabled on every table, zero policies, by design, because the backend was always
+meant to go around RLS, not through it). `td_backend_app` is the first role in this
+project for which that assumption is false. Policies in `036` are scoped `to
+td_backend_app` only — `using (true)`/`with check (true)`, i.e. permissive at the RLS
+layer — because the actual access-control boundary for this role's own queries is, and
+remains, the backend's WHERE-clause scoping in `src/repositories/*` (by `account_id`,
+`token_hash`, etc.), the same boundary that already existed under the bypass-capable
+credential. This does **not** reopen the existing own-row-only posture for
+`authenticated`/`anon` — no policy in `036` targets those roles, and none of the existing
+`authenticated`-scoped policies (`database-design.md` §5.1/§5.5, where they exist) are
+touched.
+
+**The one non-obvious grant in `036`:** `app.account_status_cache` needs INSERT/UPDATE for
+`td_backend_app`, even though no `backend/src` code calls INSERT/UPDATE on it directly.
+`app.sync_account_status_cache()` (migrations/030) is `security invoker` — it runs with
+the privileges of whoever performs the triggering UPDATE on `app.accounts`, which will be
+`td_backend_app` after cutover. Missing this grant would not show up by reading
+`repositories/accounts.ts` in isolation; it would show up as every account-state
+transition and signup failing at cutover, which is exactly the "silently returns zero
+rows / silently refused" failure mode §21 warns about, just one table over from where
+the obvious audit-table fix is.
+
+### 22.3 Audit tables — AUD-11, defense in depth
+
+`app.account_audit_log` and `app.account_state_transitions`: `GRANT SELECT, INSERT` only —
+no `UPDATE`, no `DELETE` — **and** no `UPDATE`/`DELETE` RLS policy either. Both layers
+independently block tampering: a future mistaken `GRANT UPDATE` alone would still be
+blocked by the absence of an UPDATE policy; a future mistaken `CREATE POLICY ... FOR
+UPDATE` alone would still be blocked by the absence of the UPDATE privilege. This is what
+the FU-A10 assertion (22.6) checks for directly.
+
+### 22.4 Schema/type/function/sequence grants
+
+`GRANT USAGE ON SCHEMA app`. Enum-type `USAGE` is granted **dynamically** (a `DO` block
+iterating `pg_type` for every enum type in the `app` schema) rather than by an enumerated
+list — the live baseline's exact enum-type names (`app.audit_event_type`,
+`app.session_revoked_reason`, and whatever the baseline's `account_state`/`user_type`/
+`invitation_status` columns actually are — enum vs. `text` + `CHECK`, unconfirmed from
+this checkout) cannot be independently confirmed without the missing baseline migration
+files. The dynamic grant is correct regardless. No sequences exist in `app` today (every
+primary key is `uuid default gen_random_uuid()` — confirmed, no `serial`/`nextval`
+anywhere in `backend/migrations/*.sql`); a defensive, existence-checked `EXECUTE` grant on
+`gen_random_uuid()` is included in case a future project configuration has revoked the
+default `PUBLIC` grant. `EXECUTE` on `app.sync_account_status_cache()` is granted
+defensively alongside the table grants it actually depends on (22.2).
+
+### 22.5 Default privileges for future migrations
+
+Deliberately **narrow** — `ALTER DEFAULT PRIVILEGES` for `td_backend_app` covers only
+`USAGE ON TYPES` and `USAGE, SELECT ON SEQUENCES`, never a blanket `SELECT, INSERT,
+UPDATE, DELETE ON TABLES`. A blanket table rule would silently hand this role `UPDATE`/
+`DELETE` on some future audit-style table the moment it's created, before anyone decides
+whether that table deserves the same AUD-11 restriction the two audit tables get here —
+reintroducing the exact blast-radius problem this role exists to bound. Every future
+`app.*` table must get its own explicit `GRANT` + policy, chosen deliberately per that
+table's actual read/write pattern, inside the same migration that creates it. This is
+recorded in `036` as a migration-authoring checklist item for `backend-engineer`/
+`database-architect`, not solved by a default-privileges rule.
+
+### 22.6 Migrations: same credential today, and why that breaks at cutover (requirement 7)
+
+Read from code, not inferred: `backend/src/config/env.ts` defines exactly one Postgres
+connection string, `SUPABASE_DB_URL`; `backend/src/db/pg.ts` is its only consumer. **No
+migration-runner script exists anywhere in `backend/`** — no `npm run migrate`, no
+`scripts/migrate*.ts`, nothing in `render.yaml`'s `buildCommand` applies a migration file.
+`backend/README.md`'s own language about migrations/032 and /033 ("written and not
+applied... must be applied to the live Supabase project before this code is deployed")
+describes a manual, out-of-band process. Today, that manual process has no credential to
+use other than the same bypass-capable `postgres` credential `SUPABASE_DB_URL` already
+resolves to, because no other Postgres credential exists anywhere in this repo's
+configuration.
+
+This means: after `SUPABASE_DB_URL` is cut over to `td_backend_app` (no DDL privilege, owns
+nothing — by design), **that credential becomes categorically unable to apply any future
+`backend/migrations/*.sql` file.** `036` does not invent a second committed credential for
+this (a migration-runner credential checked into env config would just be a second
+superuser-equivalent sitting in Render, undermining the point of this exercise). Instead,
+the design decision, recorded in `036`'s own header/footer comments: migrations continue
+to be applied by the project owner through their own Supabase-dashboard-authenticated
+session or `psql` with the `postgres` role directly — the same access path §21 already
+used for its live C-2 verification — **never** through `SUPABASE_DB_URL`/`td_backend_app`,
+and never by an agent holding that credential. `SUPABASE_DB_URL` in Render becomes,
+from `036` forward, exclusively the runtime application credential.
+
+This is a process rule, not something `036` can enforce technically by itself. Flagged
+here as a real, independent gap: **no automated migration runner exists on this platform
+at all**, which predates and is broader than SR-3 — worth its own backlog item for
+`backend-architect`/`devops-engineer`, not a blocker for SR-3's 2026-10-23/-30 dates.
+
+### 22.7 Supavisor pooler username (requirement 8)
+
+Per the pattern §21 already confirmed live for the `postgres` role (`postgres.<project-
+ref>`), the Supavisor pooler username for this new role is expected to be
+`td_backend_app.mowaqxfbwqdmjssghpvt`. **Not independently re-verified live from this
+session** — no agent here holds a production credential to check it, consistent with
+§21's standing rule. The owner/`devops-engineer` sequencing the cutover (§21's table, step
+2) should confirm this exact string resolves before updating `SUPABASE_DB_URL` in Render.
+
+### 22.8 Rollback plan
+
+Cutover is a single environment-variable change (`SUPABASE_DB_URL` in Render → backend
+service → Environment) plus a redeploy — no data migration, no schema change tied to the
+swap itself (`036`'s grants/policies are additive and do not alter any existing
+`authenticated`/`anon`-facing policy or any table's data). That makes rollback cheap and
+non-destructive:
+
+1. **Before cutover:** the owner records the exact `SUPABASE_DB_URL` value that is live in
+   Render **at the moment of cutover** — not a value recorded earlier. This sequencing
+   matters because §21 also requires the current `postgres` credential to be rotated
+   within 72 hours of 2026-10-16 for an unrelated reason (it was exposed in a chat
+   transcript). If that rotation happens before this cutover, the pre-rotation value saved
+   as a rollback target would be dead on arrival. Whoever runs cutover must capture
+   whatever credential is actually live right before flipping the variable, regardless of
+   which rotation/cutover happens first.
+2. **Cutover:** `devops-engineer` sets `SUPABASE_DB_URL` to the new
+   `td_backend_app.mowaqxfbwqdmjssghpvt` pooler connection string and redeploys. Health
+   check: `/api/health/ready` passes, FU-A10 assertion (22.9) passes, and a manual
+   smoke test of login + account-state-transition + MFA-enrollment-ticket flows succeeds
+   (the three request paths that exercise every table in 22.1 at least once).
+3. **If cutover fails** (missing grant surfaces as a 500/403 cascade, an unexpected RLS
+   rejection, or the FU-A10 assertion fails): revert `SUPABASE_DB_URL` to the value
+   captured in step 1 and redeploy. This is a single env-var revert, immediately
+   effective — no compensating data fix is needed because nothing about the data or its
+   shape changed, only which role is reading/writing it.
+4. **Do not drop `td_backend_app` or its policies on a failed/rolled-back cutover.** Leave
+   the role, grants, and policies in place (idle, unused by the reverted runtime) so a
+   retry after fixing whatever grant was missed does not need to redo `036` from scratch.
+   Only clean up (`DROP ROLE`/`REVOKE`) once cutover is confirmed durably successful, on
+   the owner's own schedule, independent of this document.
+
+### 22.9 FU-A10 assertion spec (ADR-0006) — for `security-engineer` to build at cutover
+
+Two tiers, split by cost, both fail-closed (mirroring the existing precedent in
+`backend/src/db/pg.ts`'s SR-2(b) check, which already refuses to boot in production
+without a pinned CA cert path):
+
+**Tier 1 — cheap, run at process boot AND on every `/api/health/ready` poll:**
+```sql
+select rolname, rolsuper, rolbypassrls
+from pg_roles
+where rolname = current_user;
+```
+Assert, in application code: `rolsuper = false`, `rolbypassrls = false`, and
+`current_user <> 'postgres'` (the third check is redundant with the first two under
+correct configuration, but catches a misconfigured rollback that silently left the
+superuser credential's *name* in place while some other property was fixed — defense in
+depth, not a substitute for the flag checks). On any failure: refuse to complete startup
+(boot path) or report `/api/health/ready` as not-ready (steady-state path) — do not log a
+warning and continue serving traffic with a bypass-capable or superuser credential.
+
+**Tier 2 — more expensive, run once at process boot only (not on every health poll, to
+avoid a write-transaction's overhead on a hot path):**
+```sql
+begin;
+update app.account_audit_log set actor_service = actor_service where false;
+rollback;
+```
+and the same against `app.account_state_transitions`. Expected outcome: **the `UPDATE`
+statement itself raises `permission denied for table ...` (SQLSTATE `42501`)** before any
+row is evaluated — this is a `GRANT`-level denial, which fires unconditionally regardless
+of how many rows the `WHERE false` clause would have matched, and is a stronger signal
+than relying on RLS policy absence alone. Treat that specific error as **pass**. Treat
+any other outcome — the statement succeeding, or failing for a different reason (e.g. a
+column that doesn't exist, which would indicate the inventory in 22.1 was wrong, not that
+AUD-11 holds) — as **fail**, and refuse to complete startup. Always issue the `rollback`
+regardless of outcome; never allow a `commit` to execute on this path under any
+circumstance.
+
+**Required for this spec to execute**, consistent with §22.6: the connection running
+these two tiers must itself be using `td_backend_app`'s credential (i.e. this check only
+means anything once `SUPABASE_DB_URL` has actually been cut over) — running Tier 1/2
+against the pre-cutover `postgres` credential would correctly report Tier 1 as a fail
+(expected — that's the bug this whole document exists to fix) and should not be mistaken
+for a passing baseline.
+
+### 22.10 What this section does not claim
+
+No part of this design has been applied to any live project. Live verification that
+`036`'s grants/policies actually produce the access pattern described above — the C-2-
+equivalent check §21 ran for the `postgres` role — still needs to happen against
+`td_backend_app` after the owner applies `036` and sets its password, before
+`devops-engineer` flips `SUPABASE_DB_URL` in Render (§21's table, steps 2–3). This section
+is the design `cto` scheduled for 2026-10-23; it is not itself that verification.
+
+**Signed:** `database-architect`, 2026-10-16.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
