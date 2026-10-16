@@ -1753,6 +1753,87 @@ without the owner present.
 
 ---
 
+## 21. C-2 live verification result, and record of production access (2026-10-16)
+
+**C-2 record.** `database-architect`'s verification SQL (`INC-003-c2-grant-verification.md` §4) was run
+live against production, with the business owner's authorization, using the credential the owner
+supplied directly (Supabase's generic dashboard connection-info page). Results:
+
+- `current_user`/`session_user`: both `postgres`.
+- Table privileges: `SELECT`+`INSERT` true on both `app.account_state_transitions` and
+  `app.account_audit_log`; schema `USAGE` on `app` true.
+- RLS: enabled (not forced) on both tables; zero permissive policies exist for either.
+- Role: `rolsuper = false`, **`rolbypassrls = true`**.
+- Smoke-test `INSERT` failed on the real `account_audit_log_failure_has_identifier` CHECK constraint
+  (the synthetic test row didn't satisfy it) — a confirmation the constraint is live, not a grants
+  failure. No row was written; the transaction was rolled back.
+
+**C-2 is satisfied in the narrow sense — on one condition, not yet confirmed:** the verified
+credential is Supabase's project `postgres` role, reached through the Supavisor pooler, and it has
+every privilege the backend needs (and far more). Whether this is the *same* credential
+`SUPABASE_DB_URL` uses in Render production is not yet independently confirmed from this checkout —
+it requires reading the username portion of the live Render env var, which only the owner can do.
+No migration or SQL anywhere in this repo creates a separate application role; `ADR-0006` RR-6 and
+`runbooks/aud-8-privileged-access-reconstruction.md:284` both already state `SUPABASE_DB_URL`
+"remains the project superuser (SR-3 open)" — so the evidence points at this being the same
+credential, but **this record does not claim that as proven, only as very likely**.
+
+**What this does NOT mean, and must not be cited as meaning:** RLS is not "broken" by this finding —
+RLS enabled with no policies still works as deny-all against `anon`/`authenticated` arriving through
+PostgREST (TB-8), which is what it was built to stop. What the bypass-capable credential actually
+costs, specifically: (a) no blast-radius limit if this credential leaks — full DDL and `auth.*` read
+access; (b) **AUD-11 is not enforced** — this credential can `UPDATE`/`DELETE`
+`app.account_audit_log`, so the audit trail is tamperable by whoever holds it; (c) per ADR-0006 L611,
+any read made with this credential leaves no audit record. **No document may cite this verification
+as evidence that RLS or AUD-11 is enforced against the backend's runtime credential.**
+
+**Merge effect (per `cto`'s ruling, 2026-10-16):** SR-3 does **not** become a blocking condition for
+this branch's merge — it is pre-existing debt, filed independently (`security-review.md` TB-3/SR-3)
+long before this branch existed, and the branch neither creates nor worsens it. Holding a High-
+severity control-bypass fix back on unrelated, already-tracked debt would keep a known bypass live
+longer. Merge may proceed once the Render username check below confirms, or once C-2 is re-run
+against whatever role that check actually reveals.
+
+**Owner action required before merge:** check only the username portion of `SUPABASE_DB_URL` in
+Render → backend service → Environment (the text between `://` and `:`). If it reads
+`postgres.mowaqxfbwqdmjssghpvt`, this verification stands as C-2's record. If it reads anything else,
+re-run the §4 SQL against that role before merging.
+
+**Record of production access (ADR-0006/AUD-8 discipline — this access was itself the kind of
+privileged access that document describes, and is recorded here for that reason):**
+- **Date:** 2026-10-16. **Authorized by:** the business owner, who supplied the credential directly
+  in this session.
+- **Credential used:** the project's `postgres` role (Supavisor pooler connection), supplied by the
+  owner via the Supabase dashboard's generic connection-info page — not a scoped or short-lived
+  credential.
+- **What was run:** exactly the read-only queries in `INC-003-c2-grant-verification.md` §4 (steps
+  0–5), plus one `INSERT` smoke test inside an explicit transaction, rolled back. No `COMMIT` was
+  issued. No schema, data, or configuration was changed.
+- **Where the credential went:** passed only as a process environment variable (`PGPASSWORD`) to a
+  throwaway Node script, written to a session scratchpad directory and to a temporary file inside
+  `backend/` for module resolution, deleted immediately after the run completed. Never written to
+  any committed file, never logged, never passed as a command-line argument.
+- **Standing rule from here (`cto` ruling):** production credentials are not pasted into agent chat
+  again. Future live checks are run by the owner directly (with SQL supplied), or through a
+  short-lived, read-only, specially-scoped role dropped immediately after use.
+- **Required follow-up, independent of SR-3:** because this credential was shared in chat, it is
+  considered exposed outside any secret vault (persisted in session transcripts) and **must be
+  rotated within 72 hours**, as one coordinated change — reset the password, update
+  `SUPABASE_DB_URL` in Render, redeploy, confirm the health endpoint — not as an isolated dashboard
+  click, since resetting it alone would break production if this is in fact the live credential.
+
+**SR-3 scheduled as its own tracked action, run in parallel with this branch's merge, not blocking
+it:**
+| Step | Owner | Deadline |
+|---|---|---|
+| Role + grants design: dedicated login role, `NOBYPASSRLS`, not superuser, not table owner; `SELECT`/`INSERT`/`UPDATE` on named `app.*` tables the backend needs, **`INSERT`-only (no `UPDATE`/`DELETE`) on audit tables** to satisfy AUD-11; nothing on `auth.*`. **Must inventory every RLS-enabled `app.*` table the backend touches, not just these two, and add the per-table policies the new role needs before cutover** — these tables have RLS enabled with zero policies today; swapping the credential without adding scoped policies first breaks production (every SELECT returns no rows, every INSERT is refused). Do not fix this by granting `BYPASSRLS` — that reintroduces exactly what SR-3 removes. | `database-architect` | 2026-10-23 |
+| Owner runs the role-creation SQL and sets its password; `devops-engineer` sequences the `SUPABASE_DB_URL` change in Render and the redeploy. No agent holds the production credential for this. | Owner + `devops-engineer` | 2026-10-30 (cutover) |
+| Re-run C-2 as the new role; land FU-A10 (ADR-0006) in the same series — a boot/deploy-time assertion that `current_user` is not superuser and not `bypassrls`, and that `UPDATE`/`DELETE` on both audit tables is refused. | `security-engineer` | With cutover |
+
+**Signed:** `cto` (ruling relayed by orchestrator), 2026-10-16.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
