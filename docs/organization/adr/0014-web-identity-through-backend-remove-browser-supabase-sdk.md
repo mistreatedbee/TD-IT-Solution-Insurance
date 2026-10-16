@@ -1,6 +1,7 @@
 # ADR-0014: Web Identity Goes Through the Backend Only — Remove `supabase-js` and Retire the Published Anon Key
 
-Status: **Proposed** — not ratified. Discharges INC-003 action **A-21** (draft) once filed; ratification is `cto`'s.
+Status: **Accepted** — ratified by `cto` 2026-10-16, with conditions (see §16). Discharges INC-003 action **A-21**.
+Superseded status line (void, retained for audit): ~~Status: **Proposed** — not ratified. Discharges INC-003 action **A-21** (draft) once filed; ratification is `cto`'s.~~
 Date: 2026-10-15
 Deciders: `solution-architect` (author). Concurrence required from `cybersecurity-architect`,
 `authentication-engineer` and `compliance-specialist`; ratified by `cto` (see §12).
@@ -836,6 +837,116 @@ WITH CONDITIONS.**
 - RR-7 is resolved as stated in 15.2 and folded into PM-5.
 
 Nothing here blocks ratification.
+
+---
+
+## 16. `cto` ratification (2026-10-16)
+
+This section cites §§2, 6, 9, 11, 12 and 13, §14, §15, and INC-003 §19.4, §20.4 and §21. §§1–15 are
+unchanged. The only other edit is the Status line at the top. Following the ADR-0008/0012 precedent,
+the superseded line is kept there, marked void.
+
+**Decision: RATIFIED. Status is now Accepted.** §2 items 1–6 are the binding direction for web
+identity. Web reaches identity only through the backend; `supabase-js` and the published anon key
+are removed on the §6 phases. This is five days ahead of the 2026-10-21 target in INC-003 §20.4.
+Ratifying does **not** authorize starting any phase. Each phase still passes Stage 8 and Stage 10, as
+§6 says. Phase 4 also needs the separate `cto` go decision in 16.4.
+
+### 16.1 Concurrences: what I relied on, and the independence defect
+
+- **`cybersecurity-architect` (INC-003 §19.4).** Concurs with conditions. It was prepared by a session
+  dispatched as that role, and it is the security gate for this ADR. I adopt its conditions in full
+  (16.3).
+- **`authentication-engineer` (§14) and `compliance-specialist` (§15).** Both concur with conditions,
+  and neither blocks. The §14 provenance note is accurate. Both sections were written by the
+  orchestrating session, which sits in the chain that authored this ADR. Neither is an independent
+  instance of either role. **A required concurrence written by the proposing chain is a weaker control
+  than the one §12 specifies, and I am recording that rather than passing over it.**
+- **Why I ratify anyway, rather than holding until 2026-10-21:**
+  1. **I checked the load-bearing facts myself on `main` at `e646fbc`.** None of the following is taken
+     from §14 or §15:
+     - `client: z.enum(['web','mobile']).optional().default('mobile')` is at `backend/src/routes/auth.ts:84`,
+       `:208` and `:806`, and `verificationRedirectFor` is at `:87` (G-1).
+     - `verifyPassword` turns every GoTrue 400 or 401 into `null` (`backend/src/db/supabase.ts:248-250`).
+       AE-1's lockout concern is therefore real.
+     - `AuditEventType` (`backend/src/repositories/audit-log.ts:41`) has no `account_created` or
+       `email_verified` member. CS-1's gap is therefore real.
+     - The privileged `logout()` now goes through the authenticated `apiFetch`
+       (`src/dashboard/api/auth.ts:51-58`). AE-5 is fixed in `ba525b0` and merged.
+     - `@supabase/supabase-js` is still in `package.json:22`. Phase 1 has not started, as expected.
+  2. **Neither concurrence objects to the decision.** Every condition either sharpens a Phase 1 or
+     Phase 3 exit criterion or refers out a matter that is already tracked. An independent instance
+     could add conditions, but a reversal of direction is unlikely: the security gate, which was
+     independent, already concurs.
+  3. **The ADR can be reversed until Phase 4, and Phase 4 has its own `cto` gate (16.4).**
+  4. **Delay has a cost.** INC-003 §20.4 records it: the 2026-11-30 Phase 4 date anchors the A-9
+     acceptance and, through §15.7, the s19 remediation date.
+- **Conditions that come from this defect (binding):**
+  - **I-1.** An **independent** session dispatched as `authentication-engineer` re-affirms, amends or
+    withdraws §14 in a new appended section. Deadline: before the Phase 1 PR enters Stage 8.
+    AE-1…AE-4 bind as Phase 1 exit criteria **now**. If the re-affirmation amends them, the amended
+    form applies.
+  - **I-2.** An **independent** session dispatched as `compliance-specialist` does the same for §15.
+    Deadline: **before §15.2's RR-7 ruling is cited anywhere as a compliance determination**, and in
+    any case before Phase 1 deploys. §15.2 is a substantive POPIA position: lawful basis s11(1)(b),
+    with no remediation needed for historic accounts. It is not a concurrence detail, and it must not
+    travel on non-independent provenance. CS-1 and CS-2 bind now.
+  - **I-3.** If either independent session **withdraws** concurrence, this ADR comes back to `cto`.
+    It does not revert to Proposed automatically, and no phase may start until I rule.
+  - **I-4 (standing rule, from today).** A concurrence that §12, or any ADR's review table, marks as
+    blocking for ratification must be written by a session dispatched as that role. It must not be
+    written by the orchestrator or by the authoring chain. This ratification is the last exception,
+    and it is recorded as one.
+
+### 16.2 Answers to the §13 `cto` questions
+
+- **Q-1.** Already ruled at INC-003 §20.4: ACCEPT, with conditions (i)–(iv) and Phase 4 by
+  **2026-11-30**.
+- **Q-3 (RR-4).** Accept the cold-start risk on web signup for Phase 1. Login already carries it. Moving
+  off Render's free plan is the owner's cost decision under Feature 001 SR-22, and this ADR does not
+  wait for it. The §6 Phase 2 soak criterion ("no rise in signup/login error rates") is the
+  measurement. If it fails, the §11 RR-4 trigger fires.
+- **Q-4 (G-3).** Accept: verify through the link, then sign in once. It is already built (§14.2 W-5).
+- **Q-5.** Ratified: bearer-token web sessions now, with the access token kept in memory only.
+  httpOnly cookies are deferred to the §11 trigger.
+- **Q-6.** The soak is **7 days**, and exchange calls must be about zero for the final 72 hours (§6
+  Phase 2). Phase 3 needs a recorded `cto` go decision as well as Phase 4. Phase 3's purge is
+  user-affecting and is gated by CS-2.
+- **Q-8.** Moot. Ratified today.
+- **Q-9 (ADR-0005 / FU-18).** Assigned. The owner is the role that reserved it, or `solution-architect`
+  if none did, with `authentication-engineer`. The draft is due **2026-11-13**, before Phase 4. If it is
+  ratified with a token model different from FU-18, the §11 revisit trigger applies.
+
+### 16.3 Consolidated exit criteria by phase (a list, not new requirements)
+
+- **Phase 1 exit:**
+  - AE-1…AE-4 (§14.5);
+  - CS-1 (§15.5);
+  - A-15, meaning CSP and `Referrer-Policy: no-referrer` deployed (INC-003 §19.4, condition 1);
+  - the A-11 capability guard as a required Stage 8 check;
+  - the RR-1 note that FR-20 device binding is not an XSS control (§19.4);
+  - I-1 complete; I-2 complete before deploy.
+- **Phase 3 precondition:**
+  - CS-2: A-6 and A-22 item 12 queries run or the table exported first, and a purge mechanism that
+    writes no per-user "login" rows, or the run window recorded;
+  - the INC-003 §19.3 backfill;
+  - a `cto` go decision.
+- **Phase 4 go (`cto`, recorded in INC-003):**
+  - §19.4's strengthened exit criteria: the old key is refused on `/signup`, `/recover`, `/resend`,
+    `/otp`, `/verify`, `PUT /user` and `POST /factors`, not only on the password grant;
+  - no other publishable or anon key is enabled;
+  - the `auth-send-email` hook and the backend service-role path are confirmed working;
+  - the A-22 item 11 key-format answer is on record;
+  - §4.3's `sessionStorage` question is decided together with A-15.
+
+### 16.4 Not decided here
+
+- Starting Phase 1.
+- The A-12 `recoveryAccessToken` removal (`backend-architect` with `mobile-architect`).
+- Raising the customer password minimum to 14 (`product-manager`, INC-003 §20.4).
+- INC-003 §7 (`compliance-specialist`, after A-6 returns).
+
+**Signed:** `cto`, 2026-10-16. **RATIFIED with conditions I-1…I-4 and the criteria in 16.3.**
 
 ---
 
