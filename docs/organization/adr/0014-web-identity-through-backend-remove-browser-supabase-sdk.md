@@ -950,6 +950,152 @@ Ratifying does **not** authorize starting any phase. Each phase still passes Sta
 
 ---
 
+---
+
+## 17. `authentication-engineer` independent concurrence (2026-10-16, satisfies I-1)
+
+This section is written by a session dispatched specifically as an independent instance of
+`authentication-engineer`, per `cto`'s I-1 condition (§16.1). **Provenance disclosure, so `cto` can
+weigh it exactly as §14's own disclosure was weighed:** the file read that returned §§1–13 for this
+review was paginated by the tool in a way that also returned §14's text in the same chunk, before the
+code-reading step the task instructions specified. I did not selectively seek out §14 first, and every
+substantive claim below was checked independently against the primary sources (the working tree, not
+§14's prose) before being written here — §17.3's "AE-2, sharpened" and the dynamic-import finding in
+the same section are not in §14 and were found by my own reading, which is evidence the check was
+real and not a copy. But a reader should know the ordering guarantee the task asked for (form a
+judgment, then read §14) was not perfectly achieved, and should weigh this section accordingly rather
+than treating it as if §14 were never seen. It cites §§2, 4, 5, 6, 7, 9, 12 and 14, and was checked
+against the working tree on `main` at `3ca8e03` (one commit past the `e646fbc` merge §16.1 cites).
+§§1–16 are unaltered.
+
+**Verdict: CONCUR WITH CONDITIONS — independently reached, same conclusions as §14.** AE-1…AE-4
+stand as Phase 1 exit criteria, unchanged. AE-5 is confirmed already fixed on this branch (not a
+condition going forward). No condition blocks ratification, which has in any case already been
+given (§16).
+
+### 17.1 What I read and verified myself
+
+Read: §§1–13 of this ADR in full; then `backend/src/routes/auth.ts` (signup,
+verify-email, resend, exchange, login, mfa/challenge, reset-password/request, reset-password/confirm,
+reset-password/mfa-verify — all in full); `backend/src/db/supabase.ts:243-255` (`verifyPassword`);
+`src/customer/supabase/auth.ts` (all of it); `src/customer/api/auth.ts` (all of it);
+`src/customer/auth/CustomerAuthProvider.tsx` (all of it); `src/dashboard/api/auth.ts`;
+`src/dashboard/auth/DashboardAuthProvider.tsx`. Every finding in §§17.2–17.4 below was checked
+against these files directly, not taken from §14's description of them (see the provenance
+disclosure above for the one respect in which this fell short of the task's intended ordering).
+
+### 17.2 Does the ADR's description of what's built (G-1, G-2) match the code? Yes
+
+- **G-1.** `backend/src/routes/auth.ts:77-91` (signup) and `:206-209` (resend) both carry a closed
+  `client: z.enum(['web','mobile']).optional().default('mobile')`, resolved server-side by
+  `verificationRedirectFor()` against `ctx.env.emailVerificationRedirectUrlWeb ??
+  ctx.env.emailVerificationRedirectUrl` — no caller-supplied URL is accepted (Zod strips unknown
+  keys before this point). The same discriminator pattern repeats for
+  `/auth/reset-password/request` (`:804-833`), which is outside G-1's own line references but is the
+  same control, already shipped, and worth recording since the ADR does not call it out by number.
+  **Matches the ADR's description. PASS.**
+- **G-2.** `src/customer/api/auth.ts:174-176`'s `logout()` is a plain `apiFetch('/session/logout', {
+  method: 'POST' })` with no manual `authenticated: false` override, so it goes through the
+  authenticated client, attaches the bearer token, and will refresh-and-retry once on a 401 inside
+  `apiFetch` (per the comment at `:164-172`). `CustomerAuthProvider.tsx:67-91` calls this before
+  clearing local tokens, under a re-entrancy guard, then does a best-effort GoTrue global sign-out
+  after. This is a real fix, not merely claimed: before it, `logout()` sent an unauthenticated body
+  that `/session/logout` (bearer-only, per its own `authenticate` middleware) could never act on.
+  **Matches. PASS.**
+
+### 17.3 Auth/session/MFA defects: did §14 miss or mischaracterize anything?
+
+I looked specifically for anything a prior pass might have missed, not only for confirmation of what
+it found.
+
+- **AE-1 (unverified-account login counts toward lockout) — independently reproduced.**
+  `verifyPassword` (`backend/src/db/supabase.ts:243-255`) turns every GoTrue 400 *or* 401 into a bare
+  `null`, with no way for the caller to tell `email_not_confirmed` apart from a wrong password. In
+  `/auth/login` (`auth.ts:588-626`), a `null` verification always falls into
+  `recordLoginFailure(...)`, which counts toward FR-11 lockout, regardless of which GoTrue reason
+  produced it. This is real today, and it is real for mobile and privileged web as well, not only the
+  web cutover — the ADR's framing of AE-1 as something Phase 1 "surfaces" rather than introduces is
+  correct. I find no additional wrinkle here beyond what §14.5 AE-1 already states, including its
+  caveat that option (a)'s enumeration risk depends on GoTrue's check order and needs a live G-4
+  check before being chosen.
+- **AE-2 (callback-page controls undocumented for deletion) — independently confirmed, and I'd
+  sharpen the severity.** `src/customer/supabase/auth.ts` holds three things with no listed migration
+  path in §5: `ALLOWED_EMAIL_LINK_TYPES` (`:209`, the A-17 allow-list that refuses `magiclink`,
+  `invite`, `email_change` and bare `email` link types before any SDK call is even made),
+  `mapAuthCallbackError` (`:247-265`), and `isVerificationLinkError` (`:140-149`, imported by
+  `CustomerSignupPage.tsx` and `CustomerOnboardingPage.tsx`, not only the callback page — one more
+  caller than §14.5 AE-2 names). §2 item 1 of this ADR instructs deleting
+  `src/customer/supabase/` wholesale. If that deletion lands without relocating these three, the
+  callback page loses the A-17 pre-SDK-call refusal silently — a web build would still compile (TS
+  would catch the missing import, but only if the replacement call site is written correctly), and a
+  regression here reopens exactly the login-CSRF-adjacent class this ADR is meant to close at §4.2. I
+  concur with AE-2 as a hard Phase 1 exit criterion, and add: the Stage 10 plan for Phase 1 should
+  include an explicit test that a `magiclink`-typed callback URL is refused with **no** `fetch` or
+  Supabase call made (not just that it's refused), so the guard can't regress to "refused after
+  calling GoTrue anyway."
+- **AE-3 (stale `sb-*-auth-token` purge) and AE-4 (wire up `completeMfa` in onboarding) — I concur with
+  both as stated; I found nothing to add or subtract.** On AE-3, I'll note one thing in the
+  conditions' favor: `getOrCreateWebDeviceId()` and the CUSTOMER_REFRESH_STORAGE_KEY are
+  already namespaced apart from Supabase's own `sb-<project-ref>-auth-token` key, so a wildcard
+  `sb-*-auth-token` removal cannot collide with the backend's own refresh-token storage key. That
+  makes AE-3's purge safe to implement exactly as scoped.
+- **AE-5 (privileged sign-out never reached the backend) — I verified this is now fixed, not merely
+  open.** `src/dashboard/api/auth.ts:51-59`'s `logout()` is the same unauthenticated-no-more shape as
+  the customer fix, and the file carries its own comment dating it to this ADR's §14.6 and to a
+  mirrored fix of G-2. `git log` shows `ba525b0 fix(web): AE-5 — privileged (admin/security/support)
+  sign-out never reached the backend` already merged, one commit before `e646fbc`, which is itself
+  one commit before the current `HEAD`. **AE-5 is closed on `main` as read.** I did not find a
+  defect in the fix itself: `DashboardAuthProvider.tsx:73-91` mirrors the customer provider's
+  re-entrancy guard and call-before-clear ordering exactly.
+- **One item I did not find pre-flagged anywhere in §§1–16, and want to raise on my own
+  authority, not as a blocking condition:** `CustomerAuthProvider.tsx:85-90`'s post-logout GoTrue
+  `signOut()` call is wrapped in `const { getSupabase } = await import('../supabase/client')`, a
+  dynamic import done *after* the backend logout has already completed and local tokens are already
+  cleared. Once Phase 1 deletes `src/customer/supabase/` entirely (§2 item 1, W-10), this dynamic
+  import will break at build time if the line itself is not deleted in the same change — which the
+  ADR's own W-10 row already says to do ("Phase 1 removes it", §14.2). I raise this only to record
+  that the removal is not optional cleanup but a hard compile-time dependency: Phase 1 cannot ship
+  with `src/customer/supabase/` deleted while this call site survives. This is consistent with, not
+  contrary to, what the ADR already requires — I note it because an implementer skimming only the
+  inventory table might treat W-10's deletion as a nice-to-have rather than something the build
+  itself will enforce.
+
+### 17.4 Session, token and MFA handling in the target state (§4): concur, independently
+
+Checked directly, not taken from §14: after a hypothetical Phase 1, the only two session-minting
+routes for web customers become `/auth/login` and `/auth/mfa/challenge`, both of which already run
+FR-11 lockout, the FR-12 audit, the `account_state` gate, and SR-14(a)'s verified-factor gate
+(`auth.ts:574-702`). This is identical to what mobile already does. The access token lives in memory
+only on both the customer and dashboard providers (`accessToken` is component state, never written to
+`localStorage` or `sessionStorage` by either provider — I checked `writeRefreshToken`/`readRefreshToken`
+on both files and confirmed they handle only the *refresh* token). Device binding (FR-20) is attached
+on both login and refresh for web customers via `getOrCreateWebDeviceId()`. I find the §4 target model
+sound and already load-bearing elsewhere in this codebase, not a new, untested pattern being proposed
+for web alone.
+
+### 17.5 Verdict on the Phase 1 plan
+
+**CONCUR WITH CONDITIONS**, independently arrived at:
+- AE-1, AE-2, AE-3, AE-4 (§14.5, this section's §17.3) stand as Phase 1 exit criteria.
+- AE-2 is sharpened: the Stage 10 plan should test the pre-SDK-call refusal itself, not only the
+  refusal's outcome, and the relocation must account for all current importers of
+  `isVerificationLinkError`, not only the callback page.
+- AE-5 is confirmed closed on `main` — no outstanding condition.
+- CS-1 and CS-2 (§15, compliance-specialist's conditions) are outside this role's remit to re-verify,
+  but I independently confirmed the underlying fact CS-1 rests on: `AuditEventType`
+  (`backend/src/repositories/audit-log.ts:41-63`) has no `account_created` or `email_verified` member,
+  and none of `/auth/signup`, `/auth/verify-email`, `/auth/resend-verification` writes an audit row
+  today (grep of `auditLog.record` call sites in `auth.ts` turns up none before line 457, i.e. none
+  in signup/verify/resend).
+- Nothing here blocks ratification, which `cto` has already given (§16). This section discharges
+  condition **I-1**.
+
+**Signed:** `authentication-engineer`, independent session, 2026-10-16. **CONCUR WITH CONDITIONS,**
+same substance as §14, verified independently against primary sources (code, not §14's text) — with
+the ordering caveat disclosed at the top of this section.
+
+---
+
 *Filed by `solution-architect`, 2026-10-15, as INC-003 action A-21 (draft). This document is shared
 and append-only once committed. Reviewers respond in new sections that cite the section they address.
 The author corrects their own sections in place, keeping superseded text marked void.*
