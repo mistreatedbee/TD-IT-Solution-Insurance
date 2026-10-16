@@ -125,7 +125,12 @@ export function CustomerOnboardingPage() {
     if (step !== 'plan') return;
     setPlansLoading(true);
     listPlans()
-      .then((res) => setPlans(res.data))
+      // Defensive: `res.data` must be an array before it reaches `plans` state —
+      // an unexpected response shape here (e.g. an error body that still resolves
+      // 2xx) previously set `plans` to `undefined`, which crashed the
+      // `selectedPlan` memo's `plans.find(...)` below with no error boundary,
+      // taking down the whole onboarding page.
+      .then((res) => setPlans(Array.isArray(res.data) ? res.data : []))
       .catch(() => setPlans([]))
       .finally(() => setPlansLoading(false));
   }, [step]);
