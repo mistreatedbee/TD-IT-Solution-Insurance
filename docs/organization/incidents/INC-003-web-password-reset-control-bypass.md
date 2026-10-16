@@ -1640,6 +1640,117 @@ This section cites §18 and ADR-0014. §§1–18 are unaltered, and I did not ed
 - every item A-8 … A-25 is closed or has been transferred to a successor incident by `cto`;
 - `compliance-specialist` has concurred on §7.
 
+## 20. `cto` merge-readiness ruling and open decisions (2026-10-16)
+
+Read §1–§19 in full before ruling. Scope: whether/when this branch merges to `main`, plus the
+decisions §19.5 and §19.4 Q-1 left open for this role.
+
+### 20.1 Is the original bypass live on `main` right now?
+
+**No.** `ba65236` ("route password reset through backend, close SR-6 bypass") landed on `main`
+around 2026-09-23, with `ac1685d`/`e2b1904` preceding it — staff resets on `main` already go
+through the backend's MFA gate. Outstanding: confirm that build actually reached production on
+Vercel/Render, not just `main`.
+
+**`main` still has live High/Medium problems this branch fixes**, confirmed directly against
+`main`'s code (not inferred from this document): password-change-from-any-logged-in-browser
+(C-7/A-12 — `CustomerResetPasswordPage.tsx` takes whatever Supabase session is in the browser,
+`main` persists ordinary logins, backend accepts any Supabase token as a recovery token), login
+CSRF at `/auth/callback` (A-13), plaintext password in `sessionStorage` (A-14,
+`src/onboarding/pendingSignupAuth.ts` still exists on `main`), logout-all/admin-suspension not
+ending browser Supabase sessions (A-10/A-23), and the web reset flow itself being broken end-to-end
+(A-24 — lands on "Reset link required").
+
+**Three holes no merge fixes (A-8, A-18, A-19):** the Supabase anon key is published in the web
+bundle; anyone holding it plus a session can call Supabase Auth directly. Only a console
+session (Secure password change, Secure email change, rate limits) or ADR-0014 Phase 4
+(retiring the key) reduces this.
+
+### 20.2 A-6 — requirement and sequencing
+
+**Required:** a person with production Supabase access (project owner, with `security-engineer`)
+queries `auth.audit_log_entries` then the Logs Explorer for recovery/`user_updated` events against
+every admin/security-company-operator/support-agent address, from when web auth shipped until
+~2026-09-23, concentrating on staff accounts with no MFA set up in that window, and records how far
+back the logs actually go.
+
+**Not a live hole — forensics on the window before the fix.** But 20 days overdue, and retention
+is plan-tier-dependent, so evidence may be aging out.
+
+**Must run before this branch deploys.** This branch adds a backend Supabase sign-out that mints a
+magic link; every call writes a system-generated "login" into `auth.audit_log_entries` — deploying
+first pollutes the exact table A-6 searches. At minimum, run the A-6 queries (or export the table)
+before merging.
+
+If A-6 finds unexplained events: `security-engineer` force-resets/revokes same day,
+`compliance-specialist` starts a POPIA s22 notification assessment, severity reopens (§10).
+
+### 20.3 Merge ruling and order
+
+**Merge: yes, but not yet — not "merge now, run checks after."** Merging to `main` almost
+certainly deploys (no `autoDeploy: false` in `render.yaml`; Vercel normally auto-deploys `main`).
+That ordering is wrong for two gates specifically:
+- **C-2** (DB grants/RLS on `app.account_state_transitions`/`app.account_audit_log`) — a missing
+  grant breaks all customer web sign-in and every staff MFA login; an RLS gap fails silently.
+- **C-8** (the `redirect_to` parameter change) — can break mobile email verification/reset in
+  production if not checked first.
+
+Order:
+1. Resolve any stray/uncommitted copy in whichever checkout is being merged from.
+2. Confirm merge-base, run full test suites on the branch, open as a PR so CI runs, check for
+   conflicts against anything landed on `main` since the branch was cut.
+3. Owner console session — A-6 first, then A-22's checks, A-3 (per 20.4 below), the redirect
+   allow-list entries (§8a/§18.2 — no record either was ever actually done), and
+   `EMAIL_VERIFICATION_REDIRECT_URL_WEB` in Render production and staging.
+4. C-2 check (`database-architect` + `devops-engineer`) — verify grants/RLS as the backend's own
+   connection role; add a forward migration on the branch before merging if anything's missing.
+   Never fix a missing grant by making the code fail open.
+5. C-8 decision — staging run of the mobile checks, or an explicit, recorded acceptance if mobile
+   isn't in real users' hands yet.
+6. Merge and deploy, then run the §19.5 deploy checks the same day. **INC-003 stays OPEN after the
+   merge — the merge is remediation, not closure.**
+
+### 20.4 Rulings
+
+**C-9: option (b).** Set the Supabase floor to 10 now, with leaked-password protection; the
+backend stays the only authority for 14 on staff accounts. Departs from `cybersecurity-architect`'s
+recommendation of (a) — the floor's real value is against weak passwords from legitimate users, and
+since `ba65236` plus this branch, no legitimate web/mobile flow writes passwords directly to
+Supabase anymore. Option (a) costs a customer-wide policy change plus a mobile release for no
+corresponding gain against the one path (direct-to-Supabase) the floor was defending. Conditions:
+`backend-architect` maps Supabase's `weak_password` error to `VALIDATION_ERROR`; raising the
+customer minimum to 14 stays open as a `product-manager` call, no longer an A-3 blocker. Leaked-
+password protection may need a paid Supabase plan — a cost decision for the owner if so.
+
+**A-9/Q-1: ACCEPT the residual window**, adopting §19.4's conditions in full: (i) ADR-0014 Phase 4
+by **2026-11-30**; (ii) the A-22 console session by **2026-10-22**; (iii) A-6 run, A-19
+reconciliation run and scheduled; (iv) the acceptance lapses automatically if any date slips.
+Rejecting the residual would only stop new web signups — the key is already in every shipped
+bundle, so it wouldn't reduce exposure for any existing account. Owner should be informed; their
+presence isn't required for this specific acceptance.
+
+**C-5 (A-17 console item): withdrawn**, per `cybersecurity-architect`'s recommendation — do not
+disable magic-link sign-in in the console; it would silently break this branch's revocation
+sign-out.
+
+**A-21/ADR-0014: NOT ratified today.** `authentication-engineer` and `compliance-specialist`
+concurrences are still pending per §19.5. Merging the ADR as "Proposed" is fine (ADR-0008
+precedent) since this branch implements only G-1/G-2, not Phases 1–4. New ratification target:
+**2026-10-21**, once both concurrences land. A later date erodes the credibility of the
+2026-11-30 Phase 4 date, and with it the A-9 acceptance.
+
+### 20.5 What cannot proceed without the business owner present
+
+Only the Supabase console session, and any Render settings only the owner can change: A-6 itself;
+A-3's floor + leaked-password protection (plus the plan-cost decision if needed); the 12 A-22
+checks; the redirect allow-list entries; `EMAIL_VERIFICATION_REDIRECT_URL_WEB` in Render if only
+the owner has access. If A-6 finds something, the POPIA notification decision involves the owner
+too. **Hard deadline: 2026-10-22**, or the A-9 acceptance lapses. Everything else — merge
+mechanics, C-2 if `devops-engineer` has DB credentials, tests, dispatching roles — can proceed
+without the owner present.
+
+**Signed:** `cto`, 2026-10-16.
+
 ---
 
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
