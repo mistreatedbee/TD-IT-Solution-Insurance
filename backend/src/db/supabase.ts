@@ -39,6 +39,19 @@ export class SupabaseUnavailableError extends Error {
   }
 }
 
+/**
+ * INC-003 A-16: `createUser` hit an email that already has an `auth.users`
+ * row (e.g. one created by the pre-A-16 browser `signUp`, which only got an
+ * `app.accounts` row just-in-time at the exchange). Distinct from
+ * `SupabaseUnavailableError` so `/auth/signup` can answer with its uniform
+ * 202 instead of a 503 that would reveal the address is registered.
+ */
+export class SupabaseUserAlreadyExistsError extends Error {
+  constructor() {
+    super('[db/supabase] auth user already exists for this email');
+  }
+}
+
 const CALL_TIMEOUT_MS = 5_000;
 
 async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
@@ -47,6 +60,7 @@ async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<
   try {
     return await fn(controller.signal);
   } catch (err) {
+    if (err instanceof SupabaseUserAlreadyExistsError) throw err;
     throw new SupabaseUnavailableError(err);
   } finally {
     clearTimeout(timer);
@@ -154,6 +168,15 @@ export interface SupabaseAdmin {
    * after the single call that needs it.
    */
   mintTransientUserAccessToken(email: string): Promise<string>;
+  /**
+   * INC-003 A-10/A-23 — terminates EVERY GoTrue session the user holds
+   * (including a browser-resident one this backend never issued), via GoTrue
+   * `POST /logout?scope=global` with a transient user-scoped token minted
+   * the same way as `mintTransientUserAccessToken` (the transient session
+   * is itself among those revoked). Throws `SupabaseUnavailableError` on any
+   * failure; callers treat it as best-effort (lib/gotrue-session-revocation.ts).
+   */
+  signOutAllUserSessions(email: string): Promise<void>;
   raw: SupabaseClient;
 }
 
@@ -198,6 +221,9 @@ export function getSupabaseAdmin(env: Env): SupabaseAdmin {
           password,
           email_confirm: emailConfirm,
         });
+        if (error && (error.code === 'email_exists' || error.code === 'user_already_exists')) {
+          throw new SupabaseUserAlreadyExistsError();
+        }
         if (error || !data.user) {
           throw error ?? new Error('createUser returned no user');
         }
@@ -315,7 +341,10 @@ export function getSupabaseAdmin(env: Env): SupabaseAdmin {
     },
 
     async sendSignupConfirmationEmail(email, redirectTo) {
-      const response = await gotrueFetch(env, '/resend', {
+      // INC-003 A-16: GoTrue reads the redirect from the `redirect_to` QUERY
+      // parameter (that is where supabase-js sends it); the body field is kept
+      // for backward compatibility but may be ignored upstream.
+      const response = await gotrueFetch(env, `/resend?redirect_to=${encodeURIComponent(redirectTo)}`, {
         method: 'POST',
         body: JSON.stringify({
           type: 'signup',
@@ -330,7 +359,9 @@ export function getSupabaseAdmin(env: Env): SupabaseAdmin {
     },
 
     async sendPasswordRecoveryEmail(email, redirectTo) {
-      const response = await gotrueFetch(env, '/recover', {
+      // Same `redirect_to` query-parameter rule as /resend above (INC-003 A-16
+      // / §12.6 item 3): without it GoTrue may fall back to the Site URL.
+      const response = await gotrueFetch(env, `/recover?redirect_to=${encodeURIComponent(redirectTo)}`, {
         method: 'POST',
         body: JSON.stringify({
           email,
@@ -462,6 +493,17 @@ export function getSupabaseAdmin(env: Env): SupabaseAdmin {
         const body = (await response.json()) as { access_token: string };
         return body.access_token;
       });
+    },
+
+    async signOutAllUserSessions(email) {
+      const userAccessToken = await (cached as SupabaseAdmin).mintTransientUserAccessToken(email);
+      const response = await gotrueFetch(env, '/logout?scope=global', {
+        method: 'POST',
+        authToken: userAccessToken,
+      });
+      if (!response.ok) {
+        throw new SupabaseUnavailableError(`logout scope=global returned ${response.status}`);
+      }
     },
   };
 

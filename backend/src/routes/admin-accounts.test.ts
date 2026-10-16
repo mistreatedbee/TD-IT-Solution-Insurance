@@ -391,6 +391,7 @@ function createStateHarness(
   const revokeAllForAccountCalls: Array<{ accountId: string; reason: string }> = [];
   const disableAllForAccountCalls: string[] = [];
   const recordCalls: AuditEventInput[] = [];
+  const gotrueSignOutCalls: string[] = [];
 
   // ADR-0012 SU-FU-1: requireStepUp reads this live per request. Defaults to
   // a fresh mfaVerifiedAt (admin verified MFA "just now") so the pre-existing
@@ -433,6 +434,11 @@ function createStateHarness(
       async disableAllForAccount(accountId: string) {
         disableAllForAccountCalls.push(accountId);
         return 1;
+      },
+    },
+    supabase: {
+      async signOutAllUserSessions(email: string) {
+        gotrueSignOutCalls.push(email);
       },
     },
     accounts: {
@@ -529,6 +535,7 @@ function createStateHarness(
     revokeAllForAccountCalls,
     disableAllForAccountCalls,
     recordCalls,
+    gotrueSignOutCalls,
     token: adminToken(env, adminId, sessionId),
     async start() {
       await new Promise<void>((resolve) => {
@@ -594,6 +601,8 @@ describe('PATCH /admin/accounts/:id/state', () => {
     expect(harness.recordCalls).toHaveLength(1);
     expect(harness.recordCalls[0]?.eventType).toBe('privileged_data_access');
     expect(harness.recordCalls[0]?.accountId).toBe(customerId);
+    // INC-003 A-23: the suspension also reaches the subject's GoTrue sessions.
+    expect(harness.gotrueSignOutCalls).toEqual(['customer@example.com']);
   });
 
   it('admin can deactivate a suspended customer', async () => {
@@ -638,6 +647,9 @@ describe('PATCH /admin/accounts/:id/state', () => {
     expect(body.suspendedAt).toBeNull();
     expect(harness.revokeAllForAccountCalls).toHaveLength(0);
     expect(harness.disableAllForAccountCalls).toHaveLength(0);
+    // INC-003 A-23: reactivation kills any GoTrue session minted during the
+    // suspension (the exchange watermark is the authoritative control).
+    expect(harness.gotrueSignOutCalls).toEqual(['customer@example.com']);
   });
 
   it('cannot deactivate self or another admin account', async () => {
@@ -674,6 +686,7 @@ describe('PATCH /admin/accounts/:id/state', () => {
 
     const res = await harness.patchState(customerId, { accountState: 'active' });
     expect(res.status).toBe(409);
+    expect(harness.gotrueSignOutCalls).toHaveLength(0);
   });
 
   it('non-admin gets 403', async () => {

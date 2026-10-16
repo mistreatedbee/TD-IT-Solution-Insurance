@@ -48,10 +48,12 @@ export async function getAccountMe(): Promise<AccountMe> {
   return apiFetch<AccountMe>('/account/me');
 }
 
-export async function logout(refreshToken: string): Promise<void> {
-  await apiFetch('/session/logout', {
-    method: 'POST',
-    body: { refreshToken },
-    authenticated: false,
-  });
+// AE-5 (ADR-0014 §14.6): `/session/logout` authenticates by bearer access
+// token only (`backend/src/routes/session.ts:58`) — it ignores the request
+// body entirely. Mirror the G-2 fix on the customer side: call this through
+// the authenticated client (bearer token attached, 401-triggered
+// refresh-and-retry handled by `apiFetch`), not an unauthenticated
+// body-based call.
+export async function logout(): Promise<void> {
+  await apiFetch('/session/logout', { method: 'POST' });
 }

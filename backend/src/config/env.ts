@@ -95,6 +95,14 @@ export interface Env {
    * (must be allowlisted in Supabase Auth → URL configuration). */
   emailVerificationRedirectUrl: string;
   /**
+   * INC-003 A-16: signup-verification redirect when the requesting client is
+   * web (`/auth/signup` / `/auth/resend-verification` with `client: 'web'`).
+   * Same rules as `passwordResetRedirectUrlWeb`: optional in the type so
+   * existing fixtures compile, always populated by `loadEnv()`, selected by a
+   * closed `client` discriminator only — never a caller-supplied URL.
+   */
+  emailVerificationRedirectUrlWeb?: string;
+  /**
    * Redirect target for password recovery emails when the requesting client
    * is mobile (`?email=` appended). Historically the only value; kept as the
    * mobile-specific field name for backward compatibility with every
@@ -337,6 +345,12 @@ export function loadEnv(): Env {
   const appPublicUrl = process.env.APP_PUBLIC_URL?.trim().replace(/\/+$/, '') || undefined;
   const emailVerificationRedirectUrl =
     process.env.EMAIL_VERIFICATION_REDIRECT_URL?.trim() || 'tditinsurance://verify-email';
+  // INC-003 A-16: web signup verification goes through the backend now, so
+  // web needs its own allow-listed target (the callback page). Must be
+  // allowlisted in Supabase Auth → URL configuration.
+  const emailVerificationRedirectUrlWeb =
+    process.env.EMAIL_VERIFICATION_REDIRECT_URL_WEB?.trim() ||
+    'https://td-it-solution-insurance-alpha.vercel.app/auth/callback?type=signup';
   const passwordResetRedirectUrl =
     process.env.PASSWORD_RESET_REDIRECT_URL?.trim() || 'tditinsurance://reset-password';
   // INC-003 F-2 (2026-09-23): web needs its own allow-listed redirect —
@@ -407,6 +421,7 @@ export function loadEnv(): Env {
     emailVerificationRedirectUrl,
     passwordResetRedirectUrl,
     passwordResetRedirectUrlWeb,
+    emailVerificationRedirectUrlWeb,
     invitationAcceptRedirectUrl,
     expoAccessToken,
     locationIngestionEnabled,

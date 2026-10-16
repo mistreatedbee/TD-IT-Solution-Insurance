@@ -2,8 +2,8 @@ import { API_BASE_URL } from '../api/config';
 import { ApiError } from '../api/errors';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { getOrCreateWebDeviceId } from '../auth/deviceId';
-import { saveSignupEmail, wasNotifyVerifiedPinged, markNotifyVerifiedPinged } from '../../onboarding/onboardingStorage';
-import { getSupabase, supabaseAuthRedirectUrl } from './client';
+import { wasNotifyVerifiedPinged, markNotifyVerifiedPinged } from '../../onboarding/onboardingStorage';
+import { getSupabase } from './client';
 
 function requireSupabase() {
   return getSupabase();
@@ -101,7 +101,6 @@ async function exchangeSupabaseSessionOnce(
   throw new ApiError(response.status, { error: { message: 'Unexpected response from the sign-in service.' } });
 }
 
-export type SignUpResult = 'verification_sent' | 'already_verified';
 
 /**
  * SR-006-2: fires the backend's best-effort "sync + notify" side effect for
@@ -149,41 +148,10 @@ export function isVerificationLinkError(error: { message: string }): boolean {
   );
 }
 
-export async function signUpWithSupabase(email: string, password: string): Promise<SignUpResult> {
-  const trimmed = email.trim().toLowerCase();
-  saveSignupEmail(trimmed);
-
-  // SR-006-2: no precheck against notify-email-verified before calling
-  // Supabase's own signUp — that precheck was exactly the "called from the
-  // browser on every signup attempt" oracle-abuse pattern the security
-  // review flagged. Supabase's own signUp response carries the two safe,
-  // already-authenticated-by-Supabase signals below.
-  const { data, error } = await requireSupabase().auth.signUp({
-    email: trimmed,
-    password,
-    options: {
-      emailRedirectTo: supabaseAuthRedirectUrl('signup'),
-    },
-  });
-  if (error) throw error;
-
-  if (data.user?.email_confirmed_at) {
-    return 'already_verified';
-  }
-
-  if (data.user && data.user.identities?.length === 0) {
-    // Supabase's own anti-enumeration signal: an empty `identities` array on
-    // signUp means this email already belongs to a confirmed account (GoTrue
-    // does not send mail or throw in this case). Trust it directly rather
-    // than round-tripping through our own (now intentionally uniform)
-    // notify-email-verified response. Still ping the backend, best-effort,
-    // so it can run its sync/notify side effect — but never branch on it.
-    void notifyEmailAlreadyVerified(trimmed).catch(() => undefined);
-    return 'already_verified';
-  }
-
-  return 'verification_sent';
-}
+// INC-003 A-16: `signUpWithSupabase` (browser `supabase.auth.signUp`) was
+// removed, not just unreferenced — it bypassed the backend's signup limiter,
+// password policy, consent requirement and synchronous account creation.
+// Web signup is `signup()` in `src/customer/api/auth.ts` (POST /auth/signup).
 
 export async function signInWithSupabase(
   email: string,
@@ -200,16 +168,9 @@ export async function signInWithSupabase(
   return exchangeSupabaseSession(data.session.access_token);
 }
 
-export async function resendSignupVerification(email: string): Promise<void> {
-  const { error } = await requireSupabase().auth.resend({
-    type: 'signup',
-    email: email.trim().toLowerCase(),
-    options: {
-      emailRedirectTo: supabaseAuthRedirectUrl('signup'),
-    },
-  });
-  if (error) throw error;
-}
+// INC-003 A-16: `resendSignupVerification` (browser `supabase.auth.resend`)
+// removed for the same reason; use `resendVerificationEmail()` in
+// `src/customer/api/auth.ts` (POST /auth/resend-verification).
 
 // INC-003 F-5: `updatePasswordWithSupabase` (called `supabase.auth.updateUser({
 // password })` directly, bypassing the backend's SR-6 MFA gate, session
@@ -239,8 +200,23 @@ export function mapEmailActionToOtpType(action: string): EmailOtpType {
   }
 }
 
-/** Verify an email link token_hash (works across browsers; no PKCE verifier required). */
+/**
+ * INC-003 A-17: the only email-link types the web product issues. Anything
+ * else (`magiclink`, `invite`, `email_change`, bare `email`) is a
+ * session-establishing path no review approved and is refused before any
+ * SDK call — here and in `CustomerAuthCallbackPage`.
+ */
+export const ALLOWED_EMAIL_LINK_TYPES: ReadonlySet<string> = new Set(['signup', 'recovery']);
+
+/**
+ * Verify an email link token_hash (works across browsers; no PKCE verifier
+ * required — which is exactly why its result must never be used to sign the
+ * visitor in, INC-003 A-13).
+ */
 export async function verifySupabaseEmailLink(tokenHash: string, actionType: string) {
+  if (!ALLOWED_EMAIL_LINK_TYPES.has(actionType)) {
+    throw new Error('This link is invalid or has expired.');
+  }
   const primaryType = mapEmailActionToOtpType(actionType);
   const typesToTry: EmailOtpType[] =
     primaryType === 'signup'

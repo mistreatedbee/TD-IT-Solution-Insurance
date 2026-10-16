@@ -38,6 +38,12 @@ services:
         sync: false
       - key: EMAIL_VERIFICATION_REDIRECT_URL
         value: tditinsurance://verify-email
+      # INC-003 A-16 / ADR-0014 G-1: web signup/resend go through the backend
+      # (client: 'web'). Declared WITHOUT a value: the project owner sets it to
+      # this environment's web origin + /auth/callback?type=signup in the Render
+      # dashboard AND adds that URL to Supabase Auth → URL configuration.
+      - key: EMAIL_VERIFICATION_REDIRECT_URL_WEB
+        sync: false
       - key: PASSWORD_RESET_REDIRECT_URL
         value: tditinsurance://reset-password
       # INC-003 F-2: privileged accounts (admin / security_company_operator /

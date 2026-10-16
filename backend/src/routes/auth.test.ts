@@ -36,7 +36,8 @@ import type { AppContext } from '../context.js';
 import type { AccountRow, AccountStatus, UserType, AccountState } from '../repositories/accounts.js';
 import type { EnrollmentTicketRecord, EnrollmentTicketRepo } from '../lib/enrollment-ticket.js';
 import type { SessionRecord, SessionRepo } from '../lib/refresh-session.js';
-import type { SupabaseAdmin } from '../db/supabase.js';
+import { ACCOUNT_WIDE_REVOCATION_REASONS, WATERMARK_AUDIT_EVENT_TYPES } from '../lib/gotrue-session-revocation.js';
+import { SupabaseUserAlreadyExistsError, type SupabaseAdmin } from '../db/supabase.js';
 import type { Env } from '../config/env.js';
 
 function fakeEnv(): Env {
@@ -84,7 +85,9 @@ function createFakeEnrollmentTicketRepo(): EnrollmentTicketRepo {
   };
 }
 
-function createFakeSessionRepo(): SessionRepo {
+function createFakeSessionRepo(
+  opts: { stateTransitionWatermark?: () => Date | null; auditWatermark?: () => Date | null } = {},
+): SessionRepo {
   const rows = new Map<string, SessionRecord>();
   return {
     async insertNew(input) {
@@ -163,6 +166,28 @@ function createFakeSessionRepo(): SessionRepo {
       if (row && row.revokedAt === null) {
         row.mfaVerifiedAt = at;
       }
+    },
+    // Mirrors repositories/sessions.ts: latest account-wide revocation on
+    // this account's rows, or an (injected) admin state-transition time.
+    async findRevocationWatermark(accountId) {
+      const candidates: number[] = [];
+      for (const row of rows.values()) {
+        if (
+          row.accountId === accountId &&
+          row.revokedAt !== null &&
+          row.revokedReason !== null &&
+          ACCOUNT_WIDE_REVOCATION_REASONS.includes(row.revokedReason)
+        ) {
+          candidates.push(row.revokedAt.getTime());
+        }
+      }
+      const transition = opts.stateTransitionWatermark?.() ?? null;
+      if (transition) candidates.push(transition.getTime());
+      // INC-003 §13 D-1: watermark audit events (password_reset_completed,
+      // session_family_revoked), independent of any live session row.
+      const audit = opts.auditWatermark?.() ?? null;
+      if (audit) candidates.push(audit.getTime());
+      return candidates.length > 0 ? new Date(Math.max(...candidates)) : null;
     },
   };
 }
@@ -448,6 +473,7 @@ describe('POST /auth/supabase/exchange — SR-006-1 MFA-bypass regression', () =
       generatePasswordResetLink: notUsed('generatePasswordResetLink'),
       verifyRecoveryToken: notUsed('verifyRecoveryToken'),
       mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+      signOutAllUserSessions: notUsed('signOutAllUserSessions'),
     };
   }
 
@@ -524,6 +550,348 @@ describe('POST /auth/supabase/exchange — SR-006-1 MFA-bypass regression', () =
       expect(verifyResponse.status, JSON.stringify(verifyBody)).toBe(200);
       expect(verifyBody.accessToken).toBeTruthy();
       expect(verifyBody.refreshToken).toBeTruthy();
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+});
+
+/**
+ * INC-003 A-10 / A-23 regression (A-5 threat model §4.2 N-1/N-2/N-3): a
+ * browser-resident GoTrue session authenticated BEFORE an account-wide
+ * revocation (logout-all, admin suspend/reactivate, SR-8 reuse, FR-20
+ * mismatch) must not be re-minted into a backend session by
+ * `/auth/supabase/exchange`. Fails against the pre-fix handler, which only
+ * asked GoTrue "is this token valid right now?".
+ */
+describe('POST /auth/supabase/exchange — INC-003 A-10/A-23 revocation watermark', () => {
+  const ACCOUNT_ID = randomUUID();
+  const EMAIL = 'watermark-customer@example.com';
+
+  function gotrueJwt(payload: Record<string, unknown>): string {
+    const enc = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
+    return `${enc({ alg: 'HS256', typ: 'JWT' })}.${enc(payload)}.signature-not-checked-by-this-fake`;
+  }
+
+  const RESET_PASSWORD = 'a-brand-new-customer-password';
+
+  function fakeSupabase(
+    validTokens: Set<string>,
+    calls: string[],
+    opts: { hasFactor?: boolean; signOutFails?: boolean } = {},
+  ): SupabaseAdmin {
+    const notUsed = (name: string) => (): never => {
+      throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+    };
+    return {
+      raw: {} as SupabaseAdmin['raw'],
+      createUser: notUsed('createUser'),
+      deleteUser: notUsed('deleteUser'),
+      verifyPassword: notUsed('verifyPassword'),
+      enrollTotpFactor: notUsed('enrollTotpFactor'),
+      async challengeTotpFactor() {
+        return { challengeId: 'gotrue-challenge-1' };
+      },
+      async verifyTotpFactor(_t, _f, _c, code) {
+        calls.push('verifyTotpFactor');
+        return code === '123456';
+      },
+      async findVerifiedTotpFactor() {
+        calls.push('findVerifiedTotpFactor');
+        return opts.hasFactor ? { factorId: 'factor-1' } : null;
+      },
+      async updateUserPassword(_token, password) {
+        expect(password).toBe(RESET_PASSWORD);
+        calls.push('updateUserPassword');
+      },
+      generateEmailVerificationLink: notUsed('generateEmailVerificationLink'),
+      sendSignupConfirmationEmail: notUsed('sendSignupConfirmationEmail'),
+      sendPasswordRecoveryEmail: notUsed('sendPasswordRecoveryEmail'),
+      sendInvitationEmail: notUsed('sendInvitationEmail'),
+      getUserByEmail: notUsed('getUserByEmail'),
+      async getUserFromAccessToken(accessToken) {
+        if (!validTokens.has(accessToken)) return null;
+        return { userId: ACCOUNT_ID, email: EMAIL, emailConfirmed: true };
+      },
+      isUserEmailConfirmed: notUsed('isUserEmailConfirmed'),
+      verifySignupToken: notUsed('verifySignupToken'),
+      generatePasswordResetLink: notUsed('generatePasswordResetLink'),
+      verifyRecoveryToken: notUsed('verifyRecoveryToken'),
+      mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+      async signOutAllUserSessions(email) {
+        calls.push(`signOutAllUserSessions:${email}`);
+        if (opts.signOutFails) throw new Error('gotrue down');
+      },
+    };
+  }
+
+  /** Audit fake that remembers WHEN each watermark-type event was written. */
+  function createTimedAuditLog() {
+    const events: Array<{ accountId: string | null; eventType: string; at: Date }> = [];
+    return {
+      events,
+      async record(event: { accountId: string | null; eventType: string }) {
+        events.push({ ...event, at: new Date() });
+      },
+      latestWatermarkEvent(): Date | null {
+        const times = events
+          .filter((e) => (WATERMARK_AUDIT_EVENT_TYPES as readonly string[]).includes(e.eventType))
+          .map((e) => e.at.getTime());
+        return times.length > 0 ? new Date(Math.max(...times)) : null;
+      },
+    };
+  }
+
+  async function start(
+    tokens: string[],
+    opts: { stateTransitionAt?: Date; hasFactor?: boolean; auditFailsOn?: string } = {},
+  ) {
+    const calls: string[] = [];
+    const accounts = createFakeAccountsRepo({
+      id: ACCOUNT_ID,
+      email: EMAIL,
+      userType: 'customer',
+      accountState: 'active',
+      mfaRequired: false,
+      partnerOrganizationId: null,
+    });
+    const auditLog = createTimedAuditLog();
+    if (opts.auditFailsOn) {
+      const original = auditLog.record.bind(auditLog);
+      auditLog.record = async (event) => {
+        if (event.eventType === opts.auditFailsOn) {
+          calls.push(`auditFailed:${event.eventType}`);
+          throw new Error('audit insert failed');
+        }
+        return original(event);
+      };
+    }
+    const sessions = createFakeSessionRepo({
+      stateTransitionWatermark: () => opts.stateTransitionAt ?? null,
+      auditWatermark: () => auditLog.latestWatermarkEvent(),
+    });
+    const ctx = buildMinimalCtx({
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase: fakeSupabase(new Set(tokens), calls, { hasFactor: opts.hasFactor }),
+      sessions,
+      auditLog: auditLog as unknown as AppContext['auditLog'],
+      pushTokens: { disableAllForAccount: async () => 0 } as unknown as AppContext['pushTokens'],
+    });
+    return { ...(await startTestServer(ctx)), sessions, auditLog, calls };
+  }
+
+  async function exchange(baseUrl: string, accessToken: string) {
+    const response = await fetch(`${baseUrl}/auth/supabase/exchange`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ accessToken }),
+    });
+    return { response, body: (await response.json()) as Record<string, unknown> };
+  }
+
+  const nowSec = () => Math.floor(Date.now() / 1000);
+
+  it('N-1: a GoTrue session authenticated before logout-all is refused; a fresh sign-in afterwards is accepted', async () => {
+    const stale = gotrueJwt({ sub: ACCOUNT_ID, iat: nowSec(), amr: [{ method: 'password', timestamp: nowSec() - 3600 }] });
+    const fresh = gotrueJwt({ sub: ACCOUNT_ID, iat: nowSec(), amr: [{ method: 'password', timestamp: nowSec() + 1 }] });
+    const { server, baseUrl, sessions, auditLog, calls } = await start([stale, fresh]);
+    try {
+      // A backend session exists from an earlier exchange, then the owner
+      // presses "log out everywhere" (e.g. from the mobile app).
+      const first = await exchange(baseUrl, stale);
+      expect(first.response.status, JSON.stringify(first.body)).toBe(200);
+      await sessions.revokeAllForAccount(ACCOUNT_ID, 'logout_all');
+      calls.length = 0;
+
+      // The attacker refreshes the stolen GoTrue session — `iat` is new, but
+      // `amr` still records the original authentication time.
+      const replay = await exchange(baseUrl, stale);
+      expect(replay.response.status, JSON.stringify(replay.body)).toBe(401);
+      expect((replay.body.error as { code?: string }).code).toBe('REFRESH_TOKEN_INVALID');
+      expect(replay.body.accessToken).toBeUndefined();
+      // Refused before any factor lookup / minting path is reachable.
+      expect(calls).not.toContain('findVerifiedTotpFactor');
+      expect(auditLog.events.some((e) => e.eventType === 'login_failure' && e.accountId === ACCOUNT_ID)).toBe(true);
+
+      const relogin = await exchange(baseUrl, fresh);
+      expect(relogin.response.status, JSON.stringify(relogin.body)).toBe(200);
+      expect(relogin.body.accessToken).toBeTruthy();
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it.each(['admin_forced', 'rotation_reuse_detected', 'device_mismatch', 'password_reset'] as const)(
+    'N-2/N-3: a pre-existing GoTrue session is refused after a %s revocation',
+    async (reason) => {
+      const stale = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 60 }] });
+      const { server, baseUrl, sessions } = await start([stale]);
+      try {
+        expect((await exchange(baseUrl, stale)).response.status).toBe(200);
+        await sessions.revokeAllForAccount(ACCOUNT_ID, reason);
+        expect((await exchange(baseUrl, stale)).response.status).toBe(401);
+      } finally {
+        await new Promise((resolve) => server.close(() => resolve(undefined)));
+      }
+    },
+  );
+
+  it('single-session logout does NOT advance the watermark (other live sessions keep working)', async () => {
+    const token = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 60 }] });
+    const { server, baseUrl, sessions } = await start([token]);
+    try {
+      const first = await exchange(baseUrl, token);
+      expect(first.response.status).toBe(200);
+      await sessions.revoke(first.body.sessionId as string, 'logout');
+      expect((await exchange(baseUrl, token)).response.status).toBe(200);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('A-23: suspend -> reactivate refuses a GoTrue session minted DURING the suspension', async () => {
+    // GoTrue session obtained while suspended (e.g. a C-1 password grant);
+    // the reactivation's state-transition row is the watermark.
+    const duringSuspension = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 120 }] });
+    const { server, baseUrl } = await start([duringSuspension], { stateTransitionAt: new Date(Date.now() - 30_000) });
+    try {
+      expect((await exchange(baseUrl, duringSuspension)).response.status).toBe(401);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  async function confirmReset(baseUrl: string, recoveryAccessToken: string) {
+    const response = await fetch(`${baseUrl}/auth/reset-password/confirm`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+      body: JSON.stringify({ recoveryAccessToken, newPassword: RESET_PASSWORD }),
+    });
+    return { response, body: (await response.json()) as Record<string, unknown> };
+  }
+
+  it('§13 D-1/C-1: a password reset by a user with ZERO live sessions still evicts a stolen GoTrue session', async () => {
+    // Victim is logged out everywhere (no app.sessions row at all), the
+    // attacker holds an older browser GoTrue session, the victim resets.
+    const stolen = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 3600 }] });
+    const recovery = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'otp', timestamp: nowSec() }] });
+    const { server, baseUrl, calls } = await start([stolen, recovery]);
+    try {
+      const reset = await confirmReset(baseUrl, recovery);
+      expect(reset.response.status, JSON.stringify(reset.body)).toBe(200);
+      expect(calls).toContain('updateUserPassword');
+      // C-1: the reset also propagates to GoTrue.
+      expect(calls).toContain(`signOutAllUserSessions:${EMAIL}`);
+
+      const replay = await exchange(baseUrl, stolen);
+      expect(replay.response.status, JSON.stringify(replay.body)).toBe(401);
+      expect(replay.body.accessToken).toBeUndefined();
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('§13 D-1: a session-family revocation that found no live row still advances the watermark', async () => {
+    const stolen = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 60 }] });
+    const { server, baseUrl, auditLog } = await start([stolen]);
+    try {
+      await auditLog.record({ accountId: ACCOUNT_ID, eventType: 'session_family_revoked' });
+      expect((await exchange(baseUrl, stolen)).response.status).toBe(401);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('§13 C-3: /reset-password/confirm refuses a recoveryAccessToken from a GoTrue session that predates the watermark', async () => {
+    const stale = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 120 }] });
+    const fresh = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'otp', timestamp: nowSec() }] });
+    const { server, baseUrl, calls } = await start([stale, fresh], { stateTransitionAt: new Date(Date.now() - 30_000) });
+    try {
+      const refused = await confirmReset(baseUrl, stale);
+      expect(refused.response.status, JSON.stringify(refused.body)).toBe(404);
+      expect((refused.body.error as { code?: string }).code).toBe('RESET_TOKEN_INVALID');
+      expect(calls).not.toContain('updateUserPassword');
+
+      const accepted = await confirmReset(baseUrl, fresh);
+      expect(accepted.response.status, JSON.stringify(accepted.body)).toBe(200);
+      expect(calls).toContain('updateUserPassword');
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('§15.2: GoTrue sign-out runs BEFORE the audit insert, and a failing insert still fails the request', async () => {
+    const recovery = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'otp', timestamp: nowSec() }] });
+    const { server, baseUrl, calls } = await start([recovery], { auditFailsOn: 'password_reset_completed' });
+    try {
+      const reset = await confirmReset(baseUrl, recovery);
+      expect(reset.response.status).toBe(500);
+      const signOutAt = calls.indexOf(`signOutAllUserSessions:${EMAIL}`);
+      const auditAt = calls.indexOf('auditFailed:password_reset_completed');
+      expect(signOutAt).toBeGreaterThanOrEqual(0);
+      expect(auditAt).toBeGreaterThan(signOutAt);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('§15.2: an exchange-issued MFA challenge cannot be completed after a revocation lands', async () => {
+    const token = gotrueJwt({ sub: ACCOUNT_ID, amr: [{ method: 'password', timestamp: nowSec() - 60 }] });
+    const { server, baseUrl, sessions, calls } = await start([token], { hasFactor: true });
+    try {
+      const first = await exchange(baseUrl, token);
+      expect(first.response.status, JSON.stringify(first.body)).toBe(200);
+      expect(first.body.mfaRequired).toBe(true);
+
+      // Owner revokes everything while the attacker sits on the challenge.
+      await sessions.insertNew({
+        id: randomUUID(),
+        accountId: ACCOUNT_ID,
+        refreshTokenHash: 'h',
+        deviceId: null,
+        deviceName: null,
+        ipAddress: null,
+        userAgent: null,
+        familyId: randomUUID(),
+        expiresAt: new Date(Date.now() + 60_000),
+        absoluteExpiresAt: new Date(Date.now() + 60_000),
+        mfaVerifiedAt: null,
+      });
+      await sessions.revokeAllForAccount(ACCOUNT_ID, 'logout_all');
+
+      const response = await fetch(`${baseUrl}/auth/mfa/challenge`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mfaChallengeToken: first.body.mfaChallengeToken, code: '123456' }),
+      });
+      const body = (await response.json()) as Record<string, unknown>;
+      expect(response.status, JSON.stringify(body)).toBe(410);
+      expect((body.error as { code?: string }).code).toBe('MFA_CHALLENGE_EXPIRED');
+      expect(body.accessToken).toBeUndefined();
+      expect(calls).not.toContain('verifyTotpFactor');
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('§13 C-3: fails closed on an unreadable recoveryAccessToken when a watermark exists', async () => {
+    const { server, baseUrl, calls } = await start(['opaque-recovery-token'], {
+      stateTransitionAt: new Date(Date.now() - 1000),
+    });
+    try {
+      expect((await confirmReset(baseUrl, 'opaque-recovery-token')).response.status).toBe(404);
+      expect(calls).not.toContain('updateUserPassword');
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('fails closed: with a watermark present, a token whose authentication time cannot be read is refused', async () => {
+    const noAmr = gotrueJwt({ sub: ACCOUNT_ID, iat: nowSec() + 10 });
+    const { server, baseUrl } = await start(['opaque-not-a-jwt', noAmr], { stateTransitionAt: new Date(Date.now() - 1000) });
+    try {
+      expect((await exchange(baseUrl, noAmr)).response.status).toBe(401);
+      expect((await exchange(baseUrl, 'opaque-not-a-jwt')).response.status).toBe(401);
     } finally {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
@@ -854,6 +1222,50 @@ describe('POST /auth/login SR-14 forced-re-enrollment (api-design.md §11 Amendm
     expect(secondEnrollAttempt.status).toBe(401);
     expect(secondEnrollBody.error?.code).toBe('ENROLLMENT_TICKET_INVALID');
   });
+
+  it('INC-003 §15.2: an enrolment cannot be completed (or mint a session) after a revocation lands mid-enrolment', async () => {
+    const loginBody = (await (
+      await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: TEST_EMAIL, password: TEST_PASSWORD }),
+      })
+    ).json()) as { enrollmentTicket: string };
+    const enrollBody = (await (
+      await fetch(`${baseUrl}/mfa/enroll`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enrollmentTicket: loginBody.enrollmentTicket }),
+      })
+    ).json()) as { enrollmentId: string };
+
+    // An account-wide revocation (e.g. logout-all from another device) lands
+    // before the code is entered.
+    await ctx.sessions.insertNew({
+      id: randomUUID(),
+      accountId,
+      refreshTokenHash: 'other-device',
+      deviceId: null,
+      deviceName: null,
+      ipAddress: null,
+      userAgent: null,
+      familyId: randomUUID(),
+      expiresAt: new Date(Date.now() + 60_000),
+      absoluteExpiresAt: new Date(Date.now() + 60_000),
+      mfaVerifiedAt: null,
+    });
+    await ctx.sessions.revokeAllForAccount(accountId, 'logout_all');
+
+    const verifyResponse = await fetch(`${baseUrl}/mfa/enroll/verify`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+      body: JSON.stringify({ enrollmentId: enrollBody.enrollmentId, code: '123456' }),
+    });
+    const verifyBody = (await verifyResponse.json()) as { accessToken?: string; error?: { code: string } };
+    expect(verifyBody.error?.code, JSON.stringify(verifyBody)).toBe('MFA_ENROLLMENT_NOT_FOUND');
+    expect(verifyBody.accessToken).toBeUndefined();
+    expect(auditLog.events.some((e) => e.eventType === 'mfa_enrolled')).toBe(false);
+  });
 });
 
 /**
@@ -875,6 +1287,8 @@ describe('POST /auth/reset-password/confirm — SR-007-1 push-token regression',
   const resetNewPassword = 'a-new-customer-password';
   const resetUserAccessToken = 'recovery-user-access-token-stand-in';
 
+  const resetSignOutCalls: string[] = [];
+
   function fakeResetSupabase(): SupabaseAdmin {
     const notUsed = (name: string) => (): never => {
       throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
@@ -887,7 +1301,11 @@ describe('POST /auth/reset-password/confirm — SR-007-1 push-token regression',
       enrollTotpFactor: notUsed('enrollTotpFactor'),
       challengeTotpFactor: notUsed('challengeTotpFactor'),
       verifyTotpFactor: notUsed('verifyTotpFactor'),
-      findVerifiedTotpFactor: notUsed('findVerifiedTotpFactor'),
+      // INC-003 A-20: the factor check now runs for every user type; this
+      // customer has none, so the reset completes immediately.
+      async findVerifiedTotpFactor() {
+        return null;
+      },
       async updateUserPassword(userAccessToken, password) {
         expect(userAccessToken).toBe(resetUserAccessToken);
         expect(password).toBe(resetNewPassword);
@@ -906,6 +1324,9 @@ describe('POST /auth/reset-password/confirm — SR-007-1 push-token regression',
         return { userId: resetAccountId, userAccessToken: resetUserAccessToken };
       },
       mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+      async signOutAllUserSessions(email) {
+        resetSignOutCalls.push(email);
+      },
     };
   }
 
@@ -960,6 +1381,8 @@ describe('POST /auth/reset-password/confirm — SR-007-1 push-token regression',
       // The load-bearing assertion: disableAllForAccount was actually
       // invoked, with the reset account's id, exactly once.
       expect(pushTokensFake.disableAllForAccountCalls).toEqual([resetAccountId]);
+      // INC-003 §13 C-1: the reset also reaches every GoTrue session.
+      expect(resetSignOutCalls).toEqual([resetEmail]);
     } finally {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
@@ -982,7 +1405,7 @@ describe('POST /auth/reset-password/confirm — privileged account MFA-enrollmen
   const privilegedNewPassword = 'a-fine-privileged-password-14chars';
   const privilegedUserAccessToken = 'privileged-recovery-access-token-stand-in';
 
-  function fakePrivilegedResetSupabase(opts: { hasVerifiedFactor: boolean }): SupabaseAdmin {
+  function fakePrivilegedResetSupabase(opts: { hasVerifiedFactor: boolean; signOutCalls?: string[] }): SupabaseAdmin {
     const notUsed = (name: string) => (): never => {
       throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
     };
@@ -992,8 +1415,12 @@ describe('POST /auth/reset-password/confirm — privileged account MFA-enrollmen
       deleteUser: notUsed('deleteUser'),
       verifyPassword: notUsed('verifyPassword'),
       enrollTotpFactor: notUsed('enrollTotpFactor'),
-      challengeTotpFactor: notUsed('challengeTotpFactor'),
-      verifyTotpFactor: notUsed('verifyTotpFactor'),
+      async challengeTotpFactor() {
+        return { challengeId: 'challenge-1' };
+      },
+      async verifyTotpFactor(_t, _f, _c, code) {
+        return code === '123456';
+      },
       async findVerifiedTotpFactor(userAccessToken) {
         expect(userAccessToken).toBe(privilegedUserAccessToken);
         return opts.hasVerifiedFactor ? { factorId: 'factor-1' } : null;
@@ -1016,6 +1443,9 @@ describe('POST /auth/reset-password/confirm — privileged account MFA-enrollmen
         return { userId: privilegedAccountId, userAccessToken: privilegedUserAccessToken };
       },
       mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+      async signOutAllUserSessions(email: string) {
+        opts.signOutCalls?.push(email);
+      },
     } as unknown as SupabaseAdmin;
   }
 
@@ -1125,6 +1555,106 @@ describe('POST /auth/reset-password/confirm — privileged account MFA-enrollmen
       expect(response.status, JSON.stringify(body)).toBe(200);
       expect(body.mfaVerificationRequired).toBe(true);
       expect(typeof body.mfaVerificationToken).toBe('string');
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('INC-003 A-20: a CUSTOMER with a verified TOTP factor gets the same MFA step (not an UPSTREAM_UNAVAILABLE dead end), and the password is applied only after a valid code', async () => {
+    const accounts = createFakeAccountsRepo({
+      id: privilegedAccountId,
+      email: privilegedEmail,
+      userType: 'customer',
+      accountState: 'active',
+      mfaRequired: false, // customers opt in; not required
+      partnerOrganizationId: null,
+    });
+    const signOutCalls: string[] = [];
+    const supabase = fakePrivilegedResetSupabase({ hasVerifiedFactor: true, signOutCalls });
+    const updateSpy = vi.spyOn(supabase, 'updateUserPassword');
+    const disabled: string[] = [];
+    const ctx = buildMinimalCtx({
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase,
+      resetMfaTokens: createFakeResetMfaTokensRepo(),
+      pushTokens: {
+        disableAllForAccount: async (id: string) => {
+          disabled.push(id);
+          return 0;
+        },
+      } as unknown as AppContext['pushTokens'],
+    });
+
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      const confirm = await fetch(`${baseUrl}/auth/reset-password/confirm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ email: privilegedEmail, resetToken: privilegedResetToken, newPassword: privilegedNewPassword }),
+      });
+      const confirmBody = (await confirm.json()) as { mfaVerificationRequired?: boolean; mfaVerificationToken?: string };
+      expect(confirm.status, JSON.stringify(confirmBody)).toBe(200);
+      expect(confirmBody.mfaVerificationRequired).toBe(true);
+      // SR-6 semantics: nothing applied, nothing revoked yet.
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(disabled).toEqual([]);
+
+      const wrong = await fetch(`${baseUrl}/auth/reset-password/mfa-verify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ mfaVerificationToken: confirmBody.mfaVerificationToken, code: '000000' }),
+      });
+      expect(wrong.status).toBe(400);
+      expect(updateSpy).not.toHaveBeenCalled();
+
+      const verify = await fetch(`${baseUrl}/auth/reset-password/mfa-verify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ mfaVerificationToken: confirmBody.mfaVerificationToken, code: '123456' }),
+      });
+      expect(verify.status, await verify.clone().text()).toBe(200);
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      expect(disabled).toEqual([privilegedAccountId]);
+      expect(signOutCalls).toEqual([privilegedEmail]);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('INC-003 §13 C-1: the MFA-gated completion path also signs the account out of every GoTrue session', async () => {
+    const accounts = createFakeAccountsRepo({
+      id: privilegedAccountId,
+      email: privilegedEmail,
+      userType: 'admin',
+      accountState: 'active',
+      mfaRequired: true,
+      partnerOrganizationId: null,
+    });
+    const signOutCalls: string[] = [];
+    const ctx = buildMinimalCtx({
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase: fakePrivilegedResetSupabase({ hasVerifiedFactor: true, signOutCalls }),
+      resetMfaTokens: createFakeResetMfaTokensRepo(),
+      pushTokens: { disableAllForAccount: async () => 0 } as unknown as AppContext['pushTokens'],
+    });
+
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      const confirm = await fetch(`${baseUrl}/auth/reset-password/confirm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ email: privilegedEmail, resetToken: privilegedResetToken, newPassword: privilegedNewPassword }),
+      });
+      const { mfaVerificationToken } = (await confirm.json()) as { mfaVerificationToken: string };
+      expect(signOutCalls).toHaveLength(0); // nothing applied yet (SR-6)
+
+      const verify = await fetch(`${baseUrl}/auth/reset-password/mfa-verify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+        body: JSON.stringify({ mfaVerificationToken, code: '123456' }),
+      });
+      expect(verify.status, await verify.clone().text()).toBe(200);
+      expect(signOutCalls).toEqual([privilegedEmail]);
     } finally {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
@@ -1262,5 +1792,201 @@ describe('POST /auth/reset-password/request — INC-003 F-2 per-client redirect 
     } finally {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
+  });
+});
+
+/**
+ * INC-003 A-16: web signup / resend now go through the backend instead of
+ * GoTrue-direct. Pins: the per-client allow-listed verification redirect
+ * (never a caller URL), consent still required server-side, and uniform
+ * responses (no account enumeration) — including for an auth user created by
+ * the pre-A-16 browser signUp that has no app.accounts row.
+ */
+describe('POST /auth/signup + /auth/resend-verification — INC-003 A-16', () => {
+  const WEB_VERIFY_URL = 'https://web.example.test/auth/callback?type=signup';
+  const MOBILE_VERIFY_URL = 'tditinsurance://verify-email';
+
+  function harness(opts: {
+    existingAuthUser?: boolean;
+    accounts?: Array<{ email: string; accountState: AccountState }>;
+    sendFails?: boolean;
+  } = {}) {
+    const sent: Array<{ email: string; redirectTo: string }> = [];
+    const created: string[] = [];
+    const rows = new Map<string, AccountRow>();
+    for (const a of opts.accounts ?? []) {
+      rows.set(a.email, {
+        id: randomUUID(),
+        userType: 'customer',
+        accountState: a.accountState,
+        email: a.email,
+        phone: null,
+        mfaRequired: false,
+        partnerOrganizationId: null,
+        invitedBy: null,
+        createdAt: new Date(),
+      });
+    }
+    const notUsed = (name: string) => (): never => {
+      throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+    };
+    const supabase = new Proxy(
+      {
+        async createUser(email: string) {
+          if (opts.existingAuthUser) throw new SupabaseUserAlreadyExistsError();
+          created.push(email);
+          return { userId: randomUUID() };
+        },
+        async sendSignupConfirmationEmail(email: string, redirectTo: string) {
+          sent.push({ email, redirectTo });
+          if (opts.sendFails) throw new Error('hook down');
+        },
+      } as Record<string, unknown>,
+      { get: (target, prop: string) => (prop in target ? target[prop] : notUsed(prop)) },
+    ) as unknown as SupabaseAdmin;
+    const accounts = {
+      async findByEmail(email: string) {
+        return rows.get(email) ?? null;
+      },
+      async createCustomerAccount(id: string, email: string) {
+        const row: AccountRow = {
+          id,
+          userType: 'customer',
+          accountState: 'pending_verification',
+          email,
+          phone: null,
+          mfaRequired: false,
+          partnerOrganizationId: null,
+          invitedBy: null,
+          createdAt: new Date(),
+        };
+        rows.set(email, row);
+        return row;
+      },
+    };
+    const ctx = buildMinimalCtx({
+      env: { ...fakeEnv(), emailVerificationRedirectUrl: MOBILE_VERIFY_URL, emailVerificationRedirectUrlWeb: WEB_VERIFY_URL },
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase,
+    });
+    return { ctx, sent, created, rows };
+  }
+
+  async function post(baseUrl: string, path: string, body: unknown) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+  }
+
+  async function withServer<T>(ctx: AppContext, fn: (baseUrl: string) => Promise<T>): Promise<T> {
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      return await fn(baseUrl);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  }
+
+  const PASSWORD = 'a-good-long-password';
+
+  it('client "web" uses the web allow-listed redirect; omitted client keeps the mobile one', async () => {
+    const h = harness();
+    await withServer(h.ctx, async (baseUrl) => {
+      expect((await post(baseUrl, '/auth/signup', { email: 'web@example.com', password: PASSWORD, consentAccepted: true, client: 'web' })).status).toBe(202);
+      expect((await post(baseUrl, '/auth/signup', { email: 'mob@example.com', password: PASSWORD, consentAccepted: true })).status).toBe(202);
+    });
+    expect(h.sent).toEqual([
+      { email: 'web@example.com', redirectTo: WEB_VERIFY_URL },
+      { email: 'mob@example.com', redirectTo: MOBILE_VERIFY_URL },
+    ]);
+  });
+
+  it('never uses a caller-supplied redirect smuggled into the body', async () => {
+    const h = harness();
+    await withServer(h.ctx, async (baseUrl) => {
+      await post(baseUrl, '/auth/signup', {
+        email: 'x@example.com',
+        password: PASSWORD,
+        consentAccepted: true,
+        client: 'web',
+        redirectTo: 'https://attacker.example/steal',
+        emailRedirectTo: 'https://attacker.example/steal',
+      });
+    });
+    expect(h.sent).toEqual([{ email: 'x@example.com', redirectTo: WEB_VERIFY_URL }]);
+  });
+
+  it('consent is still required server-side (unchanged semantics)', async () => {
+    const h = harness();
+    await withServer(h.ctx, async (baseUrl) => {
+      expect((await post(baseUrl, '/auth/signup', { email: 'c@example.com', password: PASSWORD, client: 'web' })).status).toBe(400);
+      expect(
+        (await post(baseUrl, '/auth/signup', { email: 'c@example.com', password: PASSWORD, consentAccepted: false, client: 'web' })).status,
+      ).toBe(400);
+    });
+    expect(h.created).toEqual([]);
+  });
+
+  it('no enumeration: new email, registered app account, and auth-only user (pre-A-16 browser signup) all get the identical 202', async () => {
+    const fresh = harness();
+    const registered = harness({ accounts: [{ email: 'taken@example.com', accountState: 'active' }] });
+    const authOnly = harness({ existingAuthUser: true });
+    const bodies = await Promise.all([
+      withServer(fresh.ctx, (b) => post(b, '/auth/signup', { email: 'new@example.com', password: PASSWORD, consentAccepted: true, client: 'web' })),
+      withServer(registered.ctx, (b) => post(b, '/auth/signup', { email: 'taken@example.com', password: PASSWORD, consentAccepted: true, client: 'web' })),
+      withServer(authOnly.ctx, (b) => post(b, '/auth/signup', { email: 'legacy@example.com', password: PASSWORD, consentAccepted: true, client: 'web' })),
+    ]);
+    for (const r of bodies) expect(r.status).toBe(202);
+    expect(bodies[1]!.body).toEqual(bodies[0]!.body);
+    expect(bodies[2]!.body).toEqual(bodies[0]!.body);
+    // The auth-only case sends nothing (no mail-bombing via /signup) and creates no app row.
+    expect(authOnly.sent).toEqual([]);
+    expect(authOnly.rows.size).toBe(0);
+  });
+
+  it('resend: identical 202 for unknown, pending, and active accounts; only pending is mailed, with the web redirect', async () => {
+    const h = harness({
+      accounts: [
+        { email: 'pending@example.com', accountState: 'pending_verification' },
+        { email: 'active@example.com', accountState: 'active' },
+      ],
+    });
+    const results = await withServer(h.ctx, async (baseUrl) => [
+      await post(baseUrl, '/auth/resend-verification', { email: 'nobody@example.com', client: 'web' }),
+      await post(baseUrl, '/auth/resend-verification', { email: 'pending@example.com', client: 'web' }),
+      await post(baseUrl, '/auth/resend-verification', { email: 'active@example.com', client: 'web' }),
+    ]);
+    for (const r of results) {
+      expect(r.status).toBe(202);
+      expect(r.body).toEqual(results[0]!.body);
+    }
+    expect(h.sent).toEqual([{ email: 'pending@example.com', redirectTo: WEB_VERIFY_URL }]);
+  });
+
+  it('resend: a delivery failure for a pending account is still the uniform 202 (no 503 oracle)', async () => {
+    const h = harness({ accounts: [{ email: 'pending@example.com', accountState: 'pending_verification' }], sendFails: true });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const r = await withServer(h.ctx, (b) => post(b, '/auth/resend-verification', { email: 'pending@example.com', client: 'web' }));
+      expect(r.status).toBe(202);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('resend: a per-IP ceiling bounds sweeping many different addresses', async () => {
+    const h = harness();
+    const statuses = await withServer(h.ctx, async (baseUrl) => {
+      const out: number[] = [];
+      for (let i = 0; i < 21; i += 1) {
+        out.push((await post(baseUrl, '/auth/resend-verification', { email: `sweep-${i}@example.com`, client: 'web' })).status);
+      }
+      return out;
+    });
+    expect(statuses.slice(0, 20).every((st) => st === 202)).toBe(true);
+    expect(statuses[20]).toBe(429);
   });
 });

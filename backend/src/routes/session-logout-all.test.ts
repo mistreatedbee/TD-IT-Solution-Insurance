@@ -47,6 +47,8 @@ function createHarness() {
 
   const disableAllForAccountCalls: string[] = [];
   const auditRecords: Array<{ accountId: string | null; eventType: string }> = [];
+  const gotrueSignOutCalls: string[] = [];
+  const supabaseState = { signOutFails: false };
 
   const ctx = {
     env,
@@ -61,6 +63,17 @@ function createHarness() {
       async disableAllForAccount(accId: string) {
         disableAllForAccountCalls.push(accId);
         return 2;
+      },
+    },
+    accounts: {
+      async findById(id: string) {
+        return id === accountId ? { id, email: 'customer@example.com', userType: 'customer' } : null;
+      },
+    },
+    supabase: {
+      async signOutAllUserSessions(email: string) {
+        gotrueSignOutCalls.push(email);
+        if (supabaseState.signOutFails) throw new Error('gotrue down');
       },
     },
     idempotency: {
@@ -91,6 +104,8 @@ function createHarness() {
     accountId,
     disableAllForAccountCalls,
     auditRecords,
+    gotrueSignOutCalls,
+    supabaseState,
     token: signAccessToken(
       {
         sub: accountId,
@@ -146,6 +161,36 @@ describe('POST /session/logout-all', () => {
     });
 
     expect(response.status).toBe(204);
+    expect(h.disableAllForAccountCalls).toEqual([h.accountId]);
+  });
+
+  it('INC-003 A-10: also signs the account out of every GoTrue session (browser-resident web session)', async () => {
+    const h = createHarness();
+    harnesses.push(h);
+    await h.start();
+
+    const response = await fetch(h.url('/session/logout-all'), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${h.token}`, 'Idempotency-Key': randomUUID() },
+    });
+
+    expect(response.status).toBe(204);
+    expect(h.gotrueSignOutCalls).toEqual(['customer@example.com']);
+  });
+
+  it('INC-003 A-10: a GoTrue outage does not turn a committed backend logout-all into a failure', async () => {
+    const h = createHarness();
+    harnesses.push(h);
+    h.supabaseState.signOutFails = true;
+    await h.start();
+
+    const response = await fetch(h.url('/session/logout-all'), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${h.token}`, 'Idempotency-Key': randomUUID() },
+    });
+
+    expect(response.status).toBe(204);
+    expect(h.gotrueSignOutCalls).toHaveLength(1);
     expect(h.disableAllForAccountCalls).toEqual([h.accountId]);
   });
 });

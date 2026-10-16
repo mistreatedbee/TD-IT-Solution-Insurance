@@ -1,6 +1,7 @@
 import { apiFetch } from './client';
 import { getOrCreateWebDeviceId } from '../auth/deviceId';
 import { newIdempotencyKey } from './idempotency';
+import { saveSignupEmail } from '../../onboarding/onboardingStorage';
 
 export interface SessionTokens {
   accessToken: string;
@@ -34,10 +35,36 @@ export interface SignupAccepted {
   message: string;
 }
 
-export async function signup(email: string, password: string): Promise<SignupAccepted> {
+/**
+ * INC-003 A-16: web signup goes through the backend's `POST /auth/signup`
+ * (per-IP limiter, server-side password policy, `consentAccepted: true`
+ * required, synchronous `app.accounts` creation) instead of GoTrue-direct.
+ * `consentAccepted` is a literal `true` in the type so a caller must have
+ * the user's affirmative consent in hand to call this at all — it is never
+ * defaulted here. `client: 'web'` selects the server's allow-listed web
+ * verification redirect. The 202 body is identical whether or not the email
+ * is already registered (anti-enumeration) — callers must not branch on it.
+ */
+export async function signup(params: {
+  email: string;
+  password: string;
+  consentAccepted: true;
+}): Promise<SignupAccepted> {
+  const email = params.email.trim().toLowerCase();
+  saveSignupEmail(email);
   return apiFetch<SignupAccepted>('/auth/signup', {
     method: 'POST',
-    body: { email: email.trim().toLowerCase(), password, consentAccepted: true },
+    body: { email, password: params.password, consentAccepted: params.consentAccepted, client: 'web' },
+    authenticated: false,
+  });
+}
+
+/** INC-003 A-16: `POST /auth/resend-verification` (per-email cooldown and
+ * ceiling, per-IP ceiling, uniform 202). */
+export async function resendVerificationEmail(email: string): Promise<{ message: string; retryAfterSeconds?: number }> {
+  return apiFetch<{ message: string; retryAfterSeconds?: number }>('/auth/resend-verification', {
+    method: 'POST',
+    body: { email: email.trim().toLowerCase(), client: 'web' },
     authenticated: false,
   });
 }
@@ -94,15 +121,24 @@ export interface ResetPasswordConfirmResult {
   allSessionsRevoked?: boolean;
 }
 
-/** INC-003 F-3: `POST /auth/reset-password/confirm` with the Supabase
- * recovery-session access token established by `/auth/callback`. */
-export async function resetPasswordConfirm(params: {
-  recoveryAccessToken: string;
-  newPassword: string;
-}): Promise<ResetPasswordConfirmResult> {
+/**
+ * What `/reset-password` submits as proof of recovery: the email link's
+ * `token_hash` + email, verified server-side by the backend's `resetToken`
+ * branch (INC-003 A-24). The web client deliberately has NO way to submit a
+ * browser GoTrue session as `recoveryAccessToken` any more (INC-003 §15.3
+ * C-7): the only such session a browser holds is an ordinary login session.
+ */
+export type ResetCredential = { kind: 'link'; resetToken: string; email: string };
+
+/** `POST /auth/reset-password/confirm`. */
+export async function resetPasswordConfirm(
+  credential: ResetCredential,
+  newPassword: string,
+): Promise<ResetPasswordConfirmResult> {
+  const body = { email: credential.email, resetToken: credential.resetToken, newPassword };
   return apiFetch<ResetPasswordConfirmResult>('/auth/reset-password/confirm', {
     method: 'POST',
-    body: params,
+    body,
     authenticated: false,
     headers: { 'Idempotency-Key': newIdempotencyKey() },
   });
@@ -125,10 +161,16 @@ export async function resetPasswordMfaVerify(params: {
   });
 }
 
-export async function logout(refreshToken: string): Promise<void> {
-  await apiFetch('/session/logout', {
-    method: 'POST',
-    body: { refreshToken },
-    authenticated: false,
-  });
+/**
+ * ADR-0014 G-2: `POST /session/logout` revokes the session named by the
+ * BEARER access token (`authenticate`, backend `routes/session.ts`) and
+ * ignores any body. The previous version sent `authenticated: false` with a
+ * refresh token in the body, so every web sign-out got a 401 (swallowed by
+ * the caller) and the backend session was never revoked. This now goes
+ * through the normal authenticated client, which attaches the bearer token
+ * and, if it has expired, refreshes once and retries — so a sign-out after
+ * the 10-minute access-token TTL still reaches the server.
+ */
+export async function logout(): Promise<void> {
+  await apiFetch('/session/logout', { method: 'POST' });
 }
