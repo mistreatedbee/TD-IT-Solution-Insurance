@@ -2888,6 +2888,156 @@ Run on 2026-10-16 (deps already installed):
 
 ---
 
+## 33. Stage 8 review of §31 (C-12 / B-1, commit `1354fa0`) and §32 (C-11 / M-1) (`cybersecurity-architect`, 2026-10-16)
+
+**Scope.** I read the code itself rather than relying on §31/§32's summaries.
+
+- **Backend:**
+  - `routes/auth.ts`: `/auth/verify-email`, `/auth/reset-password/confirm` and `/auth/reset-password/mfa-verify`, plus the alert helper;
+  - `db/supabase.ts`: `verifyRecoveryToken` and `updateUserPassword`;
+  - `lib/errors.ts`: `RESET_COMPLETION_FAILED`;
+  - `repositories/accounts.ts`: the insert paths;
+  - the account-creation call sites in `routes/auth.ts` and `routes/invitations.ts`.
+- **Mobile:**
+  - `src/notifications/useNotificationDeepLinks.ts`;
+  - `app/+not-found.tsx`;
+  - a repo-wide grep for any remaining `Linking` URL listener. There is none.
+
+I did not run the tests myself. The caller reports backend 643/643, mobile 263/263, and both typechecks clean,
+which matches §31.3 and §32.3. The intermittent `step-up.test.ts` time-boundary flake is noted as unrelated. It is
+not in the code under review.
+
+**Verdict: PASS. C-11 and C-12 are both MET.** `security-engineer`'s implementation verification is still
+required, per §30.
+
+### 33.1 C-12 / B-1: MET
+
+- **The binding is sound.**
+  - **Reset-token branch.** `/confirm` takes `verifiedUserId` from GoTrue's `/verify` response, never from the
+    client. It fails closed if that id is absent. It resolves the account with `findById(verifiedUserId)` and then
+    requires both `account.id === verifiedUserId` and that the account email equals the submitted email.
+  - **`recoveryAccessToken` branch.** Both the id and the email come from GoTrue's `getUserFromAccessToken`, so the
+    email comparison there is a GoTrue-to-app consistency check. A body email cannot influence it.
+  - **`/verify-email`** follows the same pattern, and a mismatch returns the existing 410.
+- **Is `app.accounts.id == auth.users.id` verified in code? Yes for every write path. Not verifiable from the repo
+  for the database constraint.**
+  - Every insert into `app.accounts` uses the GoTrue user id: `createCustomerAccount(created.userId | supabaseUser.userId, …)`
+    at `auth.ts:164/399/472`, invitations at `id: userId` (from `getUserByEmail`/`createUser`), and the seed scripts.
+  - `database-design.md:123` specifies `id uuid primary key references auth.users (id)`. However, **no migration in
+    the repo carries that FK.** It was searched for and not found.
+  - The binding stays safe without the FK. A row whose id is not a GoTrue id can never equal a GoTrue-returned id,
+    so it fails closed. The email check is a second, independent binding.
+  - **Advisory V-1.** `database-architect` should confirm the FK exists on the live database with a read-only
+    catalog query, and add it to `mongo`/pg catalog verification. It is not gating.
+- **The mismatch response is indistinguishable from an unknown email, in body and in any oracle that matters.**
+  - The mismatch and not-found cases both return `RESET_TOKEN_INVALID` (404) with the same message, and the tests
+    assert this. On `/verify-email` both return 410.
+  - What the response depends on is the *token holder's own* account, which the attacker already knows. It does
+    not depend on whether the victim's email is registered.
+  - **Timing:** the mismatch path does one extra indexed `findByEmail`, for the alert, plus a `console.warn`. That
+    lookup runs whether or not the victim email is registered, so the only difference is hit versus miss on one
+    indexed lookup. That is not a practical enumeration oracle against an endpoint that also requires redeeming a
+    fresh recovery link of your own per attempt. **Accepted.**
+- **There are really no side effects before the check.**
+  - Before the binding, the route does only three things: (1) the per-token rate-limit counter; (2) GoTrue `/verify`
+    or `getUserFromAccessToken`; (3) the idempotency record.
+  - Step (2) affects only the *token holder's own* GoTrue user: it consumes their link and mints their session.
+  - The factor lookup, MFA park, password write, session revoke, push disable, GoTrue sign-out, audit and
+    notification all come after the binding.
+  - The alert logs B's account id server-side. That is acceptable, because it is an id, not an email, and it is
+    useful for detection.
+- **The MFA-deferred re-check is correct.**
+  - `pending.verifiedUserId` must be present, must equal the MFA token's `accountId`, and must equal the resolved
+    account's id.
+  - This is checked before any TOTP challenge or verify, token consumption or side effect.
+  - In normal operation it is tautological, because `/confirm` writes all three from the same bound account. It is
+    defence in depth against KV tampering and against pre-fix records.
+- **Rollout effect on in-flight resets: acceptable.**
+  - Any reset parked by the old code at deploy time fails closed with 404 `RESET_TOKEN_INVALID`. Mobile (§29)
+    drops the token and offers "Request a new link".
+  - The window is bounded by the 5-minute reset-MFA TTL, and the affected user restarts the reset.
+  - Records parked by the *old* code were created without the B-1 binding, so failing closed on them is the right
+    behaviour, not merely a tolerable one.
+- **`RESET_COMPLETION_FAILED` leaks nothing material.**
+  - It is reachable only by someone holding a link GoTrue just redeemed, so it reveals no more than "your own link
+    was valid".
+  - It is returned only for non-4xx errors thrown after redemption. The mismatch and not-found paths call
+    `next(apiError(4xx))` and are never converted, so it cannot act as a victim-dependent oracle.
+  - The message is generic. The cause (`e.message` / stack) is logged server-side only, and the
+    `SupabaseUnavailableError` messages carry only status codes.
+  - **Advisory V-2 (Medium, pre-existing ordering, not a C-12 defect).** It can also mean "password changed, but the
+    session revoke, push disable or GoTrue sign-out did not complete". In that case, telling the user to "try
+    signing in with your new password" leaves any attacker sessions alive, with no operator signal. That matters
+    because eviction is exactly why a victim resets. Recommendation for `backend-architect`: track a
+    `passwordWritten` flag and, if it is set, emit `[ALERT:reset_post_write_incomplete]` (ids only) so
+    `security-engineer` can force-revoke. `/mfa-verify` has the same pattern (§31.4).
+
+### 33.2 C-11 / M-1: MET
+
+- **The listener is gone.** No `Linking.addEventListener('url')`, `useURL` or `getInitialURL` remains anywhere in
+  `mobile/` outside `node_modules`. Expo Router's own file-route resolution is now the only handler for incoming
+  URLs.
+- **Allowlist bypass analysis: none found.**
+  - **Scheme.** The prefix is compared case-insensitively and must match exactly. Other schemes,
+    `tditinsurance:` without `//`, and look-alikes return `null`. Extra leading slashes are stripped harmlessly.
+  - **Size and characters.** There is a 512-character cap. Every segment must match `^[A-Za-z0-9_-]+$`, which
+    rejects `..`, `.`, `%`-encoding, backslashes, whitespace, Unicode and empty segments (`//`).
+  - **Query and fragment.** These are cut at the first `?` or `#` and never parsed. A `?caseId=` override is
+    impossible because params come only from the validated path, and the tests cover this.
+  - **Order of checks.** The auth deny-list is matched case-insensitively first. The allowlist is then matched
+    *case-sensitively*, so `SECURITY` returns `null`. That fails safe.
+  - **Case id.** `security/cases/<id>` must be exactly 24 hex characters and is passed as a typed param. Server-side
+    authorisation on the case still applies. Everything else returns `null`.
+- **Threat that remains: push-payload spoofing. Advisory V-3.**
+  - The `deepLink` now comes only from notification payloads. Anyone holding a device's Expo push token could
+    send a payload unless Expo's push-security access-token requirement is enabled.
+  - With this allowlist, the worst outcome is opening the operator's own case list, profile, or a case id the
+    operator is authorised for. That is low impact.
+  - Owner `notification-engineer` / `devops-engineer`: confirm "Enhanced push security" (an Expo access token
+    required to send) is on for the project.
+- **Routing once per notification is safe.**
+  - Responses are de-duplicated by `request.identifier` in a process-lifetime `Set`. This stops a layout remount
+    from replaying the cold-start tap.
+  - A response with no identifier is routed without dedup, which can only cause a harmless repeat navigation to an
+    allowlisted route.
+  - The set grows by one entry per tap, which is negligible.
+  - It does not suppress any security-relevant event. It only prevents a duplicate navigation.
+- **The not-found screen leaks nothing.** It uses no `usePathname`, `useSegments` or search-params hook, and its
+  copy is static. "Continue" uses `back()` or `replace('/')`. The tests assert that no path or query value appears
+  in the rendered tree.
+- **Out of scope here, noted only.** The 10, 10 and 14 length pre-checks in §32.2 match backend policy
+  (`PASSWORD_MIN_LENGTH`, and `invitations.ts` always checking `privileged`). They are UX changes with no
+  security effect.
+
+### 33.3 What gates the deploy of the A-16/G-1 `redirect_to` change now
+
+C-11, C-12 and the C-8 code part are all done. The remaining gates are:
+
+1. **The live device check** (§29.5 row 1 and §32.4). On iOS and Android, test a customer verify, a customer
+   reset, and a TOTP customer reset. For a **signed-in security operator**, test opening reset, verify and
+   invitation links. Expo Router must reach the right screen on its own, with no `+not-found` flash.
+   **Specifically confirm that a signed-in user is not redirected away from `(auth)/reset-password`.** Since the
+   listener was removed, nothing else would get them there.
+2. **The ADR-0014 G-4 live `/verify` check**, i.e. that GoTrue accepts the hash in the `token` field, for both
+   signup and recovery. §31 makes the backend safe under either call shape, but if GoTrue rejects the hash, every
+   hook link fails.
+3. **C-8 items 2-3:** `EMAIL_VERIFICATION_REDIRECT_URL_WEB` set explicitly on staging, and the URL added to the
+   Supabase redirect allow-list.
+4. **C-13:** confirm the installed base, i.e. that no mobile build older than §29 is in real users' hands. If one
+   is, record an explicit acceptance with a forced-update plan.
+5. **`security-engineer` implementation verification** of C-11 and C-12, which this joint gate still requires.
+
+**Not gating, but due before the mobile release:**
+
+- §31.4 / §32.4: map `RESET_COMPLETION_FAILED` in `reset-password.tsx` and drop the link. Today mobile treats the
+  500 as retryable, so the user gets a pointless retry that then shows "expired". The impact is UX only.
+- The advisories: V-1 (live FK check), V-2 (post-write-incomplete alert, `backend-architect`), and V-3 (Expo push
+  access token).
+
+**Signed:** `cybersecurity-architect`, 2026-10-16.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
