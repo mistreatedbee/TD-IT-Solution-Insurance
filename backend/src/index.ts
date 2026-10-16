@@ -48,6 +48,7 @@ import { createAssetsRouter } from './routes/assets.js';
 import { createRecoveryRouter } from './routes/recovery.js';
 import { createSecurityCasesRouter } from './routes/security-cases.js';
 import { createInternalRouter } from './routes/internal.js';
+import { createTrustProxyMonitor } from './lib/proxy-trust.js';
 import { createNotificationsRouter } from './routes/notifications.js';
 import { createCustomerProfileRouter } from './routes/customer-profile.js';
 import { createTrackingDevicesRouter } from './routes/tracking-devices.js';
@@ -114,10 +115,19 @@ async function main(): Promise<void> {
 
   const app = express();
 
-  // SR-7: trust exactly Render's one reverse-proxy hop so req.ip reflects
+  // SR-7: trust exactly Render's reverse-proxy hop count so req.ip reflects
   // the real client, not the proxy — load-bearing for every per-IP rate
   // limit and for account_audit_log.ip_address's forensic value.
   app.set('trust proxy', env.trustProxyHops);
+  // INC-003 A-28: the configured count has NOT been verified against the
+  // number of hops Render actually adds — measure with the internal
+  // diagnostic before changing it (runbook below). Never set this to `true`.
+  // eslint-disable-next-line no-console
+  console.log(
+    `[startup] Express 'trust proxy' = ${env.trustProxyHops} hop(s) (TRUST_PROXY_HOPS). ` +
+      'Verify via GET /api/v1/internal/diagnostics/proxy-trust — docs/organization/incidents/INC-003-a28-trust-proxy-runbook.md.',
+  );
+  app.use(createTrustProxyMonitor({ isProduction: env.isProduction, configuredHops: env.trustProxyHops }));
 
   app.use(helmet());
   app.use(

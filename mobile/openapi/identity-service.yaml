@@ -77,6 +77,10 @@ components:
       schema: { type: integer, description: Seconds. }
 
   schemas:
+    AddressClass:
+      type: string
+      description: INC-003 A-28 diagnostic address class (never a raw address).
+      enum: [public, private, loopback, link_local, shared_cgnat, unique_local, unspecified, invalid]
     Error:
       type: object
       required: [error]
@@ -796,6 +800,56 @@ paths:
                   updatedAt: { type: string, format: date-time }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /internal/diagnostics/proxy-trust:
+    x-internal: true
+    get:
+      operationId: internalGetProxyTrustDiagnostic
+      summary: >
+        INC-003 A-28. Read-only measurement of the calling request's own
+        X-Forwarded-For chain, to determine the correct TRUST_PROXY_HOPS on
+        the deployed service. Chain reported as address classes only; raw
+        req.ip returned only when public. Writes nothing; rate-limited to 10
+        requests / 60 s per internal caller. Runbook:
+        docs/organization/incidents/INC-003-a28-trust-proxy-runbook.md.
+      security: [{ internalServiceAuth: [] }]
+      parameters:
+        - name: X-Diagnostic-Expected-Client-Ip
+          in: header
+          required: false
+          description: The caller's own public IP as observed externally. Single value; must be a valid public address.
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configuredTrustProxyHops: { type: integer }
+                  forwardedForEntryCount: { type: integer }
+                  chainTruncated: { type: boolean }
+                  socketRemoteAddressClass: { $ref: '#/components/schemas/AddressClass' }
+                  chainClassesFromRight:
+                    type: array
+                    description: Index 0 = socket peer; index k = k-th X-Forwarded-For entry from the right.
+                    items: { $ref: '#/components/schemas/AddressClass' }
+                  reqIp:
+                    type: object
+                    properties:
+                      class: { $ref: '#/components/schemas/AddressClass' }
+                      value: { type: string, nullable: true }
+                      matchesExpectedClientIp: { type: boolean, nullable: true }
+                  expectedClientIpProvided: { type: boolean }
+                  expectedClientIpPositionFromRight: { type: integer, nullable: true }
+                  suggestedTrustProxyHops: { type: integer, nullable: true }
+                  rightmostPublicIndex: { type: integer, nullable: true }
+                  currentSettingMatchesSuggestion: { type: boolean, nullable: true }
+                  notes: { type: array, items: { type: string } }
+        '400': { description: X-Diagnostic-Expected-Client-Ip is not a single valid public IP. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: Rate limited. }
+        '503': { description: No internal service credentials configured (fails closed). }
 
   # ---------------------------------------------------------------
   # Audit log (internal/admin surface only)

@@ -2204,6 +2204,77 @@ their own.
 
 ---
 
+## 25. A-28 measurement tooling and runtime alert (`backend-engineer`, 2026-10-16)
+
+**Scope.** This section covers tooling only, for A-28 (§24.1). **`TRUST_PROXY_HOPS` has not been changed**: it is
+still `"1"` in `render.yaml` and `render-staging.yaml`. Render appends to `X-Forwarded-For` without stripping
+client-supplied entries, and it does not document how many hops it adds. So a guessed value could swap today's
+problem (count too low, `req.ip` is a `10.x` hop) for a worse one (count too high, `req.ip` is client-chosen and
+spoofable). The value has to be measured on the deployed service. These changes make that measurement safe and
+make the misconfiguration visible in logs. They are uncommitted at time of writing.
+
+### 25.1 What changed
+
+| File | Change |
+|---|---|
+| `backend/src/lib/proxy-trust.ts` (new) | Pure logic. Address classification (`public` / `private` / `loopback` / `link_local` / `shared_cgnat` / `unique_local` / `unspecified` / `invalid`; handles IPv4-mapped IPv6), XFF parsing, a chain model that mirrors Express/proxy-addr numeric trust, `computeProxyTrustDiagnostic()`, and `createTrustProxyMonitor()`. |
+| `backend/src/routes/internal.ts` | New `GET /api/v1/internal/diagnostics/proxy-trust`. It uses the **existing** SR-13 `X-Internal-Service-Key` middleware (no new auth scheme; fails closed with 503 when `INTERNAL_SERVICE_KEYS` is empty). Rate limit: 10 requests / 60 s per internal caller. Read-only: no DB access, no audit write. `Cache-Control: no-store`. The caller may send their own public IP in `X-Diagnostic-Expected-Client-Ip`; the endpoint returns 400 unless that is a single valid public address. |
+| `backend/src/index.ts` | Adds the startup line `[startup] Express 'trust proxy' = <n> hop(s) (TRUST_PROXY_HOPS)…` and mounts the monitor right after `app.set('trust proxy', …)`. The setting itself is unchanged. |
+| `mobile/openapi/identity-service.yaml` | Contract for the new internal path, plus an `AddressClass` schema. |
+| `docs/organization/incidents/INC-003-a28-trust-proxy-runbook.md` (new) | Owner runbook: how to measure, interpret the result, set the value per environment, confirm, and re-check. |
+
+**Response contract (200).** `configuredTrustProxyHops`, `forwardedForEntryCount`, `chainTruncated` (only the
+rightmost 32 entries are examined), `socketRemoteAddressClass`, and `chainClassesFromRight` (classes only; index 0
+is the socket peer, index *k* is the *k*-th XFF entry from the right). Then `reqIp {class, value, matchesExpectedClientIp}`,
+where `value` is set **only when public**, so internal hops are never echoed. Then `expectedClientIpProvided`,
+`expectedClientIpPositionFromRight`, and `suggestedTrustProxyHops`. The suggestion is the lowest *k* at which the
+caller's IP appears. Because it is the lowest, a spoofed copy further left cannot move it. The response also
+carries `rightmostPublicIndex` as an independent cross-check, `currentSettingMatchesSuggestion`, and `notes`.
+The endpoint's only log line records the caller name, the entry count, and the configured, suggested, and
+rightmost-public values. It never logs the XFF chain or any address.
+
+**Runtime alert.** When `NODE_ENV=production` and a request **carries XFF** but `req.ip` is non-public, the backend
+emits at most one `console.error` line per 15 minutes per process. The line starts with the stable tag
+`[ALERT:trust_proxy_misconfigured]` and carries only the address class, the configured hop count, and a
+suppressed-occurrence count. It is modelled on `[ALERT:gotrue_revocation_propagation_failed]`. Requests without
+XFF (direct health checks, in-cluster calls) and `/api/health*` paths are skipped. **Limitation:** the alert
+catches a count that is too low, not one that is too high. A too-high count can only be detected with the
+runbook's spoof probe.
+
+### 25.2 Tests
+
+- `backend/src/lib/proxy-trust.test.ts` (new): classification table, normalization, chain/hop resolution matching
+  Express, diagnostic computation, and monitor behaviour (one alert per window, class-only message, suppressed
+  count, silent outside production / for public `req.ip` / without XFF / on health paths, exact tag string).
+- `backend/src/routes/internal-proxy-trust.test.ts` (new):
+  - 503 with no credentials; 401 for missing or wrong key; 400 for an invalid, private, or multi-value expected IP;
+    429 after 10 calls.
+  - Reproduces the production symptom at `hops=1` with a simulated 3-hop chain, and suggests 3.
+  - No internal or loopback address in the response, and none of the chain, the caller IP, or the key in any log
+    line.
+  - **A spoofed leftmost XFF entry does not change `clientIp()` when the hop count matches the topology**, and does
+    not change the suggestion.
+  - Documents both failure modes: too low gives the proxy hop; too high gives the spoofed value.
+- Results: `cd backend && npm test` → **63 files, 584 tests passed** (baseline before this change: 61 files, 541
+  tests; +43). `npx tsc --noEmit` → clean. ESLint on the touched files → clean.
+
+### 25.3 Status
+
+**A-28 stays OPEN (Medium/High).** It needs all of the following:
+
+1. Deploy, then have the owner run the measurement for prod and, separately, staging, per the runbook.
+2. Set `TRUST_PROXY_HOPS` to the measured value in Render and in the blueprints.
+3. Confirm with the runbook's §6 checks: spoof probe, public audit IPs, and the alert stopping.
+4. Run a **Stage 8 review** by `cybersecurity-architect` / `security-engineer`, covering both this code (a new
+   authenticated internal surface and an app-wide middleware) and the chosen value.
+
+Until then, §24.3's caveat is unchanged: no IP address in `app.account_audit_log` may be used for attribution.
+Closing A-28 does not repair historical rows.
+
+**Signed:** `backend-engineer`, 2026-10-16.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
