@@ -12,11 +12,12 @@ import {
   computeProxyTrustDiagnostic,
   createTrustProxyMonitor,
   TRUST_PROXY_MISCONFIGURED_LOG_TAG,
+  TRUST_PROXY_TOO_HIGH_LOG_TAG,
   TRUST_PROXY_ALERT_INTERVAL_MS,
   MAX_CHAIN_ENTRIES,
 } from './proxy-trust.js';
 
-const CLIENT = '198.51.100.7';
+const CLIENT = '81.2.69.142';
 
 describe('classifyAddress', () => {
   it.each([
@@ -34,12 +35,50 @@ describe('classifyAddress', () => {
     ['::1', 'loopback'],
     ['fe80::1', 'link_local'],
     ['fd00::1', 'unique_local'],
-    ['2001:db8::1', 'public'],
+    ['2001:db8::1', 'documentation'],
+    ['2606:4700::1111', 'public'],
     ['::ffff:10.0.0.1', 'private'],
     ['::ffff:8.8.8.8', 'public'],
     ['not-an-ip', 'invalid'],
     ['', 'invalid'],
   ])('%s -> %s', (addr, cls) => {
+    expect(classifyAddress(addr)).toBe(cls);
+  });
+
+  // INC-003 §26 K-6: RFC 6890 special-purpose ranges and alternate encodings are never 'public'.
+  it.each([
+    ['::ffff:a00:1', 'private'],
+    ['::ffff:7f00:1', 'loopback'],
+    ['0:0:0:0:0:ffff:a9fe:101', 'link_local'],
+    ['::ffff:808:808', 'public'],
+    ['::10.0.0.1', 'reserved'],
+    ['::a00:1', 'reserved'],
+    ['::8.8.8.8', 'reserved'],
+    ['64:ff9b::808:808', 'reserved'],
+    ['64:ff9b::10.0.0.1', 'reserved'],
+    ['64:ff9b:1::1', 'reserved'],
+    ['100::1', 'reserved'],
+    ['2001::1', 'reserved'],
+    ['2001:2::1', 'reserved'],
+    ['2001:10::1', 'reserved'],
+    ['2002:a00:1::1', 'reserved'],
+    ['3fff::1', 'documentation'],
+    ['fec0::1', 'reserved'],
+    ['ff02::1', 'multicast'],
+    ['192.0.0.8', 'reserved'],
+    ['192.0.2.1', 'documentation'],
+    ['198.51.100.7', 'documentation'],
+    ['203.0.113.9', 'documentation'],
+    ['192.88.99.1', 'reserved'],
+    ['198.18.0.1', 'reserved'],
+    ['198.19.255.255', 'reserved'],
+    ['198.20.0.1', 'public'],
+    ['224.0.0.1', 'multicast'],
+    ['239.255.255.255', 'multicast'],
+    ['240.0.0.1', 'reserved'],
+    ['255.255.255.255', 'reserved'],
+    ['2001:4860:4860::8888', 'public'],
+  ])('K-6: %s -> %s', (addr, cls) => {
     expect(classifyAddress(addr)).toBe(cls);
   });
 
@@ -51,10 +90,15 @@ describe('classifyAddress', () => {
 
 describe('normalizeAddress / parseForwardedFor', () => {
   it('strips mapped prefix, zone, brackets and ports', () => {
-    expect(normalizeAddress(' ::FFFF:198.51.100.7 ')).toBe(CLIENT);
-    expect(normalizeAddress('fe80::1%eth0')).toBe('fe80::1');
-    expect(normalizeAddress('[2001:db8::1]:443')).toBe('2001:db8::1');
-    expect(normalizeAddress('198.51.100.7:5555')).toBe(CLIENT);
+    expect(normalizeAddress(' ::FFFF:81.2.69.142 ')).toBe(CLIENT);
+    expect(normalizeAddress('fe80::1%eth0')).toBe('fe80:0:0:0:0:0:0:1');
+    expect(normalizeAddress('[2001:db8::1]:443')).toBe('2001:db8:0:0:0:0:0:1');
+    // Differently-compressed spellings of one address compare equal.
+    expect(normalizeAddress('2606:4700:0:0::1111')).toBe(normalizeAddress('2606:4700::1111'));
+    // INC-003 §26 K-6: hex and fully-expanded IPv4-mapped forms collapse to dotted IPv4.
+    expect(normalizeAddress('::ffff:a00:1')).toBe('10.0.0.1');
+    expect(normalizeAddress('0:0:0:0:0:ffff:0a00:0001')).toBe('10.0.0.1');
+    expect(normalizeAddress('81.2.69.142:5555')).toBe(CLIENT);
   });
 
   it('splits, trims and drops empties, including array form', () => {
@@ -128,8 +172,8 @@ describe('computeProxyTrustDiagnostic', () => {
     const r = computeProxyTrustDiagnostic({
       configuredHops: 1,
       socketAddress: '10.0.0.9',
-      forwardedFor: `${CLIENT}, 203.0.113.50`,
-      reqIp: '203.0.113.50',
+      forwardedFor: `${CLIENT}, 81.2.69.200`,
+      reqIp: '81.2.69.200',
       expectedClientIp: CLIENT,
     });
     expect(r.suggestedTrustProxyHops).toBe(2);
@@ -161,6 +205,26 @@ describe('computeProxyTrustDiagnostic', () => {
     expect(none.forwardedForEntryCount).toBe(0);
     expect(none.rightmostPublicIndex).toBeNull();
     expect(none.notes.some((n) => n.startsWith('no_forwarded_for_header'))).toBe(true);
+  });
+
+  it('K-2: notes a configured count higher than the observed entry count', () => {
+    const r = computeProxyTrustDiagnostic({
+      configuredHops: 4,
+      socketAddress: '10.0.0.9',
+      forwardedFor: `${CLIENT}, 10.0.0.5, 10.0.0.6`,
+      reqIp: CLIENT,
+      expectedClientIp: CLIENT,
+    });
+    expect(r.suggestedTrustProxyHops).toBe(3);
+    expect(r.notes.some((n) => n.startsWith('configured_hops_exceeds_entry_count'))).toBe(true);
+    const ok = computeProxyTrustDiagnostic({
+      configuredHops: 3,
+      socketAddress: '10.0.0.9',
+      forwardedFor: `${CLIENT}, 10.0.0.5, 10.0.0.6`,
+      reqIp: CLIENT,
+      expectedClientIp: CLIENT,
+    });
+    expect(ok.notes.some((n) => n.startsWith('configured_hops_exceeds_entry_count'))).toBe(false);
   });
 
   it('caps the examined chain to the rightmost entries', () => {
@@ -221,8 +285,59 @@ describe('createTrustProxyMonitor', () => {
     expect(logs[1]).toContain('Suppressed since last alert: 2');
   });
 
-  it('uses the exact stable tag', () => {
+  it('uses the exact stable tags', () => {
     expect(TRUST_PROXY_MISCONFIGURED_LOG_TAG).toBe('[ALERT:trust_proxy_misconfigured]');
+    expect(TRUST_PROXY_TOO_HIGH_LOG_TAG).toBe('[ALERT:trust_proxy_too_high]');
+  });
+
+  it('K-3/C-4: the too-low alert warns against incrementing and names the too-high cause', () => {
+    const logs: string[] = [];
+    const mw = createTrustProxyMonitor({ isProduction: true, configuredHops: 1, log: (m) => logs.push(m) });
+    run(mw, fakeReq('10.0.0.6', { xff: `${CLIENT}, 10.0.0.6` }));
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain('Never respond by incrementing TRUST_PROXY_HOPS; re-measure');
+    expect(logs[0]).toContain('too HIGH combined with a client-supplied private XFF entry');
+  });
+
+  it('K-2/C-3: fires the too-high alert when XFF has fewer entries than configured hops, throttled separately', () => {
+    const logs: string[] = [];
+    let t = 5_000_000;
+    const mw = createTrustProxyMonitor({ isProduction: true, configuredHops: 3, now: () => t, log: (m) => logs.push(m) });
+
+    // Real topology adds 2 hops; client sent no XFF; hops=3 resolves req.ip to the client's (public) address.
+    expect(run(mw, fakeReq(CLIENT, { xff: `${CLIENT}, 10.0.0.6` }))).toBe(true);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]?.startsWith(TRUST_PROXY_TOO_HIGH_LOG_TAG)).toBe(true);
+    expect(logs[0]).toContain('carried 2 X-Forwarded-For entries but TRUST_PROXY_HOPS=3');
+    expect(logs[0]).toContain('Never respond by incrementing TRUST_PROXY_HOPS; re-measure');
+    expect(logs[0]).not.toContain(CLIENT);
+    expect(logs[0]).not.toContain('10.0.0.6');
+
+    // Throttled independently of the too-low channel: a non-public req.ip still produces its own alert.
+    t += 1000;
+    run(mw, fakeReq(CLIENT, { xff: CLIENT }));
+    run(mw, fakeReq('10.0.0.6', { xff: '10.0.0.6' }));
+    expect(logs).toHaveLength(2);
+    expect(logs[1]?.startsWith(TRUST_PROXY_MISCONFIGURED_LOG_TAG)).toBe(true);
+
+    t += TRUST_PROXY_ALERT_INTERVAL_MS;
+    run(mw, fakeReq(CLIENT, { xff: CLIENT }));
+    expect(logs).toHaveLength(3);
+    expect(logs[2]).toContain('carried 1 X-Forwarded-For entry but');
+    expect(logs[2]).toContain('Suppressed since last alert: 2');
+  });
+
+  it('too-high alert is silent when entries >= configured hops, outside production, without XFF, and on health paths', () => {
+    const logs: string[] = [];
+    const log = (m: string) => logs.push(m);
+    const prod = createTrustProxyMonitor({ isProduction: true, configuredHops: 2, log });
+    run(prod, fakeReq(CLIENT, { xff: `${CLIENT}, 10.0.0.6` }));
+    run(prod, fakeReq(CLIENT, { xff: `6.6.6.6, ${CLIENT}, 10.0.0.6` }));
+    run(prod, fakeReq('10.0.0.9'));
+    run(prod, fakeReq(CLIENT, { xff: CLIENT, path: '/api/health' }));
+    const dev = createTrustProxyMonitor({ isProduction: false, configuredHops: 5, log });
+    run(dev, fakeReq(CLIENT, { xff: CLIENT }));
+    expect(logs).toHaveLength(0);
   });
 
   it('is silent outside production, for public req.ip, without XFF, and on health paths', () => {

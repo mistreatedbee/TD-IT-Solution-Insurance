@@ -242,6 +242,29 @@ function parseInternalServiceCredentials(raw: string | undefined): InternalServi
     });
 }
 
+/**
+ * INC-003 §26 C-5 / K-5: upper bound on TRUST_PROXY_HOPS. A count above the
+ * real hop count makes req.ip client-chosen, so a typo (e.g. `30`) must fail
+ * startup rather than silently make every client spoof-capable. No plausible
+ * Render topology needs more; raising this bound is a reviewed code change.
+ */
+export const MAX_TRUST_PROXY_HOPS = 5;
+
+export function parseTrustProxyHops(raw: string | undefined): number {
+  const value = raw ?? '1';
+  const hops = Number(value);
+  if (!Number.isInteger(hops) || hops < 0) {
+    throw new Error(`[config/env] Invalid TRUST_PROXY_HOPS value: ${value}`);
+  }
+  if (hops > MAX_TRUST_PROXY_HOPS) {
+    throw new Error(
+      `[config/env] TRUST_PROXY_HOPS=${hops} exceeds the maximum of ${MAX_TRUST_PROXY_HOPS}. ` +
+        'A count above the real proxy hop count lets clients spoof their IP; measure per INC-003 A-28 runbook.',
+    );
+  }
+  return hops;
+}
+
 export function loadEnv(): Env {
   const nodeEnv = process.env.NODE_ENV ?? 'development';
   const isProduction = nodeEnv === 'production';
@@ -310,15 +333,11 @@ export function loadEnv(): Env {
     );
   }
 
-  const trustProxyHopsRaw = process.env.TRUST_PROXY_HOPS ?? '1';
-  const trustProxyHops = Number(trustProxyHopsRaw);
-  if (!Number.isInteger(trustProxyHops) || trustProxyHops < 0) {
-    throw new Error(`[config/env] Invalid TRUST_PROXY_HOPS value: ${trustProxyHopsRaw}`);
-  }
-  // SR-7: default of 1 assumes Render's single reverse-proxy hop (ADR-0003).
-  // If the hosting topology ever adds a CDN/WAF in front of Render, this
-  // must be increased accordingly — verify against the live topology before
-  // relying on req.ip for anything security-relevant.
+  const trustProxyHops = parseTrustProxyHops(process.env.TRUST_PROXY_HOPS);
+  // SR-7: the default of 1 is NOT verified against Render's real hop count
+  // (INC-003 A-28). Any change — including a CDN/WAF being added — must be
+  // re-measured per docs/organization/incidents/INC-003-a28-trust-proxy-runbook.md,
+  // never guessed or incremented.
 
   const port = Number(process.env.PORT ?? 3000);
   if (!Number.isFinite(port) || port <= 0) {

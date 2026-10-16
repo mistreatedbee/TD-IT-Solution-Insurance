@@ -21,7 +21,7 @@ import type { Env } from '../config/env.js';
 import type { ProxyTrustDiagnostic } from '../lib/proxy-trust.js';
 
 const KEY = 'k'.repeat(40);
-const CLIENT = '198.51.100.7';
+const CLIENT = '81.2.69.142';
 // Simulated Render topology: client -> edge (appends CLIENT) -> hop (appends 10.0.0.5) -> hop (appends 10.0.0.6) -> socket.
 const RENDER_XFF = `${CLIENT}, 10.0.0.5, 10.0.0.6`;
 const REAL_HOPS = 3;

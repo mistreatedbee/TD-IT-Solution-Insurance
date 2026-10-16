@@ -49,6 +49,7 @@ import { createRecoveryRouter } from './routes/recovery.js';
 import { createSecurityCasesRouter } from './routes/security-cases.js';
 import { createInternalRouter } from './routes/internal.js';
 import { createTrustProxyMonitor } from './lib/proxy-trust.js';
+import { unscopedConfiguredCallers } from './middleware/internal-service-auth.js';
 import { createNotificationsRouter } from './routes/notifications.js';
 import { createCustomerProfileRouter } from './routes/customer-profile.js';
 import { createTrackingDevicesRouter } from './routes/tracking-devices.js';
@@ -127,6 +128,14 @@ async function main(): Promise<void> {
     `[startup] Express 'trust proxy' = ${env.trustProxyHops} hop(s) (TRUST_PROXY_HOPS). ` +
       'Verify via GET /api/v1/internal/diagnostics/proxy-trust — docs/organization/incidents/INC-003-a28-trust-proxy-runbook.md.',
   );
+  const unscoped = unscopedConfiguredCallers(env);
+  if (unscoped.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[startup] INTERNAL_SERVICE_KEYS has ${unscoped.length} caller name(s) not allowed on any /internal/* route ` +
+        `(${unscoped.join(', ')}); their requests get 403. See INTERNAL_ROUTE_CALLERS in middleware/internal-service-auth.ts.`,
+    );
+  }
   app.use(createTrustProxyMonitor({ isProduction: env.isProduction, configuredHops: env.trustProxyHops }));
 
   app.use(helmet());
@@ -140,7 +149,7 @@ async function main(): Promise<void> {
   app.use(express.json({ limit: '100kb' }));
   app.use(requestIdMiddleware);
 
-  app.use('/api', createHealthRouter(env));
+  app.use('/api', createHealthRouter(env, ctx.kv));
 
   const v1 = express.Router();
   v1.use(createAuthRouter(ctx));

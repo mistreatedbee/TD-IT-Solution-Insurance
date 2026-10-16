@@ -10,7 +10,9 @@
  * documented by Render and must be MEASURED on the deployed service — this
  * module provides the pure logic for that measurement (the internal
  * diagnostic endpoint) and for a rate-limited runtime alert. It never picks
- * a hop count on its own.
+ * a hop count on its own. Both directions are detectable at runtime: too low
+ * via a non-public `req.ip`, too high via fewer XFF entries than configured
+ * (see createTrustProxyMonitor).
  *
  * Privacy: nothing here logs or returns raw addresses other than the
  * caller's own resolved public `req.ip`. Chains are reported as address
@@ -26,19 +28,60 @@ export type AddressClass =
   | 'link_local'
   | 'shared_cgnat'
   | 'unique_local'
+  | 'multicast'
+  | 'documentation'
+  | 'reserved'
   | 'unspecified'
   | 'invalid';
 
-/** Stable log tag for alerting. Alert rules should match this exact string; do not reword it. */
+/** Stable log tag for alerting (count too LOW). Alert rules should match this exact string; do not reword it. */
 export const TRUST_PROXY_MISCONFIGURED_LOG_TAG = '[ALERT:trust_proxy_misconfigured]';
 
-/** At most one alert line per this window, per process. */
+/** Stable log tag for alerting (count too HIGH — INC-003 §26 K-2/C-3). Do not reword it. */
+export const TRUST_PROXY_TOO_HIGH_LOG_TAG = '[ALERT:trust_proxy_too_high]';
+
+/** Shared operator guidance carried by both alerts (INC-003 §26 K-3/C-4). */
+export const TRUST_PROXY_ALERT_GUIDANCE =
+  'Never respond by incrementing TRUST_PROXY_HOPS; re-measure per docs/organization/incidents/INC-003-a28-trust-proxy-runbook.md §3.';
+
+/** At most one alert line per this window, per alert, per process. */
 export const TRUST_PROXY_ALERT_INTERVAL_MS = 15 * 60 * 1000;
 
 /** Hard cap on how many XFF entries the diagnostic will classify/return. */
 export const MAX_CHAIN_ENTRIES = 32;
 
-/** Strips an IPv4-mapped IPv6 prefix and IPv6 zone id; lowercases. */
+/** Parses an IPv6 address (already validated by isIP) into 8 hextets; handles `::` and a dotted IPv4 tail. */
+function expandV6(addr: string): number[] | null {
+  let text = addr;
+  const lastColon = text.lastIndexOf(':');
+  const maybeV4 = text.slice(lastColon + 1);
+  if (isIP(maybeV4) === 4) {
+    // Rewrite a dotted IPv4 tail as two hextets, e.g. "::ffff:10.0.0.1" -> "::ffff:a00:1".
+    const [a = 0, b = 0, c = 0, d = 0] = maybeV4.split('.').map(Number);
+    text = `${text.slice(0, lastColon + 1)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves = text.split('::');
+  if (halves.length > 2) return null;
+  const parse = (part: string | undefined): number[] =>
+    part ? part.split(':').filter((x) => x !== '').map((x) => parseInt(x, 16)) : [];
+  const head = parse(halves[0]);
+  if (halves.length === 1) return head.length === 8 ? head : null;
+  const rest = parse(halves[1]);
+  const fixed = head.length + rest.length;
+  if (fixed > 7) return null;
+  return [...head, ...Array<number>(8 - fixed).fill(0), ...rest];
+}
+
+function v4FromHextets(hi: number, lo: number): string {
+  return [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join('.');
+}
+
+/**
+ * Canonical form for comparison/classification: lowercased, zone id, brackets
+ * and ports stripped; IPv4-mapped IPv6 in ANY textual form (dotted or hex,
+ * e.g. `::ffff:a00:1`) becomes dotted IPv4; other IPv6 becomes uncompressed
+ * hextets without leading zeros, so differently-compressed spellings compare equal.
+ */
 export function normalizeAddress(raw: string): string {
   let addr = raw.trim().toLowerCase();
   // Bracketed IPv6 with optional port, e.g. "[2001:db8::1]:443".
@@ -49,28 +92,52 @@ export function normalizeAddress(raw: string): string {
   if (v4port?.[1]) addr = v4port[1];
   const zone = addr.indexOf('%');
   if (zone !== -1) addr = addr.slice(0, zone);
-  if (addr.startsWith('::ffff:') && isIP(addr.slice(7)) === 4) addr = addr.slice(7);
+  if (isIP(addr) === 6) {
+    const h = expandV6(addr);
+    if (!h) return addr;
+    const isMapped = h.slice(0, 5).every((x) => x === 0) && h[5] === 0xffff;
+    if (isMapped) return v4FromHextets(h[6] ?? 0, h[7] ?? 0);
+    return h.map((x) => x.toString(16)).join(':');
+  }
   return addr;
 }
 
 function classifyV4(addr: string): AddressClass {
-  const [a = 0, b = 0] = addr.split('.').map(Number);
-  if (a === 0) return 'unspecified';
+  const [a = 0, b = 0, c = 0] = addr.split('.').map(Number);
+  if (a === 0) return 'unspecified'; // 0.0.0.0/8 "this network"
   if (a === 10) return 'private';
   if (a === 127) return 'loopback';
   if (a === 169 && b === 254) return 'link_local';
   if (a === 172 && b >= 16 && b <= 31) return 'private';
   if (a === 192 && b === 168) return 'private';
   if (a === 100 && b >= 64 && b <= 127) return 'shared_cgnat';
+  if (a === 192 && b === 0 && c === 0) return 'reserved'; // 192.0.0.0/24 IETF protocol assignments
+  if (a === 192 && b === 0 && c === 2) return 'documentation'; // TEST-NET-1
+  if (a === 198 && b === 51 && c === 100) return 'documentation'; // TEST-NET-2
+  if (a === 203 && b === 0 && c === 113) return 'documentation'; // TEST-NET-3
+  if (a === 192 && b === 88 && c === 99) return 'reserved'; // 6to4 relay anycast (deprecated)
+  if (a === 198 && (b === 18 || b === 19)) return 'reserved'; // 198.18.0.0/15 benchmarking
+  if (a >= 224 && a <= 239) return 'multicast';
+  if (a >= 240) return 'reserved'; // 240.0.0.0/4 incl. 255.255.255.255
   return 'public';
 }
 
-function classifyV6(addr: string): AddressClass {
-  if (addr === '::') return 'unspecified';
-  if (addr === '::1') return 'loopback';
-  const firstHextet = parseInt(addr.split(':')[0] || '0', 16);
-  if ((firstHextet & 0xffc0) === 0xfe80) return 'link_local';
-  if ((firstHextet & 0xfe00) === 0xfc00) return 'unique_local';
+function classifyV6(h: number[]): AddressClass {
+  const [h0 = 0, h1 = 0] = h;
+  if (h.every((x) => x === 0)) return 'unspecified';
+  if (h.slice(0, 7).every((x) => x === 0) && h[7] === 1) return 'loopback';
+  if (h.slice(0, 5).every((x) => x === 0) && h[5] === 0xffff) return classifyV4(v4FromHextets(h[6] ?? 0, h[7] ?? 0));
+  if (h0 === 0) return 'reserved'; // ::/8 incl. deprecated IPv4-compatible ::/96
+  if (h0 === 0x64 && h1 === 0xff9b) return 'reserved'; // 64:ff9b::/96 NAT64, 64:ff9b:1::/48 local-use NAT64
+  if (h0 === 0x100 && h1 === 0 && h[2] === 0 && h[3] === 0) return 'reserved'; // 100::/64 discard-only
+  if (h0 === 0x2001 && h1 === 0xdb8) return 'documentation'; // 2001:db8::/32
+  if (h0 === 0x2001 && h1 < 0x200) return 'reserved'; // 2001::/23 IETF protocol assignments (Teredo, benchmarking, ORCHID)
+  if (h0 === 0x2002) return 'reserved'; // 2002::/16 6to4
+  if (h0 === 0x3fff && h1 < 0x1000) return 'documentation'; // 3fff::/20 (RFC 9637)
+  if ((h0 & 0xffc0) === 0xfe80) return 'link_local';
+  if ((h0 & 0xffc0) === 0xfec0) return 'reserved'; // deprecated site-local
+  if ((h0 & 0xfe00) === 0xfc00) return 'unique_local';
+  if ((h0 & 0xff00) === 0xff00) return 'multicast';
   return 'public';
 }
 
@@ -79,7 +146,10 @@ export function classifyAddress(raw: string | undefined | null): AddressClass {
   const addr = normalizeAddress(raw);
   const family = isIP(addr);
   if (family === 4) return classifyV4(addr);
-  if (family === 6) return classifyV6(addr);
+  if (family === 6) {
+    const h = expandV6(addr);
+    return h ? classifyV6(h) : 'invalid';
+  }
   return 'invalid';
 }
 
@@ -183,7 +253,12 @@ export function computeProxyTrustDiagnostic(input: ProxyTrustDiagnosticInput): P
   if (position !== null && rightmostPublicIndex !== null && position !== rightmostPublicIndex) {
     notes.push('suggestion_disagrees_with_rightmost_public: a public address sits between the caller and this service; do not change the setting, escalate');
   }
-  if (reqIpClass !== 'public') notes.push(`req_ip_not_public: current setting resolves req.ip to a ${reqIpClass} address`);
+  if (xffAll.length > 0 && xffAll.length < input.configuredHops) {
+    notes.push(
+      'configured_hops_exceeds_entry_count: fewer X-Forwarded-For entries than TRUST_PROXY_HOPS; the count is too HIGH (spoof-capable). Never increment; re-measure',
+    );
+  }
+  if (reqIpClass !== 'public') notes.push(`req_ip_not_public: current setting resolves req.ip to a ${reqIpClass} address; never respond by incrementing, re-measure`);
 
   return {
     configuredTrustProxyHops: input.configuredHops,
@@ -213,44 +288,76 @@ export interface TrustProxyMonitorOptions {
   log?: (message: string) => void;
 }
 
+/** One throttled alert channel: at most one line per interval, with a suppressed-occurrence count. */
+function createThrottledAlert(intervalMs: number, now: () => number, log: (m: string) => void) {
+  let lastAlertAt: number | null = null;
+  let suppressed = 0;
+  return (build: (suppressedSinceLast: number) => string): void => {
+    const t = now();
+    if (lastAlertAt !== null && t - lastAlertAt < intervalMs) {
+      suppressed++;
+      return;
+    }
+    log(build(suppressed));
+    lastAlertAt = t;
+    suppressed = 0;
+  };
+}
+
 /**
- * Runtime alert: in production, when a request that came through a proxy
- * (X-Forwarded-For present) still resolves `req.ip` to a non-public
- * address, emit at most one error line per interval. Requests without XFF
- * (Render's direct health checks, in-cluster calls) and `/api/health*` are
- * ignored — a private socket peer there is expected, not evidence of a
- * misconfiguration. Never logs an address, only its class.
+ * Runtime alerts, production only, on proxied (X-Forwarded-For present),
+ * non-`/api/health*` requests. Requests without XFF (Render's direct health
+ * checks, in-cluster calls) are ignored — a private socket peer there is
+ * expected, not evidence of a misconfiguration. Each alert is independently
+ * throttled to at most one line per interval per process, and never logs an
+ * address — only a class or counts.
  *
- * Note: this detects hop counts that are too LOW. A count that is too HIGH
- * resolves to a client-supplied entry and cannot be detected from a single
- * request — only the diagnostic endpoint's measurement rules that out.
+ * 1. `[ALERT:trust_proxy_misconfigured]` — `req.ip` is non-public. Usually
+ *    the count is too LOW; but under a count that is too HIGH a client can
+ *    trigger it by sending a private XFF entry (INC-003 §26 K-3), so the
+ *    text says never to respond by incrementing.
+ * 2. `[ALERT:trust_proxy_too_high]` — the request carries FEWER XFF entries
+ *    than TRUST_PROXY_HOPS (INC-003 §26 K-2/C-3). A client that sends no XFF
+ *    (nearly all real traffic) arrives with exactly the real hop count of
+ *    entries, so `entries < configured` means the count exceeds what Render
+ *    adds on at least that path — the spoof-enabling failure. A client CAN
+ *    suppress this alert on its own requests by padding XFF, but cannot stop
+ *    ordinary traffic from firing it, so the signal holds in aggregate.
  */
 export function createTrustProxyMonitor(opts: TrustProxyMonitorOptions) {
   const intervalMs = opts.intervalMs ?? TRUST_PROXY_ALERT_INTERVAL_MS;
   const now = opts.now ?? (() => Date.now());
   // eslint-disable-next-line no-console
   const log = opts.log ?? ((m: string) => console.error(m));
-  let lastAlertAt: number | null = null;
-  let suppressed = 0;
+  const tooLowAlert = createThrottledAlert(intervalMs, now, log);
+  const tooHighAlert = createThrottledAlert(intervalMs, now, log);
 
   return function trustProxyMonitor(req: Request, _res: Response, next: NextFunction): void {
     if (!opts.isProduction) return next();
     if (req.path.startsWith('/api/health')) return next();
-    if (req.headers['x-forwarded-for'] === undefined) return next();
-    const cls = classifyAddress(req.ip);
-    if (cls === 'public') return next();
-    const t = now();
-    if (lastAlertAt !== null && t - lastAlertAt < intervalMs) {
-      suppressed++;
-      return next();
+    const xff = req.headers['x-forwarded-for'];
+    if (xff === undefined) return next();
+
+    const entries = parseForwardedFor(xff).length;
+    if (entries < opts.configuredHops) {
+      tooHighAlert(
+        (suppressed) =>
+          `${TRUST_PROXY_TOO_HIGH_LOG_TAG} proxied request carried ${entries} X-Forwarded-For entr${entries === 1 ? 'y' : 'ies'} ` +
+          `but TRUST_PROXY_HOPS=${opts.configuredHops}; the configured count exceeds the observed hop count, so clients ` +
+          `may be able to choose req.ip. ${TRUST_PROXY_ALERT_GUIDANCE} Suppressed since last alert: ${suppressed}.`,
+      );
     }
-    log(
-      `${TRUST_PROXY_MISCONFIGURED_LOG_TAG} req.ip resolved to a ${cls} address on a proxied request ` +
-        `(TRUST_PROXY_HOPS=${opts.configuredHops}); per-IP rate limits and audit-log IPs are degraded. ` +
-        `Suppressed since last alert: ${suppressed}. See docs/organization/incidents/INC-003-a28-trust-proxy-runbook.md`,
-    );
-    lastAlertAt = t;
-    suppressed = 0;
+
+    const cls = classifyAddress(req.ip);
+    if (cls !== 'public') {
+      tooLowAlert(
+        (suppressed) =>
+          `${TRUST_PROXY_MISCONFIGURED_LOG_TAG} req.ip resolved to a ${cls} address on a proxied request ` +
+          `(TRUST_PROXY_HOPS=${opts.configuredHops}); per-IP rate limits and audit-log IPs are degraded. ` +
+          'This may also indicate a count that is too HIGH combined with a client-supplied private XFF entry. ' +
+          `${TRUST_PROXY_ALERT_GUIDANCE} Suppressed since last alert: ${suppressed}.`,
+      );
+    }
     next();
   };
 }

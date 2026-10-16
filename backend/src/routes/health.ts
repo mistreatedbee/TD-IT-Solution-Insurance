@@ -29,11 +29,16 @@ import { pingPg } from '../db/pg.js';
 import { getSupabaseConfigStatus } from '../db/supabase.js';
 import { verifyMongoCatalog } from '../db/catalog-verify.js';
 import type { Env } from '../config/env.js';
-import { createInternalServiceAuthMiddleware } from '../middleware/internal-service-auth.js';
+import { createInternalServiceAuthMiddleware, INTERNAL_ROUTE_CALLERS } from '../middleware/internal-service-auth.js';
+import type { KeyValueStore } from '../db/redis.js';
 
-export function createHealthRouter(env: Env): Router {
+export function createHealthRouter(env: Env, kv: KeyValueStore): Router {
   const healthRouter = Router();
-  const internalAuth = createInternalServiceAuthMiddleware(env);
+  // INC-003 §26 C-1: scoped to its own (currently empty) caller allowlist.
+  const internalAuth = createInternalServiceAuthMiddleware(env, {
+    allowedCallers: INTERNAL_ROUTE_CALLERS.internalHealth,
+    kv,
+  });
 
   healthRouter.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });

@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { apiError } from '../lib/errors.js';
-import { createInternalServiceAuthMiddleware } from '../middleware/internal-service-auth.js';
+import { createInternalServiceAuthMiddleware, INTERNAL_ROUTE_CALLERS } from '../middleware/internal-service-auth.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { AUDIT_LOG_READ_LIMIT } from '../lib/policy.js';
 import { computeProxyTrustDiagnostic, classifyAddress, normalizeAddress } from '../lib/proxy-trust.js';
@@ -21,11 +21,13 @@ const activatePolicyBodySchema = z.object({ accountId: z.string().uuid() });
 
 export function createInternalRouter(ctx: AppContext): Router {
   const router = Router();
-  const internalAuth = createInternalServiceAuthMiddleware(ctx.env);
+  // INC-003 §26 C-1: one middleware per route, each scoped to its own caller allowlist.
+  const authFor = (route: keyof typeof INTERNAL_ROUTE_CALLERS) =>
+    createInternalServiceAuthMiddleware(ctx.env, { allowedCallers: INTERNAL_ROUTE_CALLERS[route], kv: ctx.kv });
 
   router.get(
     '/internal/accounts/:id/status',
-    internalAuth,
+    authFor('accountStatus'),
     createRateLimiter(ctx.kv, { attempts: AUDIT_LOG_READ_LIMIT.attempts, windowSeconds: AUDIT_LOG_READ_LIMIT.windowSeconds }, (req) => `internal-status:${req.internalCaller}`),
     async (req, res, next) => {
       try {
@@ -62,7 +64,7 @@ export function createInternalRouter(ctx: AppContext): Router {
   /** POL-002 hook — payment gateway calls this when subscription is confirmed. */
   router.post(
     '/internal/policies/:id/activate',
-    internalAuth,
+    authFor('policyActivate'),
     createRateLimiter(ctx.kv, { attempts: 60, windowSeconds: 60 }, (req) => `internal-activate:${req.internalCaller}`),
     async (req, res, next) => {
       try {
@@ -113,7 +115,7 @@ export function createInternalRouter(ctx: AppContext): Router {
    */
   router.get(
     '/internal/diagnostics/proxy-trust',
-    internalAuth,
+    authFor('proxyTrustDiagnostic'),
     createRateLimiter(
       ctx.kv,
       PROXY_TRUST_DIAGNOSTIC_LIMIT,

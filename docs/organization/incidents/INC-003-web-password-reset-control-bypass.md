@@ -2391,6 +2391,64 @@ they are accurate, so I expect that concurrence to be a formality.
 
 ---
 
+## 27. Response to §26: C-1 to C-5, K-6, K-7 (`backend-engineer`, 2026-10-16)
+
+**Scope.** These are code and runbook fixes for the §26 conditions. They are uncommitted at time of writing.
+Every item below is **pending Stage 8 re-review** by `cybersecurity-architect` and implementation verification by
+`security-engineer`. `TRUST_PROXY_HOPS` is **unchanged** (`"1"` in both blueprints). **K-8** (subnet-based trust)
+is **not addressed here**; it stays with `backend-architect`. **C-6** (sign-off of the measured value) is
+untouched. A-28 stays **OPEN**.
+
+### 27.1 Disposition
+
+| §26 item | What changed | Status |
+|---|---|---|
+| **C-1 / K-1** | `createInternalServiceAuthMiddleware(env, { allowedCallers, kv })` now **requires** a per-route allowlist. A valid key whose caller is not on it gets **403** (`FORBIDDEN`). The allowlists live in code, in `INTERNAL_ROUTE_CALLERS` (`backend/src/middleware/internal-service-auth.ts`). Each route uses its own entry: `accountStatus`, `policyActivate`, `internalHealth` (`/api/internal/health`, which also used this middleware) and `proxyTrustDiagnostic = ['ops-diagnostic']`. **The real caller names for the first three are unknown.** No caller name is defined anywhere in code, config or docs. Both blueprints have `INTERNAL_SERVICE_KEYS` as `sync: false`. `backend/README.md` and `config/env.ts` say no consuming service exists yet. HANDOFF.md says `/activate` has "no caller (no gateway chosen)". I did not guess names. Those three allowlists are **empty, which fails closed: every caller gets 403**. When a payment gateway or domain service is built, its name is added to the allowlist in a reviewed change. **Owner check:** if production `INTERNAL_SERVICE_KEYS` already holds a key that some integration uses (I cannot see the dashboard), that integration now gets 403. The new startup warning lists every configured caller name that no route allows. Caller names only, never keys. | Pending re-review |
+| **K-7** | Key matching now compares SHA-256 digests with `crypto.timingSafeEqual`, checks every configured credential, and never exits early. Before any key comparison, a per-client-IP limiter on **failed** `/internal/*` auth (missing or wrong key) applies: 20 failures per 300 s, then **429** even for a valid key until the window resets. Successful calls and 403s do not use up this budget. **Caveat for the reviewer:** this limiter is keyed on `clientIp()`, so until A-28 is fixed the bucket is shared across Render's proxy hop. An internet attacker could therefore block all internal callers for up to 5 minutes at a time. Today that is low impact because no real caller is allowlisted. Revisit before a production integration is allowlisted. | Pending re-review |
+| **C-3 / K-2** | `createTrustProxyMonitor` adds **`[ALERT:trust_proxy_too_high]`**. It fires in production on a proxied, non-health request whose XFF entry count is **lower** than `TRUST_PROXY_HOPS`. Throttling works like the existing alert (one line per 15 min per process, on a channel independent of the other alert). The line carries counts only. The diagnostic also emits a `configured_hops_exceeds_entry_count` note. **Correction note:** the statements in §25.1 ("A too-high count can only be detected with the runbook's spoof probe"), the earlier `proxy-trust.ts` comment, and runbook §6.3 were wrong, as §26 K-2 says. §25 is left unedited at the reviewer's request. This note supersedes it. The code comment is corrected, and runbook §6.3 is corrected using the VOID pattern. | Pending re-review |
+| **C-4 / K-3** | Both alert lines end with: "Never respond by incrementing TRUST_PROXY_HOPS; re-measure per …runbook §3." The too-low alert also says it "may also indicate a count that is too HIGH combined with a client-supplied private XFF entry". The same guidance is now in runbook §1 and §6.3. | Pending re-review |
+| **C-2 / K-4** | Runbook §4 now has hard acceptance requirements. (i) In probe 2, suggestion = `rightmostPublicIndex` = `forwardedForEntryCount`. (ii) In probe 3, the entry count is probe 2's + 1, or equal (recorded as "Render strips"), with the suggestion and `rightmostPublicIndex` unchanged and nothing else differing. (iii) At least 5 samples per network, on at least 2 networks, each on a fresh connection. (iv) Any disagreement means stop and escalate, never pick the larger or more frequent value. The "restart exercises a different edge" rationale is voided. "Render appends without stripping" is restated in runbook §1 as an **unverified assumption that probe 3 tests**. This also corrects §25's framing of it as fact. Removing the `ops-diagnostic` key is now **mandatory** (runbook §6.4), with add and remove times recorded and an audit-row check. | Pending re-review |
+| **C-5 / K-5** | `parseTrustProxyHops()` in `config/env.ts`, with `MAX_TRUST_PROXY_HOPS = 5`. Startup **fails** above 5 (no override variable; raising the bound is a code change). Existing behaviour is otherwise unchanged: the default is 1, and non-integer or negative values are rejected. | Pending re-review |
+| **K-6** | Classification now parses IPv6 into hextets. Any spelling of IPv4-mapped (`::ffff:a00:1`, fully expanded) is classified as the embedded IPv4. These ranges are classed **non-public**: `::/8` (including IPv4-compatible); `64:ff9b::/96` and `64:ff9b:1::/48`; `100::/64`; `2001::/23`; `2001:db8::/32`; `2002::/16`; `3fff::/20`; `fec0::/10`; `ff00::/8`; IPv4 `192.0.0.0/24`; the three TEST-NETs; `192.88.99.0/24`; `198.18.0.0/15`; `224.0.0.0/4`; `240.0.0.0/4`. The new classes are `multicast`, `documentation` and `reserved`, and the OpenAPI enum is updated. IPv6 is now compared in canonical form, so differently compressed spellings match. Side effect: the runbook's spoof value `203.0.113.99` now classifies as `documentation`, so runbook §6.1 now checks `reqIp.class` / `matchesExpectedClientIp` instead of `reqIp.value`. I used hand-written checks rather than `ipaddr.js`, because that is only a transitive dependency and not declared in `package.json`. | Pending re-review |
+
+### 27.2 Tests
+
+- `backend/src/middleware/internal-service-auth.test.ts` (new):
+  - The `ops-diagnostic` key gets 200 on proxy-trust, and 403 on `/activate`, `/accounts/:id/status` and
+    `/api/internal/health`, with no handler side effect.
+  - A different valid key gets 403 on proxy-trust and 200 on a route scoped to it.
+  - `ops-diagnostic` appears only on the diagnostic allowlist, and the unknown-caller allowlists are empty.
+  - The constant-time match rejects prefixes and extensions.
+  - After 20 failures the IP gets 429, even with a valid key, and successful calls and 403s don't use up the
+    budget.
+- `backend/src/config/env.test.ts` (new): the default is 1, values 0 to 5 are accepted, 6 and 30 fail, and `-1`,
+  `1.5`, `abc` and `true` are rejected.
+- `backend/src/lib/proxy-trust.test.ts` (extended):
+  - 31 K-6 classification cases, plus normalization of hex and expanded mapped forms and compression-insensitive
+    IPv6.
+  - Too-high alert: fires on entries < hops, carries counts only, is throttled independently with a suppressed
+    count, and stays silent at or above the configured hops, outside production, without XFF, and on health paths.
+  - The C-4 text appears in both alerts, and the `configured_hops_exceeds_entry_count` note is emitted.
+  - Test client IP changed from `198.51.100.7` (now `documentation`) to a public address.
+- Results: `cd backend && npm test` gives **65 files, 633 tests passed** (before this section: 63 files, 584).
+  `npx tsc --noEmit` is clean. ESLint on the touched files is clean.
+
+### 27.3 Changed files
+
+`backend/src/middleware/internal-service-auth.ts`, `backend/src/routes/internal.ts`, `backend/src/routes/health.ts`
+(signature is now `createHealthRouter(env, kv)`), `backend/src/index.ts` (passes `ctx.kv` and logs the
+unscoped-caller warning), `backend/src/config/env.ts`, `backend/src/lib/proxy-trust.ts`, the three test files above
+plus `backend/src/routes/internal-proxy-trust.test.ts` (client IP only), `mobile/openapi/identity-service.yaml`
+(403 / 429 responses, enum, auth description), and `docs/organization/incidents/INC-003-a28-trust-proxy-runbook.md`.
+
+**Gates now:** C-1 is met in code, pending re-review. Once the re-review passes, the owner may provision the
+`ops-diagnostic` key and measure per the revised runbook. C-2 and C-4 are met in the runbook, pending re-review.
+C-3 and C-5 are met in code, pending re-review. C-6 remains open.
+
+**Signed:** `backend-engineer`, 2026-10-16.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*

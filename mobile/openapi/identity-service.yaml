@@ -38,7 +38,7 @@ components:
       type: apiKey
       in: header
       name: X-Internal-Service-Key
-      description: Service-to-service auth for the internal-only account-status surface (§2.3 row 4). Not reachable by any client.
+      description: Service-to-service auth for the internal-only surface (§2.3 row 4). Not reachable by any client. Each route allows only named callers (INC-003 §26 C-1); a valid key for a caller not on the route's allowlist gets 403. Failed authentication is rate-limited per client IP (429).
 
   parameters:
     IdempotencyKey:
@@ -80,7 +80,7 @@ components:
     AddressClass:
       type: string
       description: INC-003 A-28 diagnostic address class (never a raw address).
-      enum: [public, private, loopback, link_local, shared_cgnat, unique_local, unspecified, invalid]
+      enum: [public, private, loopback, link_local, shared_cgnat, unique_local, multicast, documentation, reserved, unspecified, invalid]
     Error:
       type: object
       required: [error]
@@ -799,6 +799,7 @@ paths:
                   mfaRequired: { type: boolean }
                   updatedAt: { type: string, format: date-time }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Valid key, but the caller is not on this route's allowlist (no caller is allowlisted today). }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /internal/diagnostics/proxy-trust:
@@ -810,7 +811,7 @@ paths:
         X-Forwarded-For chain, to determine the correct TRUST_PROXY_HOPS on
         the deployed service. Chain reported as address classes only; raw
         req.ip returned only when public. Writes nothing; rate-limited to 10
-        requests / 60 s per internal caller. Runbook:
+        requests / 60 s per internal caller. Only caller `ops-diagnostic` is allowed. Runbook:
         docs/organization/incidents/INC-003-a28-trust-proxy-runbook.md.
       security: [{ internalServiceAuth: [] }]
       parameters:
@@ -848,7 +849,8 @@ paths:
                   notes: { type: array, items: { type: string } }
         '400': { description: X-Diagnostic-Expected-Client-Ip is not a single valid public IP. }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '429': { description: Rate limited. }
+        '403': { description: Valid key, but caller is not `ops-diagnostic`. }
+        '429': { description: Rate limited (per caller, or per IP after repeated failed authentication). }
         '503': { description: No internal service credentials configured (fails closed). }
 
   # ---------------------------------------------------------------
