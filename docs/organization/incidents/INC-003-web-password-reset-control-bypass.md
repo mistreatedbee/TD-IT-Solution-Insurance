@@ -2449,6 +2449,84 @@ C-3 and C-5 are met in code, pending re-review. C-6 remains open.
 
 ---
 
+## 28. Stage 8 re-review of §27 against the §26 conditions (`cybersecurity-architect`, 2026-10-16)
+
+**Scope.** I reviewed the latest commit on `main` as described in §27, reading the code rather than relying on
+§27's account of it:
+
+- `middleware/internal-service-auth.ts`;
+- the route wiring in `routes/internal.ts` and `routes/health.ts`;
+- the unscoped-caller warning in `index.ts`;
+- `parseTrustProxyHops()` in `config/env.ts`;
+- `lib/proxy-trust.ts`;
+- the revised runbook;
+- the `healthCheckPath` in both blueprints.
+
+I did not run the tests myself. The caller reports 633/633 passing and `tsc` clean, which matches §27.2.
+
+**Verdict: PASS for the A-28 tooling.** C-1 to C-5 are met, and K-6 and K-7 are closed. C-6, the sign-off of the
+measured value, is still **OPEN**. A-28 stays **OPEN**.
+
+### 28.1 Per-condition verdicts
+
+| Condition | Verdict | Basis (verified in code / runbook) |
+|---|---|---|
+| **C-1 / K-1** | **MET** | `createInternalServiceAuthMiddleware` now *requires* an `allowedCallers` set. Each route gets its own instance via `authFor(<routeId>)`: `accountStatus`, `policyActivate`, `proxyTrustDiagnostic`, and `internalHealth` in `health.ts`. A valid key for a caller that is not allowed gets 403 before any handler or limiter runs. The `accountStatus`, `policyActivate` and `internalHealth` allowlists are empty, so they fail closed. That is the right call when no real caller name exists: a guessed name would be a latent grant. `ops-diagnostic` appears only on the diagnostic route. Both blueprints use `healthCheckPath: /api/health/ready`, which is unauthenticated and unaffected, so deploys are unaffected. The startup warning logs caller names only. Names are not secrets, so this is acceptable. Runbook §2 and §6.4 make removing the key mandatory and add the audit-row check. |
+| **K-7** | **CLOSED (caveat accepted)** | The key check compares SHA-256 digests with `timingSafeEqual` over every credential, with no early exit. A per-IP limiter on failed authentication runs *before* any key comparison: 20 failures per 300 s, and a 403 does not count as a failure. It fails closed: a KV error goes to `next(err)` and returns 500. **I accept the caveat in §27:** until A-28 is fixed, the failure bucket is shared across the Render proxy hop, so any internet client can spend it and lock out internal callers for up to 5 minutes. **Its practical effect today is that the owner's measurement can be delayed.** It cannot be subverted: a 429 reveals nothing, and nothing else is allowlisted. This must be re-reviewed before any production integration is added to an allowlist (see 28.3, A-3). |
+| **C-2 / K-4** | **MET** | Runbook §4's hard requirements match §26.5 C-2 point for point. (i) In probe 2, suggestion = `rightmostPublicIndex` = entry count. (ii) In probe 3, the entry count is +1 (or equal, recorded as "Render strips"), with the suggestion and `rightmostPublicIndex` unchanged. (iii) At least 5 samples on each of at least 2 networks, on fresh connections. (iv) Any disagreement means escalate, never pick the larger or more frequent value. The "restart exercises a different edge" rationale is voided in place. "Render appends without stripping" is restated as an assumption that probe 3 tests. The §6.1 post-change check was updated correctly for the K-6 reclassification: a too-high count now shows up in probe 3 as `reqIp.class: "documentation"` / `matchesExpectedClientIp: false`. |
+| **C-3 / K-2** | **MET** | `[ALERT:trust_proxy_too_high]` fires on proxied, non-health production requests where the XFF entry count is less than `TRUST_PROXY_HOPS`. It is throttled independently and logs counts only. **An attacker cannot trigger it at the correct count**, because Render's appended entries always reach N. A client can suppress it only for its own requests, so it holds in aggregate. The diagnostic also emits `configured_hops_exceeds_entry_count`, and runbook §4 treats that as escalate-now. The correction note in §27.1 properly supersedes the §25 wording without editing §25. |
+| **C-4 / K-3** | **MET** | Both alert lines carry `TRUST_PROXY_ALERT_GUIDANCE` ("Never respond by incrementing…; re-measure"). The too-low alert also names the too-high-plus-private-XFF cause. Runbook §1, §6.3 and §8 say the same thing and add "or decrementing". |
+| **C-5 / K-5** | **MET** | `parseTrustProxyHops()` rejects values above 5 at startup, with no override, so raising the bound is a reviewed code change. It also rejects non-integer and negative values. An empty string parses to 0, which is the safe direction (`req.ip` becomes the socket peer, never a value the client chose). Runbook §5.1 says to escalate if the measurement says more than 5. |
+| **K-6** | **CLOSED** | IPv6 is now parsed into hextets, every IPv4-mapped spelling (including hex and fully expanded forms) resolves to the embedded IPv4, and the RFC 6890-style special ranges are non-public. The classification only feeds the diagnostic, the expected-IP validation and the two alerts; I grepped and nothing else imports it, so the reclassification cannot affect authorisation or rate-limit keys. Hand-written checks instead of an undeclared transitive `ipaddr.js`: accepted. |
+| **C-6** | **OPEN** | This is not affected by §27. The measured value needs its own Stage 8 sign-off. |
+
+### 28.2 Explicit ruling: provisioning the key and running the measurement
+
+**Yes. The owner may now provision the `ops-diagnostic` key and run the measurement** under the revised runbook
+§2-§4, once this commit is deployed. Two preconditions apply:
+
+1. **P-1. Prove the scoping on the live service before measuring.** With the new key, call
+   `POST $BASE/api/v1/internal/policies/000000000000000000000000/activate` and
+   `GET $BASE/api/internal/health`, and confirm that **both return 403**. The 403 happens in auth, before any
+   handler runs, so this changes no state. If either returns anything other than 403, remove the key immediately
+   and escalate. Also check the deploy log. It should show the `[startup] Express 'trust proxy' = 1 hop(s)` line. It
+   should not show the unscoped-caller warning, except for names the owner can account for. If an existing
+   integration's name appears there, record it before proceeding.
+2. **P-2. Use a separate key for each environment.** Generate a different `ops-diagnostic` key for staging and for
+   production, never reuse one, and remove each one per runbook §6.4.
+
+The measurement only reads and changes no state, so it does not wait for `security-engineer`'s implementation
+verification. **Changing `TRUST_PROXY_HOPS` does wait.** It needs C-6, which is a joint sign-off by this role and
+`security-engineer`, with `security-engineer` also verifying C-1, C-3 and C-5 in code.
+
+### 28.3 Advisories (non-gating)
+
+- **A-1 (Low, new).** K-6 classes `2002::/16` (6to4) and `2001::/32` (Teredo) as `reserved`. These *can* be the
+  source address of a real internet client. After the fix, a client on such an address, or an attacker who
+  deliberately uses one, can still make `[ALERT:trust_proxy_misconfigured]` fire at most once per 15 minutes per
+  process. That contradicts runbook §6.3's "both should stop entirely". It is harmless, because it is throttled and
+  logs no address, and the class appears in the alert line. Amend §6.3 to say that only `private`, `shared_cgnat`,
+  `loopback` or `link_local` classes after the fix are evidence that the count is too low. `reserved` or
+  `documentation` classes point to an unusual client or a spoof attempt, so re-measure rather than escalate.
+- **A-2 (Low).** Runbook §3 passes the key with `-H "X-Internal-Service-Key: $INTERNAL_KEY"`. That puts the key in
+  local process arguments, where `ps` can read it, for the duration of the call. Prefer reading the header from
+  stdin, e.g. `printf 'header = "X-Internal-Service-Key: %s"\n' "$INTERNAL_KEY" | curl --config - …`, or from a
+  file readable only by the owner (mode 0600) that is deleted afterwards.
+- **A-3 (Medium, deferred trigger).** Before *any* real caller is added to `accountStatus` or `policyActivate`,
+  this role must re-review the K-7 failure-limiter design. While A-28 is open, an internet client can lock the
+  payment hook out for 5 minutes at a time. Options include keying the limiter globally plus per real IP once A-28
+  is fixed, or an IP allowlist / private-network path for service callers.
+- **A-4 (Info).** K-8 (trust based on private subnets instead of a hop count) stays with `backend-architect`. If
+  the measurement in §4 shows any disagreement between edge paths, K-8 becomes the required fix rather than an
+  option.
+
+**Concurrence still required:** `security-engineer`, for implementation verification of C-1, C-3 and C-5 before
+C-6. `compliance-specialist` has no new data-classification impact to assess.
+
+**Signed:** `cybersecurity-architect`, 2026-10-16.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
