@@ -2275,6 +2275,122 @@ Closing A-28 does not repair historical rows.
 
 ---
 
+## 26. Stage 8 review of §25 (A-28 tooling, alert, runbook) (`cybersecurity-architect`, 2026-10-16)
+
+**Scope.** I reviewed the code in the latest commit on `main`: `backend/src/lib/proxy-trust.ts`,
+`GET /api/v1/internal/diagnostics/proxy-trust` in `backend/src/routes/internal.ts`, the startup line and monitor
+mount in `backend/src/index.ts` (L118-130), the two new test files, and
+`INC-003-a28-trust-proxy-runbook.md`. I also read the dependencies they rely on:
+`middleware/internal-service-auth.ts`, `middleware/rate-limit.ts`, `middleware/error-handler.ts`, the
+`TRUST_PROXY_HOPS` / `INTERNAL_SERVICE_KEYS` parsing in `config/env.ts`, and both Render blueprints. I did not run
+the tests myself. The caller reports 584/584 passing and `tsc` clean, and that matches §25.2. **This review covers
+the tooling only.** It does not approve any new `TRUST_PROXY_HOPS` value. The value needs its own Stage 8 sign-off
+once it has been measured (§25.3 item 4, runbook §7).
+
+**Verdict: CONDITIONAL.** The code may stay on `main` and be deployed. It is read-only, fails closed, and leaks
+nothing material. Do not provision the diagnostic credential until **C-1** is met. Do not set a new hop value until
+**C-2** and **C-4** are met. A-28 cannot close until **C-3** is met. A-28 stays **OPEN**.
+
+### 26.1 What holds (verified in code)
+
+- **Information disclosure: acceptable.** The response contains address *classes* only. The one raw value it
+  returns is `reqIp.value`, and only when that address is public. The handler's log line has the caller name, the
+  entry count, and the configured, suggested, and rightmost-public numbers, with no addresses, no chain, and no
+  key. The expected-IP header is never logged. A 400 goes through `error-handler.ts:90`, which logs `err.message`
+  only. That message is the generic `VALIDATION_ERROR` text and does not echo the header. `Cache-Control: no-store`
+  is set. Hop topology (count and classes) is disclosed to holders of an internal key. That is the purpose of the
+  endpoint, and I accept it. If the hop count is ever too high, `reqIp.value` reflects a value the client chose,
+  but only to that same caller and only after it has passed `isIP`. That is not a leak.
+- **The caller-asserted `X-Diagnostic-Expected-Client-Ip` header cannot be weaponised.** It is only compared
+  against the chain and never changes state. The handler accepts a single address that is valid and public. The
+  suggestion is the *lowest* matching k, so copies further left cannot move it. Because the expected value must be
+  public, `rightmostPublicIndex <= suggestion` always holds. If the two differ, there is a public hop between the
+  caller and the service, and the code emits the escalation note instead of suggesting a value. The worst a key
+  holder can do is get a wrong suggestion for themselves. The acceptance criteria are there to catch that (see
+  26.3).
+- **Auth and fail-closed behaviour: correct.** No credentials gives 503. A missing or wrong key gives 401. The
+  limiter runs *after* auth and is keyed per caller, at 10 requests per 60 seconds. A KV failure goes to
+  `next(err)` and returns 500, which fails closed. There are no DB reads or writes. The endpoint is not
+  `GET`-cacheable.
+- **The alert middleware cannot be abused once the count is correct.** With hops = N, `req.ip` is the entry that
+  Render's first proxy wrote, which is the client's real socket address. An internet attacker cannot make it
+  non-public. In any configuration the output is capped at one line per 15 minutes per process. The cost per
+  request is O(1). The log line contains the tag, the class, the configured count, and the suppressed count. It
+  contains no addresses.
+- **The Express semantics in the code are correct for Express 4.21 / proxy-addr.** A numeric `trust proxy = n`
+  trusts chain indices `0..n-1` and returns `chain[min(n, len-1)]`. Here index 0 is the socket peer and the XFF
+  entries follow in right-to-left order. That is exactly what `resolveIpForHops` does. For any n >= 1, trust of
+  `X-Forwarded-Proto` / `X-Forwarded-Host` depends only on whether the socket peer is trusted. So changing the
+  *count* does not change protocol or host trust.
+
+### 26.2 Findings
+
+| ID | Severity | Finding |
+|---|---|---|
+| **K-1** | **High (conditional)** | **Internal keys are not scoped per route.** `createInternalServiceAuthMiddleware` accepts *any* configured caller on *every* `/internal/*` route. Runbook §2 recommends adding an `ops-diagnostic` key, and that key could then also call `POST /internal/policies/:id/activate` (the POL-002 payment hook, which activates cover with no payment) and `GET /internal/accounts/:id/status`. Both blueprints have `INTERNAL_SERVICE_KEYS` as `sync: false`, and `env.ts` treats it as normally empty. So the first key the owner adds *opens the activation hook* to whoever holds it, on a laptop-held credential pasted into a shell. A measurement credential must not carry write authority over policy state. |
+| **K-2** | Medium | **A too-high count *is* detectable at runtime, but the code, §25, and runbook §6.3 all say it is not.** If the client sends no XFF, which is almost all real traffic, the entry count equals the true hop count N exactly. With a configured value greater than N, every such request arrives with `forwardedForEntryCount < configuredHops`. That is a cheap, high-signal detector for exactly the failure that enables spoofing. No such detector exists today. The probe-2 response already carries this third cross-check (`suggestedTrustProxyHops == forwardedForEntryCount`), but the runbook does not use it. |
+| **K-3** | Medium | **An attacker can trigger the "too low" alert under a too-high count, and it points operators the wrong way.** If hops > N, an attacker can send `X-Forwarded-For: 10.0.0.1`. That makes `req.ip` private and fires `[ALERT:trust_proxy_misconfigured]`, whose text says rate limits are degraded. The natural reaction is to raise the count, which is the opposite of the right fix. Runbook §6.3 says "re-measure", which is correct, but neither the alert text nor the runbook warns against simply incrementing. |
+| **K-4** | Medium | **The stability criterion in runbook §4 item 4 is weak and partly wrong.** A redeploy or restart changes the *origin* instance. It does not change which Render edge the caller's connection lands on. If Render has more than one path with different hop counts (N and N+1), then picking N+1 makes `req.ip` client-chosen on the N-hop path. Three calls from one network may never reach the second path. |
+| **K-5** | Low | `TRUST_PROXY_HOPS` has no upper bound (`env.ts:315` only rejects non-integer or negative values). A typo such as `30` is accepted and silently makes every client spoof-capable. |
+| **K-6** | Low | Classification gaps in `classifyV6` / `classifyV4`. The hex IPv4-mapped form (`::ffff:a00:1`), anything starting with `::`, `64:ff9b::/96`, and the RFC 6890 special ranges (198.18/15, 240/4, multicast, 192.0.0/24) are all classed as `public`. Render and Node emit dotted-quad mapped forms, so this does not affect a correctly configured service. It could weaken the alert under a too-high count (a hex-encoded private value passes as public), and it could weaken the expected-IP validation. |
+| **K-7** | Low (pre-existing, SR-13) | Key comparison uses `===` (`internal-service-auth.ts:37`), which is not constant-time. Failed authentication on `/internal/*` is not rate-limited at all, because the limiter runs after auth. Keys of 40 or more random characters keep this from being exploitable in practice. Recorded here because this change adds a new key-holding use case. |
+| **K-8** | Info (architecture) | **A subnet-based trust function is structurally safer than a count.** For example `app.set('trust proxy', ['loopback','linklocal','uniquelocal','100.64.0.0/10'])`. proxy-addr then walks right-to-left over trusted (private) hops and stops at the first public address, which is `rightmostPublicIndex`. Under that setting, client-written entries further left can never be reached. Variable hop counts across edge paths are handled automatically. A too-high value cannot happen. It only fails *safe* (too low) if a public hop such as a CDN sits in front. This fits the "make the vulnerability class structurally impossible" principle better than a measured integer. It is an architecture change to SR-7 that needs a `backend-architect` decision. I am recording it as the recommended end state, not as a condition. |
+
+### 26.3 Do the runbook's acceptance criteria rule out a too-high count?
+
+**Mostly yes for one path. Not for path variability. And they leave an available check unused.** On a single
+observed path:
+
+- The suggestion is the lowest k at which the caller's IP appears.
+- A public hop on Render's side, or an IP the caller has wrongly asserted, shows up as a `rightmostPublicIndex`
+  mismatch. That leads to escalation, not to a too-high value.
+- §6.1's post-change probe 3, which fails if `reqIp.value` is the spoofed address, catches a too-high value
+  directly.
+
+The remaining gaps are:
+
+- (a) a second edge path with fewer hops (K-4);
+- (b) the unused entry-count equality check (K-2);
+- (c) runbook §4 item 2 says `rightmostPublicIndex` "should" match in probe 3. It must be a hard requirement.
+- (d) probe 3's "entry count is one more than probe 2" is presented as informational. It must be a hard
+  requirement. The one exception is that if Render strips client XFF, the entry count may stay the same, and the
+  owner must record that.
+
+### 26.4 Corrections to runbook statements about Express and Render
+
+1. Runbook §1 says "Render appends to XFF without stripping what the client sent", and §25 repeats it, as an
+   established fact. Neither has measured it. Probe 3 is what establishes it. Restate it as the assumption that
+   probe 3 tests.
+2. Runbook §4 item 4: a restart or redeploy does not exercise "a different Render edge or proxy node". See K-4.
+3. Runbook §6.3 and §25's "cannot be detected from a single request": see K-2. Too-high is detectable from traffic
+   in aggregate.
+4. The rest of the runbook's Express model is correct: index 0 is the socket peer, index k is the k-th entry from
+   the right, `req.ip = chain[min(n, len-1)]`, and the value must never be `true`.
+
+### 26.5 Conditions
+
+| ID | Gate | Condition | Owner |
+|---|---|---|---|
+| **C-1** | Before any `INTERNAL_SERVICE_KEYS` entry is provisioned for this purpose | Add a per-route caller allowlist to the internal auth middleware, for example `createInternalServiceAuthMiddleware(env, { allowedCallers: ['ops-diagnostic'] })` on the diagnostic route and the payment caller only on `/activate`, with tests showing that a valid key for the wrong caller gets 403. **Interim alternative, only if the owner cannot wait:** add the key, run the measurement, and remove the key in one sitting of no more than 60 minutes. Record the add and remove timestamps in INC-003 without the key. Afterwards, confirm there are no `privileged_data_access` audit rows with `actorService = 'ops-diagnostic'` in that window. Update runbook §2 to say this, and make §6.4 removal mandatory, not "if you don't need it". | `backend-engineer` (code), owner (interim) |
+| **C-2** | Before a new value is set | Tighten runbook §4 acceptance. (i) In probe 2 (no client XFF), `suggestedTrustProxyHops == rightmostPublicIndex == forwardedForEntryCount`. (ii) In probe 3, `forwardedForEntryCount` is probe 2 plus 1 (or equal, recorded as "Render strips"), `rightmostPublicIndex` is unchanged, and the suggestion is unchanged. All of these are hard requirements. (iii) Take at least five samples over at least two distinct client networks, for example home broadband plus a mobile hotspot, each call on a fresh connection, and drop the "restart exercises a different edge" rationale. (iv) Any disagreement in any sample means stop and escalate. Do not pick the larger or the more frequent value. | `backend-engineer` (runbook) |
+| **C-3** | Before A-28 closes | Add a too-high detector to `createTrustProxyMonitor` under its own stable tag (for example `[ALERT:trust_proxy_hops_exceed_observed]`). In production, on a proxied non-health request where `parseForwardedFor(xff).length < configuredHops`, rate-limit it the same way, log class and counts only, and add tests. Correct the "cannot be detected" statements in `proxy-trust.ts`, runbook §6.3, and (by a new note, not an edit to §25) this record. | `backend-engineer` |
+| **C-4** | Before a new value is set | Add a line to the misconfiguration alert text and to runbook §6.3: "may also indicate a count that is too HIGH combined with a client-supplied private XFF entry. Never respond by incrementing TRUST_PROXY_HOPS; re-measure per runbook §3." | `backend-engineer` |
+| **C-5** | With C-3 | Put an upper bound on `TRUST_PROXY_HOPS` in `env.ts` (for example reject values above 5 unless an explicit override env var is set) and add a test (K-5). | `backend-engineer` |
+| **C-6** | When the value is chosen | Submit the measured values, recorded as field values only per runbook §7, for a separate Stage 8 sign-off by this role and `security-engineer`. **This section does not approve any value.** | owner + `backend-engineer` |
+
+**Advisories (not gating):** close K-6 by classifying through `ipaddr.js` ranges, which Express already depends on
+via proxy-addr, instead of hand-written prefix checks. Fix K-7 with `crypto.timingSafeEqual` over SHA-256 digests,
+plus a per-IP limiter on failed `/internal/*` authentication. Have `backend-architect` evaluate K-8 (subnet-based
+trust) as an SR-7 amendment. If it is adopted, it supersedes C-2, C-3, and C-5.
+
+**Concurrence still required:** `security-engineer` (implementation verification of C-1, C-3, and C-5) and
+`compliance-specialist`. This code does not touch the data classification of audit IPs. It only affects whether
+they are accurate, so I expect that concurrence to be a formality.
+
+**Signed:** `cybersecurity-architect`, 2026-10-16.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
