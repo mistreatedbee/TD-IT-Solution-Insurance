@@ -632,6 +632,22 @@
       }
     },
     {
+      "id": "mobile-not-found",
+      "kind": "mobile_route",
+      "pattern": "+not-found",
+      "feature": "001",
+      "stage8": {
+        "doc": "docs/organization/incidents/INC-003-web-password-reset-control-bypass.md",
+        "verdict": "conditional-sign-off-joint-gate-incomplete",
+        "note": "mobile/app/+not-found.tsx, added by the INC-003 C-11 fix (§32.2). Reviewed at INC-003 §33.2 by cybersecurity-architect on 2026-10-16. Verdict PASS, C-11 MET. The screen calls no usePathname, useSegments or search-params hook. Its copy is static. 'Continue' uses back() or replace('/'). app/__tests__/not-found.test.tsx asserts that no path or query value is rendered. The joint gate is NOT discharged: security-engineer implementation verification of C-11 (§30, §33.3 item 5) is outstanding, and the §32.4 live device check is open. Do not read this entry as a clean pass.",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "security-engineer records C-11 implementation verification in INC-003, target 2026-10-21. The verdict is then updated in place, and the superseded verdict is kept and marked void.",
+          "Any change that makes this screen read the route (usePathname, useSegments, useLocalSearchParams or useGlobalSearchParams), render dynamic text, or call an API voids this entry and requires a new Stage 8 review."
+        ]
+      }
+    },
+    {
       "id": "backend-analytics-events",
       "kind": "backend_route",
       "pattern": "/events",
@@ -750,6 +766,38 @@
         "waived": true,
         "reason": "SH-1a backfill (2026-09-03) — the backend read API behind these pages (GET /admin/policies*, /admin/assets*) has a Stage 8 record (security-review-admin-surface.md), but that document explicitly withholds sign-off of the web UI itself ('nothing in this document is a sign-off of the Admin Dashboard UI — does not exist'; conditions stated in advance at SR-004-admin-10). The UI (src/admin/pages/AdminDataPages.tsx) has since shipped with no dedicated Stage 8 pass re-run against it — SR-004-admin-10's preconditions were never re-verified against the built client.",
         "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-customers",
+      "kind": "web_route",
+      "pattern": "/admin/customers",
+      "feature": "004",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-10-16 CI-1 backfill, recorded under cto security-exception authority. src/admin/pages/AdminDataPages.tsx CustomersListPage was added by commit 77d6bd7 (2026-10-05), which split Admin Accounts into Customers and Staff. NO Stage 8 review has been performed on this page. This entry records that fact; it does not clear the page. It is a distinct entry and is NOT absorbed into web-admin-data-surface, which covers /admin/{accounts,policies,assets}* only. Scope by inspection only: the page calls the existing GET /v1/admin/accounts with role=customer and an optional exact-match email. That route is admin-only (requireUserType), rate-limited, and writes a privileged_bulk_access audit row for each page. The server-side role filter is new code from the same commit, and its only backend coverage is the earlier Feature 004 backend-admin record. The SR-004-admin-10 gap is the same unresolved gap as in web-admin-data-surface.",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "Scoped Stage 8 review by cybersecurity-architect, with security-engineer verification, of: authZ; server-side enforcement of the role filter; audit rows on load, load-more and zero-result email search; exact-match email lookup; and data minimisation (partnerOrganizationId in the list response). Due 2026-10-23, or earlier if real customer or privileged-user data reaches the Admin Panel, or if this page, useAccountList, listFiltersSchema or listForAdmin changes.",
+          "No new columns, actions, filters or exports on this page until that review is filed and this entry is replaced with a doc/verdict entry."
+        ]
+      }
+    },
+    {
+      "id": "web-admin-staff",
+      "kind": "web_route",
+      "pattern": "/admin/staff",
+      "feature": "004",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-10-16 CI-1 backfill, recorded under cto security-exception authority. src/admin/pages/AdminDataPages.tsx StaffListPage was added by commit 77d6bd7 (2026-10-05). NO Stage 8 review has been performed on this page. This entry records that fact; it does not clear the page. It is a distinct entry and is NOT absorbed into web-admin-data-surface. The page lists every non-customer account (admin, support_agent, security_company_operator) with its email, role and state. That makes it an enumeration of privileged accounts. It is served by GET /v1/admin/accounts?role=staff (user_type <> 'customer', repositories/accounts.ts:314-316), which is admin-only, rate-limited and audited for each page. The server-side role filter is new in this commit and was not covered by the Feature 004 admin-surface review.",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "The same scoped Stage 8 review and deadline as web-admin-customers, plus: confirm that state changes from admin to admin are blocked server-side (ADMIN_MUTABLE_USER_TYPES, SR-007-11), and decide whether ADR-0012 requires step-up authentication for a bulk read of privileged accounts.",
+          "No new columns, actions, filters or exports on this page until that review is filed and this entry is replaced with a doc/verdict entry."
+        ]
       }
     },
     {
