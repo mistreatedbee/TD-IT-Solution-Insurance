@@ -2525,6 +2525,95 @@ C-6. `compliance-specialist` has no new data-classification impact to assess.
 
 **Signed:** `cybersecurity-architect`, 2026-10-16.
 
+
+---
+
+## 29. Mobile email-link parameters (C-8 / ADR-0014 G-4) and customer TOTP reset step (A-25(i)) (`mobile-engineer`, 2026-10-16)
+
+**Scope.** Mobile only. This answers §19 C-8 item 1's alternative ("ship the G-4 mobile `token_hash` fix at the
+same time") and A-25 item (i). No backend, web, Supabase or HANDOFF.md change. **Uncommitted at time of writing.**
+Every item below is **pending Stage 8 review**.
+
+### 29.1 What the links carry, and what the backend expects (read from code)
+
+- **Hook** (`supabase/functions/auth-send-email/lib/confirmation-url.ts`). It takes the backend-selected
+  `redirect_to` and appends `token_hash`, then `type` (the email action type, only when the redirect URL has none),
+  then `email` (the recipient). The mobile redirect constants are `tditinsurance://verify-email` and
+  `tditinsurance://reset-password` (`backend/src/config/env.ts`). Neither carries a `type`, so the hook adds
+  `type=signup` or `type=recovery`.
+- **Backend.** `POST /auth/verify-email` takes `{ token, email }` and returns 400 without `email`.
+  `POST /auth/reset-password/confirm` takes `{ resetToken, email, newPassword }` (email required with `resetToken`)
+  or the legacy `{ recoveryAccessToken, newPassword }`. Both forward the value to GoTrue `/verify` as the token
+  hash (`backend/src/db/supabase.ts` `verifySignupToken` / `verifyRecoveryToken`). So the hook's `token_hash` is
+  exactly what goes in `token` / `resetToken`. **No backend contract change is needed.** G-4's open question,
+  whether GoTrue accepts a hash in the `token` field, is a backend-to-GoTrue matter and still needs its live check.
+- **Before this change,** mobile read only `token` (verify) and `resetToken ?? token` (reset). A hook link
+  therefore opened the expired screen on verify, and on reset submitted nothing and showed expired. That is the
+  production breakage C-8 predicted once `redirect_to` is honoured.
+
+### 29.2 What changed
+
+| File | Change |
+|---|---|
+| `mobile/src/auth/email-link-params.ts` (new) | Pure parsing. `token_hash` is preferred; the legacy names `token` (verify) and `resetToken` / `token` (reset) are still accepted. Array params (repeated keys) take the first value. Email is trimmed and lower-cased. **Verify** accepts `type` absent, `signup` or `email`; **reset** accepts absent or `recovery`. A wrong type, or a token without an email, is `invalid`, and no backend call is made. A legacy `access_token` maps to `recoveryAccessToken`, but only when no hash link is present (precedence reversed: before, `access_token` won). Also `isRetryableBeforeRedemption()` (offline, `RATE_LIMITED`, `UPSTREAM_UNAVAILABLE`, 5xx) and the param-scrub helpers. Nothing logs. |
+| `mobile/app/verify-email.tsx` | Uses the parser. The token is held only in a `pendingLink` state, which is nulled on success or rejection. Route params are cleared with `router.setParams` on mount (the `login.tsx` precedent). An in-flight ref stops a StrictMode re-run from redeeming the single-use token twice. New `retryable` state: a cold-start 503, an offline error or a rate limit now offers "Try again" with the same, still-unredeemed link, instead of the misleading "This link has expired". Reuses `Alert` / `Button` / `Screen`; no new component. |
+| `mobile/app/(auth)/reset-password.tsx` | Same parsing, scrubbing and token lifetime. The `credential` is nulled once `/confirm` has redeemed it (success, MFA-required, 410, 404 or post-redemption `VALIDATION_ERROR`). It is kept for retry on pre-redemption failures (§15.4 rule). A missing or invalid link shows the expired screen at once. A client-side 10-character pre-check (customer minimum, `backend/src/lib/policy.ts`) stops a too-short password spending the link; the backend stays authoritative. **A-25(i):** `mfaVerificationRequired` is now a real code step, not an error. It uses the existing `OtpInput` primitive (as `mfa-challenge.tsx` does) and a 5-minute countdown mirroring `RESET_PASSWORD_MFA_VERIFY_TOKEN_TTL_SECONDS`. `MFA_CHALLENGE_INVALID` shows the mapped wrong-code message and lets the user retry with the same token. `RESET_TOKEN_EXPIRED` / `RESET_TOKEN_INVALID`, or local TTL expiry, drop the token and offer "Request a new link". `RATE_LIMITED` shows "Too many attempts". Mirrors `src/pages/CustomerResetPasswordPage.tsx`. |
+| `mobile/src/api/auth.ts` | New `resetPasswordMfaVerify({ mfaVerificationToken, code })`: unauthenticated, with a fresh `Idempotency-Key` (the route requires one). Doc comment on `verifyEmail`. |
+
+### 29.3 Test evidence
+
+Run on 2026-10-16 after `cd mobile && npm ci`:
+
+- **Baseline, before any change:** `npx jest` gave 48/49 suites and 190/191 tests. The one failure was
+  `src/screens/assets/__tests__/AssetDetailScreen.locationWithdrawal.test.tsx`, which passes 5/5 in isolation and
+  passed in both later full runs. It is **pre-existing and intermittent** under full-suite load, and is unrelated
+  to this change (not investigated further here). `npx tsc --noEmit` was clean.
+- **After:** `npx jest` gave **52/52 suites and 225/225 tests** (+3 suites, +34 tests). `npx tsc --noEmit` was clean
+  (exit 0). `eslint` was clean on every changed file.
+- **New suites:**
+  - `src/auth/__tests__/email-link-params.test.ts` (16 tests): parameter names, precedence, type and email
+    rejection, retry classification.
+  - `app/__tests__/verify-email.test.tsx` (5 tests): hook link, legacy `token`, no call without email or with the
+    wrong type, 410 then resend, 503 then retry with the same link.
+  - `app/(auth)/__tests__/reset-password.test.tsx` (13 tests): hook link and param scrub, legacy `token`, legacy
+    `access_token`, immediate expired state, short-password guard, retry after offline, spent link not
+    resubmittable, TOTP success, wrong code then success with the same token, server-side expiry, rate limit,
+    local TTL expiry with fake timers, and no link token or MFA token written to any `console` method.
+
+### 29.4 A-12: mobile `access_token` parameter. Finding only; not removed
+
+- Mobile still reads `access_token` from the reset deep link's **query** and sends it as `recoveryAccessToken`.
+- No current email template produces it: the hook builds `token_hash` links only.
+- GoTrue's own implicit-flow redirect puts `access_token` in the URL **fragment**, which `useLocalSearchParams`
+  does not appear to read. **Not verified on a device.** If that holds, the branch is reachable only through a
+  hand-built `?access_token=` link.
+- **Why it was not removed.** Removal is not clearly safe until (a) the live config confirms that every
+  recovery email goes through the hook, and (b) `backend-architect` decides A-12 (the backend accepts any GoTrue
+  token, with no `amr=recovery` check). Neither is established here.
+- **Interim change.** A hash link now takes precedence over `access_token`.
+- **Recommendation for `backend-architect`.** When A-12's server-side check lands, or the branch is retired,
+  delete the mobile mapping in the same change. It is one `kind` in `email-link-params.ts` plus one branch in
+  `reset-password.tsx`.
+
+### 29.5 Still open
+
+| Item | Owner | Status |
+|---|---|---|
+| **Live device check (C-8 item 1).** On a real iOS and a real Android build: a mobile-originated signup verification and a mobile-originated reset with the new `redirect_to` parameter, including a TOTP-enrolled customer reset. Includes confirming that `tditinsurance://reset-password` resolves to `(auth)/reset-password` through the group (expected Expo Router behaviour, not device-verified), and the email-opened-on-desktop case (a custom scheme does not open there) | `devops-engineer` + `mobile-architect`; `manual-qa-engineer` | OPEN |
+| C-8 items 2–3 (`EMAIL_VERIFICATION_REDIRECT_URL_WEB` explicit on staging; allow-list entry) | `devops-engineer` | OPEN, unaffected |
+| ADR-0014 G-4 live `/verify` check (hash in the `token` field) for signup and recovery | `devops-engineer`, then `backend-architect` | OPEN. The mobile side is now consistent with the hook either way |
+| A-25(ii) customer lost-authenticator path. A TOTP-enrolled customer without their authenticator still cannot finish a reset on mobile or web; the new screen offers only "Request a new link" | `backend-architect` + `cybersecurity-architect` | OPEN |
+| A-25(iii) account-scoped TOTP-failure ceiling, and invalidating earlier reset-MFA tokens. Today the limit is 5 attempts / 15 min **per token**, and each new link issues a new token | `backend-architect`; detection `security-engineer` | OPEN |
+| A-12 mobile `access_token` mapping (§29.4) | `backend-architect` | OPEN |
+| **Low (mobile):** mobile `ApiError` does not expose `Retry-After`, so the TOTP rate-limit message is generic ("wait a few minutes") rather than web's countdown | `mobile-engineer` | OPEN, non-blocking |
+| **Low (mobile, pre-existing, out of scope):** `routeFromDeepLink` in `src/notifications/useNotificationDeepLinks.ts` also handles `Linking` `url` events and would push `/(app)/reset-password?…` / `/(app)/verify-email?…` (non-existent routes, carrying the token) on top of Expo Router's own handling. It is mounted only in the `(security-app)` layout, so it affects a signed-in security operator who opens an email link. The same mis-mapping applies to `invitations/accept`. Recommend it ignores auth email-link paths | `mobile-engineer` / `mobile-architect` | OPEN, non-blocking |
+| **Low (mobile, pre-existing):** signup's illustrative checklist says 8 characters (`app/(auth)/signup.tsx`), while the backend customer minimum is 10 | `mobile-engineer` + `ui-designer` | OPEN, non-blocking |
+| **Info:** the legacy no-token `verify-email?type=signup` redirect still renders "You're verified" without a server call (unchanged behaviour; cosmetic only, since the server-side account state is what gates access) | `mobile-architect` | Noted |
+| Stage 8 review of §29 | `cybersecurity-architect` | **Pending** |
+| Stage 10 QA (device matrix, including a low-end Android profile) | `automation-qa-engineer` / `manual-qa-engineer` | **Pending** |
+
+**Signed:** `mobile-engineer`, 2026-10-16.
+
 ---
 
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own

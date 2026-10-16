@@ -26,6 +26,10 @@ export function signup(body: SignupRequest) {
   });
 }
 
+/**
+ * `token` is the email link's `token_hash` (or a legacy `token`); see
+ * src/auth/email-link-params.ts. The backend requires `email` alongside it.
+ */
 export function verifyEmail(token: string, email?: string) {
   return apiFetch<{ message: string }>('/auth/verify-email', {
     method: 'POST',
@@ -154,6 +158,23 @@ export function resetPasswordConfirm(params: {
   return apiFetch<ResetPasswordConfirmResult>('/auth/reset-password/confirm', {
     method: 'POST',
     body,
+    authenticated: false,
+    headers: { 'Idempotency-Key': newIdempotencyKey() },
+  });
+}
+
+/**
+ * INC-003 A-20 / A-25(i): second step of a reset for an account with a
+ * verified TOTP factor (customers included, not only staff). The new password
+ * is parked server-side by /confirm until a live code is verified here.
+ * Errors: 400 MFA_CHALLENGE_INVALID (wrong code; token stays usable),
+ * 410 RESET_TOKEN_EXPIRED / 404 RESET_TOKEN_INVALID (step expired or spent),
+ * 429 RATE_LIMITED (5 attempts / 15 min per token).
+ */
+export function resetPasswordMfaVerify(params: { mfaVerificationToken: string; code: string }) {
+  return apiFetch<{ message: string; allSessionsRevoked: true }>('/auth/reset-password/mfa-verify', {
+    method: 'POST',
+    body: { mfaVerificationToken: params.mfaVerificationToken, code: params.code },
     authenticated: false,
     headers: { 'Idempotency-Key': newIdempotencyKey() },
   });
