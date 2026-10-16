@@ -1,12 +1,20 @@
 /**
  * Direct Postgres connection to Supabase's `app` schema.
  *
- * SR-3: this connects with a dedicated least-privilege application role
- * (`SUPABASE_DB_URL`, per config/env.ts's comment — NOT the project
- * superuser, no DDL, no `auth` schema access beyond what specific queries
- * below need), never `supabase-js`/service-role for data access — the
- * service-role/`supabase-js` client (db/supabase.ts) is reserved
- * exclusively for GoTrue Admin API calls, per SR-3's ruling.
+ * SR-3: this is SUPPOSED to connect with a dedicated least-privilege
+ * application role (`SUPABASE_DB_URL`) — not the project superuser, no DDL,
+ * no `auth` schema access beyond what specific queries below need, never
+ * `supabase-js`/service-role for data access (the service-role/`supabase-js`
+ * client in db/supabase.ts is reserved exclusively for GoTrue Admin API
+ * calls). **That role was never actually provisioned.** A live check against
+ * production on 2026-10-16 (INC-003 §21) confirmed `SUPABASE_DB_URL`'s
+ * credential (or one indistinguishable from it — see that record for the
+ * one remaining confirmation step) has `rolbypassrls = true`: it bypasses
+ * row-level security entirely, the same risk class as the superuser this
+ * comment used to claim it wasn't. SR-3 is open and scheduled
+ * (`docs/organization/incidents/INC-003-web-password-reset-control-bypass.md`
+ * §21: role design by 2026-10-23, production cutover by 2026-10-30) — this
+ * comment will be corrected again once that cutover actually lands.
  *
  * SR-2(b): `sslmode=verify-full` with a pinned CA certificate in production,
  * enforced below via the `ssl` option built from
