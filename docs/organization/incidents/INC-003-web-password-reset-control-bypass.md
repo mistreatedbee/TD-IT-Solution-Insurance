@@ -2616,6 +2616,124 @@ Run on 2026-10-16 after `cd mobile && npm ci`:
 
 ---
 
+## 30. Stage 8 review of §29 (mobile C-8 / G-4 link parsing, A-25(i) TOTP step) (`cybersecurity-architect`, 2026-10-16)
+
+**Scope.** I reviewed the latest commit on `main` as described in §29. I read these files:
+
+- `mobile/src/auth/email-link-params.ts`
+- `mobile/app/verify-email.tsx`
+- `mobile/app/(auth)/reset-password.tsx`
+- `resetPasswordConfirm` / `resetPasswordMfaVerify` in `mobile/src/api/auth.ts`
+- `mobile/src/api/client.ts` (to check for retry and refresh behaviour)
+- `mobile/src/notifications/useNotificationDeepLinks.ts` and where it is mounted
+- the backend contract: `backend/src/routes/auth.ts` (`/reset-password/confirm` and `/reset-password/mfa-verify`), `verifyRecoveryToken` / `verifySignupToken` in `backend/src/db/supabase.ts`, and the error codes in `lib/errors.ts`
+
+I did not run the tests myself. The caller reports 225/225 passing and `tsc` clean, which matches §29.3.
+
+**Verdict: PASS for the §29 code**, with one new mobile finding (**M-1**, Medium) and one latent backend finding
+(**B-1**, Medium). Neither is a defect in §29 itself.
+
+**The code part of C-8 is satisfied.** The mobile app now parses the hook's `token_hash` / `type` / `email` link.
+That removes the breakage §19 C-8 predicted for customer verification and reset. The deploy of the A-16/G-1
+`redirect_to` change is now gated **only** on the following:
+
+- **(a) The live device check in §29.5 row 1.** This **must include** the ADR-0014 G-4 live `/verify` check, i.e.
+  that GoTrue accepts the hash in the `token` field. If it does not, every hook link fails server-side no matter
+  how good the mobile parser is.
+- **(b) C-8 items 2-3.** That is, `EMAIL_VERIFICATION_REDIRECT_URL_WEB` set explicitly on staging, and the URL added
+  to the allow-list.
+- **(c) A precondition this review adds: confirm the installed base.** If any build older than §29 is installed by
+  real users, those users break the moment `redirect_to` is honoured. That build would be a store or EAS
+  distribution, not a dev client. The owner and `mobile-architect` must either confirm no such build exists or
+  record an explicit acceptance of the breakage, with a forced-update plan.
+
+M-1 does not gate the backend deploy. It gates the next security-operator mobile build (see 30.3).
+
+### 30.1 What holds (verified in code)
+
+- **Token handling.**
+  - **No logging.** Nothing in the parser, either screen, or `api/auth.ts` logs anything. The only `console`
+    call in `mobile/src/api` is a config warning. The new test asserts that no `console` method sees the link token
+    or the MFA token.
+  - **Params cleared.** `router.setParams(clearedEmailLinkParams())` runs on mount and clears all six keys.
+  - **Memory only.** The token is held only in `pendingLink` or `credential`. It is nulled on success and on any
+    failure that happens after redemption. The new password is cleared when the screen moves to the MFA step.
+  - **Single use.** The real guarantee is server-side: GoTrue `/verify` consumes the hash. The client adds an
+    in-flight ref on verify and `isSubmitting` / `isVerifyingMfa` guards on reset.
+  - **Retry window.** It is user-initiated only, ends when the process dies, and does not persist. Unauthenticated
+    calls never go through the client's refresh-and-retry path (`authenticated: false`).
+  - **Residual, accepted (Low).** `Linking.getInitialURL()` still returns the full URL for the life of the process,
+    and so does the OS intent / user activity. Only code in the same JS bundle can read that. It is inherent to
+    deep links and not worth extra mechanism.
+- **Link validation by type and email.**
+  - Verify accepts a missing `type`, `signup` or `email`. Reset accepts a missing `type` or `recovery`. A wrong type
+    or a missing email gives `invalid` and makes no network call.
+  - There is no downgrade path. When a `token_hash`, `token` or `resetToken` is present, an invalid type or a
+    missing email returns `invalid` and does **not** fall through to `access_token`.
+  - **The check on `email` is for well-formedness only, not a security control.** The parameter can be edited in a
+    crafted link, so the server must bind it (see B-1).
+- **The TOTP step matches the backend contract.**
+  - The body is `{ mfaVerificationToken, code }`, with a fresh `Idempotency-Key`, which the route requires.
+  - Error handling matches `lib/errors.ts`. `MFA_CHALLENGE_INVALID` (400) keeps the token, which is correct
+    because the backend consumes the token only after a successful TOTP verify. `RESET_TOKEN_EXPIRED` (410, for an
+    unknown or expired token or missing pending state) and `RESET_TOKEN_INVALID` (404) drop the token.
+    `RATE_LIMITED` keeps it.
+  - The countdown is cosmetic. The backend TTL is authoritative, and the client deadline starts after the response
+    arrives, so it can only be later than the server's, which is harmless.
+- **The retryable classification cannot be used to replay a consumed token.**
+  - Replay protection is GoTrue consuming the hash on the server, not the client discarding it. Retrying a
+    consumed hash returns `RESET_TOKEN_EXPIRED` and puts the screen in the expired state.
+  - Each attempt sends a **fresh** `Idempotency-Key`, so a retry can never pick up a cached earlier response, such
+    as one carrying an `mfaVerificationToken`.
+  - **Misclassification, UX only (Low).** `/confirm` can return a 5xx *after* GoTrue has redeemed the hash. For
+    example: `updateUserPassword` hits the C-9 `weak_password` → 503 path, a DB, KV or audit write fails, or the
+    request times out after the server succeeded. In those cases the client offers "try again", and the retry then
+    shows "expired". The audit-insert and timeout cases are worse: the password *was* changed, but the user is told
+    the link expired. This is not a security issue. The C-9 `weak_password` → `VALIDATION_ERROR` mapping already
+    assigned to `backend-architect` removes the most likely case.
+- **Precedence change (A-12): correct, and it reduces risk.**
+  - Before, `access_token` won. That meant a hook link with `&access_token=…` appended went down the branch with
+    no single use, no email binding and no `amr=recovery` check. Now the hash, which is single-use and bound
+    server-side, wins.
+  - The remaining `access_token`-only branch adds **no attacker capability beyond A-12 itself.** Anyone holding a
+    GoTrue access token can call `/confirm` directly. The mobile mapping gives them nothing extra.
+  - **One residual, Low.** Any website or app can invoke the custom scheme. A crafted
+    `?access_token=<attacker's own token>` link can therefore walk a victim into setting a password on the
+    *attacker's* account. That is login-CSRF-style confusion: no takeover of the victim's account, and the
+    victim's own credentials are never sent. It goes away when A-12 lands and the branch is deleted, as §29.4
+    recommends. I concur with removing both in the same change.
+
+### 30.2 Findings
+
+| ID | Severity | Finding | Owner |
+|---|---|---|---|
+| **M-1** | **Medium** | **`routeFromDeepLink` is an open in-app router driven by external URLs, and it moves email-link secrets into unscrubbed navigation state.** It is reached from the `(security-app)` layout through `Linking.addEventListener('url')`, as well as from notification payloads. It maps *any* `tditinsurance://<path>?<query>` to `router.push('/(app)/<path>?<query>')`, query string included, with no allowlist. The custom scheme is not owned (any web page or app can invoke it, and on Android another app can register it), so input on this path is attacker-controlled. Effects: (1) `reset-password?token_hash=…`, `verify-email?token_hash=…` and `invitations/accept?…` are pushed as `/(app)/reset-password` and so on. Those routes do not exist (the real ones are `(auth)/reset-password`, `/verify-email` and `/invitations/accept`). The result lands on Expo Router's default unmatched screen, because the app has no `+not-found`. That screen may display the path, and the token stays in a history entry that the §29 scrub never touches, *on top of* Expo Router's own correct handling of the same URL. (2) For a signed-in security operator, their own reset, verification or invitation flow is obscured or broken. That is an availability problem on a privileged surface. (3) More generally, an external link can drive an operator to arbitrary in-app routes with arbitrary params. Server-side authorisation still bounds the data, and I did not verify the `(app)` layout's user-type guard in this pass. **The token is never redeemed twice and never leaves the device, so this is not account takeover, which is why it is rated Medium and not High.** I am raising it from §29.5's "Low, non-blocking" because the path is attacker-reachable and has no allowlist. | `mobile-engineer` / `mobile-architect` |
+| **B-1** | **Medium (latent)** | **The reset path does not bind the GoTrue-returned user to the account.** `/confirm` calls `verifyRecoveryToken(email, hash)` and then `ctx.accounts.findByEmail(email)`, using the **client-supplied** email. It ignores the `recovery.userId` GoTrue returns. Today the backend sends `{ token, email }`. If GoTrue checks `token` against *that email's* user, it binds the two implicitly (whether a hash works in that field at all is the G-4 open question). **If G-4 is resolved by switching to GoTrue's `token_hash` parameter, which resolves the user without the email, the binding disappears.** An attacker could then redeem *their own* recovery hash with `email=<victim>`. The password write would land on the attacker's GoTrue user, but the backend would run `revokeAllForAccount`, disable push tokens, propagate the GoTrue sign-out, write the audit row and send the "password changed" notification for the **victim**. The result is arbitrary-account forced logout and notification spoofing by email address. The MFA branch would likewise issue a reset-MFA token for the victim's account id. The same pattern applies to `/auth/verify-email`. | `backend-architect` |
+
+### 30.3 Conditions
+
+| ID | Gate | Condition |
+|---|---|---|
+| **C-11** | Before any mobile build that includes the `(security-app)` layout is distributed. Does not gate the backend `redirect_to` deploy. | Fix M-1. **Preferred fix:** remove the `Linking` `url` listener from `useNotificationDeepLinks`, because Expo Router already handles incoming URLs natively, and keep only the notification-payload path. **In either case:** use a deny-by-default allowlist of route patterns, never pass query strings through from external URLs, and explicitly ignore `verify-email`, `reset-password`, `invitations/accept` and any other auth or callback path. Add tests showing that each of those inputs returns `null`. |
+| **C-12** | **Before or with** any backend change that resolves G-4 by changing the GoTrue `/verify` call shape. Recommended now as defence in depth. | Fix B-1. After `verifyRecoveryToken`, require `recovery.userId` to equal the account's identity user id. Better still, look the account up by `recovery.userId` and reject (`RESET_TOKEN_INVALID`) if its email does not match the submitted one. Do the same for `/auth/verify-email` if it can obtain the user id. Add a test that a valid hash for account A submitted with account B's email does not revoke, audit or notify B. |
+| **C-13** | Before the backend deploy | The installed-base precondition (c) above. |
+
+**Advisories (non-gating):**
+
+- Map post-redemption 5xx on `/confirm` to a distinct backend error so the client can say "your link may have been
+  used; try signing in with your new password" instead of offering a retry that cannot succeed. This depends on the
+  C-9 `weak_password` mapping.
+- Add a mobile `+not-found` route that never renders the path or query.
+- The 10-character pre-check does not protect a privileged account's longer minimum: a 10-13 character password on
+  a staff reset still spends the link. Consider having the hint say "staff accounts need longer passwords".
+
+**Concurrence still required:** `security-engineer`, for implementation verification of C-11 and C-12 when built.
+Stage 10 (§29.5) is unaffected by this review and still pending.
+
+**Signed:** `cybersecurity-architect`, 2026-10-16.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
