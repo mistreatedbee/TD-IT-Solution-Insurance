@@ -476,10 +476,14 @@ export function AccountDetailPage({ accountId }: { accountId: string }) {
     let cancelled = false;
     listAdminPolicies({ accountId }).then((page) => {
       if (!cancelled) setPolicyCount(page.data.length);
-    }).catch(() => {});
+    }).catch(() => {
+      // Best-effort header count: on failure the count simply stays unset.
+    });
     listAdminAssets({ accountId }).then((page) => {
       if (!cancelled) setAssetCount(countRegisteredAdminAssets(page.data));
-    }).catch(() => {});
+    }).catch(() => {
+      // Best-effort header count: on failure the count simply stays unset.
+    });
     return () => {
       cancelled = true;
     };

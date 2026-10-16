@@ -11,9 +11,15 @@ if (typeof globalThis.IntersectionObserver === 'undefined') {
     readonly root: Element | Document | null = null;
     readonly rootMargin: string = '';
     readonly thresholds: ReadonlyArray<number> = [];
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+    observe() {
+      // jsdom has no layout; the mock never reports intersections.
+    }
+    unobserve() {
+      // no-op (see observe)
+    }
+    disconnect() {
+      // no-op (see observe)
+    }
     takeRecords(): IntersectionObserverEntry[] {
       return [];
     }
