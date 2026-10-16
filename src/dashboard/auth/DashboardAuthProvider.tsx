@@ -4,10 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
-import { configureDashboardClient } from '../api/client';
+import { configureDashboardClient, getConfiguredAccessToken } from '../api/client';
 import { getAccountMe, login, logout, verifyMfaChallenge } from '../api/auth';
 import { ApiError } from '../api/errors';
 import { clearOtherRoleSessions } from './roleRouting';
@@ -62,18 +63,30 @@ export function DashboardAuthProvider({
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [account, setAccount] = useState<import('../api/auth').AccountMe | null>(null);
 
+  // AE-5 (ADR-0014 §14.6): revoke the backend session BEFORE clearing local
+  // tokens — the logout call needs the bearer token (and, if it has
+  // expired, the refresh token for one refresh-and-retry, handled inside
+  // `apiFetch`). Mirrors the G-2 fix on the customer side
+  // (`CustomerAuthProvider.tsx`). The guard stops `onSessionTerminated`
+  // (fired if that refresh fails) from re-entering this function.
+  const signingOutRef = useRef(false);
   const signOut = useCallback(async () => {
-    const refresh = readRefreshToken(config.storageKey);
-    clearRefreshToken(config.storageKey);
-    setAccessToken(null);
-    setAccount(null);
-    setStatus('signed-out');
-    if (refresh) {
-      try {
-        await logout(refresh);
-      } catch {
-        /* local session already cleared */
+    if (signingOutRef.current) return;
+    signingOutRef.current = true;
+    try {
+      if (readRefreshToken(config.storageKey) || getConfiguredAccessToken()) {
+        try {
+          await logout();
+        } catch {
+          /* best effort — the local session is cleared below regardless */
+        }
       }
+    } finally {
+      clearRefreshToken(config.storageKey);
+      setAccessToken(null);
+      setAccount(null);
+      setStatus('signed-out');
+      signingOutRef.current = false;
     }
   }, [config.storageKey]);
 
