@@ -2809,6 +2809,85 @@ existing style).
 
 ---
 
+## 32. C-11 / M-1 fix: notification deep-link allowlist, `+not-found`, password-length copy (`mobile-engineer`, 2026-10-16)
+
+**Scope.** Mobile only. This responds to §30.2 M-1, §30.3 C-11, the second and third §30 advisories, and the
+§29.5 signup-checklist low item. No `backend/`, `src/`, Supabase or HANDOFF.md change. **Uncommitted at time of
+writing** (base `1354fa0`). **Every item below is pending Stage 8 review** (`cybersecurity-architect`) and
+implementation verification (`security-engineer`, per §30).
+
+### 32.1 What the listener was for (read from code)
+
+- The only producer of `deepLink` is `backend/src/lib/notification-brand.ts`. It emits these paths: the bare
+  scheme, `assets`, `assets/<id>`, `policy`, `policy/<id>`, `profile`, `onboarding`, `live-tracking/<caseId>`
+  and `security/cases/<caseId>`. No push, and no other code in `mobile/` or the backend, needs a raw `Linking`
+  `url` handler.
+- `useNotificationDeepLinks` is mounted **only** in `app/(security-app)/_layout.tsx`. In that shell the only
+  legitimate taps are the partner case alert (`security/cases/<caseId>`) and account notices (`profile`). The old
+  mapping sent `profile` to `/(app)/profile`, which is a customer-shell route that `Stack.Protected` hides from an
+  operator, so even that tap was mis-routed.
+- Expo Router already resolves incoming `tditinsurance://` URLs against the file routes (`app/verify-email.tsx`,
+  `app/(auth)/reset-password.tsx`, `app/invitations/accept.tsx`). The raw listener only added a second, wrong
+  navigation on top. **It was removed** (the C-11 preferred fix).
+
+### 32.2 What changed
+
+| File | Change |
+|---|---|
+| `mobile/src/notifications/useNotificationDeepLinks.ts` | **The `Linking.addEventListener('url')` subscription is removed.** Routing runs only on the notification-response path (`addNotificationResponseReceivedListener` and the cold-start `getLastNotificationResponseAsync`). `routeFromDeepLink` is now deny-by-default. It requires the exact `tditinsurance://` scheme (case-insensitive) and a length cap of 512. It **discards the query and fragment without parsing them.** Every path segment must match `[A-Za-z0-9_-]+`, which rejects empty segments, `..` and percent-encoding. An explicit auth/callback deny-list is checked first: `verify-email`, `reset-password`, `invitations`, `login`, `signup`, `mfa-challenge`, `forgot-password`, `auth`, `callback`, `oauth`, `oauthredirect`, `redirect`, `expo-auth-session`. Then an exact-shape allowlist applies: the bare scheme and `security` go to `/(security-app)`; `profile` goes to `/(security-app)/profile`; `security/cases/<24-hex>` goes to the typed `{ pathname: '/(security-app)/cases/[caseId]', params: { caseId } }`. The id pattern matches `caseIdParamsSchema` in `backend/src/routes/security-cases.ts`. Anything else returns `null`, including customer-shell links, which are not routes in this shell. Each notification is routed once per process (de-duplicated by request identifier), so a layout remount no longer replays the cold-start tap. |
+| `mobile/app/+not-found.tsx` (new) | This replaces Expo Router's default unmatched screen, which shows the path. It calls no `usePathname`, `useSegments` or search-params hook, so it cannot render the path or query. Static copy, plus "Continue" (`back()` if there is history, else `replace('/')`). It reuses only `Screen`, `Button` and tokens; **no new component.** |
+| `mobile/app/(auth)/reset-password.tsx` | **Advisory 3: hint only, the pre-check is unchanged.** The screen cannot know the account type before it submits. The link carries only `token_hash`, `type` and `email`, and the screen is unauthenticated. A 14-character pre-check would wrongly block customers' valid 10-13 character passwords. The hint now reads "At least 10 characters. Security partner accounts need at least 14." (`security_company_operator` is in `PRIVILEGED_USER_TYPES`). The backend stays authoritative. |
+| `mobile/app/(auth)/signup.tsx` | **§29.5 low item.** The checklist row and the submit gate now use 10 (`PASSWORD_MIN_LENGTH.customer`; signup is customer-only, and `routes/auth.ts` checks `'customer'`). Before, they used 8. |
+| `mobile/src/screens/invitations/AcceptInvitationScreen.tsx` | **Same class, found while doing the above; not in the §30 list.** The local pre-check said 8, but `backend/src/routes/invitations.ts` always checks `'privileged'` (14). It now uses 14. The pre-check only stops a doomed submit; the backend stays authoritative. |
+
+**Copy changes** (the reset hint, the signup row, the invitation error, and the `+not-found` text) need
+`ui-designer` review. They use no new components, so `design-system-manager` sign-off is not needed for
+components. I am flagging the `+not-found` screen to `design-system-manager` for visual consistency anyway.
+
+### 32.3 Test evidence
+
+Run on 2026-10-16 (deps already installed):
+
+- `npm test`: **55/55 suites and 263/263 tests passed** (base §29.3: 52 suites, 225 tests; +3 suites, +38 tests).
+- `npx tsc --noEmit`: clean (exit 0). `eslint` is clean on every changed file.
+- **New `src/notifications/__tests__/useNotificationDeepLinks.test.tsx` (32 tests):**
+  - allowed routes (bare scheme, `security`, `profile`, case alert with a typed param);
+  - auth/callback inputs all return `null`: `reset-password?token_hash=…`, `verify-email?token_hash=…`,
+    `invitations/accept?token=…`, `login?code=…`, `auth/callback`, `callback#access_token=…`, and an upper-case
+    scheme;
+  - unknown or malformed inputs return `null`: unknown roots, wrong case-id shape, extra segments, encoded
+    traversal, `//`, customer-shell links, other schemes, empty strings and non-string payloads;
+  - the query and fragment are dropped, and a `?caseId=other` cannot override the path param;
+  - the hook never subscribes to `Linking` `url`;
+  - a tapped allowed notification navigates, and a tapped auth-path or unknown one does not;
+  - a cold-start response routes once across remounts.
+- **New `app/__tests__/not-found.test.tsx` (3 tests):** the rendered tree contains none of the path or query
+  values, and the screen never calls `usePathname` or the search-params hooks. Also covers back versus root
+  navigation.
+- **New `app/(auth)/__tests__/signup.test.tsx` (2 tests):** a 9-character password shows "At least 10 characters"
+  and does not submit; a 10-character password submits.
+- **`app/(auth)/__tests__/reset-password.test.tsx` (+1 test):** the hint text, and a 10-character customer
+  password is still submitted.
+  - **Test-hygiene finding (Low, pre-existing).** A real-timer render placed *after* the §29 fake-timer TTL test
+    in that file hangs the suite. The new test is placed before it, with a comment. The root cause was not
+    investigated.
+
+### 32.4 Still open
+
+| Item | Owner | Status |
+|---|---|---|
+| Stage 8 review of §32 (C-11) and implementation verification | `cybersecurity-architect`; `security-engineer` | **Pending** |
+| **Device check.** With the listener gone, confirm on real iOS and Android builds that a signed-in operator opening a reset, verify or invitation email link reaches the correct screen through Expo Router alone, with no duplicate push and no `+not-found` flash. Also confirm that a partner case-alert tap still opens the case from both warm and cold start. | `manual-qa-engineer` / `mobile-architect` | OPEN |
+| **Pre-existing gap, not introduced here.** The customer `(app)` shell mounts no notification-tap handler, so customer pushes (`live-tracking/…`, `assets/…`, `policy/…`, `profile`, `onboarding`) open the app without routing. Adding it is a feature change, not part of C-11. When it is built, it should get its own allowlist table in the same pattern. | `notification-engineer` + `mobile-architect` | OPEN, non-blocking |
+| §31 mobile follow-up: map `RESET_COMPLETION_FAILED` (500) in `reset-password.tsx` to "your link may have been used; try signing in with your new password", and drop the link instead of offering a retry. Today `isRetryableBeforeRedemption()` treats any 5xx as retryable. Not done here; outside the C-11 brief. | `mobile-engineer` | OPEN |
+| `mobile/openapi/identity-service.yaml` still says `password: minLength: 8` (signup, line 258; also line 408) and `newPassword: minLength: 8` (reset confirm, line 692). The backend enforces 10 (customer) or 14 (privileged). The contract is backend-owned and was not touched. | `backend-engineer` | OPEN, non-blocking |
+| Copy review (reset hint, signup row, invitation error, `+not-found`) | `ui-designer`; `design-system-manager` (visual) | OPEN |
+| Stage 10 QA (device matrix, including a low-end Android profile) | `automation-qa-engineer` / `manual-qa-engineer` | **Pending** |
+
+**Signed:** `mobile-engineer`, 2026-10-16.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*

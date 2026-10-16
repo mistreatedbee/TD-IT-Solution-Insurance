@@ -24,6 +24,9 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+/** Customer minimum (`PASSWORD_MIN_LENGTH.customer`, backend/src/lib/policy.ts). Signup is customer-only. */
+const SIGNUP_PASSWORD_MIN_LENGTH = 10;
+
 interface PasswordCheck {
   label: string;
   met: boolean;
@@ -32,11 +35,13 @@ interface PasswordCheck {
 function getPasswordChecks(password: string): PasswordCheck[] {
   // Placeholder checklist only — ui-design.md §4.1 Screen B is explicit
   // that the actual password policy is "policy-agnostic," configured by
-  // authentication-engineer/cybersecurity-architect. This client enforces
-  // nothing beyond the contract's own `minLength: 8`; the checklist below
-  // is illustrative UI, not an enforced client-side policy.
+  // authentication-engineer/cybersecurity-architect. The length row mirrors
+  // the backend customer minimum (`PASSWORD_MIN_LENGTH.customer`,
+  // backend/src/lib/policy.ts; INC-003 §29.5) so the form does not invite a
+  // password the server will reject. The backend stays authoritative; the
+  // other rows are illustrative UI, not an enforced client-side policy.
   return [
-    { label: 'At least 8 characters', met: password.length >= 8 },
+    { label: `At least ${SIGNUP_PASSWORD_MIN_LENGTH} characters`, met: password.length >= SIGNUP_PASSWORD_MIN_LENGTH },
     { label: 'At least one number', met: /\d/.test(password) },
     { label: 'At least one letter', met: /[a-zA-Z]/.test(password) },
   ];
@@ -70,7 +75,7 @@ export default function SignupScreen() {
   const passwordChecks = getPasswordChecks(password);
   const isFormValid =
     isValidEmail(email) &&
-    password.length >= 8 &&
+    password.length >= SIGNUP_PASSWORD_MIN_LENGTH &&
     password === confirmPassword &&
     consentAccepted;
 

@@ -50,6 +50,21 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+// Kept above the fake-timer TTL test: a real-timer render placed after it hangs
+// the suite (pre-existing order dependence in the TTL test, not investigated).
+describe('reset-password length hint (INC-003 §30 advisory)', () => {
+  it('states the security partner minimum in the hint without blocking a valid customer password', async () => {
+    mockParams = { ...HOOK_LINK };
+    mockConfirm.mockResolvedValue({ message: 'Password reset complete.', allSessionsRevoked: true });
+    await renderWithProviders(<ResetPasswordScreen />);
+    expect(
+      screen.getByText('At least 10 characters. Security partner accounts need at least 14.'),
+    ).toBeTruthy();
+    await fillAndSubmit('abcdefghi1');
+    await waitFor(() => expect(mockConfirm).toHaveBeenCalledTimes(1));
+  });
+});
+
 describe('reset-password deep link parameters (C-8 / G-4)', () => {
   it('sends the hook token_hash as resetToken with the normalised email, then scrubs the route params', async () => {
     mockParams = { ...HOOK_LINK };

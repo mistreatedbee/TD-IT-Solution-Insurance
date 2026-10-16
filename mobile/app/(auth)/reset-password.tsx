@@ -43,6 +43,15 @@ import { colors, spacing, typography } from '../../src/theme/tokens';
  */
 const RESET_PASSWORD_MIN_LENGTH = 10;
 
+/**
+ * Privileged minimum (`PASSWORD_MIN_LENGTH.privileged`; `security_company_operator`
+ * is a privileged type). Hint text only, not a pre-check: the reset link carries
+ * only `token_hash` / `type` / `email`, and the screen is unauthenticated, so it
+ * cannot know the account type before submitting. Enforcing 14 here would wrongly
+ * block customers' valid 10-13 character passwords (INC-003 §30 advisory).
+ */
+const PRIVILEGED_PASSWORD_MIN_LENGTH = 14;
+
 /** Mirrors `RESET_PASSWORD_MFA_VERIFY_TOKEN_TTL_SECONDS` (backend/src/lib/policy.ts). */
 const RESET_MFA_TOKEN_TTL_SECONDS = 5 * 60;
 
@@ -305,7 +314,7 @@ export default function ResetPasswordScreen() {
         type="password"
         value={newPassword}
         onChangeText={setNewPassword}
-        hint={`At least ${RESET_PASSWORD_MIN_LENGTH} characters.`}
+        hint={`At least ${RESET_PASSWORD_MIN_LENGTH} characters. Security partner accounts need at least ${PRIVILEGED_PASSWORD_MIN_LENGTH}.`}
       />
       <Input
         label="Confirm new password"

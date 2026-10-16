@@ -17,6 +17,9 @@ import { colors, spacing, typography } from '../../theme/tokens';
 
 type Step = 'loading' | 'invalid' | 'accept' | 'mfa' | 'done';
 
+/** `PASSWORD_MIN_LENGTH.privileged` (backend/src/lib/policy.ts). */
+const INVITATION_PASSWORD_MIN_LENGTH = 14;
+
 export function AcceptInvitationScreen() {
   const router = useRouter();
   const { token } = useLocalSearchParams<{ token?: string }>();
@@ -56,8 +59,10 @@ export function AcceptInvitationScreen() {
 
   async function handleAccept() {
     if (!token) return;
-    if (password.length < 8) {
-      setErrorMessage('Password must be at least 8 characters.');
+    // Invitations create privileged accounts: backend/src/routes/invitations.ts
+    // checks `isPasswordValidForUserType(password, 'privileged')` (14). INC-003 §30 C-11 follow-up.
+    if (password.length < INVITATION_PASSWORD_MIN_LENGTH) {
+      setErrorMessage(`Password must be at least ${INVITATION_PASSWORD_MIN_LENGTH} characters.`);
       return;
     }
     if (password !== confirmPassword) {
