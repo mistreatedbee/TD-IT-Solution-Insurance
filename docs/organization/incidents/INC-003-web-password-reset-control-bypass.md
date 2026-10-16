@@ -2090,6 +2090,120 @@ is the design `cto` scheduled for 2026-10-23; it is not itself that verification
 
 ---
 
+## 24. A-6 execution record and disposition (2026-10-16)
+
+Owner ran the checklist (`INC-003-owner-console-checklist.md` Part 1) live, orchestrator-guided, with
+`cto` ruling at each decision point (see this document's §21/§23-equivalent exchanges, relayed inline
+rather than filed as separate numbered sections this round — summarized here instead). Per §20.2, this
+ran after the `e646fbc` merge had already deployed (not before, as originally planned) — the audit
+table was already confirmed empty for unrelated reasons (see below), so this ordering did not cost any
+evidence that would otherwise have existed.
+
+**What was checked, and what each source could and couldn't answer:**
+- `auth.audit_log_entries`: confirmed **disabled** ("write to database" setting was off) until the
+  owner turned it on mid-session today. Zero historical rows; only has the one row from the moment it
+  was enabled. No lifetime coverage.
+- Supabase Logs Explorer: retention measured at ~23 hours (earliest visible entry
+  2026-10-15T10:43:19Z). A fresh control event (a real `/recover` request, 2026-10-16T09:49:18Z)
+  confirmed the tool itself works correctly — the 2026-10-08 event not showing up earlier was retention
+  expiry, not a broken search or tampering.
+- `auth.users.recovery_sent_at`/`last_sign_in_at`: durable but **latest-value-only** columns, not a
+  history — cannot rule out an earlier event being overwritten.
+- `auth.sessions` + `auth.mfa_amr_claims`, filtered to `recovery`/`otp`/`magiclink`/`invite`: **zero
+  rows** for all four privileged accounts (thaboderrick907@gmail.com/admin,
+  test.admin/test.security/test.support). No recovery-or-magiclink-authenticated session exists today
+  for any of them. Caveat (unresolved): a session that was later revoked leaves no row here either, so
+  this is corroborating, not conclusive.
+- `app.account_audit_log` (our own backend's trail, not subject to Supabase's retention): the most
+  informative source. Full results below.
+- Render request logs: **checked and found unusable** — the service redeployed at 2026-10-16T09:48 UTC
+  (the `e646fbc` merge's auto-deploy), and no request-type logs survive from before that restart. Could
+  not confirm or refute either finding below via this path. Logged as a compounding instance of LOG-1
+  (§24.4) — this is the second independent log source found to have effectively no retrospective
+  coverage for this incident.
+
+**Finding 1 — two unattributed `password_reset_requested` events against the real admin account**
+(thaboderrick907@gmail.com, id `6e09adb9-b620-415d-80be-2f8440bbb6b4`), both on 2026-10-07, before the
+one documented reset the orchestrator triggered on 2026-10-08 (07:57:33, matching
+`recovery_sent_at`exactly):
+- 2026-10-07 09:49:27 (IP logged as 10.28.148.188)
+- 2026-10-07 09:50:44 (IP logged as 10.24.227.144)
+- IP addresses are **not usable evidence either way** — see §24.3, both rows and the orchestrator's own
+  known 10-08 action logged the same private 10.x address, confirming the logged IP is Render's internal
+  proxy hop, not the real caller.
+- **Status: OPEN, deferred by the business owner's explicit decision, 2026-10-16** — "flag it, we will
+  do it later." Not resolved as benign; not escalated to full §1.5 (POPIA s22 / severity reopening)
+  either, pending the owner confirming with the account holder (Thabo) whether he or anyone else
+  triggered these on 2026-10-07.
+- **Recommended precaution, also deferred by the same decision:** force-reset the account's password
+  and revoke its sessions as a zero-cost precaution regardless of attribution. Not done today.
+- **Re-open trigger:** if a reset token from either 10-07 request was ever used to complete a sign-in
+  (unverifiable from current evidence per the sources above), or if the account holder doesn't
+  recognize the requests, this becomes full §1.5 — `security-engineer` force-resets same day,
+  `compliance-specialist` opens a POPIA s22 assessment, `cto` reopens severity.
+
+**Finding 2 — test.admin's `recovery_sent_at` (2026-10-08 19:27:46) has no matching
+`password_reset_requested` row anywhere in its audit history**, 3 seconds after its own
+`login_success`/`mfa_verified` pair (19:27:43):
+- **Status: provisionally explained, not fully confirmed** (Render log confirmation unavailable, see
+  above). `cto`'s working explanation: `mintTransientUserAccessToken` (`backend/src/db/supabase.ts:452-496`)
+  mints a GoTrue magic link as a side effect of several routine authenticated calls (`GET /account/me`,
+  `/mfa/enroll`, step-up, `customer-profile.ts`) and sets `recovery_sent_at` without writing to our own
+  audit log — already on record as a known side effect at this document's §11 Low follow-up (a), which
+  never made it into the owner checklist until now (fixed below).
+- Does not meet the bar for full §1.5 escalation today, but is **not closed as fully confirmed** either
+  — recorded as provisional pending either a later independent confirmation or acceptance of this
+  explanation as sufficient.
+- Severity note (per `cto`): test.admin being a synthetic test account does not reduce severity on its
+  own — it is a working production admin credential, and its `privileged_data_access` rows in the same
+  window show it reading real data. What it does change is who's affected if compromised (not a human
+  data subject) and how easy it is to trace (we hold the credential).
+
+**Overall A-6 disposition: INCONCLUSIVE FOR FULL LOG COVERAGE, ONE FINDING OPEN AND DEFERRED, ONE
+PROVISIONALLY EXPLAINED.** This is explicitly **not** "no evidence of exploitation found" — it is
+"no source available can rule exploitation out for the original vulnerable window (web-auth-ship to
+~2026-09-23); the one period we *can* examine in detail (the last ~9 days, via `app.account_audit_log`)
+shows one unattributed event, deferred, and one provisionally explained." `compliance-specialist`
+should factor the deferred status of Finding 1, and the overall coverage gap, into the §7 POPIA
+position — this does not on its own constitute "reasonable grounds" for an s22 notification, but it is
+not a clean "no breach" either, and should not be cited as one until Finding 1 resolves.
+
+### 24.1 New action items
+
+| ID | What | Owner | Status |
+|---|---|---|---|
+| **A-26** (new) | Confirm with Thabo whether he (or anyone else) triggered the two 2026-10-07 password-reset requests against his account; if unconfirmed, force-reset his password and revoke his sessions as a zero-cost precaution | Business owner (confirm) + `security-engineer` (execute) | **Deferred by owner, 2026-10-16** — tracked, not actioned |
+| **A-27** (new) | Rotate/disable the synthetic `test.admin`/`test.security`/`test.support` accounts once A-6 fully closes; they are live production admin-privileged credentials with a password published in source (`backend/docs/TEST-ACCOUNTS.md:16`) | `security-engineer` | Open |
+| **A-28** (new) | `trustProxyHops` likely misconfigured in production — every IP address in `app.account_audit_log` resolves to a Render internal proxy hop (10.x), not the real caller. This breaks per-IP rate limiting (SR-7, shared across the proxy node rather than per real client) and makes IP-based forensics useless, as seen in this very investigation | `backend-architect` + `devops-engineer` | Open, Medium/High |
+| **LOG-1 addendum** | Render's own request logs do not survive a service redeploy — a second independent log source (beyond the already-flagged Supabase Free-tier retention) with effectively no retrospective forensic value. Any future incident response needs an external, durable log drain, not reliance on either platform's default retention | `security-engineer` (lead) + `cloud-infrastructure-architect` | Open — folds into the standing LOG-1 finding, not a new separate item |
+
+### 24.2 Checklist correction
+
+`INC-003-owner-console-checklist.md` §1.4's "finding" criteria did not warn that `GET /account/me` and
+similar routine authenticated calls mint a side-effect magic link that touches `recovery_sent_at` with
+no corresponding backend audit row — exactly the ambiguity Finding 2 ran into live. Needs a targeted
+addition (not a rewrite) noting this signature (a `recovery_sent_at` change within seconds of a
+`login_success`/`mfa_verified` pair, or of `/mfa/enroll`, step-up, or `customer-profile` calls, with no
+matching `password_reset_requested` row) as the "system-generated, not a finding" pattern to check for
+before treating such a row as unattributed.
+
+### 24.3 IP-address caveat, for anyone reading this record later
+
+Every IP address recorded in this investigation (`app.account_audit_log.ip_address`) is a Render
+internal proxy address, confirmed by the orchestrator's own known action logging the same address as
+an unrelated prior event. **Do not use any IP address in this document, or in `app.account_audit_log`
+generally until A-28 closes, to attribute, corroborate, or clear any event.**
+
+### 24.4 Standing finding referenced above
+
+See the separately-filed LOG-1 finding ("insufficient security audit retention for identity events") —
+this session's results (§24, Render logs included) are additional evidence for it, not a new finding of
+their own.
+
+**Signed:** orchestrator, relaying live `cto` rulings, 2026-10-16.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
