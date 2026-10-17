@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { DashboardAuthProvider } from '../dashboard/auth/DashboardAuthProvider';
 import { PRIVILEGED_DASHBOARD_CONFIG } from '../dashboard/auth/roleRouting';
@@ -29,7 +30,30 @@ function SecurityOperatorUnavailable() {
   );
 }
 
+/**
+ * LOCAL-ONLY demo seam (docs/organization/security-dashboard-local-demo.md). The condition is a
+ * compile-time constant in production builds (DEV is false), so the dynamic import and everything
+ * under ./demo is tree-shaken out; vite.config.ts also fails any build with VITE_DEMO_MODE=true.
+ */
+const DemoShell =
+  import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE === 'true'
+    ? lazy(() => import('./demo/DemoShell'))
+    : null;
+
 export default function SecurityRoutes() {
+  if (DemoShell) {
+    return (
+      <Suspense fallback={null}>
+        <DemoShell>
+          <SecurityRoutesInner />
+        </DemoShell>
+      </Suspense>
+    );
+  }
+  return <SecurityRoutesInner />;
+}
+
+function SecurityRoutesInner() {
   if (!isSecurityOperatorEnabled()) {
     return (
       <Routes>

@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "npx vite",
+    "demo:security": "node scripts/demo-security.mjs",
+    "demo:security:cleanup": "node scripts/demo-security-cleanup.mjs",
     "build": "npx vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",

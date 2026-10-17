@@ -80,7 +80,7 @@ export function CasesListPage() {
                 ),
               },
               { key: 'status', header: 'Status', render: (row) => <StatusBadge value={String(row.status)} /> },
-              { key: 'assetId', header: 'Asset', render: (row) => String(row.assetId).slice(0, 8) + '…' },
+              { key: 'assetId', header: 'Asset', render: (row) => (row.assetId ? String(row.assetId).slice(0, 8) + '…' : '—') },
               {
                 key: 'reportedAt',
                 header: 'Reported',
@@ -197,7 +197,8 @@ export function CaseDetailPage() {
       <DetailGrid
         rows={[
           { label: 'Status', value: <StatusBadge value={recoveryCase.status} /> },
-          { label: 'Asset ID', value: recoveryCase.assetId },
+          // The API withholds assetId until a case is claimed (data minimisation), so it may be absent.
+          { label: 'Asset ID', value: recoveryCase.assetId || '— (shown after you claim the case)' },
           { label: 'Reported', value: new Date(recoveryCase.reportedAt).toLocaleString() },
           { label: 'Notes', value: recoveryCase.notes ?? '—' },
           { label: 'Partner org', value: recoveryCase.partnerOrganizationId ?? 'Unassigned' },
