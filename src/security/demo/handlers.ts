@@ -17,6 +17,31 @@ export function createDemoStore(now?: number): DemoStore {
   return { cases: buildDemoCases(now) };
 }
 
+/**
+ * Real pagination is cursor-based (backend/src/lib/pagination.ts: 50/page, opaque
+ * base64 cursor, `{ data, pagination: { nextCursor, hasMore } }`). The real "Load
+ * more" button (`CasesListPage` in `SecurityCasePages.tsx`) only ever round-trips
+ * whatever `nextCursor` the server gave it — it never decodes the cursor itself — so
+ * this demo is free to use its own opaque encoding (a base64'd row offset) rather
+ * than reproducing the backend's exact `<iso-timestamp>,<uuid>` cursor format, while
+ * still exercising the real `hasMore`/"Load more" UI path honestly. The page size is
+ * deliberately lowered to 5 (well under the backend's default 50) so the demo's 9
+ * fictional cases span two real pages instead of needing dozens of fixtures to cross
+ * a 50-row boundary.
+ */
+const DEMO_PAGE_LIMIT = 5;
+function encodeDemoCursor(offset: number): string {
+  return btoa(String(offset));
+}
+function decodeDemoCursor(raw: string): number | null {
+  try {
+    const n = Number(atob(raw));
+    return Number.isInteger(n) && n >= 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 function json(status: number, body: unknown): Response {
   return new Response(body === undefined ? null : JSON.stringify(body), {
     status,
@@ -59,7 +84,17 @@ export function handleDemoRequest(
 
   if (method === 'GET' && p === '/security/cases') {
     const rows = filtered().sort((a, b) => b.reportedAt.localeCompare(a.reportedAt));
-    return json(200, { data: rows.map(serializeDemoCase), pagination: { nextCursor: null, hasMore: false } });
+    const cursorParam = url.searchParams.get('cursor');
+    let offset = 0;
+    if (cursorParam) {
+      const decoded = decodeDemoCursor(cursorParam);
+      if (decoded === null) return err(400, 'VALIDATION_ERROR', 'cursor is invalid or malformed');
+      offset = decoded;
+    }
+    const page = rows.slice(offset, offset + DEMO_PAGE_LIMIT);
+    const hasMore = offset + DEMO_PAGE_LIMIT < rows.length;
+    const nextCursor = hasMore ? encodeDemoCursor(offset + DEMO_PAGE_LIMIT) : null;
+    return json(200, { data: page.map(serializeDemoCase), pagination: { nextCursor, hasMore } });
   }
   if (method === 'GET' && p === '/security/cases/count') {
     return json(200, { data: { count: filtered().length } });

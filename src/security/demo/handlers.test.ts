@@ -14,13 +14,30 @@ describe('security demo fake API', () => {
     expect(body.email).toBe('demo.operator@example.invalid');
   });
 
-  it('lists 6-8 visible cases with real shapes (offer tier omits asset/notes)', async () => {
+  it('lists a first page of 5 visible cases with real shapes (offer tier omits asset/notes), hasMore true', async () => {
     const { body } = await call(createDemoStore(), 'GET', '/security/cases');
-    expect(body.data.length).toBeGreaterThanOrEqual(6);
-    expect(body.pagination).toEqual({ nextCursor: null, hasMore: false });
+    expect(body.data.length).toBe(5);
+    expect(body.pagination.hasMore).toBe(true);
+    expect(typeof body.pagination.nextCursor).toBe('string');
     const offer = body.data.find((c: { partnerOrganizationId: unknown }) => c.partnerOrganizationId === null);
     expect(offer.assetId).toBeUndefined();
     expect(JSON.stringify(body)).not.toMatch(/@(?!example\.invalid)/);
+  });
+
+  it('"Load more" (cursor) reaches the final page with hasMore false and no overlap/gaps', async () => {
+    const s = createDemoStore();
+    const page1 = (await call(s, 'GET', '/security/cases')).body;
+    expect(page1.pagination.hasMore).toBe(true);
+    const page2 = (await call(s, 'GET', `/security/cases?cursor=${page1.pagination.nextCursor}`)).body;
+    expect(page2.pagination).toEqual({ nextCursor: null, hasMore: false });
+    expect(page2.data.length).toBe(9 - page1.data.length);
+    const allIds = [...page1.data, ...page2.data].map((c: { id: string }) => c.id);
+    expect(new Set(allIds).size).toBe(allIds.length);
+  });
+
+  it('rejects a malformed cursor', async () => {
+    const r = await call(createDemoStore(), 'GET', '/security/cases?cursor=not-valid-base64-offset');
+    expect(r.status).toBe(400);
   });
 
   it('count matches the open filter', async () => {
@@ -43,6 +60,31 @@ describe('security demo fake API', () => {
     expect((await call(s, 'PATCH', `/security/cases/${open.id}`, { status: 'tracking' })).body.status).toBe('tracking');
     expect((await call(s, 'PATCH', `/security/cases/${open.id}`, { status: 'investigating' })).status).toBe(409);
     expect((await call(s, 'GET', `/security/cases/${open.id}`)).body.status).toBe('tracking');
+  });
+
+  it('a freshly-claimed case (demo case 9) is claimed-tier with notes/lastLocationAt explicitly null, not omitted', async () => {
+    const { body } = await call(createDemoStore(), 'GET', '/security/cases?status=investigating');
+    const fresh = body.data.find((c: { notes: unknown }) => c.notes === null);
+    expect(fresh).toBeDefined();
+    expect(fresh.assetId).toBeDefined();
+    expect(fresh.lastLocationAt).toBeNull();
+  });
+
+  it('"open" count recomputes live from in-memory state after a claim (mirrors the Home page count badge)', async () => {
+    const s = createDemoStore();
+    const before = (await call(s, 'GET', '/security/cases/count?status=open')).body.data.count;
+    const open = (await call(s, 'GET', '/security/cases?status=open')).body.data[0];
+    await call(s, 'POST', `/security/cases/${open.id}/claim`);
+    const after = (await call(s, 'GET', '/security/cases/count?status=open')).body.data.count;
+    expect(after).toBe(before - 1);
+  });
+
+  it('rejects a status change on a closed case as a forward-only (409) violation, not silently', async () => {
+    const s = createDemoStore();
+    const closed = (await call(s, 'GET', '/security/cases?status=closed')).body.data[0];
+    const r = await call(s, 'PATCH', `/security/cases/${closed.id}`, { status: 'tracking' });
+    expect(r.status).toBe(409);
+    expect(r.body.error.message).toMatch(/cannot move backward/);
   });
 
   it('unknown paths 404 and org name is exact', async () => {

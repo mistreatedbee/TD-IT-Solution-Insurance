@@ -88,6 +88,10 @@ export function buildDemoCases(now: number = Date.now()): DemoCase[] {
     mk(6, 'tracking', true, 120, 'Laptop - Lenovo ThinkPad, Gqeberha', 'Last seen on a fictional network in Walmer.', 6),
     mk(7, 'recovered', true, 200, 'Vehicle - Ford Ranger, Centurion', 'Vehicle located and handed to owner. Demo record.', 150),
     mk(8, 'closed', true, 400, 'Phone - Huawei, Polokwane', 'Closed - no further action. Demo record.', null),
+    // Freshly claimed, nothing logged yet: exercises the claimed tier's "no notes" /
+    // "no lastLocationAt" rendering (detail page shows "—" for both), distinct from the
+    // unclaimed/offer tier's "no notes" case which omits the fields entirely.
+    mk(9, 'investigating', true, 5, 'Tablet - iPad, Nelspruit', null, null),
   ];
 }
 
