@@ -40,6 +40,13 @@ If accepted, the exception is:
   ("DEMO – Fictional Security Partner (not a live integration)"), and a handful of fake recovery
   cases, created in the **production** database for the sole purpose of a sales/client demo on the
   production URL.
+  - **Note (2026-10-19):** this production-demo path was never executed — the local-only demo
+    (`security-dashboard-local-demo.md`) was built instead as the lower-risk alternative this ADR's
+    own §5 already named, and its fictional org was later fleshed out as "Vukani Asset Protection &
+    Recovery (Pty) Ltd" / "Vukani Recovery" (`demo-security-partner-profile.md`). The placeholder
+    name above describes what this never-run exception would have used; it is not corrected to
+    match the local demo's name, since this section is a record of what was proposed, not of what
+    actually shipped.
 - `VITE_FEATURE_SECURITY_OPERATOR=true` set on Vercel's **Production** environment for the
   duration of the demo only.
 - No admin or support-agent account is created under this exception. No real customer data is
