@@ -5,8 +5,20 @@
  */
 import type { SecurityCaseStatus } from '../api/cases';
 
-export const DEMO_ORG_NAME = 'DEMO – Fictional Security Partner (not a live integration)';
+/**
+ * Entirely fictional demo org, per docs/organization/demo-security-partner-profile.md.
+ * No such company is registered with PSIRA; the registration number below is invented, not
+ * looked up — see that doc for the collision check and sourcing notes.
+ */
+export const DEMO_ORG_NAME = 'Vukani Asset Protection & Recovery (Pty) Ltd (trading as Vukani Recovery)';
+export const DEMO_ORG_TRADING_NAME = 'Vukani Recovery';
+export const DEMO_ORG_PSIRA_NUMBER =
+  'PSIRA Reg. No. 9284671 — registration status not independently verified; demo data only';
+export const DEMO_ORG_TAGLINE =
+  "Vukani Recovery — Asset tracing and recovery coordination, wherever it's taken.";
 export const DEMO_ORG_ID = 'd3d3d3d3d3d3d3d3d3d3d3d3';
+/** Display-only name/title for the fictional demo operator; account shape is unchanged. */
+export const DEMO_OPERATOR_DISPLAY_NAME = 'Lindiwe Mahlangu, Recovery Operations Manager';
 export const DEMO_ACCOUNT = {
   id: 'a1a1a1a1a1a1a1a1a1a1a1a1',
   email: 'demo.operator@example.invalid',

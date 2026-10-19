@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { installDemo } from './install';
-import { DEMO_ORG_NAME } from './data';
+import { DEMO_ORG_NAME, DEMO_ORG_PSIRA_NUMBER, DEMO_ORG_TAGLINE, DEMO_OPERATOR_DISPLAY_NAME } from './data';
 
 let ready = false;
 /** Wraps the security routes in demo mode: installs the fake API once, shows a persistent banner. */
@@ -13,9 +13,14 @@ export default function DemoShell({ children }: { children: ReactNode }) {
     <>
       <div
         role="status"
-        className="sticky top-0 z-[1000] w-full bg-amber-400 px-3 py-2 text-center text-sm font-semibold text-black"
+        className="sticky top-0 z-[1000] w-full bg-amber-400 px-3 py-2 text-center text-black"
       >
-        DEMO — fictional data. {DEMO_ORG_NAME}. Pre-launch; nothing here is live.
+        <p className="text-sm font-semibold">
+          DEMO — fictional data. {DEMO_ORG_NAME}. Pre-launch; nothing here is live.
+        </p>
+        <p className="text-xs font-normal">
+          {DEMO_ORG_TAGLINE} {DEMO_ORG_PSIRA_NUMBER}. Signed in as {DEMO_OPERATOR_DISPLAY_NAME} (demo account).
+        </p>
       </div>
       {children}
     </>

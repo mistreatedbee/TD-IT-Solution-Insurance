@@ -47,6 +47,6 @@ describe('security demo fake API', () => {
 
   it('unknown paths 404 and org name is exact', async () => {
     expect((await call(createDemoStore(), 'GET', '/elsewhere')).status).toBe(404);
-    expect(DEMO_ORG_NAME).toBe('DEMO – Fictional Security Partner (not a live integration)');
+    expect(DEMO_ORG_NAME).toBe('Vukani Asset Protection & Recovery (Pty) Ltd (trading as Vukani Recovery)');
   });
 });

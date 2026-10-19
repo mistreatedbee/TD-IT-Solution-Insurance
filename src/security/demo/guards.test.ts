@@ -55,7 +55,7 @@ describe('demo build guard', () => {
     delete env.VITE_DEMO_MODE;
     execFileSync(process.execPath, [viteBin, 'build', '--outDir', out, '--emptyOutDir'], { cwd: root, env, stdio: 'pipe' });
     const hay = walk(out).filter((f) => /\.(js|css|html)$/.test(f)).map((f) => readFileSync(f, 'utf8')).join('\n');
-    expect(hay).not.toContain('Fictional Security Partner');
+    expect(hay).not.toContain('Vukani');
     expect(hay).not.toContain('demo.operator@example.invalid');
     expect(hay).not.toContain('REC-DEMO-');
   }, 240_000);

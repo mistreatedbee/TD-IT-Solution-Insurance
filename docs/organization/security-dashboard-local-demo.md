@@ -9,7 +9,7 @@ Local-only, in-browser demo of `/security/*` (ADR-0013). No backend, Supabase, M
 
 ## 5-minute click-through
 Do NOT reload or type URLs mid-demo: state lives in memory and resets on reload. Use in-app links.
-1. Home: yellow DEMO banner, "Security Partner Operator", "N open" on the Case queue card. Click **Go to case queue**.
+1. Home: yellow DEMO banner naming the fictional partner org ("Vukani Recovery") and the fictional demo operator ("Lindiwe Mahlangu, Recovery Operations Manager"), "Security Partner Operator", "N open" on the Case queue card. Click **Go to case queue**.
 2. Queue: 8 fictional cases (open / investigating / tracking / recovered / closed) across Johannesburg, Cape Town, Durban, Pretoria, etc.
 3. Open **REC-DEMO-1001** (unclaimed, open). Click **Claim case**: status becomes investigating; asset and org appear.
 4. Click **Begin tracking**, then **Mark recovered**, then **Close case**; the status badge changes each time.
@@ -21,7 +21,7 @@ Do NOT reload or type URLs mid-demo: state lives in memory and resets on reload.
 |---|---|
 | UI components, layout, routes, forward-only status flow | Real code |
 | Cases, asset IDs, reference numbers, notes, dates | Fake, in memory |
-| Org "DEMO – Fictional Security Partner (not a live integration)", operator `demo.operator@example.invalid` | Fake |
+| Org "Vukani Asset Protection & Recovery (Pty) Ltd" / "Vukani Recovery" (entirely fictional — see [`demo-security-partner-profile.md`](demo-security-partner-profile.md)), operator `demo.operator@example.invalid` shown as "Lindiwe Mahlangu, Recovery Operations Manager" | Fake |
 | Sign-in, MFA, session | Faked in demo only; real auth code untouched |
 | Server-side audit logging, rate limiting, partner-org scoping | Not exercised (no server) |
 | Live GPS, partner integration, dispatch | Not built |
