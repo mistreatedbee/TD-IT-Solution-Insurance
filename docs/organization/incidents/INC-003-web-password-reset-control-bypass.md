@@ -3038,6 +3038,29 @@ C-11, C-12 and the C-8 code part are all done. The remaining gates are:
 
 ---
 
+## 34. A-22 console session deferred past the 2026-10-22 deadline (2026-10-22)
+
+Per §20.5/§19.4 Q-1 condition (ii): the A-22 console session (`INC-003-owner-console-checklist.md`
+Part 2) had a hard deadline of **2026-10-22** — today. The owner began the session today (started
+and completed Part 1, §24 above, plus began Part 2 items 1-3) but explicitly deferred the
+remainder to tomorrow: *"okey mark this ill do it tomorrow."*
+
+**Status: deadline missed, not silently.** Per §20.4's own stated condition (iv), "the acceptance
+lapses automatically if any of those dates slips" — this is that slip. Items 1-3 were in progress
+(secure-password-change and secure-email-change toggles being set; signup/magic-link-sign-in
+values being recorded, no change) but not confirmed complete before the session paused. Items
+4-12 are entirely unstarted.
+
+This is reported to `cto` for the re-review §20.4 itself calls for when its own condition fires —
+not decided unilaterally here. See the orchestrator's dispatch to `cto` immediately following this
+entry for the ruling on what happens to the A-9 residual-risk acceptance in the interim (one day,
+with the session already resuming tomorrow), and whether anything needs to change about how
+production is treated until Part 2 actually completes.
+
+**Signed:** orchestrator, 2026-10-22.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
