@@ -15,6 +15,7 @@ import { signAccessToken } from '../lib/jwt.js';
 import type { AppContext } from '../context.js';
 import type { Env } from '../config/env.js';
 import type { PlanCatalogDocument } from '../repositories/plan-catalog.js';
+import type { AdminAccessStateChangeInput } from '../repositories/admin-access-log.js';
 import { essentialPlanFixture } from '../lib/plan-test-fixtures.js';
 
 function fakeEnv(): Env {
@@ -85,6 +86,9 @@ function createHarness(
   for (const plan of opts.plans ?? []) {
     stored.set(plan.id, plan);
   }
+  const stateChangeCalls: AdminAccessStateChangeInput[] = [];
+  const policyCountByPlanId = new Map<string, number>();
+  let nextCreatedId = 0;
 
   // ADR-0012 SU-FU-1: requireStepUp reads this live per request. Defaults to
   // a fresh mfaVerifiedAt so the pre-existing behavioural tests below keep
@@ -108,12 +112,39 @@ function createHarness(
       async listAll() {
         return [...stored.values()];
       },
+      async findById(id: string) {
+        return stored.get(id) ?? null;
+      },
+      async findBySlug(slug: string) {
+        return [...stored.values()].find((p) => p.slug === slug) ?? null;
+      },
+      async create(input: Omit<PlanCatalogDocument, 'id' | 'catalogVersion' | 'createdAt' | 'updatedAt'>) {
+        nextCreatedId += 1;
+        const id = `507f1f77bcf86cd79943${String(9900 + nextCreatedId).padStart(4, '0')}`;
+        const now = new Date('2026-10-23T00:00:00.000Z');
+        const created: PlanCatalogDocument = { ...input, id, catalogVersion: 2, createdAt: now, updatedAt: now };
+        stored.set(id, created);
+        return created;
+      },
+      async deleteById(id: string) {
+        return stored.delete(id);
+      },
       async updateById(id: string, patch: Partial<PlanCatalogDocument>) {
         const existing = stored.get(id);
         if (!existing) return null;
         const updated: PlanCatalogDocument = { ...existing, ...patch, updatedAt: new Date('2026-08-13T00:00:00.000Z') };
         stored.set(id, updated);
         return updated;
+      },
+    },
+    policies: {
+      async countByPlanCatalogId(planCatalogId: string) {
+        return policyCountByPlanId.get(planCatalogId) ?? 0;
+      },
+    },
+    adminAccessLog: {
+      async recordStateChange(input: AdminAccessStateChangeInput): Promise<void> {
+        stateChangeCalls.push(input);
       },
     },
   } as unknown as AppContext;
@@ -133,6 +164,8 @@ function createHarness(
     adminBearer: `Bearer ${adminToken(env, adminId, sessionId)}`,
     customerBearer: `Bearer ${customerToken(env, customerId, sessionId)}`,
     stored,
+    stateChangeCalls,
+    policyCountByPlanId,
   };
 }
 
@@ -351,6 +384,185 @@ describe('routes/admin-plans', () => {
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error: { code: string } };
       expect(body.error.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  describe('POST /admin/plans (create — business-owner gap report item 5)', () => {
+    it('admin can create a new plan with minimal fields, defaults applied', async () => {
+      const { app, adminBearer, stored, stateChangeCalls } = createHarness();
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          slug: 'elite',
+          name: 'Elite',
+          tagline: 'Top-tier cover',
+          positioning: 'For high-value households',
+        }),
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as {
+        id: string;
+        slug: string;
+        isActive: boolean;
+        currency: string;
+        accountTypes: string[];
+      };
+      expect(body.slug).toBe('elite');
+      expect(body.isActive).toBe(true);
+      expect(body.currency).toBe('ZAR');
+      expect(body.accountTypes).toEqual(['both']);
+      expect(stored.get(body.id)).toBeDefined();
+
+      expect(stateChangeCalls).toHaveLength(1);
+      expect(stateChangeCalls[0]).toMatchObject({
+        resourceType: 'plan',
+        fromStatus: 'none',
+        toStatus: 'created',
+      });
+    });
+
+    it('rejects a duplicate slug with 409', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011', { slug: 'essential' });
+      const { app, adminBearer } = createHarness({ plans: [plan] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          slug: 'essential',
+          name: 'Essential 2',
+          tagline: 'Dup',
+          positioning: 'Dup',
+        }),
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it('rejects a malformed slug with VALIDATION_ERROR', async () => {
+      const { app, adminBearer } = createHarness();
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          slug: 'Not A Slug!',
+          name: 'Bad',
+          tagline: 'Bad',
+          positioning: 'Bad',
+        }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 403 for a non-admin caller', async () => {
+      const { app, customerBearer } = createHarness();
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans`, {
+        method: 'POST',
+        headers: { authorization: customerBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: 'elite', name: 'Elite', tagline: 'x', positioning: 'x' }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('requires step-up — stale mfaVerifiedAt returns STEP_UP_REQUIRED, no plan created', async () => {
+      const { app, adminBearer, stored } = createHarness({ mfaVerifiedAt: new Date(Date.now() - 16 * 60 * 1000) });
+      const listened = await listen(app);
+      server = listened.server;
+      const sizeBefore = stored.size;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: 'elite', name: 'Elite', tagline: 'x', positioning: 'x' }),
+      });
+      expect(res.status).toBe(401);
+      expect(stored.size).toBe(sizeBefore);
+    });
+  });
+
+  describe('DELETE /admin/plans/:planId (business-owner gap report item 5)', () => {
+    it('admin can delete a plan not referenced by any policy', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011');
+      const { app, adminBearer, stored, stateChangeCalls } = createHarness({ plans: [plan] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/${plan.id}`, {
+        method: 'DELETE',
+        headers: { authorization: adminBearer },
+      });
+      expect(res.status).toBe(204);
+      expect(stored.has(plan.id)).toBe(false);
+      expect(stateChangeCalls).toHaveLength(1);
+      expect(stateChangeCalls[0]).toMatchObject({ resourceType: 'plan', toStatus: 'deleted' });
+    });
+
+    it('refuses to delete a plan referenced by a policy — 409, plan untouched', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011');
+      const { app, adminBearer, stored, policyCountByPlanId } = createHarness({ plans: [plan] });
+      policyCountByPlanId.set(plan.id, 3);
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/${plan.id}`, {
+        method: 'DELETE',
+        headers: { authorization: adminBearer },
+      });
+      expect(res.status).toBe(409);
+      expect(stored.has(plan.id)).toBe(true);
+    });
+
+    it('returns 404 for an unknown plan id', async () => {
+      const { app, adminBearer } = createHarness();
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/507f1f77bcf86cd799439099`, {
+        method: 'DELETE',
+        headers: { authorization: adminBearer },
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 403 for a non-admin caller', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011');
+      const { app, customerBearer } = createHarness({ plans: [plan] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/${plan.id}`, {
+        method: 'DELETE',
+        headers: { authorization: customerBearer },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('requires step-up — stale mfaVerifiedAt returns STEP_UP_REQUIRED, plan not deleted', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011');
+      const { app, adminBearer, stored } = createHarness({
+        plans: [plan],
+        mfaVerifiedAt: new Date(Date.now() - 16 * 60 * 1000),
+      });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/${plan.id}`, {
+        method: 'DELETE',
+        headers: { authorization: adminBearer },
+      });
+      expect(res.status).toBe(401);
+      expect(stored.has(plan.id)).toBe(true);
     });
   });
 

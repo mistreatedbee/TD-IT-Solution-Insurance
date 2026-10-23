@@ -15,7 +15,12 @@ import { ObjectId, type Db, type Collection } from 'mongodb';
 // mechanism — `admin_access_log` is now written to by `security_company_operator`
 // actors too, not only `admin` (naming note, non-blocking, flagged to
 // `database-architect` for a future rename to `privileged_access_log`).
-export type AdminAccessResourceType = 'policy' | 'asset' | 'recovery_case';
+// 'plan' added (business-owner gap report item 5, plan create/delete) — the plan
+// catalog has no customer subject, unlike every other resource type here, so
+// `targetAccountId` on a 'plan' row is the ACTING admin's own account id, not a
+// customer's. Documented at the one call site that writes it
+// (`routes/admin-plans.ts`), not re-derived here.
+export type AdminAccessResourceType = 'policy' | 'asset' | 'recovery_case' | 'plan';
 // ADR-0006 §18.4 — 'privileged_state_change' records an operator DECISION (a claim or
 // a status transition), not a read/disclosure. Same collection, same join key, same
 // retention clock, per §18.2's "extend, don't fork" ruling (confirmed by
@@ -43,6 +48,13 @@ interface AdminAccessLogDbRow {
   userAgent: string | null;
   legalHold: boolean;
   createdAt: Date;
+  // Business-owner gap report (policy cancel / asset archive / legal-hold toggle) —
+  // additive, optional field on `privileged_state_change` rows only. Not covered by
+  // `adminAccessLogJsonSchemaBase`'s `required` list and not constrained by
+  // `assertInvariants` below, same "widen, don't fork" posture §18.2 already set for
+  // this collection. Null on every row written before this field existed and on every
+  // row of any other event type.
+  reason: string | null;
 }
 
 interface AdminAccessActor {
@@ -92,11 +104,19 @@ export interface AdminAccessCaseBulkDisclosureInput extends AdminAccessActor {
  */
 export interface AdminAccessStateChangeInput extends AdminAccessActor {
   targetAccountId: string;
-  resourceType: 'recovery_case';
+  // Widened (business-owner gap report) from 'recovery_case'-only to also cover the
+  // admin policy-cancel / asset-archive / legal-hold-toggle decisions — same
+  // `privileged_state_change` row shape, same "extend, don't fork" posture §18.2 set
+  // for this collection, not a new audit mechanism.
+  resourceType: AdminAccessResourceType;
   resourceId: string;
   fromStatus: string;
   toStatus: string;
   endpoint: string;
+  /** Optional operator-supplied reason, carried through to the row (see
+   * `AdminAccessLogDbRow.reason`'s doc comment). Not required by every caller — the
+   * recovery-case claim/status-update decisions predate this field and pass nothing. */
+  reason?: string | null;
 }
 
 /** Mirrors addendum-001 §1.3 / migrations/033 CHECK constraints — fail in tests, not as opaque 500s. */
@@ -169,6 +189,7 @@ export function createAdminAccessLogRepo(db: Db) {
         ipAddress: input.ipAddress ?? null,
         userAgent: input.userAgent ?? null,
         legalHold: false,
+        reason: null,
         createdAt: new Date(),
       };
       assertInvariants(row);
@@ -192,6 +213,7 @@ export function createAdminAccessLogRepo(db: Db) {
         ipAddress: input.ipAddress ?? null,
         userAgent: input.userAgent ?? null,
         legalHold: false,
+        reason: null,
         createdAt: now,
       };
 
@@ -241,6 +263,7 @@ export function createAdminAccessLogRepo(db: Db) {
         ipAddress: input.ipAddress ?? null,
         userAgent: input.userAgent ?? null,
         legalHold: false,
+        reason: null,
         createdAt: now,
       };
 
@@ -292,6 +315,7 @@ export function createAdminAccessLogRepo(db: Db) {
         ipAddress: input.ipAddress ?? null,
         userAgent: input.userAgent ?? null,
         legalHold: false,
+        reason: input.reason ?? null,
         createdAt: new Date(),
       };
       assertInvariants(row);

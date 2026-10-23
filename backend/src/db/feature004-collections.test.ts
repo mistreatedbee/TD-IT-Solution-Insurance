@@ -76,7 +76,9 @@ describe('db/feature004-collections — admin_access_log bootstrap specs', () =>
       'privileged_state_change',
     ]);
     // ADR-0006 §18.7 item 5 — widened to add 'recovery_case' alongside 'policy'/'asset'.
-    expect(schema.properties.resourceType?.enum).toEqual(['policy', 'asset', 'recovery_case']);
+    // Widened again (business-owner gap report item 5) to add 'plan' for admin
+    // plan-catalog create/delete.
+    expect(schema.properties.resourceType?.enum).toEqual(['policy', 'asset', 'recovery_case', 'plan']);
   });
 
   it('encodes R-1 conditional invariants via $expr (MongoDB lacks if/then in $jsonSchema)', () => {

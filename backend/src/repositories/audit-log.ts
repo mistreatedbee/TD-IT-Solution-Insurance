@@ -243,7 +243,105 @@ export function createAuditLogRepo(db: Queryable) {
         rows.flatMap(rowValues),
       );
     },
+
+    /**
+     * GET /v1/admin/audit-log (business-owner gap report item 6). Cursor-paginated
+     * per `lib/pagination.ts`'s platform convention (`(created_at desc, id desc)`,
+     * `limit + 1` over-fetch). Filterable by subject `accountId`, `eventType`, and an
+     * inclusive `created_at` date range — C-17 still applies: this never accepts or
+     * records a free-text search term, only the structured filters named here.
+     * Read-only — no write/delete capability exists on this repo method or the route
+     * built against it.
+     */
+    async listForAdmin(
+      filters: AdminAuditLogFilters,
+      limit: number,
+      cursor: { createdAt: Date; id: string } | null,
+    ): Promise<AdminAuditLogEntry[]> {
+      const params: unknown[] = [];
+      const where: string[] = [];
+
+      if (filters.accountId !== undefined) {
+        params.push(filters.accountId);
+        where.push(`account_id = $${params.length}`);
+      }
+      if (filters.eventType !== undefined) {
+        params.push(filters.eventType);
+        where.push(`event_type = $${params.length}`);
+      }
+      if (filters.from !== undefined) {
+        params.push(filters.from);
+        where.push(`created_at >= $${params.length}`);
+      }
+      if (filters.to !== undefined) {
+        params.push(filters.to);
+        where.push(`created_at <= $${params.length}`);
+      }
+      if (cursor) {
+        params.push(cursor.createdAt, cursor.id);
+        where.push(`(created_at, id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`);
+      }
+
+      params.push(limit);
+      const whereClause = where.length > 0 ? `where ${where.join(' and ')}` : '';
+
+      const result = await db.query<{
+        id: string;
+        account_id: string | null;
+        event_type: AuditEventType;
+        attempted_identifier: string | null;
+        ip_address: string | null;
+        created_at: Date;
+      }>(
+        `select id, account_id, event_type, attempted_identifier, ip_address, created_at
+         from app.account_audit_log
+         ${whereClause}
+         order by created_at desc, id desc
+         limit $${params.length}`,
+        params,
+      );
+
+      return result.rows.map((row) => ({
+        id: row.id,
+        accountId: row.account_id,
+        eventType: row.event_type,
+        attemptedIdentifier: row.attempted_identifier,
+        ipAddress: row.ip_address,
+        createdAt: new Date(row.created_at),
+      }));
+    },
   };
+}
+
+/**
+ * Business-owner gap report item 6 — read-only admin surface over this trail.
+ * `api-design.md` §7's `/admin/audit-log` contract and `AuditLogEntry` schema were
+ * designed at Feature 001 but never had a route built against them (FU-19) — this is
+ * that route's backing read, not a new audit mechanism or a new field set. Shape
+ * matches `AuditLogEntry` exactly: `id`, `accountId` (subject, nullable),
+ * `eventType`, `attemptedIdentifier`, `ipAddress`, `createdAt`. Deliberately omits
+ * `actorAccountId`/`actorService`/`userAgent`/`resultCount` — not because they are
+ * sensitive, but because api-design.md's contract never named them and widening a
+ * read contract silently (rather than as a deliberate, documented decision) is the
+ * kind of drift this backend's conventions warn against; add them in a follow-up
+ * with its own note if a consumer needs them.
+ */
+export interface AdminAuditLogEntry {
+  id: string;
+  accountId: string | null;
+  eventType: AuditEventType;
+  attemptedIdentifier: string | null;
+  ipAddress: string | null;
+  createdAt: Date;
+}
+
+export interface AdminAuditLogFilters {
+  accountId?: string;
+  eventType?: AuditEventType;
+  /** Inclusive lower bound on `created_at`. */
+  from?: Date;
+  /** Inclusive upper bound on `created_at`. */
+  to?: Date;
 }
 
 export type AuditLogRepo = ReturnType<typeof createAuditLogRepo>;

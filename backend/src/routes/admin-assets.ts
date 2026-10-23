@@ -17,9 +17,13 @@ import { serializeAdminAsset, serializeAdminAssetSummary } from '../lib/policy-a
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
+import { requireStepUp, STEP_UP_WINDOW_SECONDS } from '../lib/step-up.js';
+import { validateBody } from '../lib/validation.js';
 
 const ENDPOINT_LIST = 'GET /v1/admin/assets';
 const ENDPOINT_DETAIL = 'GET /v1/admin/assets/{assetId}';
+const ENDPOINT_STATUS = 'PATCH /v1/admin/assets/{assetId}';
+const ENDPOINT_LEGAL_HOLD = 'PATCH /v1/admin/assets/{assetId}/legal-hold';
 
 const listFiltersSchema = z.object({
   accountId: z.string().uuid().optional(),
@@ -29,6 +33,19 @@ const listFiltersSchema = z.object({
 
 const assetIdParamsSchema = z.object({
   assetId: z.string().regex(/^[0-9a-f]{24}$/i),
+});
+
+// Business-owner gap report item 3 — deliberately narrow (only 'removed' is
+// offered today), same precedent as admin-accounts.ts/admin-policies.ts.
+const patchStatusBodySchema = z.object({
+  status: z.literal('removed'),
+  reason: z.string().trim().min(1).max(2000).optional(),
+});
+
+// Business-owner gap report item 4.
+const patchLegalHoldBodySchema = z.object({
+  legalHold: z.boolean(),
+  reason: z.string().trim().min(1).max(2000).optional(),
 });
 
 export function createAdminAssetsRouter(ctx: AppContext): Router {
@@ -161,6 +178,127 @@ export function createAdminAssetsRouter(ctx: AppContext): Router {
         });
 
         res.status(200).json(serializeAdminAsset(asset));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Business-owner gap report item 3 — PATCH /admin/assets/{assetId}: archive/remove.
+  // Same §18.8 C-B sequence as admin-policies.ts's cancel route.
+  router.patch(
+    '/admin/assets/:assetId',
+    authenticate,
+    requireUserType('admin'),
+    createRateLimiter(
+      ctx.kv,
+      { attempts: DEFAULT_AUTHENTICATED_LIMIT.attempts, windowSeconds: DEFAULT_AUTHENTICATED_LIMIT.windowSeconds },
+      (req) => `admin-assets-patch:${req.auth!.accountId}`,
+    ),
+    requireStepUp(ctx, STEP_UP_WINDOW_SECONDS.invitationIssuance),
+    validateBody(patchStatusBodySchema),
+    async (req, res, next) => {
+      try {
+        const paramsParsed = assetIdParamsSchema.safeParse(req.params);
+        if (!paramsParsed.success) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+        const assetId = paramsParsed.data.assetId;
+
+        const existing = await ctx.assets.findByIdForAdmin(assetId);
+        if (!existing) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+        if (existing.status === 'removed') {
+          next(apiError('CONFLICT'));
+          return;
+        }
+
+        await ctx.adminAccessLog.recordStateChange({
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          targetAccountId: existing.accountId,
+          resourceType: 'asset',
+          resourceId: existing.id,
+          fromStatus: existing.status,
+          toStatus: 'removed',
+          reason: req.body.reason ?? null,
+          endpoint: ENDPOINT_STATUS,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        const updated = await ctx.assets.markRemovedForAdmin(assetId);
+        if (!updated) {
+          next(apiError('CONFLICT'));
+          return;
+        }
+
+        res.status(200).json(serializeAdminAsset(updated));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Business-owner gap report item 4 — PATCH /admin/assets/{assetId}/legal-hold.
+  router.patch(
+    '/admin/assets/:assetId/legal-hold',
+    authenticate,
+    requireUserType('admin'),
+    createRateLimiter(
+      ctx.kv,
+      { attempts: DEFAULT_AUTHENTICATED_LIMIT.attempts, windowSeconds: DEFAULT_AUTHENTICATED_LIMIT.windowSeconds },
+      (req) => `admin-assets-legal-hold:${req.auth!.accountId}`,
+    ),
+    requireStepUp(ctx, STEP_UP_WINDOW_SECONDS.invitationIssuance),
+    validateBody(patchLegalHoldBodySchema),
+    async (req, res, next) => {
+      try {
+        const paramsParsed = assetIdParamsSchema.safeParse(req.params);
+        if (!paramsParsed.success) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+        const assetId = paramsParsed.data.assetId;
+
+        const existing = await ctx.assets.findByIdForAdmin(assetId);
+        if (!existing) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        const legalHold = req.body.legalHold as boolean;
+        if (existing.legalHold === legalHold) {
+          res.status(200).json(serializeAdminAsset(existing));
+          return;
+        }
+
+        await ctx.adminAccessLog.recordStateChange({
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          targetAccountId: existing.accountId,
+          resourceType: 'asset',
+          resourceId: existing.id,
+          fromStatus: existing.legalHold ? 'legal_hold_on' : 'legal_hold_off',
+          toStatus: legalHold ? 'legal_hold_on' : 'legal_hold_off',
+          reason: req.body.reason ?? null,
+          endpoint: ENDPOINT_LEGAL_HOLD,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        const updated = await ctx.assets.setLegalHoldForAdmin(assetId, legalHold);
+        if (!updated) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        res.status(200).json(serializeAdminAsset(updated));
       } catch (err) {
         next(err);
       }

@@ -104,18 +104,29 @@ export class InvalidAccountStateTransitionError extends Error {
   }
 }
 
-/** Validates admin-initiated transitions per api-design.md §11.G / FU-03. */
+/**
+ * Validates admin-initiated transitions per api-design.md §11.G / FU-03.
+ *
+ * `deactivated -> active` (reactivation) was added for the business-owner
+ * gap report: deactivation was previously a one-way, permanent state with
+ * no code path back to `active`. It is gated identically to every other
+ * admin state transition (step-up MFA, optional reason, audit logging —
+ * `routes/admin-accounts.ts`'s PATCH handler, unchanged) and reuses this
+ * same validator, so it is not a new transition mechanism — only a new
+ * allowed edge in the existing one.
+ */
 export function isAllowedAdminAccountStateTransition(
   fromState: AccountState,
   toState: AdminSettableAccountState,
 ): boolean {
   if (fromState === toState) return false;
-  if (fromState === 'deactivated') return false;
   switch (fromState) {
     case 'active':
       return toState === 'suspended' || toState === 'deactivated';
     case 'suspended':
       return toState === 'active' || toState === 'deactivated';
+    case 'deactivated':
+      return toState === 'active';
     default:
       return false;
   }

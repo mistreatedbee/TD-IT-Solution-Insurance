@@ -270,9 +270,12 @@ const adminAccessLogJsonSchemaBase: Document = {
         'Soft reference to Supabase app.accounts.id. Non-null on privileged_data_access; null on privileged_bulk_access (enforced below).',
     },
     resourceType: {
-      enum: ['policy', 'asset', 'recovery_case'],
+      enum: ['policy', 'asset', 'recovery_case', 'plan'],
       description:
-        'ADR-0006 §18.7 item 5 — widened to add recovery_case for the Security Company Dashboard partner-case audit trail (PDM-8).',
+        'ADR-0006 §18.7 item 5 — widened to add recovery_case for the Security Company ' +
+        'Dashboard partner-case audit trail (PDM-8). Widened again (business-owner gap ' +
+        'report item 5) to add plan for admin plan-catalog create/delete — on a plan row, ' +
+        'targetAccountId is the acting admin, not a customer (plans have no customer subject).',
     },
     resourceId: {
       bsonType: ['objectId', 'null'],
@@ -294,6 +297,14 @@ const adminAccessLogJsonSchemaBase: Document = {
       bsonType: ['string', 'null'],
       description:
         'ADR-0006 §18.4 — required (non-null) iff eventType === privileged_state_change. Null on every other row type.',
+    },
+    reason: {
+      bsonType: ['string', 'null'],
+      description:
+        'Business-owner gap report (admin policy cancel / asset archive / legal-hold toggle) — ' +
+        'optional operator-supplied free text, set only on some privileged_state_change rows. ' +
+        'Additive field, not in `required` — unconstrained by the $expr branches above, same ' +
+        '"widen, don\'t fork" posture already used for this collection (§18.2).',
     },
     endpoint: {
       bsonType: 'string',

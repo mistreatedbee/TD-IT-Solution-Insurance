@@ -66,6 +66,37 @@ interface PolicyDbRow {
   updatedAt: Date;
 }
 
+/** Statuses an admin may move a policy to directly via PATCH /v1/admin/policies/{policyId}
+ * (business-owner gap report item 2). Deliberately narrow — only 'cancelled' today,
+ * mirroring `AdminSettableAccountState`'s precedent of naming exactly the states the
+ * admin surface actually offers rather than the full underlying union. */
+export type AdminSettablePolicyStatus = 'cancelled';
+
+export class InvalidPolicyStatusTransitionError extends Error {
+  readonly fromState: PolicyStatus;
+  readonly toState: AdminSettablePolicyStatus;
+
+  constructor(fromState: PolicyStatus, toState: AdminSettablePolicyStatus) {
+    super(`invalid policy status transition: ${fromState} → ${toState}`);
+    this.name = 'InvalidPolicyStatusTransitionError';
+    this.fromState = fromState;
+    this.toState = toState;
+  }
+}
+
+/** A policy already cancelled or expired cannot be cancelled again. Every other
+ * status may be cancelled by an admin (pending activations included — e.g. a
+ * customer who never completed billing setup). */
+export function isAllowedAdminPolicyStatusTransition(
+  fromState: PolicyStatus,
+  toState: AdminSettablePolicyStatus,
+): boolean {
+  if (fromState === toState) return false;
+  // 'cancelled' is already excluded by the equality check above (toState is always
+  // 'cancelled' today) — only 'expired' needs an explicit exclusion here.
+  return fromState !== 'expired';
+}
+
 function toPolicy(row: PolicyDbRow): PolicyDocument {
   return {
     id: row._id.toHexString(),
@@ -192,6 +223,13 @@ export function createPoliciesRepo(db: Db) {
       return collection().countDocuments({ accountId });
     },
 
+    /** DELETE /v1/admin/plans/{planId} safety check (business-owner gap report item
+     * 5) — a plan catalog row referenced by any policy, cancelled or not, must not be
+     * hard-deleted: historical policies still need `planCatalogId` to resolve. */
+    async countByPlanCatalogId(planCatalogId: string): Promise<number> {
+      return collection().countDocuments({ planCatalogId });
+    },
+
     /** Platform-wide count, for the Admin Home KPI row. Not scoped to an account. */
     async countActiveGlobal(): Promise<number> {
       return collection().countDocuments({ status: 'active' });
@@ -246,6 +284,56 @@ export function createPoliciesRepo(db: Db) {
             updatedAt: now,
           },
         },
+        { returnDocument: 'after' },
+      );
+      return row ? toPolicy(row) : null;
+    },
+
+    /**
+     * PATCH /v1/admin/policies/{policyId} — admin cancel (business-owner gap report
+     * item 2). Compare-and-set on the pre-read status so a concurrent transition
+     * cannot silently race past validation — mirrors `transitionAccountState`'s
+     * `for update` read-then-write intent without needing a transaction (single
+     * document write). Throws `InvalidPolicyStatusTransitionError` rather than
+     * returning null for a validation failure, so the route can tell "not found" apart
+     * from "found but not cancellable" (409 vs 404), same split
+     * `transitionAccountState` makes.
+     */
+    async cancelForAdmin(policyId: string): Promise<PolicyDocument | null> {
+      if (!ObjectId.isValid(policyId)) return null;
+      const existing = await collection().findOne({ _id: new ObjectId(policyId) });
+      if (!existing) return null;
+
+      if (!isAllowedAdminPolicyStatusTransition(existing.status, 'cancelled')) {
+        throw new InvalidPolicyStatusTransitionError(existing.status, 'cancelled');
+      }
+
+      const now = new Date();
+      const row = await collection().findOneAndUpdate(
+        { _id: new ObjectId(policyId), status: existing.status },
+        { $set: { status: 'cancelled', cancelledAt: now, updatedAt: now } },
+        { returnDocument: 'after' },
+      );
+      if (!row) {
+        // Lost the race between the pre-read and this write — report as a
+        // conflict rather than silently no-op'ing or returning a stale shape.
+        throw new InvalidPolicyStatusTransitionError(existing.status, 'cancelled');
+      }
+      return toPolicy(row);
+    },
+
+    /** PATCH /v1/admin/policies/{policyId}/legal-hold (business-owner gap report item
+     * 4). Idempotent set, not a transition — unlike `status`, there is no invalid
+     * "from" state: a policy may be placed on or taken off hold regardless of its
+     * current hold state (a repeat call with the same value is a no-op, not an error,
+     * same posture `AssetsRepo.clearLocationForAccount` already takes on its own
+     * idempotent field-clear). */
+    async setLegalHoldForAdmin(policyId: string, legalHold: boolean): Promise<PolicyDocument | null> {
+      if (!ObjectId.isValid(policyId)) return null;
+      const now = new Date();
+      const row = await collection().findOneAndUpdate(
+        { _id: new ObjectId(policyId) },
+        { $set: { legalHold, updatedAt: now } },
         { returnDocument: 'after' },
       );
       return row ? toPolicy(row) : null;

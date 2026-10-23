@@ -259,4 +259,88 @@ describe('repositories/audit-log', () => {
       expect(rows[0]![COL.actorSessionId]).toBeNull();
     });
   });
+
+  // Business-owner gap report item 6 — GET /admin/audit-log's backing read.
+  describe('listForAdmin', () => {
+    function createFakeDbWithRows(rows: unknown[]) {
+      const calls: Array<{ text: string; params: unknown[] }> = [];
+      const db: Queryable = {
+        async query(text, params = []) {
+          calls.push({ text, params });
+          return { rows, rowCount: rows.length };
+        },
+      };
+      return { db, calls };
+    }
+
+    it('maps db rows to the AdminAuditLogEntry shape', async () => {
+      const id = randomUUID();
+      const accountId = randomUUID();
+      const createdAt = new Date('2026-10-01T00:00:00.000Z');
+      const { db } = createFakeDbWithRows([
+        {
+          id,
+          account_id: accountId,
+          event_type: 'login_success',
+          attempted_identifier: null,
+          ip_address: '203.0.113.5',
+          created_at: createdAt,
+        },
+      ]);
+      const repo = createAuditLogRepo(db);
+
+      const result = await repo.listForAdmin({}, 50, null);
+      expect(result).toEqual([
+        {
+          id,
+          accountId,
+          eventType: 'login_success',
+          attemptedIdentifier: null,
+          ipAddress: '203.0.113.5',
+          createdAt,
+        },
+      ]);
+    });
+
+    it('filters by accountId, eventType, and an inclusive created_at range', async () => {
+      const { db, calls } = createFakeDbWithRows([]);
+      const repo = createAuditLogRepo(db);
+      const accountId = randomUUID();
+      const from = new Date('2026-01-01T00:00:00.000Z');
+      const to = new Date('2026-02-01T00:00:00.000Z');
+
+      await repo.listForAdmin({ accountId, eventType: 'login_failure', from, to }, 50, null);
+
+      const call = onlyCall(calls);
+      expect(call.text).toContain('account_id = $1');
+      expect(call.text).toContain('event_type = $2');
+      expect(call.text).toContain('created_at >= $3');
+      expect(call.text).toContain('created_at <= $4');
+      expect(call.params).toEqual([accountId, 'login_failure', from, to, 50]);
+    });
+
+    it('applies the cursor as a strict (created_at, id) tuple comparison', async () => {
+      const { db, calls } = createFakeDbWithRows([]);
+      const repo = createAuditLogRepo(db);
+      const cursorId = randomUUID();
+      const cursorCreatedAt = new Date('2026-05-01T00:00:00.000Z');
+
+      await repo.listForAdmin({}, 50, { createdAt: cursorCreatedAt, id: cursorId });
+
+      const call = onlyCall(calls);
+      expect(call.text).toContain('(created_at, id) <');
+      expect(call.params).toEqual([cursorCreatedAt, cursorId, 50]);
+    });
+
+    it('issues no filters at all when none are given — still bounded by limit', async () => {
+      const { db, calls } = createFakeDbWithRows([]);
+      const repo = createAuditLogRepo(db);
+
+      await repo.listForAdmin({}, 25, null);
+
+      const call = onlyCall(calls);
+      expect(call.text).not.toContain('where');
+      expect(call.params).toEqual([25]);
+    });
+  });
 });

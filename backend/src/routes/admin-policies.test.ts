@@ -16,8 +16,9 @@ import type { AccountRow, AccountStatus } from '../repositories/accounts.js';
 import type {
   AdminAccessBulkDisclosureInput,
   AdminAccessDetailInput,
+  AdminAccessStateChangeInput,
 } from '../repositories/admin-access-log.js';
-import type { PolicyDocument } from '../repositories/policies.js';
+import { isAllowedAdminPolicyStatusTransition, InvalidPolicyStatusTransitionError, type PolicyDocument } from '../repositories/policies.js';
 import type { Env } from '../config/env.js';
 import { essentialPlanFixture } from '../lib/plan-test-fixtures.js';
 
@@ -87,17 +88,37 @@ function samplePolicy(accountId: string, id = '507f1f77bcf86cd799439011'): Polic
   };
 }
 
-function createHarness(opts: { policies?: PolicyDocument[] }) {
+function createHarness(opts: {
+  policies?: PolicyDocument[];
+  mfaVerifiedAt?: Date | null;
+  sessionRevokedAt?: Date | null;
+}) {
   const env = fakeEnv();
   const kv = new InMemoryKeyValueStore();
   const adminId = randomUUID();
   const sessionId = randomUUID();
   const bulkCalls: AdminAccessBulkDisclosureInput[] = [];
   const detailCalls: AdminAccessDetailInput[] = [];
+  const stateChangeCalls: AdminAccessStateChangeInput[] = [];
+  const statusHistoryCalls: Array<{
+    policyId: string;
+    accountId: string;
+    fromStatus: string | null;
+    toStatus: string;
+    reason: string;
+    actorAccountId?: string | null;
+  }> = [];
   const stored = new Map<string, PolicyDocument>();
   for (const p of opts.policies ?? []) {
     stored.set(p.id, p);
   }
+
+  const sessionRecord = {
+    id: sessionId,
+    accountId: adminId,
+    revokedAt: opts.sessionRevokedAt ?? null,
+    mfaVerifiedAt: opts.mfaVerifiedAt !== undefined ? opts.mfaVerifiedAt : new Date(),
+  };
 
   const stubAccount: AccountRow = {
     id: adminId,
@@ -116,6 +137,11 @@ function createHarness(opts: { policies?: PolicyDocument[] }) {
   const ctx = {
     env,
     kv,
+    sessions: {
+      async findById(id: string) {
+        return id === sessionId ? { ...sessionRecord } : null;
+      },
+    },
     accounts: {
       async findById(id: string): Promise<AccountRow | null> {
         return id === adminId ? stubAccount : null;
@@ -142,6 +168,40 @@ function createHarness(opts: { policies?: PolicyDocument[] }) {
       async countActiveGlobal() {
         return [...stored.values()].filter((p) => p.status === 'active').length;
       },
+      async cancelForAdmin(policyId: string) {
+        const existing = stored.get(policyId);
+        if (!existing) return null;
+        if (!isAllowedAdminPolicyStatusTransition(existing.status, 'cancelled')) {
+          throw new InvalidPolicyStatusTransitionError(existing.status, 'cancelled');
+        }
+        const updated: PolicyDocument = {
+          ...existing,
+          status: 'cancelled',
+          cancelledAt: new Date('2026-09-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-09-01T00:00:00.000Z'),
+        };
+        stored.set(policyId, updated);
+        return updated;
+      },
+      async setLegalHoldForAdmin(policyId: string, legalHold: boolean) {
+        const existing = stored.get(policyId);
+        if (!existing) return null;
+        const updated: PolicyDocument = { ...existing, legalHold, updatedAt: new Date('2026-09-01T00:00:00.000Z') };
+        stored.set(policyId, updated);
+        return updated;
+      },
+    },
+    policyStatusHistory: {
+      async recordTransition(input: {
+        policyId: string;
+        accountId: string;
+        fromStatus: string | null;
+        toStatus: string;
+        reason: string;
+        actorAccountId?: string | null;
+      }): Promise<void> {
+        statusHistoryCalls.push(input);
+      },
     },
     adminAccessLog: {
       async recordBulkDisclosure(input: AdminAccessBulkDisclosureInput): Promise<void> {
@@ -149,6 +209,9 @@ function createHarness(opts: { policies?: PolicyDocument[] }) {
       },
       async recordDetail(input: AdminAccessDetailInput): Promise<void> {
         detailCalls.push(input);
+      },
+      async recordStateChange(input: AdminAccessStateChangeInput): Promise<void> {
+        stateChangeCalls.push(input);
       },
     },
     planCatalog: {
@@ -180,6 +243,9 @@ function createHarness(opts: { policies?: PolicyDocument[] }) {
     sessionId,
     bulkCalls,
     detailCalls,
+    stateChangeCalls,
+    statusHistoryCalls,
+    stored,
     assetCounts,
     token: adminToken(env, adminId, sessionId),
     async start() {
@@ -420,5 +486,195 @@ describe('routes/admin-policies', () => {
     });
     expect(res.status).toBe(404);
     expect(harness.detailCalls).toHaveLength(0);
+  });
+
+  describe('PATCH /admin/policies/:policyId (cancel — business-owner gap report item 2)', () => {
+    it('admin can cancel an active policy — status becomes cancelled, history + state-change audit written', async () => {
+      const subjectId = randomUUID();
+      const policy = samplePolicy(subjectId);
+      policy.status = 'active';
+      harness = createHarness({ policies: [policy] });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/admin/policies/${policy.id}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled', reason: 'Customer requested cancellation.' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { status: string; cancelledAt: string | null };
+      expect(body.status).toBe('cancelled');
+      expect(body.cancelledAt).not.toBeNull();
+
+      expect(harness.stateChangeCalls).toHaveLength(1);
+      expect(harness.stateChangeCalls[0]).toMatchObject({
+        resourceType: 'policy',
+        resourceId: policy.id,
+        fromStatus: 'active',
+        toStatus: 'cancelled',
+        reason: 'Customer requested cancellation.',
+        targetAccountId: subjectId,
+        actorAccountId: harness.adminId,
+      });
+      expect(harness.statusHistoryCalls).toHaveLength(1);
+      expect(harness.statusHistoryCalls[0]).toMatchObject({
+        policyId: policy.id,
+        fromStatus: 'active',
+        toStatus: 'cancelled',
+        reason: 'Customer requested cancellation.',
+      });
+    });
+
+    it('cancelling an already-cancelled policy returns 409, no audit written', async () => {
+      const subjectId = randomUUID();
+      const policy = samplePolicy(subjectId);
+      policy.status = 'cancelled';
+      harness = createHarness({ policies: [policy] });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/admin/policies/${policy.id}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled' }),
+      });
+      expect(res.status).toBe(409);
+      expect(harness.stateChangeCalls).toHaveLength(0);
+    });
+
+    it('returns 404 for an unknown policy id', async () => {
+      harness = createHarness({});
+      await harness.start();
+
+      const res = await fetch(harness.url('/admin/policies/507f1f77bcf86cd799439099'), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled' }),
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects a body with a status other than cancelled', async () => {
+      const policy = samplePolicy(randomUUID());
+      harness = createHarness({ policies: [policy] });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/admin/policies/${policy.id}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'active' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('requires step-up — stale mfaVerifiedAt returns STEP_UP_REQUIRED, policy unchanged', async () => {
+      const subjectId = randomUUID();
+      const policy = samplePolicy(subjectId);
+      policy.status = 'active';
+      harness = createHarness({ policies: [policy], mfaVerifiedAt: new Date(Date.now() - 16 * 60 * 1000) });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/admin/policies/${policy.id}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled' }),
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('STEP_UP_REQUIRED');
+      expect(harness.stored.get(policy.id)?.status).toBe('active');
+    });
+
+    it('returns 403 for a non-admin caller', async () => {
+      const env = fakeEnv();
+      const customerId = randomUUID();
+      const token = signAccessToken(
+        {
+          sub: customerId,
+          user_type: 'customer',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+      const policy = samplePolicy(randomUUID());
+      harness = createHarness({ policies: [policy] });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/admin/policies/${policy.id}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled' }),
+      });
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('PATCH /admin/policies/:policyId/legal-hold (business-owner gap report item 4)', () => {
+    it('admin can place a policy on legal hold — audit written with legal_hold_on/off markers', async () => {
+      const subjectId = randomUUID();
+      const policy = samplePolicy(subjectId);
+      harness = createHarness({ policies: [policy] });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/admin/policies/${policy.id}/legal-hold`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ legalHold: true, reason: 'Subpoena received.' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { legalHold: boolean };
+      expect(body.legalHold).toBe(true);
+
+      expect(harness.stateChangeCalls).toHaveLength(1);
+      expect(harness.stateChangeCalls[0]).toMatchObject({
+        resourceType: 'policy',
+        fromStatus: 'legal_hold_off',
+        toStatus: 'legal_hold_on',
+        reason: 'Subpoena received.',
+      });
+    });
+
+    it('is idempotent — setting the same value again is a 200 no-op with no new audit row', async () => {
+      const subjectId = randomUUID();
+      const policy = { ...samplePolicy(subjectId), legalHold: true };
+      harness = createHarness({ policies: [policy] });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/admin/policies/${policy.id}/legal-hold`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ legalHold: true }),
+      });
+      expect(res.status).toBe(200);
+      expect(harness.stateChangeCalls).toHaveLength(0);
+    });
+
+    it('returns 404 for an unknown policy id', async () => {
+      harness = createHarness({});
+      await harness.start();
+
+      const res = await fetch(harness.url('/admin/policies/507f1f77bcf86cd799439099/legal-hold'), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ legalHold: true }),
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it('requires step-up', async () => {
+      const policy = samplePolicy(randomUUID());
+      harness = createHarness({ policies: [policy], mfaVerifiedAt: null });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/admin/policies/${policy.id}/legal-hold`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ legalHold: true }),
+      });
+      expect(res.status).toBe(401);
+    });
   });
 });

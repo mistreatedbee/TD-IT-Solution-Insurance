@@ -266,6 +266,44 @@ export function createPlanCatalogRepo(db: Db) {
       return row ? toPlan(row) : null;
     },
 
+    /**
+     * POST /v1/admin/plans — admin-authored new tier (business-owner gap report item
+     * 5). Written at `catalogVersion` 2 (the current shape) directly — unlike
+     * `ensureSeeded`/`migrateCatalogToV2`, there is no legacy-slug history to carry
+     * forward for a brand-new row. `slug` uniqueness is enforced by the route layer
+     * pre-checking `findBySlug` before calling this (no unique index on `slug` exists
+     * at the Mongo layer today — see database-architect for whether one should).
+     */
+    async create(
+      input: Omit<PlanCatalogDocument, 'id' | 'catalogVersion' | 'createdAt' | 'updatedAt'>,
+    ): Promise<PlanCatalogDocument> {
+      const now = new Date();
+      const doc: Omit<PlanCatalogDbRow, '_id'> = {
+        ...input,
+        catalogVersion: PLAN_CATALOG_V2_MARKER,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const result = await collection().insertOne({ _id: new ObjectId(), ...doc } as PlanCatalogDbRow);
+      return toPlan({ _id: result.insertedId, ...doc });
+    },
+
+    /**
+     * DELETE /v1/admin/plans/{planId} — business-owner gap report item 5. Hard
+     * delete, not a soft `isActive: false` flip (that flip already exists via PATCH
+     * and means something different — "no longer offered to new subscribers", not
+     * "this catalog row should not exist"). The route layer is responsible for
+     * refusing to delete a plan any live policy still references
+     * (`policies.planCatalogId`) — this method does not check that itself, mirroring
+     * how `updateById` does not check plan-change eligibility either (that lives in
+     * `lib/plan-enforcement.ts`, one layer up).
+     */
+    async deleteById(id: string): Promise<boolean> {
+      if (!ObjectId.isValid(id)) return false;
+      const result = await collection().deleteOne({ _id: new ObjectId(id) });
+      return result.deletedCount === 1;
+    },
+
     async updateById(
       id: string,
       patch: Partial<

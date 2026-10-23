@@ -219,6 +219,39 @@ export function createAssetsRepo(db: Db) {
       return row ? toAsset(row) : null;
     },
 
+    /**
+     * PATCH /v1/admin/assets/{assetId} — admin archive/remove (business-owner gap
+     * report item 3). Platform-wide, not account-scoped (unlike
+     * `markRemovedForAccount`) — SR-004-admin-12 callers are already audited admin
+     * routes, same posture `findByIdForAdmin`/`listForAdmin` take. Idempotent-safe
+     * guard: a second call against an already-removed asset returns null (not a
+     * silent re-removal), so the route can 409 rather than report false success.
+     */
+    async markRemovedForAdmin(assetId: string): Promise<AssetDocument | null> {
+      if (!ObjectId.isValid(assetId)) return null;
+      const now = new Date();
+      const row = await collection().findOneAndUpdate(
+        { _id: new ObjectId(assetId), status: { $ne: 'removed' } },
+        { $set: { status: 'removed', updatedAt: now } },
+        { returnDocument: 'after' },
+      );
+      return row ? toAsset(row) : null;
+    },
+
+    /** PATCH /v1/admin/assets/{assetId}/legal-hold (business-owner gap report item
+     * 4). Idempotent set — see `PoliciesRepo.setLegalHoldForAdmin`'s doc comment for
+     * why this is not modelled as a from/to transition. */
+    async setLegalHoldForAdmin(assetId: string, legalHold: boolean): Promise<AssetDocument | null> {
+      if (!ObjectId.isValid(assetId)) return null;
+      const now = new Date();
+      const row = await collection().findOneAndUpdate(
+        { _id: new ObjectId(assetId) },
+        { $set: { legalHold, updatedAt: now } },
+        { returnDocument: 'after' },
+      );
+      return row ? toAsset(row) : null;
+    },
+
     async reportSelfDeviceLocation(
       accountId: string,
       assetId: string,
