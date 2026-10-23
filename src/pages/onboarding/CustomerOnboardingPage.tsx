@@ -90,6 +90,16 @@ export function CustomerOnboardingPage() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
+  // ADR-0014 AE-4: both sign-in forms in this wizard (the verify step's
+  // "Verified? Sign in" and the signup step's "Already registered?") can hit
+  // an account with MFA already enrolled. Previously that `mfa` result was
+  // turned away with a dead-end error. `mfaOrigin` tracks which form raised
+  // the challenge, so completing it resumes exactly what that form would
+  // have done next.
+  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaOrigin, setMfaOrigin] = useState<'login' | 'verify' | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -231,6 +241,10 @@ export function CustomerOnboardingPage() {
         if (me?.accountState === 'active') {
           setStep('plan');
         }
+      } else if (result.kind === 'mfa') {
+        setMfaChallengeToken(result.mfaChallengeToken);
+        setMfaCode('');
+        setMfaOrigin('verify');
       } else {
         setError('Additional verification is required. Use the login page to finish signing in.');
       }
@@ -255,6 +269,10 @@ export function CustomerOnboardingPage() {
         await auth.signInWithTokens(result.accessToken, result.refreshToken);
         await refreshData();
         setStep(resolveInitialStep('signed-in', auth.account?.accountState, Boolean(policy)));
+      } else if (result.kind === 'mfa') {
+        setMfaChallengeToken(result.mfaChallengeToken);
+        setMfaCode('');
+        setMfaOrigin('login');
       } else {
         setError('Additional verification is required. Use the mobile app or contact support.');
       }
@@ -263,6 +281,45 @@ export function CustomerOnboardingPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // ADR-0014 AE-4: completes the MFA challenge either sign-in form above
+  // raised, then resumes that form's own follow-up — the verify step
+  // advances to 'plan' once the account is active, the signup step's
+  // "Already registered?" form resolves the usual initial step.
+  async function handleMfaSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!mfaChallengeToken) return;
+    setError(null);
+    setLoading(true);
+    try {
+      await auth.completeMfa(mfaChallengeToken, mfaCode.trim());
+      setMfaChallengeToken(null);
+      setMfaCode('');
+      setLoginPassword('');
+      const origin = mfaOrigin;
+      setMfaOrigin(null);
+      const me = await auth.refreshAccount();
+      if (origin === 'verify') {
+        if (me?.accountState === 'active') {
+          setStep('plan');
+        }
+      } else {
+        await refreshData();
+        setStep(resolveInitialStep('signed-in', me?.accountState, Boolean(policy)));
+      }
+    } catch (err) {
+      setError(mapUserFacingError(err, { context: 'mfa' }));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function cancelMfa() {
+    setMfaChallengeToken(null);
+    setMfaCode('');
+    setMfaOrigin(null);
+    setError(null);
   }
 
   async function handleSelectPlan(plan: PlanCatalogItem) {
@@ -446,18 +503,45 @@ export function CustomerOnboardingPage() {
           </form>
           <div className="mt-8 border-t border-border pt-6">
             <p className="mb-4 text-sm font-semibold text-text-primary">Already registered?</p>
-            <form className="space-y-3" onSubmit={handleLogin} noValidate>
-              <Input label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
-              <Input
-                label="Password"
-                type="password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-              />
-              <Button type="submit" variant="secondary" fullWidth loading={loading}>
-                Log in
-              </Button>
-            </form>
+            {mfaChallengeToken && mfaOrigin === 'login' ? (
+              <form className="space-y-3" onSubmit={handleMfaSubmit} noValidate>
+                <p className="text-sm text-text-secondary">
+                  Enter the 6-digit code from your authenticator app.
+                </p>
+                <Input
+                  label="Authentication code"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  required
+                />
+                <Button type="submit" variant="secondary" fullWidth loading={loading}>
+                  Verify
+                </Button>
+                <button
+                  type="button"
+                  className="w-full text-sm text-text-secondary hover:text-text-primary"
+                  onClick={cancelMfa}
+                >
+                  Back to email and password
+                </button>
+              </form>
+            ) : (
+              <form className="space-y-3" onSubmit={handleLogin} noValidate>
+                <Input label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
+                <Input
+                  label="Password"
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                />
+                <Button type="submit" variant="secondary" fullWidth loading={loading}>
+                  Log in
+                </Button>
+              </form>
+            )}
           </div>
         </>
       ) : null}
@@ -495,19 +579,44 @@ export function CustomerOnboardingPage() {
               Resend email
             </Button>
           </div>
-          <form className="mt-6 space-y-3" onSubmit={handleVerifiedSignIn} noValidate>
-            <p className="text-sm font-semibold text-text-primary">Verified? Sign in to continue</p>
-            <Input label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
-            <Input
-              label="Password"
-              type="password"
-              value={loginPassword}
-              onChange={(e) => setLoginPassword(e.target.value)}
-            />
-            <Button type="submit" fullWidth loading={loading}>
-              I&apos;ve verified — continue
-            </Button>
-          </form>
+          {mfaChallengeToken && mfaOrigin === 'verify' ? (
+            <form className="mt-6 space-y-3" onSubmit={handleMfaSubmit} noValidate>
+              <p className="text-sm font-semibold text-text-primary">Enter your authenticator code</p>
+              <Input
+                label="Authentication code"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value)}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                required
+              />
+              <Button type="submit" fullWidth loading={loading}>
+                Verify
+              </Button>
+              <button
+                type="button"
+                className="w-full text-sm text-text-secondary hover:text-text-primary"
+                onClick={cancelMfa}
+              >
+                Back to email and password
+              </button>
+            </form>
+          ) : (
+            <form className="mt-6 space-y-3" onSubmit={handleVerifiedSignIn} noValidate>
+              <p className="text-sm font-semibold text-text-primary">Verified? Sign in to continue</p>
+              <Input label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
+              <Input
+                label="Password"
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+              />
+              <Button type="submit" fullWidth loading={loading}>
+                I&apos;ve verified — continue
+              </Button>
+            </form>
+          )}
           {error ? (
             <div className="mt-4">
               <InlineAlert tone="warning">{error}</InlineAlert>

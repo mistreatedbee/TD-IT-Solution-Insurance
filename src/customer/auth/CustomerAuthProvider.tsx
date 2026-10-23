@@ -54,6 +54,42 @@ function clearRefreshToken(): void {
   localStorage.removeItem(REFRESH_STORAGE_KEY);
 }
 
+// ADR-0014 AE-3: `persistSession: true` on the browser Supabase client
+// (`../supabase/client.ts`) writes a `sb-<project-ref>-auth-token` session
+// entry to localStorage, plus — when a PKCE flow is in progress — a
+// `sb-<project-ref>-auth-token-code-verifier` entry (supabase-js's default
+// storage key is `sb-${baseUrl.hostname.split('.')[0]}-auth-token`;
+// `@supabase/auth-js`'s PKCE code-verifier key is
+// `${storageKey}-code-verifier`). Since Phase 1 no code in this app reads
+// either key, but nothing removed them either, so they stay usable (and
+// readable by XSS) indefinitely. This is a client-side mitigation only —
+// it shrinks the exposure window from "until Phase 3's server-side purge"
+// to "until the user's next visit" (ADR-0014 §9 RR-3, §14.5 AE-3). The
+// pattern mirrors A-14's legacy-key purge in CustomerOnboardingPage.tsx.
+//
+// The wildcard is safe against colliding with this app's own refresh-token
+// key: `CUSTOMER_REFRESH_STORAGE_KEY` and `getOrCreateWebDeviceId()`'s key
+// are both namespaced apart from Supabase's `sb-*-auth-token` shape
+// (confirmed in ADR-0014 §17.3).
+const STALE_SUPABASE_SESSION_KEY_PATTERN = /^sb-.*-auth-token(-code-verifier)?$/;
+
+export function purgeStaleSupabaseSessionKeys(): void {
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && STALE_SUPABASE_SESSION_KEY_PATTERN.test(key)) {
+        keysToRemove.push(key);
+      }
+    }
+    for (const key of keysToRemove) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    /* storage unavailable — nothing to purge */
+  }
+}
+
 export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<CustomerSessionStatus>('hydrating');
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -88,6 +124,12 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* best effort */
     }
+  }, []);
+
+  // ADR-0014 AE-3: purge any stale GoTrue browser session on mount, once per
+  // tab load, regardless of sign-in status.
+  useEffect(() => {
+    purgeStaleSupabaseSessionKeys();
   }, []);
 
   useEffect(() => {

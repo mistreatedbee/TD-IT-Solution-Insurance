@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const loginWithPassword = vi.fn();
 const signInWithTokens = vi.fn().mockResolvedValue(undefined);
 const refreshAccount = vi.fn().mockResolvedValue({ accountState: 'active' });
+const completeMfa = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../../customer/auth/CustomerAuthProvider', () => ({
   useCustomerAuth: () => ({
@@ -23,7 +24,7 @@ vi.mock('../../customer/auth/CustomerAuthProvider', () => ({
     signInWithTokens,
     refreshAccount,
     signOut: vi.fn(),
-    completeMfa: vi.fn(),
+    completeMfa,
   }),
 }));
 
@@ -74,6 +75,8 @@ describe('CustomerOnboardingPage — INC-003 A-14 / A-16', () => {
     sessionStorage.clear();
     localStorage.clear();
     loginWithPassword.mockReset();
+    completeMfa.mockReset();
+    completeMfa.mockResolvedValue(undefined);
     supabaseSignUp.mockReset();
     supabaseResend.mockReset();
     fetchMock = vi.fn().mockImplementation((url: string) =>
@@ -195,5 +198,92 @@ describe('CustomerOnboardingPage — INC-003 A-14 / A-16', () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(sessionStorage.getItem('td_signup_pending_auth')).toBeNull());
+  });
+});
+
+/**
+ * ADR-0014 AE-4: both wizard sign-in forms must surface a code-entry step
+ * and complete via `completeMfa` when `loginWithPassword` returns an `mfa`
+ * result, instead of turning the user away with a dead-end error.
+ */
+describe('CustomerOnboardingPage — ADR-0014 AE-4 (MFA completion in the wizard)', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+    loginWithPassword.mockReset();
+    completeMfa.mockReset();
+    refreshAccount.mockReset();
+    refreshAccount.mockResolvedValue({ accountState: 'active' });
+    supabaseSignUp.mockReset();
+    supabaseResend.mockReset();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 202 })));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('signup step "Already registered?" form: an mfa result surfaces code entry, not a dead end', async () => {
+    loginWithPassword.mockResolvedValue({
+      kind: 'mfa',
+      mfaChallengeToken: 'mfa-challenge-token',
+      expiresIn: 300,
+    });
+    completeMfa.mockResolvedValue(undefined);
+
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <CustomerOnboardingPage />
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByRole('button', { name: 'I already have an account' }));
+
+    const loginEmailInput = inputs('email')[1]!;
+    const loginPasswordInput = inputs('password')[2]!;
+    await user.type(loginEmailInput, 'mfa.customer@example.com');
+    await user.type(loginPasswordInput, 'correct-password');
+    const loginSubmitButton = screen
+      .getAllByRole('button', { name: 'Log in' })
+      .find((btn) => btn.getAttribute('type') === 'submit')!;
+    await user.click(loginSubmitButton);
+
+    expect(await screen.findByLabelText(/Authentication code/)).toBeInTheDocument();
+    expect(screen.queryByText(/Additional verification is required/)).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/Authentication code/), '123456');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(completeMfa).toHaveBeenCalledWith('mfa-challenge-token', '123456'));
+  });
+
+  it('verify step sign-in form: an mfa result surfaces code entry and completes via completeMfa', async () => {
+    loginWithPassword.mockResolvedValue({
+      kind: 'mfa',
+      mfaChallengeToken: 'verify-mfa-token',
+      expiresIn: 300,
+    });
+    completeMfa.mockResolvedValue(undefined);
+
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <CustomerOnboardingPage />
+      </MemoryRouter>,
+    );
+    await goToSignupAndSubmit(user);
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Check your inbox' })).toBeInTheDocument());
+
+    await user.type(inputs('password')[0]!, 'correct-password');
+    await user.click(screen.getByRole('button', { name: /I.ve verified/ }));
+
+    expect(await screen.findByLabelText(/Authentication code/)).toBeInTheDocument();
+    expect(screen.queryByText(/Additional verification is required/)).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/Authentication code/), '654321');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(completeMfa).toHaveBeenCalledWith('verify-mfa-token', '654321'));
+    await waitFor(() => expect(refreshAccount).toHaveBeenCalled());
   });
 });
