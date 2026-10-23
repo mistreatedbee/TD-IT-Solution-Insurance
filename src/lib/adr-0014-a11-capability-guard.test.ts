@@ -29,10 +29,18 @@
  * not started, as expected."). Until that Phase 1 cutover PR lands, the
  * dependency and bundle assertions below are EXPECTED TO FAIL for real,
  * not flaky — that failure accurately reports that the browser Supabase SDK
- * is still present. That is the intended, self-documenting behaviour of a
- * Phase 1 "exit criterion" check landing ahead of the cutover it gates: do
- * not weaken, skip, or quarantine these assertions to force green. Make them
- * pass by shipping ADR-0014 Phase 1 itself.
+ * is still present. Do not weaken or loosen these assertions to force green;
+ * they only pass once ADR-0014 Phase 1 actually ships.
+ *
+ * Per ADR-0014 §20 (cto ruling, 2026-10-23): this file IS excluded from the
+ * default `npm test` run (see vitest.config.ts's `exclude`) and so from the
+ * blocking frontend CI `Test` step, because §16.3 names A-11 as a required
+ * Stage 8 check on the Phase 1 cutover PR, not a check required on main
+ * before that cutover exists. It still runs — informational, non-blocking,
+ * expected red — in its own `adr-0014-a11-guard` CI job (vitest.config.a11-
+ * guard.ts). The Phase 1 cutover PR must remove both the vitest.config.ts
+ * exclusion and that job's `continue-on-error`, and show this green, before
+ * its Stage 8 review can sign off.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';

@@ -3445,6 +3445,13 @@ Severity stays **High**.
 
 ---
 
+**Cross-reference:** the A-11 guard's CI enforcement sequencing (excluded from the blocking frontend
+`Test` step, run non-blocking in its own CI job pending the Phase 1 cutover) is ruled on at
+ADR-0014 §20, not here — nothing new went wrong as an incident; it's an ADR exit-criterion timing
+question.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*

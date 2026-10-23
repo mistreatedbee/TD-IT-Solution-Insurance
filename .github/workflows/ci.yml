@@ -2,8 +2,14 @@ name: CI
 
 # Stack: root (React/Vite marketing), backend/ (Express API), mobile/ (Expo app).
 # Updated 2026-08-12: backend + mobile test steps added (M-08 partial).
-# Updated 2026-10-23: frontend Test step added (ADR-0014 A-11 capability guard,
-# src/lib/adr-0014-a11-capability-guard.test.ts, was previously not run in CI at all).
+# Updated 2026-10-23: frontend Test step added (previously `npm test` was not
+# run in CI at all).
+# Updated 2026-10-23 (cto ruling, ADR-0014 §20): the ADR-0014 A-11 capability
+# guard (src/lib/adr-0014-a11-capability-guard.test.ts) is excluded from the
+# frontend Test step's default run and instead runs in its own non-blocking
+# `adr-0014-a11-guard` job below. It is a Phase 1 cutover exit gate, not a
+# required check on main before that cutover ships. Remove the exclusion and
+# this job's continue-on-error per §20 item 5 once Phase 1 merges.
 
 on:
   push:
@@ -38,11 +44,32 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test (includes ADR-0014 A-11 capability guard)
+      - name: Test
         run: npm test -- --run
 
       - name: Build
         run: npm run build
+
+  adr-0014-a11-guard:
+    name: ADR-0014 A-11 guard (pending Phase 1 — non-blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: A-11 capability guard (expected red until Phase 1 cutover ships — ADR-0014 §20)
+        run: npx vitest run src/lib/adr-0014-a11-capability-guard.test.ts
+        continue-on-error: true
 
   backend:
     name: Backend (backend/ — Node.js/TS/Express)

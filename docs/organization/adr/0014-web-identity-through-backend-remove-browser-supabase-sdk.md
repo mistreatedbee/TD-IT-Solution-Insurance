@@ -1384,6 +1384,49 @@ criterion, which has been met.
 
 ---
 
+## 20. `cto` ruling: A-11 guard enforcement sequencing (2026-10-23)
+
+Commit `4f766eb` added the A-11 capability guard
+(`src/lib/adr-0014-a11-capability-guard.test.ts`) and wired it into the frontend CI job's blocking
+`Test` step. Because Phase 1 has not shipped — `@supabase/supabase-js` is still present per §16.1,
+consistent with the partial exit-criteria work in `a2c54ec`/`8e73d70` — the guard correctly fails
+every run on `main` today. Asked to rule on sequencing: fast-track the Phase 1 cutover, or make the
+frontend `Test` step non-blocking until it lands.
+
+**Ruling: neither. A third option.** §16.3 lists A-11 as "a required Stage 8 check" under **Phase 1
+exit** — a gate on the cutover PR, not a check required on `main` before that cutover exists.
+Running it as required on `main` today goes beyond what this ADR, as ratified, actually asks for.
+
+- **Not fast-tracking Phase 1.** It is Stage 8/10-gated identity-cutover work (deleting
+  `src/customer/supabase/`, migrating W-1…W-12, removing the dependency). A red CI run is not a
+  reason to put delivery pressure on a hard gate; §16.4 explicitly leaves "starting Phase 1"
+  undecided here, and a CI inconvenience doesn't decide it either. It is scheduled on its own
+  merits.
+- **Not making the frontend `Test` step non-blocking.** That step runs the whole web suite via
+  `npm test -- --run`. Disabling it to tolerate one known-red file would silence everything else it
+  checks — worse than the problem it solves.
+- **Instead:** the guard is excluded from the default `npm test` run (`vitest.config.ts`'s
+  `exclude`) and runs instead in its own `adr-0014-a11-guard` CI job
+  (`vitest.config.a11-guard.ts`), with `continue-on-error: true`. It stays visibly red there —
+  accurately, since the SDK really is still present — not skipped, and is kept out of branch-
+  protection required checks.
+
+**Exit condition.** This is a temporary exception, not a standing one. The Phase 1 cutover PR must:
+remove `continue-on-error` from the `adr-0014-a11-guard` job, remove the file from
+`vitest.config.ts`'s `exclude` (restoring it to the default, blocking `Test` step or making the
+dedicated job required), and show it green. Its Stage 8 review cannot sign off otherwise — this is
+the A-11 exit criterion itself. The exception expires when that PR merges, or at the next `cto`
+checkpoint, whichever comes first. A red *required* check on `main` is not acceptable in the
+meantime — it would mask real regressions and normalize merging over red.
+
+This belongs here, not in INC-003: nothing went wrong as an incident; this is purely how an ADR exit
+criterion is enforced in time. INC-003 §37's action register carries a one-line cross-reference to
+this section.
+
+**Signed:** `cto`, 2026-10-23. Cites commits `4f766eb`, `a2c54ec`, `8e73d70`.
+
+---
+
 *Filed by `solution-architect`, 2026-10-15, as INC-003 action A-21 (draft). This document is shared
 and append-only once committed. Reviewers respond in new sections that cite the section they address.
 The author corrects their own sections in place, keeping superseded text marked void.*
