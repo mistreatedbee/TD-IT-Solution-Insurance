@@ -18,7 +18,8 @@
     "verify:mongo-catalog": "tsx scripts/verify-mongo-catalog.ts",
     "inc-001:location-inventory": "tsx scripts/inc-001-location-inventory.ts",
     "retention:police-report-purge": "tsx scripts/police-report-retention-purge.ts",
-    "inc-003:sr14b-mfa-reconciliation": "tsx scripts/sr14b-mfa-factor-reconciliation.ts"
+    "inc-003:sr14b-mfa-reconciliation": "tsx scripts/sr14b-mfa-factor-reconciliation.ts",
+    "ft016:verify-then-swap-drift-count": "tsx scripts/ft016-verify-then-swap-drift-count.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
