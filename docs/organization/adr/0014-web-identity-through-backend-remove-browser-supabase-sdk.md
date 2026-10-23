@@ -1314,6 +1314,76 @@ agree to it. Wording it as an agreement repeats the consent/notice confusion tha
 
 ---
 
+## 19. `cybersecurity-architect`: RR-1 note — FR-20 device binding is not an XSS control (2026-10-23)
+
+This section is the note asked for in INC-003 §19.4 ("State it in RR-1 so nobody counts it as a
+control"). §16.3 (line 927) lists it as a Phase 1 exit criterion. It **annotates the §9 RR-1 row
+and does not change it.** RR-1 stays as written: not accepted by this ADR, tracked under A-15 and
+ADR-0011. §§1–18 are unaltered. Checked against `main` at `5ce0b0a`.
+
+### 19.1 The statement
+
+**FR-20 device binding does not mitigate RR-1, and must not be cited as a control against XSS on
+the web origin, in any review, risk acceptance, Stage 8 sign-off or incident record.**
+
+- **What FR-20 covers.** A refresh token is stolen and then replayed from a *different* device
+  (Feature 001 `business-requirements.md` FR-20: "reduce token-theft blast radius").
+  `/session/refresh` revokes the family and the account's sessions when a presented `deviceId`
+  differs from the stored one (`backend/src/lib/refresh-session.ts:228-235`).
+- **What RR-1 is.** Attacker script runs **in the victim's own browser, on our origin**. That is a
+  different threat, and FR-20 does nothing against it, for three reasons:
+  1. **The binding value sits next to the token.** `getOrCreateWebDeviceId()` keeps the device id
+     in `localStorage` under `td-customer-web-device-id` (`src/customer/auth/deviceId.ts:1-10`).
+     The customer refresh token is in the same `localStorage` (`CustomerAuthProvider.tsx:43-54`).
+     A script that can read one can read both, and can replay the pair from anywhere with no
+     mismatch.
+  2. **The attacker need not leave the victim's browser.** Injected script can call
+     `/session/refresh` and any API in place, with the real device id. There is no "other device"
+     for FR-20 to detect.
+  3. **Omitting the id skips the check.** The comparison runs only when a `deviceId` is presented
+     (`refresh-session.ts:228`). A missing one is deliberately not a mismatch
+     (`refresh-session.test.ts:324`). A thief who drops the field avoids FR-20 without stealing the
+     id at all. This is a corollary of Feature 001 `security-review.md` R-5 (a client-supplied
+     `device_id` is not an authenticator), and it already limits FR-20 against off-device replay,
+     not only XSS.
+- **The privileged per-tab token is not covered by FR-20 at all.** The dashboard clients send
+  `deviceId: null` on login and refresh (`src/dashboard/api/auth.ts:34`,
+  `DashboardAuthProvider.tsx:138`, `src/dashboard/api/client.ts:85`, `roleRouting.ts:121`).
+  RR-1's privileged half has no device-binding layer to over-count.
+
+### 19.2 What does bear on RR-1
+
+These are the controls RR-1 may cite. None of them closes it.
+- **A-15**: CSP and `Referrer-Policy: no-referrer`, both in `vercel.json:10-15`. This is the main
+  control (INC-003 §19.4 condition 1).
+- **The access token is held in memory only** (INC-003 §19.4 condition 3; verified in §17.4).
+- **SR-8 rotation-reuse detection.** It helps only after the legitimate client has rotated past a
+  stolen token. Against a token used in-browser before rotation, it gives nothing.
+- **The token lifetimes**: the customer 90-day absolute cap, and the privileged 8 h absolute and
+  15 min idle limits. These bound how long a stolen token lasts. They do not stop the theft.
+- **ADR-0011**: the accepted risk of a shared origin.
+
+**One observation for the A-15 owners.** It is not a new condition. `connect-src` allows
+`https://*.onrender.com` and `https://*.supabase.co` (`vercel.json:11`). Anyone can host an app on
+those suffixes, so the CSP does **not** block exfiltration of a stolen token to an attacker-owned
+Render or Supabase host. CSP's real value against RR-1 is `script-src 'self'`, which blocks injected
+inline and third-party script. Do not describe CSP as an exfiltration control while those wildcards
+remain. Narrowing them to the exact backend and project hosts is the obvious hardening step. It
+belongs to `security-engineer`/`frontend-architect` under A-15, and it must not reopen the A-15
+criterion, which has been met.
+
+### 19.3 Disposition
+
+- The §16.3 Phase 1 exit item "the RR-1 note that FR-20 device binding is not an XSS control
+  (§19.4)" is **met by this section.**
+- RR-1 itself stays **open and not accepted**. The owners are `cybersecurity-architect` and
+  `frontend-architect`. It is next revisited with the §4.3 `sessionStorage` decision, taken
+  together with A-15 before Phase 4 (§16.3).
+
+**Signed:** `cybersecurity-architect`, 2026-10-23.
+
+---
+
 *Filed by `solution-architect`, 2026-10-15, as INC-003 action A-21 (draft). This document is shared
 and append-only once committed. Reviewers respond in new sections that cite the section they address.
 The author corrects their own sections in place, keeping superseded text marked void.*
