@@ -3062,6 +3062,56 @@ production is treated until Part 2 actually completes.
 ---
 
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
+## 35. `cto` ruling on the A-22 deadline lapse — Renewal R-1 (2026-10-23)
+
+Cites §19.4–§20.5, §24, §33.3, §34, and `INC-003-owner-console-checklist.md` Part 2.
+
+**1. A-9 status: lapsed at end of 2026-10-22, then renewed once (Renewal R-1), not rejected.**
+Lapsing returns the decision to `cto`, it is not automatic rejection. Renewed because: the anon
+key is already in every shipped bundle, so rejecting now would not reduce exposure for any
+existing account, only stop new web signups; the owner has already resumed. **R-1 expires end of
+day 2026-10-23, owner's local time. There is no Renewal R-2** — if conditions below aren't met by
+then, the acceptance stays lapsed and is recorded as NOT ACCEPTED: risk carried by the owner,
+`compliance-specialist` is told for the §7 POPIA position, and it becomes a standing escalation in
+every status report until closed. Condition (iii) (A-19/C-4 reconciliation) was found unevidenced
+in this doc — added as its own dated sub-condition, due 2026-10-30, owners
+`site-reliability-engineer` + `security-engineer`.
+
+**2. Two items found while reviewing, now ranked AHEAD of the remaining A-22 items:**
+- **(a) The §21 production `postgres` credential rotation**, due within 72 hours of 2026-10-16
+  (~2026-10-19) — no record in this document that it happened. **If not done, overdue and takes
+  priority over A-22 today.** Must be the coordinated change §21 specifies (reset password → update
+  `SUPABASE_DB_URL` in Render → redeploy → check health) — never the password reset alone.
+- **(b) A-26** (Thabo's account, deferred 2026-10-16) — deferral is not extended further now that
+  the acceptance has lapsed once. Today: either the owner records Thabo's confirmation of the
+  2026-10-07 requests, or `security-engineer` force-resets and revokes his sessions. Costs nothing,
+  destroys no evidence (`app.account_audit_log` unaffected).
+
+**3. Remaining A-22 items, in risk order (not numeric order):** items 1-3 (re-verify — §34 found
+them "in progress, not confirmed," treat as not done until the observed value is recorded) → item
+8 (rate limits — the only limiter on A-8's direct password grant today) → item 9 (non-TOTP factor
+types disabled) → item 10 (floor 10 + leaked-password protection) → item 6 (session time-box/JWT
+expiry) → items 5, 4, 7 (incl. redirect allow-list + `EMAIL_VERIFICATION_REDIRECT_URL_WEB`), 11,
+12. Item 12 may be time-boxed as the checklist already allows; its coverage window starts
+2026-10-16 (when audit-to-database logging was switched on) — record that start date.
+
+**No agent makes any production change and nothing is disabled as a response to this** —
+disabling signup/magic-link would not reduce exposure and would break the revocation sign-out C-5
+already ruled against removing.
+
+**4. Self-contained vs. full reassessment:** this lapse ruling is final and self-contained — §25-33
+(A-28 tooling, mobile C-8/G-4, C-11/C-12) is code remediation through Stage 8 and does not touch
+the anon-key exposure (A-8/A-18) that A-9 actually accepts. **Separately, a full INC-003
+reassessment is requested** given the accumulation of open items (A-6 inconclusive, A-26 deferred,
+credential-rotation status unknown, A-27 test-account passwords still published in source, LOG-1's
+retention gap) — target a consolidated register by **2026-10-27**. Severity stays **High**,
+unchanged for now.
+
+**Signed:** `cto`, 2026-10-23.
+
+---
+
+*Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
 
