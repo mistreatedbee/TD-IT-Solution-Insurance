@@ -20,3 +20,4 @@ Drafts of communications **to parties outside this engineering organisation** �
 | File | Purpose | Status |
 |---|---|---|
 | [`SENT-2026-09-14-ct-1-cross-border-consent-request.md`](SENT-2026-09-14-ct-1-cross-border-consent-request.md) | CT-1 — §19(c) prior written consent to cross-border processing | **SENT 2026-09-14 — informally acknowledged, consent not yet confirmed in the required form (see `10-data-protection-contract-obligations.md` §10)** |
+| [`DRAFT-2026-10-23-ct-4b-instruction-schedule-escalation.md`](DRAFT-2026-10-23-ct-4b-instruction-schedule-escalation.md) | CT-4b + CT-16: clause 19(a) instruction schedule escalation (overdue since 2026-09-26). Asks for a firm response date. Names Feature 016 Tier 1/Track B as newly blocked (`10-…` §16) | **DRAFT. NOT SENT** |

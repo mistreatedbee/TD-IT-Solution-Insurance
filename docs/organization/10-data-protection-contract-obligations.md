@@ -936,3 +936,75 @@ role's charter ("defers to compliance-specialist on regulatory retention minimum
 purpose/lawful-basis wording above, (2) supply the retention figure, (3) sign this row as final.
 Until then, C-008-12 remains **open**, and the TTL value in code should be read as "a number
 exists so the system doesn't fail open," not as "retention has been decided."
+
+---
+
+## 16. CT-4b / CT-16 overdue: owner escalation drafted (2026-10-23)
+
+**Append-only.** Nothing in §12.4 (CT-4b row) or §14.1 (CT-16 row) is withdrawn or rewritten. Both
+rows were accurate when written. This section records their overdue status and the escalation.
+
+**Basis.** This section implements the `cto` ruling at
+[`../features/016-kyc-identity-verification/03d-cto-ruling-stage5.md`](../features/016-kyc-identity-verification/03d-cto-ruling-stage5.md)
+§"Ruling 1": one owner escalation covering the **whole** CT-4b schedule, with CT-16 included. CT-16
+is **not** sent on its own, because §14.1 folded it into CT-4b deliberately.
+
+**Draft.** The escalation is at
+[`correspondence/DRAFT-2026-10-23-ct-4b-instruction-schedule-escalation.md`](correspondence/DRAFT-2026-10-23-ct-4b-instruction-schedule-escalation.md),
+**drafted 2026-10-23 and not sent.** `cto`/owner sends it. It asks the Client for a **firm response
+date**. It covers G-2, G-3, G-6, G-8 and G-9 (G-9 was added by F-4-OI-7), plus CT-16's G-11, G-15
+and G-16.
+
+### 16.1 New consequences of the overdue status
+
+CT-4b was due **2026-09-26** and is **28 days overdue** as of this entry.
+
+| Blocked item | Blocking gap | Status |
+|---|---|---|
+| Re-enabling location ingestion (Feature 008/009) | G-6 | Existing block (§12.4). Unchanged |
+| **Feature 016 Tier 1 real-customer activation** | Needs a new Register A row (see §16.2). G-11/G-15/G-16 bear on its data | **New, 2026-10-23** |
+| **Feature 016 Track B (peppered-HMAC duplicate detection), all build work** | Needs its own Register A row (see §16.2). Design-only work may continue | **New, 2026-10-23** |
+
+### 16.2 What counts as an answer
+
+**An answer to a Register B gap is not an authorisation.** This applies to G-11, G-15 and G-16 in
+particular. Feature 016 Tier 1 may be activated for real customers only when a **new Register A row
+(I-10 or later) is recorded in `11-documented-client-instructions.md` §3**. That row must cover the
+specific data Tier 1 enforcement relies on:
+
+- the identity fields: name, DOB, ID number (last four digits persisted), and residential address;
+- admin review of those fields; and
+- the use of `verificationStatus` as an asset-registration gate (and, later, a claims gate).
+
+Track B needs a **separate** Register A row before any build work. The draft's paragraph 4 and
+question 8 say this to the Client in plain terms. Its §C note 1 says it to the sender.
+
+A Register A row is **necessary, not sufficient**. Ruling 3's other activation preconditions still
+apply:
+
+- the Ruling 2 defect fix must be merged; and
+- the CT-1/CT-15/CT-16 flag conditions must be met.
+
+### 16.3 Facts recorded rather than glossed
+
+1. **No CT-4b schedule appears ever to have been drafted or sent.**
+   - `11-…` §8 item 2 required `compliance-specialist` to draft it by **2026-09-22**.
+   - No draft and no sent copy exists in `correspondence/` or anywhere else in this repository.
+   - So "unanswered" may really be "never put to the Client". If so, the miss is this role's.
+   - The draft therefore carries two alternative openings, gated on owner confirmation (its §A row
+     A1). It does not assert that a prior request was made.
+2. **CT-16's Register B limb is incomplete.** G-15 and G-16 have not been appended to `11-…` §4. The
+   draft puts their questions to the Client directly, so this does not block sending. It is still an
+   open item (CT-16a below).
+
+### 16.4 Register changes
+
+| ID | Change | Owner | Deadline |
+|---|---|---|---|
+| **CT-4b** | **OVERDUE since 2026-09-26. Escalation drafted 2026-10-23 (§16), not sent.** It now also blocks Feature 016 Tier 1 real-customer activation and all Track B build work, alongside G-6 | `cto`/owner (send); `compliance-specialist` (drafted, done) | Send: **2026-10-27**. Client response date: as the Client commits in reply |
+| **CT-16** | **OVERDUE since 2026-09-26.** Escalated inside the CT-4b letter (questions 6 to 8), not separately. Closes only when a Register A row is recorded. An answered Register B gap does not close it | `cto`/owner (obtain); `compliance-specialist` (record) | With CT-4b |
+| **CT-16a** *(new)* | **Append G-15 (identity documents and proof of address) and G-16 (biometric/liveness data) to `11-…` §4 Register B** as §14 item 2 requested | `compliance-specialist` | 2026-10-30 |
+| **CT-16b** *(new)* | **On the Client's reply, record Register A rows I-10 (Tier 1) and, separately, the Track B row**, but only if the reply gives a positive instruction stating data, purpose and limits (draft §C note 6) | `compliance-specialist` | Within 2 business days of a qualifying reply |
+
+**Filed by:** `compliance-specialist`, 2026-10-23 (§16 appended).
+**Does not discharge:** CT-4b · CT-16 · CT-1/CT-1a/CT-1b · CT-15 · CT-4a · Feature 016 Stage 8.
