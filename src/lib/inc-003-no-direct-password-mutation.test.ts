@@ -1,5 +1,5 @@
 /**
- * INC-003 F-9(b) regression guard.
+ * INC-003 F-9(b) regression guard — relabelled code hygiene per ADR-0014 A-11.
  *
  * docs/organization/incidents/INC-003-web-password-reset-control-bypass.md
  * §2.2: the web client mutated Supabase Auth credentials directly
@@ -8,12 +8,23 @@
  * removed the one call site (`updatePasswordWithSupabase`,
  * `src/customer/supabase/auth.ts`) as a capability, not just as a caller.
  *
- * This is a structural guard against recurrence: it fails the suite if any
- * file under `src/` ever calls `.updateUser({ password` (or the loosely
- * spaced/quoted variants) again — a browser-resident capability to mutate a
- * password directly against the identity store, rather than going through
+ * Relabelling note (ADR-0014 §2 item 5 / §5.3 / exit-criteria row A-11):
+ * ADR-0014's capability guard (`adr-0014-a11-capability-guard.test.ts`) is
+ * now "the control that matters" for this class of bypass — it asserts the
+ * browser holds no Supabase SDK and no Supabase-reachable credential at
+ * all, which is the thing that actually makes a direct `.updateUser()` call
+ * possible in the first place. This file stays as a narrower, file-pattern
+ * grep: a structural guard against recurrence, catching any file under
+ * `src/` that calls `.updateUser({ password` (or the loosely spaced/quoted
+ * variants) again, rather than going through
  * `POST /v1/auth/reset-password/confirm` + `/mfa-verify`
- * (`src/customer/api/auth.ts`).
+ * (`src/customer/api/auth.ts`). Per ADR-0014, this is now **code hygiene**,
+ * not a live security control in its own right — once ADR-0014 Phase 1
+ * ships (deleting `src/customer/supabase/` and removing
+ * `@supabase/supabase-js` from `package.json`), there is no SDK left for any
+ * file to call `.updateUser()` on, and the capability guard above would
+ * catch its reintroduction before this pattern-grep ever would. The
+ * assertion itself is unchanged and is not weakened by this relabel.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';

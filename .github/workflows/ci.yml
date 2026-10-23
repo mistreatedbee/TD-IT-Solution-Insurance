@@ -2,6 +2,8 @@ name: CI
 
 # Stack: root (React/Vite marketing), backend/ (Express API), mobile/ (Expo app).
 # Updated 2026-08-12: backend + mobile test steps added (M-08 partial).
+# Updated 2026-10-23: frontend Test step added (ADR-0014 A-11 capability guard,
+# src/lib/adr-0014-a11-capability-guard.test.ts, was previously not run in CI at all).
 
 on:
   push:
@@ -35,6 +37,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Test (includes ADR-0014 A-11 capability guard)
+        run: npm test -- --run
 
       - name: Build
         run: npm run build
