@@ -319,3 +319,12 @@ Feature-specific additions:
   in M-5; no change to sequencing.
 
 **Filed by:** `cybersecurity-architect`, 2026-10-23.
+
+---
+
+> **Appended note (`cto`, 2026-10-23), filed against this section, not editing it — see
+> `03d-cto-ruling-stage5.md`:** this review's defect citations for `customer-profiles.ts`
+> (verify-then-swap, approval race) resolve to `backend/src/repositories/customer-profiles.ts`
+> (the repository layer), not a `routes/customer-profiles.ts`. Verified directly before ruling.
+> `cybersecurity-architect` may correct the citation in their own text per house rule; until then,
+> this note governs the path.

@@ -187,13 +187,27 @@ Recommended shape (Stage 7 owns the final name/env-var convention):
 // backend/src/config/features.ts (new or extended file — Stage 7 confirms
 // location against this backend's existing env-var conventions)
 //
-// Default OFF. This flag controls ENFORCEMENT ROLLOUT TIMING ONLY — it has
-// no relationship to CT-1/CT-15/CT-16 (Track A never touches the full ID
-// number; see kyc-gate.ts). Do not wire this flag to gate anything in
+// Default OFF.
+//
+// CORRECTED 2026-10-23 (backend-architect, per cybersecurity-architect's
+// 03c-security-review-stage5.md §3.1/M-4). VOID, superseded text retained
+// for audit only:
+//   ~~This flag controls ENFORCEMENT ROLLOUT TIMING ONLY — it has no
+//   relationship to CT-1/CT-15/CT-16 (Track A never touches the full ID
+//   number; see kyc-gate.ts).~~
+// That is wrong: setting this flag true in any real environment is BLOCKED
+// pending CT-1 and CT-16 (02-stage-2-kickoff-sprint-plan.md §2.1 row 3 —
+// "Enforcing the FR-5/FR-6 gate against real customer traffic" is listed
+// under "Blocked until CT-1/CT-15/CT-16 close"), because enforcement makes
+// handing over KYC-adjacent verification data a condition of service. What
+// remains true is only that the gate's MECHANISM never touches the full ID
+// number (only `idNumberLast4` exists in this collection; see kyc-gate.ts)
+// — a data-flow fact about this function, not a statement that enforcement
+// itself is unconstrained. Do not wire this flag to gate anything in
 // Track B (HMAC write / full-ID transmission) — that is a SEPARATE flag,
 // see 03-architecture-review.md §2.4, and conflating them would make it
-// impossible to enable Track A enforcement while Track B legitimately
-// stays dark pending CT-1/CT-15/CT-16.
+// impossible to enable Track A enforcement once CT-1/CT-16 close while
+// Track B legitimately stays dark pending CT-1/CT-15/CT-16.
 export const FEATURE_KYC_GATING_ENFORCED =
   process.env.FEATURE_KYC_GATING_ENFORCED === 'true'; // fail-closed-by-omission: unset => false
 ```
@@ -421,7 +435,7 @@ concern at this platform's pre-launch scale (`north-star-2000-dau.md`) — flagg
 
 | Track | Disposition |
 |---|---|
-| A — Tier 1 gating mechanism | **Architecturally clear to proceed to Stage 6/7.** No new service, no new collection, one new library function, one new error code, one new flag (default OFF, enforcement-timing only, zero CT-1/15/16 dependency confirmed by call-graph trace in §1.1). |
+| A — Tier 1 gating mechanism | **Architecturally clear to proceed to Stage 6/7.** No new service, no new collection, one new library function, one new error code, one new flag (default OFF). ~~zero CT-1/15/16 dependency confirmed by call-graph trace in §1.1~~ — **void, corrected 2026-10-23 per `03c-security-review-stage5.md` §3.1**: the call-graph trace in §1.1 confirms only that the gate's *mechanism* has zero full-ID-number dependency; *enabling enforcement* against real customers remains blocked pending CT-1/CT-16 regardless, per the kickoff doc's own §2.1 row 3. |
 | B — Tier 2 peppered-HMAC | **Design recorded, merges dark only.** Service/API shape isolated into new, separate files/endpoints so the existing 4-digit-only `idNumber` path is structurally unmodified. All three blocked actions (full-ID transmission, HMAC key write, enforcement flip) carry explicit comment markers per the task's hard constraint (§2.2, §2.4) and remain stubbed/throwing or unimplemented pending CT-1/CT-15/CT-16 and C-013-8. |
 
 No code in this document's examples is final implementation — Stage 7 (`backend-architect`) owns
