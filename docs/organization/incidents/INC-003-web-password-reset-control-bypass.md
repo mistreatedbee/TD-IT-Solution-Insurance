@@ -3163,6 +3163,211 @@ not repeated prompts during other work. The consolidated register due 2026-10-27
 
 ---
 
+## 37. Consolidated INC-003 action register (`cybersecurity-architect`, 2026-10-23; due 2026-10-27 per §35 item 4)
+
+This section cites §§1–36, ADR-0014 (§6, §7, §9, §11, §15.6, §16.3, §18.3, §18.7), and
+`INC-003-owner-console-checklist.md` Part 2. §§1–36 are unaltered. This section is the register
+`cto` requested in §35 item 4 and kept in §36 item 4. It does not supersede any earlier register
+table (§6, §11, §17.3, §19.5). Those stay as the historical record, and this is the current
+consolidated view.
+
+**Method.** Statuses come from this document through §36. Where I re-checked code on `main` today, I
+say so in the row. I did not re-run any test suite. A status says "pending deploy check" only where a
+deploy check was specified and **no result is recorded in this document**. I searched §§20–36 for
+recorded results and found none.
+
+**Provenance of the 2026-10-23 rulings used below.** These items reached me in the orchestrator's
+dispatch for this register as `cto`'s 2026-10-23 ruling:
+- A-22 item 12 gates Phase 3, and item 11 gates Phase 4;
+- A-22 items 4–12 are deferred by the owner, with a Phase 3 trigger;
+- A-26 is deferred by the owner, with the trigger in 37.4.
+
+No signed `cto` section in this document records them. I record them as relayed. **`cto` should
+confirm them with a one-line appended countersignature.** Until then, treat 37.2's deferral rows and
+37.4's A-26 row as "relayed, not countersigned".
+
+**Status vocabulary.**
+- **CLOSED**
+- **CLOSED PENDING DEPLOY CHECK**: code verified at Stage 8; it moves to CLOSED when its deploy check is recorded here.
+- **FIXED, PENDING STAGE 8**
+- **OPEN**
+- **TRANSFERRED**: to an ADR-0014 phase, by an earlier ruling.
+- **DEFERRED BY OWNER** and **DECLINED BY OWNER**: owner decisions. They are recorded as decisions, not as missed deadlines, and their consequences are stated.
+
+**Identifier collisions. Read before citing anything from this document.**
+- **§28.3 advisories.** These are labelled "A-1" to "A-4" but are **not** the register's A-1 to A-4. Cite them as "§28.3 adv. A-n".
+- **Condition IDs.** §13/§15 C-1 to C-7 (A-10/A-24 conditions) and §26 C-1 to C-6 (A-28 conditions) are different conditions under the same labels. §19's C-8/C-9 and §30's C-11 to C-13 are unique.
+- **Section numbering.** There is no §23; §24 refers to "§23-equivalent" exchanges that were not filed.
+- **Rule for citing.** From this register on, always qualify a condition by its section, e.g. "§26 C-1".
+
+### 37.1 Numbered actions A-1 … A-28
+
+| ID | Action (short) | Status | Owner | Blocked on / next step | ADR-0014 gate link |
+|---|---|---|---|---|---|
+| A-1 | F-1…F-7: web reset through backend | **CLOSED** (§6, `ba65236`; §9 PASS). Per §13.5, the *controls* are correct; a working end-to-end web reset depends on A-24's deploy check | `authentication-engineer` / `frontend-architect` | — | — |
+| A-2 | F-2: allow-listed per-client redirect | **CLOSED** (`ac1685d`) | `backend-architect` | The console allow-list entry for the web reset URL has no record (§20.3 step 3). Now under A-22 item 7 | — |
+| A-3 | Supabase password floor + leaked-password protection | **OPEN**. §20.4 resolved C-9: floor **10**. Applying it is A-22 item 10, which is owner-deferred (37.2) | `devops-engineer` + owner | A-22 item 10; owner's plan-cost decision on leaked-password protection | Until Phase 4 this is the only backstop on Layer-2 password writes (§19.2 C-9) |
+| A-4 | F-9 regression tests | **CLOSED** | `automation-qa-engineer` | — | — |
+| A-5 | Browser Supabase SDK threat model | **CLOSED** (§11) | `cybersecurity-architect` | — | — |
+| A-6 | Production auth-log forensic check | **OPEN. Executed 2026-10-16 (§24); disposition INCONCLUSIVE.** No source covers the original window (web-auth ship to about 2026-09-23). Finding 1 → A-26 (owner-deferred). Finding 2 provisionally explained. Under §36 item 1, `app.account_audit_log` cannot be cited as conclusive from 2026-10-16 onward | `security-engineer` + owner | Evidence is exhausted, so a full close is not reachable. **Needs a `cto` ruling:** close as "inconclusive, coverage gap accepted", or keep open. A-6 does not block closure on its own unless `cto` says so | **Phase 3 (CS-2):** the A-6 queries count as run (§24). The CS-2 export limb is tied to item 12 |
+| A-7 | Implementation verification of §5 | **CLOSED** (§9 PASS) | `security-engineer` | — | — |
+| A-8 | Anon-key GoTrue password grant | **OPEN** | `security-engineer` + owner | Interim fix = A-22 item 8 (deferred) | **Closed by Phase 4.** Item 8 is also a Phase 1 precondition via RR-5 (37.2) |
+| A-9 | (a) Void F006 security-review's anon-key acceptance; (b) `cto` accept/reject residual | **(a) OPEN, overdue since 2026-10-06.** Verified today: `docs/features/006-customer-onboarding/security-review.md:163` still reads "it is a public key, not a secret", unvoided. **(b)** ACCEPTED §20.4 → lapsed at end of 2026-10-22 (§34) → Renewal R-1 to end of 2026-10-23 (§35). With items 4–12 deferred, R-1's condition (ii) cannot be met. Under §36 item 2 it records as **NOT ACCEPTED: risk carried by the owner (lapse)** unless the owner explicitly declines. The orchestrator appends the outcome on 2026-10-24. This register does not pre-empt that line | (a) `cybersecurity-architect`; (b) `cto` | (a) I file it as a separate targeted edit to the F006 review, not in this commit. (b) Outcome line due 2026-10-24 | End date is Phase 4, 2026-11-30. On lapse, the compliance s19 position returns to "engaged, no dated remediation" (ADR-0014 §18.6) |
+| A-10 | Backend revocation reaches the browser GoTrue session | **CLOSED PENDING DEPLOY CHECK** (§17.2). §13 C-2: grants and RLS were recorded in §21 for the `postgres` role only. The §21 Render-username confirmation and the smoke test are **not recorded** | `database-architect` + `devops-engineer`; owner (username) | Render `SUPABASE_DB_URL` username check; smoke test. C-2 must be **re-run as `td_backend_app`** at the SR-3 cutover (§22.10) | Phase 3 retires the exchange; the watermark stays (G-5) |
+| A-11 | Guard relabel + capability/bundle check | **OPEN.** `src/lib/inc-003-a14-a16-guards.test.ts` exists; I did not review it in this pass | `automation-qa-engineer` | Capability guard for `@supabase/` and key patterns | **Phase 1 exit**, as a required Stage 8 check (ADR §16.3) |
+| A-12 | `recoveryAccessToken` accepts any GoTrue token | **OPEN.** Verified today: no `amr=recovery` check in `backend/src/routes/auth.ts`; the branch is still accepted (it has the staleness and B-1 binding checks). The mobile `access_token` mapping is still present (§29.4) | `backend-architect` + `mobile-architect` | Decide: delete the branch together with the mobile mapping (ADR §7, §29.4) | Viable to delete once no client sends it; Phase 4 removes attacker minting |
+| A-13 | Login CSRF at `/auth/callback` | **CLOSED PENDING DEPLOY CHECK** (§13 C-6) | `security-engineer` | C-6 on the deployed web | Phase 1 removes the SDK from the callback |
+| A-14 | Plaintext password in `sessionStorage` | **CLOSED PENDING DEPLOY CHECK** (§19.1) | `security-engineer` | Deployed-wizard storage check | Listed as a Phase 1 item; already done |
+| A-15 | CSP + `Referrer-Policy: no-referrer` | **CODE ON MAIN for Vercel, PENDING STAGE 8 and deploy check.** Verified today: `vercel.json` now sets both headers (commit `a2c54ec`). `render-staging.yaml`'s static site has **no** headers block, so the Render limb is open. No Stage 8 record in this document | `frontend-architect` + `devops-engineer` | Stage 8 (this role + `security-engineer`); Render limb; deploy check | **Phase 1 exit** (§19.4 condition 1; ADR §16.3). The §4.3 `sessionStorage` decision is made jointly with A-15 **before the Phase 4 go** |
+| A-16 | GoTrue-direct signup/resend/recover | **Layer 1: CLOSED PENDING DEPLOY CHECK**; the C-8 code part is met (§30, §33). **Layer 2: TRANSFERRED to Phase 4** (§19.1). Consent: RR-7 ruled in ADR §15.2 + §18.2 | `devops-engineer` + `mobile-architect`; owner | Deploy of the `redirect_to` change is gated by §33.3 items 1–5 (device check, G-4 live `/verify`, C-8 items 2–3, C-13 installed base, `security-engineer` verification of C-11/C-12) | Layer 2 closed by Phase 4 |
+| A-17 | Callback OTP-type allow-list; console limb | **Code limb CLOSED PENDING DEPLOY CHECK** (C-6). **Console limb WITHDRAWN** (§20.4, C-5) | `security-engineer` | C-6 | Moot after Phase 1; Layer 2 closed by Phase 4 |
+| A-18 | GoTrue `PUT /user` at Layer 2 | **OPEN** | owner + `devops-engineer` | Interim fix = A-22 items 1, 2 (in progress, unconfirmed) and 10 (deferred) | **Closed by Phase 4**; the Phase 3 purge closes stale browser sessions |
+| A-19 | GoTrue-direct TOTP enrolment (durable ATO) | **OPEN.** §13 C-4: (a) flag non-TOTP factors (or A-22 item 9, deferred); (b) scheduling and alert routing; (c) first-run triage. §35 added a dated sub-condition: **2026-10-30** | (a) `authentication-engineer`; (b) `site-reliability-engineer`; (c) `security-engineer` | With item 9 deferred, the code route for C-4(a) is the only route | Prevention at Phase 4; reconciliation stays as detection |
+| A-20 | TOTP-enrolled customers cannot reset | **CLOSED PENDING DEPLOY CHECK** (§19.1, live AAL2 run with A-24). Remainder moved to A-25 | `devops-engineer` | Live AAL2 reset run | Not affected by ADR-0014 |
+| A-21 | ADR: remove `supabase-js`, retire exchange, retire key | **CLOSED as an ADR action.** ADR-0014 was ratified 2026-10-16 (ADR §16); I-1/I-2 discharged (§17, §18). Implementation is tracked as Phases 0–4. **Phase 1 has not started:** verified today, `@supabase/supabase-js` is still at `package.json:24` | `solution-architect`; `cto` | — | Is the phase plan |
+| A-22 | 12-item live-config verification | **Split per item in 37.2.** Items 1–3 OPEN (in progress, unconfirmed); items 4–12 **DEFERRED BY OWNER** | owner + `security-engineer`; `devops-engineer` records | See 37.2 | Item 11 → Phase 0 exit and Phase 4 go; item 12 → Phase 3 (CS-2); item 8 → Phase 1 (RR-5) |
+| A-23 | Admin suspend reaches GoTrue sessions | **CLOSED PENDING DEPLOY CHECK** (C-2, as A-10) | `database-architect` + `devops-engineer` | As A-10 | — |
+| A-24 | `/reset-password` consumes `token_hash` server-side | **CLOSED PENDING DEPLOY CHECK** (§17.2) | `devops-engineer` | Live end-to-end reset, customer **and** staff (TOTP step). Needs the web reset URL on the redirect allow-list (A-22 item 7) | — |
+| A-25 | A-20 remainder | **(i)** Mobile TOTP step: Stage 8 PASS (§30); Stage 10 pending. **(ii)** Lost-authenticator path: **OPEN**, needs its own Stage 8 (new credential class). **(iii)** Account-scoped TOTP-failure ceiling + invalidating earlier reset-MFA tokens: **OPEN** | (i) `mobile-engineer`; (ii) `backend-architect` + `cybersecurity-architect`; (iii) `backend-architect`, detection `security-engineer` | (i) Stage 10 device matrix | — |
+| A-26 | Thabo's account: two unattributed 2026-10-07 reset requests | **DEFERRED BY OWNER** (owner decision; see 37.4) | owner (confirm) + `security-engineer` (execute) | Trigger in 37.4 | Re-raise no later than the **Phase 3** go decision |
+| A-27 | Rotate/disable the synthetic `test.*` privileged accounts | **OPEN.** Verified today: `backend/docs/TEST-ACCOUNTS.md:16-17` still publishes the admin and security-partner passwords | `security-engineer` | §24.1 tied this to "once A-6 fully closes". A-6 cannot fully close (above), so **I recommend `cto` decouple A-27 from A-6.** Rotating a test account's password destroys no evidence in `app.account_audit_log`. Deleting the doc line is not the control, because the passwords stay in git history; rotation is | Release Gate A (same class as §36 item 1) |
+| A-28 | `trustProxyHops` misconfigured; IP forensics unusable | **OPEN.** Tooling Stage 8 PASS (§28). Measurement not recorded. **§26 C-6** (Stage 8 sign-off of the measured value) is OPEN. `security-engineer` verification of §26 C-1/C-3/C-5 is pending | owner + `backend-engineer`; `security-engineer` | Measure under runbook §2–§4 with §28.2 P-1/P-2; then §26 C-6. **§28.3 adv. A-3:** this role re-reviews the failure limiter before any real internal caller is allow-listed | — |
+
+### 37.2 A-22 per item, with owner deferral and gate triggers
+
+**Owner decision (relayed 2026-10-23): items 4–12 are DEFERRED BY OWNER, trigger "raise again when
+the ADR-0014 Phase 3 go decision begins".** I record that as the governing trigger. Items 7, 8 and 11,
+however, are gated earlier than Phase 3 by ratified ADR-0014 text or by existing conditions in this
+document. For those items I record the **earlier** trigger as well, because a later trigger cannot
+override an earlier gate. This does not reopen the deferral; it records where the deferral runs out.
+**Phase 0–3 code changes come back to this gate under ADR-0014 §6 and §12.** I will not open the
+Stage 8 review for a phase whose ADR-listed precondition is unrecorded.
+
+| Item | What | Status | Gate / dependency | Re-raise trigger |
+|---|---|---|---|---|
+| 1 | Secure password change | **OPEN.** In progress, unconfirmed (§34). Treat as not done until the observed value is recorded (§35 item 3) | A-18 interim | Not deferred: next owner session |
+| 2 | Secure email change | **OPEN.** As item 1 | A-18 interim | Not deferred: next owner session |
+| 3 | Signup / magic-link / OTP sign-in | **OPEN.** Values being recorded, unconfirmed. Record only; **do not disable** (C-5, §35) | — | Not deferred: next owner session |
+| 4 | Exposed schemas, tables, buckets, realtime | **DEFERRED BY OWNER** | — | Phase 3 go |
+| 5 | Refresh-token rotation | **DEFERRED BY OWNER** | Weight falls after Phase 4 (ADR §7) | Phase 3 go |
+| 6 | JWT expiry / session time-box (≤ 12 months) | **DEFERRED BY OWNER** | Bounds RR-3 (the Phase 1→3/4 window) and the §15.2 audit-retention residual | Phase 3 go |
+| 7 | Site URL + redirect allow-list (+ `EMAIL_VERIFICATION_REDIRECT_URL_WEB`) | **DEFERRED BY OWNER** | **C-8 items 2–3** gate the A-16/G-1 `redirect_to` deploy (§33.3 item 3). The A-24 deploy check needs the web reset URL allow-listed (§10 item 3, §20.3 step 3) | **Earlier of:** the `redirect_to` deploy, the A-24 deploy check, or the Phase 3 go |
+| 8 | Rate limits (incl. RR-5 service-role exemption) | **DEFERRED BY OWNER** | A-8's only interim control. ADR-0014 RR-5: "Add to A-22 item 8 **before Phase 1 ships**" | **Earlier of:** Phase 1 deploy, or the Phase 3 go |
+| 9 | MFA factor types (non-TOTP disabled) | **DEFERRED BY OWNER** | Alternative to §13 C-4(a). Bears on the §35 A-19 sub-condition due 2026-10-30 | Phase 3 go; sooner if C-4(a)'s code route is not landed by 2026-10-30 |
+| 10 | Floor 10 + leaked-password protection | **DEFERRED BY OWNER** | This *is* A-3's application | Phase 3 go |
+| 11 | API key format; can legacy anon be disabled independently | **DEFERRED BY OWNER** | **Phase 4 go** (ADR §16.3; per the relayed 2026-10-23 ruling). **Also a Phase 0 exit criterion in ratified ADR-0014 §6** ("G-4 and A-22 item 11 recorded in INC-003"). If it finds the key cannot be disabled independently, the ADR §11 revisit trigger fires | **Earlier of:** Phase 0 exit (before the Phase 1 PR enters Stage 8), or the Phase 3 go. If `cto` intends the relayed ruling to move item 11 out of Phase 0, that is an amendment to ratified ADR-0014 §6 and must be recorded as one |
+| 12 | Customer-account audit sweep (coverage from 2026-10-16, §35 item 3) | **DEFERRED BY OWNER** | **Phase 3 precondition (CS-2):** "run the A-6 and A-22 item 12 queries or export the table **before any purge**" (ADR §15.6, §16.3, §18.7). ADR §18.7 also asked for the export **now**. While it waits, every GoTrue revocation propagation writes system "login" rows into the table (§13.3 low item (a), §20.2), which degrades this item's signal | **Phase 3 go.** I note one low-friction option for the owner: exporting `auth.audit_log_entries` without triaging it satisfies CS-2's export limb on its own |
+
+**Consequence of the deferral, stated, not argued.** R-1's condition (ii) is not met, so A-9 is
+handled as in 37.1. The A-3, A-8 and A-18 interim controls stay unapplied. Layer 2 then has no console
+mitigation until Phase 4. Phase 4's date of 2026-11-30 is unchanged by this register.
+
+### 37.3 ADR-0014 phase gates: which actions block which gate
+
+| Gate | Blocking INC-003 items | Source |
+|---|---|---|
+| **Phase 0 exit** | G-4 live `/verify` check (OPEN; also §33.3 item 2); **A-22 item 11** (deferred; see 37.2); G-1/G-2 merged (done); C-2 still applies while the exchange lives | ADR §6 |
+| **Phase 1 precondition / exit** | **A-22 item 8** (RR-5, before Phase 1 ships); **A-15** (exit); **A-11** capability guard (required Stage 8 check); CS-1; AE-1…AE-4. Commits on `main` claim AE-1, AE-3, AE-4, CS-1 and A-15 (`8e73d70`, `a2c54ec`). I saw no AE-2 commit in the recent log. No Phase 1 Stage 8 is recorded yet. The RR-1 note (FR-20 binding is not an XSS control); I-1/I-2 (done) | ADR §9 RR-5, §16.3; §19.4 |
+| **Phase 2 soak** | 7 days; exchange calls ≈ 0 for the final 72 h; no rise in error rates (RR-4 measurement) | ADR §16.2 Q-6 |
+| **Phase 3 precondition** | **CS-2:** the A-6 queries (run, §24) **and A-22 item 12** (deferred) or a table export. Purge mechanism writes no per-user "login" rows, or the run window and account count are recorded. A §21-style execution record (§18.3). **The §19.3 backfill** of legacy auth-only users. A `cto` go decision. **A-26 and A-22 items 4–12 re-raise triggers fire here** | ADR §15.6, §16.3, §18.7 |
+| **Phase 4 go** (`cto`, recorded here) | **A-22 item 11** on record; §19.4's strengthened exit criteria (old key refused on `/signup`, `/recover`, `/resend`, `/otp`, `/verify`, `PUT /user`, `POST /factors`); no other publishable/anon key; hook + service-role path working; **§4.3 `sessionStorage` decided jointly with A-15**; ADR-0005/FU-18 draft due 2026-11-13 (§11 trigger if it diverges) | ADR §16.3, §16.2 Q-9 |
+| **Closed by Phase 4** | A-8; A-16 Layer 2; A-17 Layer 2; A-18; A-19 (prevention); A-9's residual ends | ADR §7 |
+| **Release Gate A / real-customer PII** (not an ADR-0014 phase) | **§21 credential unrotated** (37.4). `cto` gives no go until it is rotated, or until the SR-3 cutover is done and the `postgres` password is reset after it. A-27 is the same class (published privileged credentials) | §36 item 1 |
+
+### 37.4 Owner decisions: recorded as decisions, not open actions
+
+**§21 production `postgres` credential rotation: CLOSED, DECLINED BY OWNER** (§36 item 1). The
+owner declined it on 2026-10-16 and again on 2026-10-23. The owner carries the risk; `cto` granted no
+exception. This is not an open action, and this register does not re-argue it. Its standing
+consequences are carried here only by reference to §36 item 1:
+- `app.account_audit_log` is not tamper-evident from 2026-10-16 onward;
+- Release Gate A and real-customer-PII onboarding are blocked (37.3);
+- it sits on the standing-escalation line with the `HANDOFF.md` §11 `.env.local` refusal;
+- the one-time rotation offer stands as the last step of the SR-3 cutover session (2026-10-30).
+
+**A-26: DEFERRED BY OWNER (owner decision, 2026-10-23, relayed).** It is recorded the same way §36
+records the rotation. The owner has decided, for now, neither to obtain the account holder's
+confirmation of the two 2026-10-07 `password_reset_requested` events against admin account
+`6e09adb9-b620-415d-80be-2f8440bbb6b4` (§24 Finding 1), nor to have `security-engineer` force-reset
+and revoke. This is the owner's decision to defer, not an unaddressed gap.
+- **Relation to §36 item 3.** §36 item 3 anticipated this outcome under the label "DECLINED BY OWNER"
+  at the end of 2026-10-23. The dispatch records it as a deferral with a re-raise trigger. Both are
+  owner decisions with **identical consequences**:
+  - Finding 1 stays unresolved;
+  - INC-003 cannot close;
+  - §7 cannot cite "no breach";
+  - no agent force-resets on its own initiative (§21 standing rule);
+  - under §36 item 1, the audit rows behind Finding 1 cannot be cited as conclusive either way.
+- **Re-raise trigger: whichever comes first of:**
+  - **(a) any new suspicious auth event on that account.** For example:
+    - a `password_reset_requested` the holder did not initiate;
+    - a `login_failure` burst;
+    - any new MFA factor;
+    - a `recovery_sent_at` change that does not match the §24.2 system-generated signature;
+  - **(b) the ADR-0014 Phase 3 go decision.**
+- **On trigger.** Apply the §24 Finding 1 re-open path: `security-engineer` force-resets the same day,
+  `compliance-specialist` opens a POPIA s22 assessment, and `cto` reopens severity. Event (a) can be
+  detected only by someone with production read access, so the trigger relies on the owner's or
+  `security-engineer`'s next review of the account's audit rows. No automated alert for it exists
+  today.
+
+**A-22 items 4–12: DEFERRED BY OWNER.** See 37.2 for the per-item triggers.
+
+**Earlier rulings, closed, for completeness:**
+- §20.4 C-9: floor 10;
+- C-5: console limb withdrawn;
+- A-9 acceptance → lapse → R-1 (outcome due 2026-10-24).
+
+### 37.5 Open items outside the A-numbered series
+
+| Item | Status | Owner | Due / gate |
+|---|---|---|---|
+| SR-3 cutover to `td_backend_app` (design §22 done; migration `036` not applied, §22.10) | OPEN | owner + `devops-engineer` | 2026-10-30 (§21) |
+| C-2 re-run as the new role + FU-A10 boot assertion | OPEN | `security-engineer` | With cutover |
+| §35 A-19 reconciliation sub-condition | OPEN | `site-reliability-engineer` + `security-engineer` | 2026-10-30 |
+| §7 compliance position (now also takes in A-6 inconclusive, A-26 deferral, §36 item 1, the A-9 lapse) | OPEN | `compliance-specialist` | Closure prerequisite |
+| LOG-1 addendum: durable external log drain (Supabase ~23 h retention, Render logs lost on redeploy) | OPEN | `security-engineer` + `cloud-infrastructure-architect` | Standing LOG-1 |
+| `security-engineer` implementation verification: §26 C-1/C-3/C-5; §30 C-11/C-12 | PENDING | `security-engineer` | Before §26 C-6; before the `redirect_to` deploy |
+| C-13 installed-base confirmation; §29.5 / §32.4 device checks; G-4 live `/verify` | OPEN | owner + `mobile-architect`; `devops-engineer`; `manual-qa-engineer` | `redirect_to` deploy (§33.3) |
+| §24.2 owner-checklist correction (system-generated `recovery_sent_at` signature) | OPEN, unassigned in §24. I assign it to `security-engineer` as the checklist author | `security-engineer` | Before the next owner console session |
+| Mobile `RESET_COMPLETION_FAILED` mapping (§31.4, §32.4) | OPEN | `mobile-engineer` | Before mobile release |
+| Advisories V-1 (live FK), V-2 (`[ALERT:reset_post_write_incomplete]`), V-3 (Expo enhanced push security) | OPEN, non-gating | `database-architect`; `backend-architect`; `notification-engineer` / `devops-engineer` | Before mobile release (§33.3) |
+| §19.5 non-blocking follow-ups (propagation-failure alert routing, IR-runbook sign-out note, retry token, partial index, exchange-mint audit event, ban-on-suspend, signup timing / PII log / `weak_password` mapping, `/auth/verify-email` per-IP limiter, §19.3 backfill) | Carried by reference to §19.5; the §19.3 backfill is promoted to a **Phase 3 precondition** (37.3) | as in §19.5 | — |
+
+### 37.6 Totals and closure
+
+**Totals across A-1 … A-28:**
+- **CLOSED:** 6 (A-1, A-2, A-4, A-5, A-7, A-21).
+- **CLOSED PENDING DEPLOY CHECK:** 8 (A-10, A-13, A-14, A-16 Layer 1, A-17 code limb, A-20, A-23, A-24).
+- **FIXED, PENDING STAGE 8:** 1 (A-15).
+- **OPEN:** 11 (A-3, A-6, A-8, A-9, A-11, A-12, A-18, A-19, A-25, A-27, A-28). A-25 is split by limb in 37.1.
+- **Split:** A-22, with items 1–3 OPEN and items 4–12 DEFERRED BY OWNER (37.2).
+- **DEFERRED BY OWNER:** A-26.
+- **Owner decision closed:** §21 rotation (DECLINED BY OWNER).
+
+**Closure rule (restating §19.5, with what §24 and §36 added).** INC-003 closes only when all of the
+following hold:
+- A-3 is closed;
+- A-6 is closed, or `cto` rules it closed-as-inconclusive;
+- every one of A-8 … A-28 is closed or transferred by `cto`;
+- A-26 is resolved, which §36 item 3 makes a closure prerequisite;
+- `compliance-specialist` has concurred on §7.
+
+On the current plan, the realistic closure point is **after ADR-0014 Phase 4** (which closes A-8,
+A-18 and A-19, and ends the A-9 residual) **and** after A-26 is resolved. **Severity stays High**
+(§35). Nothing in this register justifies changing it.
+
+**For `cto`, four asks arising from this register. None re-opens §36.**
+1. Countersign the relayed 2026-10-23 rulings (see the provenance note at the top of this section).
+2. Rule on A-6: closed-as-inconclusive, or kept open.
+3. Decouple A-27 from A-6.
+4. Confirm whether A-22 item 11 stays a Phase 0 exit criterion (ratified ADR-0014 §6) or is moved by
+   amendment.
+
+**Signed:** `cybersecurity-architect`, 2026-10-23.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
