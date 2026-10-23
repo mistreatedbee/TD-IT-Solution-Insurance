@@ -342,3 +342,104 @@ a dependency rather than re-designing it"):
 
 **Filed by:** `backend-architect`, 2026-10-23, design only — Stage 8 (`security-engineer`) and
 Stage 10 (QA) still apply in full before this is considered closed, per the ruling.
+
+---
+
+## 8. `database-architect` confirmation of §3 (Mongo field + Postgres migration), 2026-10-23
+
+Per `cto`'s ruling relaying this dispatch, reviewed autonomously. Read `03d-cto-ruling-stage5.md`
+context via this doc, `backend/src/repositories/customer-profiles.ts` in full, the existing
+`customer_profiles` index set (`backend/src/db/customer-profile-collections.ts`), and
+`backend/migrations/032` through `037` plus `audit-log.ts`'s `COLUMNS`/`assertInvariants()` for
+house convention. **Verdict: §3's Mongo field design is confirmed as proposed, with one
+cosmetic addition. §3's Postgres migration is confirmed in substance but required splitting
+into two files — amended below. No design change to §4/§5's logic.**
+
+### 8.1 `verificationRevision` default-on-read — confirmed, no backfill
+
+Checked `toProfile()` (`customer-profiles.ts:68-88`): every field added to
+`CustomerProfileDbDoc` after the collection's initial shape is already optional (`?`) on the
+DB-doc type and defaulted on read with `?? null` — `middleName`, `idNumberLast4`,
+`residentialAddress`, `emergencyContact`, `rejectionReasonCustomerSafe`,
+`profilePictureUpdatedAt` all follow this exact pattern, and none of them has ever needed a
+backfill migration. `verificationRevision: doc.verificationRevision ?? 0` is the same pattern
+with `0` standing in for `null` because the field is numeric, not a new one. Confirmed: no
+backfill required, and none should be written — a backfill here would mean writing a monotonic
+counter's "starting value" onto documents whose real submission history (`submitVerification`
+call count) is unknown, which `0` already honestly represents (no profile predating this
+change has ever had a second, revision-distinguishing resubmission recorded, so `0` is not an
+approximation, it is the correct value).
+
+One addition, not a correction: `customer-profile-collections.ts`'s
+`customerProfilesJsonSchemaValidator` does not list `profilePictureUpdatedAt` either, despite
+that field existing on every live document — confirming the validator is deliberately a
+partial contract (`validationLevel: 'moderate'`, no `additionalProperties: false`), so omitting
+`verificationRevision` from it would not break anything. Adding it anyway, as
+`{ bsonType: ['int', 'long'] }`, optional, not in `required`, for the same reason the schema
+documents other optional fields at all — it is free and keeps the validator an accurate (if
+partial) map of the real shape for the next reader. `backend-architect`'s design did not call
+this out; flagging it as a should-do for whoever implements §4, not a blocker.
+
+### 8.2 Indexing — confirmed, no new index needed
+
+`customer_profiles` currently carries exactly two indexes: `customer_profiles_accountId_unique`
+(unique, `{accountId: 1}`) and `customer_profiles_verificationStatus_verificationSubmittedAt_id`
+(compound, serves `listByVerificationStatus`/`countByVerificationStatus`). §4.1's CAS filter
+(`{accountId, verificationStatus: currentStatus}`) and §4.3's revision-checked filter
+(`{accountId, verificationStatus: 'pending_review', verificationRevision: expectedRevision}`)
+are both anchored on `accountId`, which is unique — the query planner resolves the unique index
+to at most one document before evaluating the remaining predicate terms in-memory against that
+single candidate. A compound index with `verificationStatus` and/or `verificationRevision`
+appended after `accountId` would add zero selectivity (a unique equality match already narrows
+to ≤1 document) while adding write cost to every profile mutation, which is exactly the
+"speculative index" this role's checklist warns against. **Confirmed: the existing
+`accountId` unique index already covers this access pattern efficiently; no new index is
+needed for §4's CAS loop or §4.3's revision check.**
+
+### 8.3 Postgres migration — confirmed in substance, split into two files (amendment)
+
+§3's single proposed file (`038_customer_verification_decision_audit.sql`, new enum values +
+new column + CHECK constraint together) does not follow this repo's established convention.
+Checked `migrations/032` vs. `033`: this codebase has a standing, explicitly documented rule
+(`032`'s header, "WHY THIS IS A SEPARATE FILE FROM 033, AND NOT A COSMETIC SPLIT") that
+`alter type ... add value` cannot be followed, in the same transaction, by a statement that
+uses the new enum value as a literal — so any migration adding both a new `AuditEventType`
+value and a constraint/default that references it by name must be two files, enum-add first.
+§3's single-file proposal would hit exactly the failure case `032`/`033` were split to avoid:
+migration `039`'s CHECK constraint references `'customer_verification_decision'` as a literal,
+which `038`'s own `alter type add value` statement would not yet have committed in the same
+transaction.
+
+**Amendment:** split as drafted and committed in this PR:
+- `backend/migrations/038_defect001_verification_decision_audit_event_types.sql` — adds
+  `customer_identity_reset` and `customer_verification_decision` to `app.audit_event_type`
+  only, mirroring `032`'s shape exactly.
+- `backend/migrations/039_defect001_verification_decision_column.sql` — adds the nullable
+  `decision text` column and two CHECK constraints (presence-iff-event-type, and
+  valid-values-enum), mirroring `033`'s `account_audit_log_result_count_only_on_bulk` shape.
+
+One further confirmed deviation from `033`'s precedent, in the implementers' favor: `033`'s R-3
+constraints were added `NOT VALID` because they had to tolerate pre-existing rows written before
+the invariant existed. That does not apply here — `decision` is a brand-new column and
+`customer_verification_decision` is a brand-new enum value with zero historical rows, so every
+row in the table already satisfies both new constraints by construction (every existing row has
+`decision IS NULL` and `event_type <> 'customer_verification_decision'`). `039`'s constraints
+are therefore added **validated** (no `NOT VALID`, nothing deferred to a later
+`security-engineer` promotion step) — there is no "whether to validate" judgment call to defer
+because there is no non-conforming history to tolerate.
+
+Also confirmed and left as a mechanical note for whoever implements §4: `038`'s header flags
+explicitly (so it isn't missed at implementation time) that `customer_verification_decision`
+must be added to `audit-log.ts`'s `PRIVILEGED_ACCESS_EVENT_TYPES` set, consistent with §3's own
+instruction, and that `audit-log.ts`'s `COLUMNS`/`COLUMN_COUNT`/`rowValues()`/
+`assertInvariants()` need the mechanical `decision` plumbing `backend-architect` already named
+in §3 — `database-architect` is not re-designing that plumbing, only confirming the migration it
+depends on is sound.
+
+**Constraint observed:** neither file was applied to the linked Supabase project or any other
+live database — both are drafted-only, per this dispatch's hard constraint. Application remains
+a later Stage 9/`cto`-gated step, same as every other `WRITTEN, NOT YET APPLIED` migration in
+this directory.
+
+**Filed by:** `database-architect`, 2026-10-23 — confirms §3 for Stage 9; does not substitute
+for Stage 8 (`security-engineer`) or Stage 10 (QA).
