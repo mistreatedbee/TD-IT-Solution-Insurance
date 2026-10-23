@@ -3061,7 +3061,6 @@ production is treated until Part 2 actually completes.
 
 ---
 
-*Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 ## 35. `cto` ruling on the A-22 deadline lapse — Renewal R-1 (2026-10-23)
 
 Cites §19.4–§20.5, §24, §33.3, §34, and `INC-003-owner-console-checklist.md` Part 2.
@@ -3106,6 +3105,59 @@ reassessment is requested** given the accumulation of open items (A-6 inconclusi
 credential-rotation status unknown, A-27 test-account passwords still published in source, LOG-1's
 retention gap) — target a consolidated register by **2026-10-27**. Severity stays **High**,
 unchanged for now.
+
+**Signed:** `cto`, 2026-10-23.
+
+---
+
+## 36. `cto` ruling: owner declined the §21 credential rotation; A-26; engineering focus (2026-10-23)
+
+Cites §21, §24, §24.1, §35, and `HANDOFF.md` §11. The owner's words are quoted as the orchestrator
+relayed them. No agent heard them firsthand.
+
+**1. §21 `postgres` credential rotation: DECLINED BY OWNER. The owner carries the risk; `cto` has
+not granted an exception.** This is a decision, not a missed deadline, and it is recorded that way.
+The owner declined twice: on 2026-10-16 (*"no need... no one will see it"*) and on 2026-10-23
+(*"we dont have to rotate the password its safe"*). The facts this record keeps, whatever was
+decided:
+- The stated reason is wrong. The credential sits in session transcripts outside any vault, and
+  that exposure doesn't depend on anyone looking. The role has `rolbypassrls = true`, can read all
+  of `auth.*`, and can `UPDATE`/`DELETE` `app.account_audit_log` (§21 (a)–(c)).
+- **Forensic consequence, binding from now on:** from 2026-10-16 forward, `app.account_audit_log`
+  is not tamper-evident against anyone holding that credential. No document may cite it as
+  conclusive evidence, including for A-6 Finding 1 or A-26, while the credential is unrotated.
+  This adds to §24.3's IP caveat; it does not replace it.
+- `compliance-specialist` is told so they can factor it into the §7 POPIA position (s19
+  safeguards). This follows the existing pattern: `HANDOFF.md` §11 already records that the owner
+  declined to rotate the `.env.local` credentials. Both refusals go on the standing-escalation line
+  together.
+- **A one-time offer of a lower-friction route, not a re-argument:** the SR-3 cutover (§21 table,
+  due 2026-10-30, owner + `devops-engineer`) moves `SUPABASE_DB_URL` onto the new scoped role.
+  After that, resetting the `postgres` password breaks nothing in production. It is one dashboard
+  action with no Render change and no redeploy. It should be offered once, as the last step of
+  that same session.
+- **Where this becomes blocking:** `cto` will not give a go for Release Gate A or for any
+  real-customer-PII onboarding while this credential is unrotated, or until SR-3 cutover is done
+  and the `postgres` password has been reset after it. This is within go/no-go authority. It does
+  not block feature work now.
+
+**2. A-9 / Renewal R-1:** this is separate from item 1. Rotation was ranked ahead of A-22 but was
+never an R-1 condition. If the §35 conditions are not met by the end of 2026-10-23 (owner's local
+time), A-9 is recorded as **NOT ACCEPTED: risk carried by the owner** and filed as a *lapse*, not a
+refusal, unless the owner explicitly declines. There is no R-2. The orchestrator appends the
+one-line outcome on 2026-10-24.
+
+**3. A-26:** §35 ruled that this deferral would not be extended. If neither Thabo's confirmation
+nor a force-reset is recorded by the end of 2026-10-23, A-26 becomes **DECLINED BY OWNER**, with
+the same consequences as item 1. Finding 1 stays unresolved, INC-003 cannot close, and §7 cannot
+cite "no breach." No agent force-resets on its own initiative, because no agent holds production
+credentials (§21 standing rule).
+
+**4. Engineering is not held hostage.** Every open item above needs the owner's own hands, and
+§35 already rules out agent production changes as a response. The orchestrator sends the owner
+one consolidated message today, containing exactly three asks (A-22 remainder, A-26, the rotation
+offer in item 1), then moves on. After that, these items appear as one line per status report,
+not repeated prompts during other work. The consolidated register due 2026-10-27 is kept.
 
 **Signed:** `cto`, 2026-10-23.
 
