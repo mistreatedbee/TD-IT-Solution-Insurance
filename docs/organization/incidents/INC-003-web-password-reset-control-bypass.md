@@ -3368,6 +3368,83 @@ A-18 and A-19, and ends the A-9 residual) **and** after A-26 is resolved. **Seve
 
 ---
 
+## 38. `cto` countersignature and rulings on the §37 register (2026-10-23)
+
+Cites §35, §36, §37 (37.1, 37.2, 37.3, 37.4, 37.6) and ratified ADR-0014 §6, §9 RR-5, §11 and §16.3. §§1–37 are
+unaltered. This section is the signed record that §37's provenance note asks for. From now on, cite this
+section, not the orchestrator dispatch.
+
+**1. Countersignature of the relayed 2026-10-23 rulings, with one correction.**
+- **A-22 items 4–12 DEFERRED BY OWNER, re-raise at the ADR-0014 Phase 3 go: countersigned.** This is the
+  owner's decision and the owner carries the risk. `cto` records it and grants no exception. It applies
+  subject to the earlier per-item triggers in 37.2, which are adopted as written.
+- **A-22 item 12 gates Phase 3 (CS-2): countersigned.**
+- **"A-22 item 11 gates Phase 4": countersigned only as incomplete.** The relay left out the Phase 0 gate,
+  and that omission was the orchestrator's restatement, not a `cto` intent to move the gate. Item 11 gates
+  **both** Phase 0 exit (ADR §6) and the Phase 4 go (ADR §16.3).
+- **A-26 deferral: superseded by item 3 below.**
+- 37.2's "relayed, not countersigned" rows are now countersigned as corrected here.
+
+**2. Earlier gates for items 7, 8 and 11: the earlier-gate reading is correct. ADR-0014 §6 is NOT amended.**
+- An owner deferral cannot override a ratified precondition. 37.2's "earlier of" triggers stand exactly
+  as recorded:
+  - item 7: the `redirect_to` deploy, the A-24 deploy check, or the Phase 3 go;
+  - item 8: the Phase 1 deploy (RR-5), or the Phase 3 go;
+  - item 11: Phase 0 exit, or the Phase 3 go.
+- I endorse `cybersecurity-architect`'s position: **no Phase 1 Stage 8 opens until G-4 and A-22 item 11
+  are recorded here**, and **Phase 1 does not deploy until item 8 is recorded.**
+- No amendment, because item 11 is a read-only console lookup. It asks which key format the project uses
+  and whether the legacy anon key can be disabled on its own. It costs minutes, changes nothing in
+  production, and determines whether the ADR §11 revisit trigger fires. If we learned that answer after
+  Phase 1 code was built, we would risk building against a plan that cannot finish.
+- The schedule consequence is stated plainly. Phase 1 code may keep landing on `main` behind its flag, but
+  Phase 1 is **blocked at Stage 8** on an owner action. If that pushes the Phase 4 date of 2026-11-30,
+  the slip is recorded against this deferral and not absorbed silently. The orchestrator includes items 11
+  and 8 as one line in the existing standing owner ask under §36 item 4. They are not a new prompt.
+
+**3. A-26 label: DECLINED BY OWNER, with 37.4's re-raise trigger adopted.**
+- §36 item 3 was a signed `cto` ruling, and §35 item 2(b) said the deferral would not be extended. An
+  owner choice to "defer" after that ruling is, in substance, declining the §35 ask. Recording it as
+  "deferred" would quietly extend a deferral that `cto` had closed.
+- From the end of 2026-10-23 (owner's local time), if neither Thabo's confirmation nor a force-reset is
+  recorded, the record label is **DECLINED BY OWNER**.
+- The owner's re-raise intent is kept, not lost. 37.4's trigger is adopted as the **re-open trigger**: (a)
+  any new suspicious auth event on the account, or (b) the Phase 3 go, whichever comes first, together
+  with 37.4's on-trigger actions.
+- §36 item 3's consequences apply unchanged. This reconciles §36 and §37 with no change of substance.
+- `cybersecurity-architect` may correct their own 37.1, 37.4 and 37.6 A-26 rows in place using the void
+  pattern. Until they do, this section governs the label.
+
+**4. A-9 expected lapse: pre-ruled, no further `cto` turn needed.**
+- On 2026-10-24 the orchestrator appends the one-line outcome under §36 item 2: **A-9 NOT ACCEPTED: risk
+  carried by the owner (lapse)**. This applies unless items 1–3 and the remaining R-1 conditions are
+  recorded as met by the end of 2026-10-23, or the owner explicitly declines, in which case it is filed as
+  a refusal.
+- §35 item 1's consequences follow: `compliance-specialist` is notified, and A-9 joins the
+  standing-escalation line.
+- There is still no R-2. The lapse changes no production state, no agent acts on it, and Phase 4
+  (2026-11-30) remains the planned end of the residual.
+
+**5. The register's own asks 2 and 3 (37.6), for completeness.**
+- **A-6: CLOSED, INCONCLUSIVE, coverage gap accepted** for the original window (web-auth ship to about
+  2026-09-23). The evidence is exhausted, and keeping A-6 open would track nothing that can be acted on.
+  Finding 1 lives on in A-26, which still blocks INC-003 closure. `compliance-specialist` takes the
+  coverage gap into §7. A-6 is reopened if new evidence for that window surfaces.
+- **A-27: decoupled from A-6.** Rotation destroys no audit evidence. Owners are `security-engineer` and
+  the owner, at the latest in the SR-3 cutover session (2026-10-30). It joins §36 item 1's class: no go
+  for Release Gate A or real-customer PII while A-27 is open. Deleting the `TEST-ACCOUNTS.md` lines
+  is a separate, additional step and is not the control.
+
+**Noted, no ruling.** The A-9(a) limb, voiding the F006 anon-key acceptance at
+`docs/features/006-customer-onboarding/security-review.md:163`, has been overdue since 2026-10-06. It
+stays with `cybersecurity-architect` as a separate targeted edit and should land before 2026-10-27.
+
+Severity stays **High**.
+
+**Signed:** `cto`, 2026-10-23.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
