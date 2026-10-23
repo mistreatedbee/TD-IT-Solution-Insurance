@@ -122,3 +122,32 @@ considered and deliberately left off this list, not missed.
 | 5 | Scoped account-recovery actions (password/MFA reset) | High | Medium/Large | #2 (sequencing) |
 | 6 | Read-only notification-preferences view | Medium | Small/Medium | Nothing |
 | — | Supervisor/team queue (`scope=all`) | — | — | Flagged only, not proposed |
+
+## Addendum: broader/speculative categories deferred, not dropped (2026-10-23)
+
+Business owner reviewed this list and asked, in effect, "is this everything?" The answer given was no —
+this document is a deliberately curated shortlist of near-term, low-blocker, grounded-in-current-code
+candidates, not an exhaustive brainstorm. The owner's direction was to keep the broader set in mind for
+a future pass rather than build any of it now. Recorded here so that intent isn't lost:
+
+Categories explicitly out of scope for this list, not evaluated for value/effort/blockers, and deferred
+to a future candidate pass (not rejected):
+
+- Telephony/IVR integration (call routing, click-to-dial, screen-pop)
+- Call recording and playback
+- Canned responses / macros for common case notes
+- Case tagging / categorization taxonomy
+- SLA / response-time tracking on support cases
+- Agent performance metrics / productivity reporting
+- Knowledge-base panel inside the agent UI
+- Post-call CSAT surveys
+- Multi-language support for the agent UI
+- Duplicate-case detection across lookups
+- Shift handoff notes between agents
+
+None of these has had a value/effort/blocker assessment done against current code the way items 1–6
+above have. Before any of them is scheduled, this document's own Stage 1 caveat applies equally: they'd
+need business-requirements elicitation, `solution-architect` sizing, and a `compliance-specialist` +
+`cybersecurity-architect` pass, same as everything else on this feature.
+
+*Appended by `cto` (orchestration), 2026-10-23 — append-only addition, no prior content changed.*
