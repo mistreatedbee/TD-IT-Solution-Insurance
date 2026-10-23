@@ -161,14 +161,39 @@ existing secrets mechanism on Render — `cloud-infrastructure-architect`'s call
 storage), never persisted alongside the data it derives, never logged, never shipped to any
 client. This review's only data-model-specific addition to C-013-8: **rotation must be designed as
 a dual-read window, not a flag flip**, because rotating the pepper invalidates every previously
-stored `idNumberHmac` value simultaneously (compliance review §5.3's own observation). A rotation
-needs either (a) a `idNumberHmacKeyVersion` companion field recording which pepper version produced
-each stored digest, so duplicate lookups can be scoped to "compare within the same key version" and
-a migration can re-derive old digests under the new pepper over time, or (b) an accepted one-time
-loss of duplicate-detection continuity across the rotation boundary. **This review recommends (a)**
-if Tier 2 ever activates, since (b) silently defeats the feature's purpose for every profile created
-before the rotation. Recording this now so it is not discovered mid-incident, per C-013-8's own
-instruction — not building it.
+stored `idNumberHmac` value simultaneously (compliance review §5.3's own observation).
+
+> **VOID — superseded 2026-10-23, corrected per `cybersecurity-architect`'s Stage 5 security
+> review (`03c-security-review-stage5.md` §2, TB-7). Struck for accuracy, not deleted, per the
+> repo's append-only shared-document house rule (CLAUDE.md; pattern precedent INC-003
+> §10.6/§14.1). The following claim is INCORRECT and must not be relied on:**
+>
+> ~~A rotation needs either (a) a `idNumberHmacKeyVersion` companion field recording which pepper
+> version produced each stored digest, so duplicate lookups can be scoped to "compare within the
+> same key version" and a migration can re-derive old digests under the new pepper over time, or
+> (b) an accepted one-time loss of duplicate-detection continuity across the rotation boundary.
+> **This review recommends (a)** if Tier 2 ever activates, since (b) silently defeats the
+> feature's purpose for every profile created before the rotation.~~
+>
+> **Why this was wrong:** re-deriving a peppered HMAC under a new pepper requires the original
+> full ID number as input. This system never stores the full ID number at rest — only the
+> 4-digit truncation survives under CT-11 (`idNumberLast4`). There is nothing on the server to
+> recompute from. "Migrate old digests under the new pepper" was not a viable design option at
+> all; it was never buildable.
+
+**Corrected behavior (2026-10-23):** `idNumberHmacKeyVersion` does not enable migration or
+recomputation. Its actual — and only — purpose is to let a lookup identify *which pepper version*
+produced a given stored digest, so stale (old-pepper) rows can be distinguished from current
+(new-pepper) rows. Rotating the pepper does **not** let existing rows be carried forward under the
+new key by any mechanism: the only way to get a current-version digest for a given customer is to
+re-collect their full ID number at their next verification and hash it fresh under the new pepper.
+Rows still stamped with a superseded key version are not migratable — they are either left to
+naturally refresh (re-collection) or, specifically on a **suspected pepper compromise**, deleted
+outright rather than retained, because once a pepper is thought to be compromised the digests it
+produced are only as safe as that compromised key and must not be kept around waiting for
+re-collection. `idNumberHmacKeyVersion`'s job is bookkeeping/triage (which version is this; is it
+still trustworthy), not continuity. Recording this now so it is not discovered mid-incident, per
+C-013-8's own instruction — not building it.
 
 ```jsonc
 // Also dormant, same gate as idNumberHmac above.

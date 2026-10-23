@@ -22,7 +22,24 @@ ruling or the Tier 1/2/3 compliance ruling — both are treated as fixed inputs 
 
 ---
 
-## 1. Track A — Tier 1 gating mechanism — service/API shape (no CT-1/15/16 dependency)
+## 1. Track A — Tier 1 gating mechanism — service/API shape
+
+> **Correction (`backend-architect`, 2026-10-23, filed against `cybersecurity-architect`'s
+> `03c-security-review-stage5.md` §"Disagreements"/§3.1/M-4):** this section's original heading
+> read ~~"Track A — Tier 1 gating mechanism — service/API shape (no CT-1/15/16 dependency)"~~ —
+> **void, do not rely on this wording.** It conflated two distinct claims: (a) the gate's
+> *mechanism* never touches full-ID-number data (true — see §1.1 below, unchanged), and (b)
+> *enabling enforcement* carries no compliance dependency (false). Enforcement turns optional KYC
+> processing into a condition of service for every customer, which implicates CT-1 (cross-border
+> processing consent), CT-16 (Register B client instruction on ID-number/document/biometric
+> collection), the §9.3 containment rule, and the never-reviewed `/account/profile*` surface
+> (F009-1/INC-001 A-12). The kickoff doc's own §2.1 row 3 already states this correctly: the
+> "Blocked until CT-1/CT-15/CT-16 close" column includes *"Enforcing the FR-5/FR-6 gate against
+> real customer traffic (flag stays OFF; code path may exist, dark)."* Corrected statement for
+> this section and for every reference to the same claim below: **the gate's mechanism has no
+> full-ID-number dependency; enabling enforcement against real customers is blocked pending
+> CT-1/CT-16 resolution regardless.** See the superseded passages below, each marked void in
+> place, with corrected text following.
 
 ### 1.1 What this track actually touches
 
@@ -37,9 +54,18 @@ site — it does not add a new field, a new collection, or a new write path.**
 This also means Track A never touches the full ID number anywhere in its call graph: the asset-
 creation route (`backend/src/routes/assets.ts`) has no parameter, body field, or dependency that
 carries `idNumber` — only `idNumberLast4` exists anywhere in `customer-profiles.ts`, and the gate
-check reads `verificationStatus`, not `idNumberLast4` or any ID-derived value. This is the basis
-for the kickoff doc's claim that Track A has zero CT-1/CT-15/CT-16 dependency, and this review
-confirms it by tracing the actual call graph, not just repeating the claim.
+check reads `verificationStatus`, not `idNumberLast4` or any ID-derived value.
+
+> ~~This is the basis for the kickoff doc's claim that Track A has zero CT-1/CT-15/CT-16
+> dependency, and this review confirms it by tracing the actual call graph, not just repeating the
+> claim.~~ **Void (corrected 2026-10-23, per `03c-security-review-stage5.md` §3.1, see §1 banner
+> above).** The kickoff doc makes no such claim about *enforcement* — its §2.1 row 3 explicitly
+> places "Enforcing the FR-5/FR-6 gate against real customer traffic" in the blocked column. What
+> the call-graph trace above actually establishes, correctly, is the narrower fact that the gate's
+> *mechanism* carries no full-ID-number dependency. It does not establish, and was never entitled
+> to establish, that *flipping enforcement on* is free of CT-1/CT-16 dependency — that is a
+> processing/consent question about what enforcement does to real customers, not a call-graph
+> question about what data the function reads.
 
 ### 1.2 Service boundary — no new service, extend an existing boundary
 
@@ -61,12 +87,31 @@ export async function assertKycVerifiedForAssetRegistration(
   accountId: string,
 ): Promise<void> {
   // FEATURE_KYC_GATING_ENABLED default OFF — Stage 7 names the concrete flag.
-  // This read-only check against the existing `verificationStatus` enum never
-  // touches a full ID number (only `idNumberLast4` exists in this collection)
-  // and has NO dependency on CT-1/CT-15/CT-16 — see 02-stage-2-kickoff-sprint-plan.md
-  // §2.1 row 3. The flag exists to control ENFORCEMENT timing (product/rollout
-  // readiness), not a compliance border condition — do not conflate the two
-  // when naming this flag at Stage 7.
+  //
+  // CORRECTED 2026-10-23 (backend-architect, per cybersecurity-architect's
+  // 03c-security-review-stage5.md §3.1/M-4 — this must not ship as originally
+  // drafted). VOID, do not use — superseded text retained for audit only:
+  //   ~~This read-only check against the existing `verificationStatus` enum
+  //   never touches a full ID number (only `idNumberLast4` exists in this
+  //   collection) and has NO dependency on CT-1/CT-15/CT-16 — see
+  //   02-stage-2-kickoff-sprint-plan.md §2.1 row 3. The flag exists to control
+  //   ENFORCEMENT timing (product/rollout readiness), not a compliance border
+  //   condition — do not conflate the two when naming this flag at Stage 7.~~
+  // That conflated two different claims. Corrected:
+  //   - The MECHANISM below has no full-ID-number dependency: it reads only
+  //     the existing `verificationStatus` enum, never `idNumberLast4` or any
+  //     ID-derived value. This part was and remains true.
+  //   - ENABLING ENFORCEMENT against real customers is NOT a pure
+  //     product/rollout-timing decision. It is BLOCKED pending CT-1 and
+  //     CT-16 (02-stage-2-kickoff-sprint-plan.md §2.1 row 3 already states
+  //     this: "Enforcing the FR-5/FR-6 gate against real customer traffic"
+  //     is listed under "Blocked until CT-1/CT-15/CT-16 close", not under
+  //     "Allowed now"). Enforcement makes handing KYC-adjacent verification
+  //     data a condition of service, which implicates CT-1 (cross-border
+  //     processing consent) and CT-16 (Register B client instruction),
+  //     independently of the fact that the mechanism itself never carries a
+  //     full ID number. Do not flip this flag true in any non-local
+  //     environment until CT-1/CT-16 close per the Stage 8 manifest entry.
   const profile = await ctx.customerProfiles.findByAccountId(accountId);
   if (profile?.verificationStatus !== 'verified') {
     throw apiError('KYC_VERIFICATION_REQUIRED');
@@ -123,10 +168,18 @@ distinct questions must not be collapsed into one flag:
 1. **Does the mobile client show KYC/verification UI at all?** — already governed by
    `FEATURE_KYC_ENABLED` (mobile-only, existing).
 2. **Does the backend actually reject `POST /assets` for an unverified account?** — this is a
-   **new, backend-side flag**, because Track A's enforcement has no CT-1/CT-15/CT-16 dependency
-   and is allowed to flip independently of Track B and independently of the mobile flag (a backend
-   rollout could enable enforcement before a mobile release ships the corresponding UI copy, or
-   vice versa — these are two different release trains and must not share one flag).
+   **new, backend-side flag**, structurally independent of Track B's flag and of the mobile flag
+   (a backend rollout could enable enforcement before a mobile release ships the corresponding UI
+   copy, or vice versa — these are two different release trains and must not share one flag).
+
+   > ~~because Track A's enforcement has no CT-1/CT-15/CT-16 dependency and is allowed to flip
+   > independently~~ **Void (corrected 2026-10-23, per `03c-security-review-stage5.md` §3.1).**
+   > The flag's *structural* independence from Track B's flag and the mobile flag is correct and
+   > unchanged — that is purely about which code paths share a boolean. It does not follow, and was
+   > wrongly implied here, that the flag may be *flipped true in a real environment* independent of
+   > CT-1/CT-16. It may not: per the kickoff doc §2.1 row 3, enforcement against real customer
+   > traffic stays in the "Blocked until CT-1/CT-15/CT-16 close" column regardless of this flag's
+   > structural independence from Track B.
 
 Recommended shape (Stage 7 owns the final name/env-var convention):
 
