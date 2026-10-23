@@ -165,6 +165,7 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
 
         let accountId: string | null = null;
         let email: string | null = null;
+        let accountNumber: string | null = null;
 
         if (parsed.data.email) {
           const account = await ctx.accounts.findByEmail(parsed.data.email);
@@ -173,6 +174,7 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
           }
           accountId = account.id;
           email = account.email;
+          accountNumber = account.accountNumber ?? null;
         } else if (parsed.data.phone) {
           const account = await ctx.accounts.findByPhone(parsed.data.phone);
           if (!account || account.userType !== 'customer') {
@@ -180,6 +182,7 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
           }
           accountId = account.id;
           email = account.email;
+          accountNumber = account.accountNumber ?? null;
         } else if (parsed.data.policyId) {
           // Uses the non-admin, projection-limited findAccountIdByPolicyId lookup rather than
           // ctx.policies.findByIdForAdmin — this route only needs to resolve the owning
@@ -195,6 +198,16 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
           }
           accountId = account.id;
           email = account.email;
+          accountNumber = account.accountNumber ?? null;
+        } else if (parsed.data.accountNumber) {
+          // Business-owner top-priority request (2026-10-23) — fourth lookup key.
+          const account = await ctx.accounts.findByAccountNumber(parsed.data.accountNumber);
+          if (!account || account.userType !== 'customer') {
+            throw apiError('NOT_FOUND');
+          }
+          accountId = account.id;
+          email = account.email;
+          accountNumber = account.accountNumber ?? null;
         }
 
         if (!accountId) {
@@ -229,6 +242,7 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
           data: {
             accountId,
             email,
+            accountNumber,
             accountState: (await ctx.accounts.getAccountStatus(accountId))?.accountState ?? 'unknown',
             policyCount,
             assetCount: assets.length,

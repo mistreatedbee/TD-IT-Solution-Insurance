@@ -249,6 +249,7 @@ export function createSessionRouter(ctx: AppContext): Router {
         mfaEnrolled,
         partnerOrganizationId: status.partnerOrganizationId,
         createdAt: account.createdAt.toISOString(),
+        accountNumber: account.accountNumber ?? null,
       });
     } catch (err) {
       next(err);

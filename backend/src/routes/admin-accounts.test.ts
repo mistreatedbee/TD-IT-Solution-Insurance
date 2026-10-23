@@ -75,6 +75,7 @@ function createHarness(opts: {
   const sessionId = randomUUID();
   const bulkCalls: BulkDisclosureInput[] = [];
   const recordCalls: AuditEventInput[] = [];
+  const listForAdminCalls: AdminAccountListFilters[] = [];
 
   const defaultSummary: AdminAccountSummary = {
     id: randomUUID(),
@@ -138,7 +139,8 @@ function createHarness(opts: {
           updatedAt: new Date(),
         };
       },
-      async listForAdmin(_filters: AdminAccountListFilters, limit: number): Promise<AdminAccountSummary[]> {
+      async listForAdmin(filters: AdminAccountListFilters, limit: number): Promise<AdminAccountSummary[]> {
+        listForAdminCalls.push(filters);
         return listRows.slice(0, limit);
       },
       async findByIdForAdminDetail(id: string): Promise<AdminAccountDetail | null> {
@@ -172,6 +174,7 @@ function createHarness(opts: {
     sessionId,
     bulkCalls,
     recordCalls,
+    listForAdminCalls,
     token: adminToken(env, adminId, sessionId),
     async start() {
       await new Promise<void>((resolve) => {
@@ -323,7 +326,54 @@ describe('routes/admin-accounts', () => {
     expect(harness.bulkCalls[0]?.disclosedAccountIds).toEqual([]);
   });
 
-  it('detail call records privileged_data_access for the subject viewed', async () => {
+  it('GET /admin/accounts serializes accountNumber on each row', async () => {
+    const subjectA = randomUUID();
+    harness = createHarness({
+      listRows: [
+        {
+          id: subjectA,
+          email: 'a@example.com',
+          userType: 'customer',
+          accountState: 'active',
+          partnerOrganizationId: null,
+          createdAt: new Date('2026-06-01T00:00:00.000Z'),
+          accountNumber: 'TD-7F3K9Q',
+        },
+      ],
+    });
+    await harness.start();
+
+    const res = await fetch(harness.url('/admin/accounts'), {
+      headers: { authorization: `Bearer ${harness.token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: Array<{ accountNumber: string | null }> };
+    expect(body.data[0]?.accountNumber).toBe('TD-7F3K9Q');
+  });
+
+  it('GET /admin/accounts?accountNumber= normalizes and forwards the filter to listForAdmin', async () => {
+    harness = createHarness({ listRows: [] });
+    await harness.start();
+
+    const res = await fetch(harness.url('/admin/accounts?accountNumber=td-7f3k9q'), {
+      headers: { authorization: `Bearer ${harness.token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(harness.listForAdminCalls).toHaveLength(1);
+    expect(harness.listForAdminCalls[0]?.accountNumber).toBe('TD-7F3K9Q');
+  });
+
+  it('GET /admin/accounts?accountNumber=<malformed> returns 400', async () => {
+    harness = createHarness({});
+    await harness.start();
+
+    const res = await fetch(harness.url('/admin/accounts?accountNumber=not-valid'), {
+      headers: { authorization: `Bearer ${harness.token}` },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('detail call includes accountNumber in the response and records privileged_data_access for the subject viewed', async () => {
     const subjectId = randomUUID();
     harness = createHarness({
       detailRow: {
@@ -339,6 +389,7 @@ describe('routes/admin-accounts', () => {
         deactivatedAt: null,
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
         updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+        accountNumber: 'TD-ABCD23',
       },
     });
     await harness.start();
@@ -347,6 +398,8 @@ describe('routes/admin-accounts', () => {
       headers: { authorization: `Bearer ${harness.token}` },
     });
     expect(res.status).toBe(200);
+    const body = (await res.json()) as { accountNumber: string | null };
+    expect(body.accountNumber).toBe('TD-ABCD23');
     expect(harness.recordCalls).toHaveLength(1);
     expect(harness.recordCalls[0]?.accountId).toBe(subjectId);
     expect(harness.recordCalls[0]?.eventType).toBe('privileged_data_access');
@@ -672,6 +725,9 @@ describe('PATCH /admin/accounts/:id/state', () => {
   });
 
   it('invalid transition returns 409 CONFLICT', async () => {
+    // deactivated -> suspended is still invalid: a deactivated account's only
+    // way back is reactivation straight to active (see the next describe
+    // block), never a lateral move to suspended.
     const customerId = randomUUID();
     harness = createStateHarness([
       makeDetail({
@@ -684,9 +740,66 @@ describe('PATCH /admin/accounts/:id/state', () => {
     ]);
     await harness.start();
 
-    const res = await harness.patchState(customerId, { accountState: 'active' });
+    const res = await harness.patchState(customerId, { accountState: 'suspended' });
     expect(res.status).toBe(409);
     expect(harness.gotrueSignOutCalls).toHaveLength(0);
+  });
+
+  describe('reactivating a deactivated account (business-owner gap report)', () => {
+    it('admin can reactivate a deactivated account — state becomes active, deactivatedAt clears', async () => {
+      const customerId = randomUUID();
+      harness = createStateHarness([
+        makeDetail({
+          id: customerId,
+          email: 'customer@example.com',
+          userType: 'customer',
+          accountState: 'deactivated',
+          deactivatedAt: new Date('2026-03-01T00:00:00.000Z'),
+        }),
+      ]);
+      await harness.start();
+
+      const res = await harness.patchState(customerId, {
+        accountState: 'active',
+        reason: 'Customer re-verified identity with support.',
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { accountState: string; deactivatedAt: string | null };
+      expect(body.accountState).toBe('active');
+      expect(body.deactivatedAt).toBeNull();
+
+      // Same audit mechanism every other transition uses — no bespoke path.
+      expect(harness.recordCalls).toHaveLength(1);
+      expect(harness.recordCalls[0]?.eventType).toBe('privileged_data_access');
+
+      // Reactivation does not re-enable push tokens or revoke sessions (there
+      // are none active on a deactivated account) — mirrors the existing
+      // suspended -> active behaviour.
+      expect(harness.revokeAllForAccountCalls).toHaveLength(0);
+      expect(harness.disableAllForAccountCalls).toHaveLength(0);
+      expect(harness.gotrueSignOutCalls).toEqual(['customer@example.com']);
+    });
+
+    it('step-up is required to reactivate, same as every other state transition', async () => {
+      const customerId = randomUUID();
+      harness = createStateHarness(
+        [
+          makeDetail({
+            id: customerId,
+            email: 'customer@example.com',
+            userType: 'customer',
+            accountState: 'deactivated',
+          }),
+        ],
+        { mfaVerifiedAt: null },
+      );
+      await harness.start();
+
+      const res = await harness.patchState(customerId, { accountState: 'active' });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('STEP_UP_REQUIRED');
+    });
   });
 
   it('non-admin gets 403', async () => {

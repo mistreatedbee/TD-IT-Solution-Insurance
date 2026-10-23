@@ -16,6 +16,7 @@ import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 import { requireStepUp, STEP_UP_WINDOW_SECONDS } from '../lib/step-up.js';
 import {
   InvalidAccountStateTransitionError,
+  normalizeAccountNumber,
   type AdminSettableAccountState,
   type UserType,
 } from '../repositories/accounts.js';
@@ -32,6 +33,18 @@ const listFiltersSchema = z.object({
   accountState: z.enum(['pending_verification', 'active', 'suspended', 'deactivated']).optional(),
   partnerOrganizationId: z.string().uuid().optional(),
   email: z.string().email().optional(),
+  // Business-owner top-priority request (2026-10-23): lookup-key parity with `email`
+  // above — an admin searching for a customer may have been given the account
+  // reference number (`TD-XXXXXX`) rather than an email address. `normalizeAccountNumber`
+  // handles case/whitespace; a shape that can't possibly be valid fails this
+  // zod check up front with a clear 4xx rather than silently reaching the repo.
+  accountNumber: z
+    .string()
+    .trim()
+    .refine((value) => normalizeAccountNumber(value) !== null, {
+      message: 'accountNumber must be in the form TD-XXXXXX',
+    })
+    .optional(),
 });
 
 const idParamsSchema = z.object({ id: z.string().uuid() });
@@ -55,6 +68,7 @@ function serializeSummary(row: {
   accountState: string;
   partnerOrganizationId: string | null;
   createdAt: Date;
+  accountNumber?: string | null;
 }) {
   return {
     id: row.id,
@@ -63,6 +77,7 @@ function serializeSummary(row: {
     accountState: row.accountState,
     partnerOrganizationId: row.partnerOrganizationId,
     createdAt: row.createdAt.toISOString(),
+    accountNumber: row.accountNumber ?? null,
   };
 }
 
@@ -79,6 +94,7 @@ function serializeDetail(row: {
   deactivatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  accountNumber?: string | null;
 }) {
   return {
     id: row.id,
@@ -93,6 +109,7 @@ function serializeDetail(row: {
     deactivatedAt: row.deactivatedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    accountNumber: row.accountNumber ?? null,
   };
 }
 
@@ -118,7 +135,13 @@ export function createAdminAccountsRouter(ctx: AppContext): Router {
         }
 
         const { limit, cursor } = parsePaginationQuery(req.query as Record<string, unknown>);
-        const rows = await ctx.accounts.listForAdmin(filtersParsed.data, limit + 1, cursor);
+        const filters = {
+          ...filtersParsed.data,
+          accountNumber: filtersParsed.data.accountNumber
+            ? normalizeAccountNumber(filtersParsed.data.accountNumber) ?? undefined
+            : undefined,
+        };
+        const rows = await ctx.accounts.listForAdmin(filters, limit + 1, cursor);
         const page = buildPage(rows, limit);
 
         // ADR-0006 AUD-3(b) / AUD-10: materialise → audit → serialise.

@@ -57,6 +57,7 @@ function createFakeAccountsRepo(seed: {
   accountState: AccountState;
   mfaRequired: boolean;
   partnerOrganizationId: string | null;
+  accountNumber?: string | null;
 }) {
   const row: AccountRow = {
     id: seed.id,
@@ -68,6 +69,7 @@ function createFakeAccountsRepo(seed: {
     partnerOrganizationId: seed.partnerOrganizationId,
     invitedBy: null,
     createdAt: new Date(),
+    accountNumber: seed.accountNumber ?? null,
   };
   return {
     async createCustomerAccount(): Promise<AccountRow> {
@@ -158,7 +160,7 @@ async function startTestServer(ctx: AppContext): Promise<{ baseUrl: string; serv
   return { baseUrl: `http://127.0.0.1:${port}`, server, app };
 }
 
-function buildCtx(supabase: SupabaseAdmin, accountId: string): AppContext {
+function buildCtx(supabase: SupabaseAdmin, accountId: string, accountNumber: string | null = null): AppContext {
   const env = fakeEnv();
   return {
     env,
@@ -172,6 +174,7 @@ function buildCtx(supabase: SupabaseAdmin, accountId: string): AppContext {
       accountState: 'active',
       mfaRequired: false,
       partnerOrganizationId: null,
+      accountNumber,
     }) as unknown as AppContext['accounts'],
     invitations: undefined as unknown as AppContext['invitations'],
     sessions: undefined as unknown as AppContext['sessions'],
@@ -254,5 +257,46 @@ describe('GET /account/me — mfaEnrolled', () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { mfaEnrolled: boolean };
     expect(body.mfaEnrolled).toBe(false);
+  });
+});
+
+describe('GET /account/me — accountNumber (business-owner top-priority request, 2026-10-23)', () => {
+  const accountId = randomUUID();
+  let server: Server;
+  let baseUrl: string;
+
+  afterEach(async () => {
+    if (server) {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('returns the account reference number when the account has one', async () => {
+    const ctx = buildCtx(createFakeSupabaseAdmin({ hasVerifiedFactor: false }), accountId, 'TD-7F3K9Q');
+    const started = await startTestServer(ctx);
+    server = started.server;
+    baseUrl = started.baseUrl;
+
+    const response = await fetch(`${baseUrl}/account/me`, {
+      headers: { authorization: `Bearer ${bearerFor(ctx, accountId)}` },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { accountNumber: string | null };
+    expect(body.accountNumber).toBe('TD-7F3K9Q');
+  });
+
+  it('returns null, not undefined/omitted, for a not-yet-backfilled account', async () => {
+    const ctx = buildCtx(createFakeSupabaseAdmin({ hasVerifiedFactor: false }), accountId, null);
+    const started = await startTestServer(ctx);
+    server = started.server;
+    baseUrl = started.baseUrl;
+
+    const response = await fetch(`${baseUrl}/account/me`, {
+      headers: { authorization: `Bearer ${bearerFor(ctx, accountId)}` },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).toHaveProperty('accountNumber');
+    expect(body.accountNumber).toBeNull();
   });
 });

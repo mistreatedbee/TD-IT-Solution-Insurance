@@ -80,6 +80,23 @@ function createHarness() {
         }
         return null;
       },
+      async findByAccountNumber(accountNumber: string) {
+        if (accountNumber.trim().toUpperCase() === 'TD-7F3K9Q') {
+          return {
+            id: customerId,
+            email: 'customer@example.com',
+            userType: 'customer',
+            accountState: 'active',
+            phone: '+27821234567',
+            mfaRequired: false,
+            partnerOrganizationId: null,
+            invitedBy: null,
+            createdAt: new Date(),
+            accountNumber: 'TD-7F3K9Q',
+          };
+        }
+        return null;
+      },
       async findById(id: string) {
         return id === customerId
           ? {
@@ -583,6 +600,81 @@ describe('GET /support/customer-lookup', () => {
       expect(body.data.policyCount).toBe(1);
       expect(body.data.openRecoveryCaseCount).toBe(1);
       expect(auditCalls.length).toBe(1);
+    });
+  });
+
+  it('returns customer summary for support_agent by accountNumber', async () => {
+    const { app, env, auditCalls } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(
+        `${baseUrl}/v1/support/customer-lookup?accountNumber=${encodeURIComponent('td-7f3k9q')}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { email: string; accountId: string; accountNumber: string } };
+      expect(body.data.email).toBe('customer@example.com');
+      expect(body.data.accountId).toBe(customerId);
+      expect(body.data.accountNumber).toBe('TD-7F3K9Q');
+      expect(auditCalls.length).toBe(1);
+    });
+  });
+
+  it('returns 404 for an accountNumber with no matching account', async () => {
+    const { app, env } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/customer-lookup?accountNumber=TD-ZZZZZZ`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  it('rejects a malformed accountNumber with a 4xx, not a repo call', async () => {
+    const { app, env } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/customer-lookup?accountNumber=not-a-real-shape`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(400);
     });
   });
 
