@@ -37,7 +37,12 @@ import type { AccountRow, AccountStatus, UserType, AccountState } from '../repos
 import type { EnrollmentTicketRecord, EnrollmentTicketRepo } from '../lib/enrollment-ticket.js';
 import type { SessionRecord, SessionRepo } from '../lib/refresh-session.js';
 import { ACCOUNT_WIDE_REVOCATION_REASONS, WATERMARK_AUDIT_EVENT_TYPES } from '../lib/gotrue-session-revocation.js';
-import { SupabaseUnavailableError, SupabaseUserAlreadyExistsError, type SupabaseAdmin } from '../db/supabase.js';
+import {
+  SupabaseUnavailableError,
+  SupabaseUserAlreadyExistsError,
+  SupabaseEmailNotConfirmedError,
+  type SupabaseAdmin,
+} from '../db/supabase.js';
 import type { Env } from '../config/env.js';
 
 function fakeEnv(): Env {
@@ -1269,6 +1274,133 @@ describe('POST /auth/login SR-14 forced-re-enrollment (api-design.md §11 Amendm
 });
 
 /**
+ * ADR-0014 §14.5 AE-1 regression: `POST /auth/login` must distinguish "right
+ * password, unconfirmed email" (GoTrue `email_not_confirmed`) from an
+ * ordinary wrong password. The former must answer `ACCOUNT_NOT_ACTIVE` and
+ * must NOT count toward FR-11's per-identifier lockout; the latter must
+ * still answer `INVALID_CREDENTIALS` and MUST still count toward lockout —
+ * otherwise a wrong-password guess against an unconfirmed email would be an
+ * account-existence/enumeration oracle (the risk the ADR's own AE-1 section
+ * flags as contingent on GoTrue's password-vs-confirmation check order).
+ */
+describe('POST /auth/login — ADR-0014 AE-1 (email_not_confirmed vs invalid credentials)', () => {
+  const accountId = randomUUID();
+  const AE1_EMAIL = 'unverified-customer@example.com';
+  const AE1_PASSWORD = 'a-fine-customer-password-14chars';
+
+  function createAe1Ctx(): AppContext {
+    const accounts = createFakeAccountsRepo({
+      id: accountId,
+      email: AE1_EMAIL,
+      userType: 'customer',
+      accountState: 'pending_verification',
+      mfaRequired: false,
+      partnerOrganizationId: null,
+    });
+    const notUsed = (name: string) => (): never => {
+      throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+    };
+    const supabase: SupabaseAdmin = {
+      raw: {} as SupabaseAdmin['raw'],
+      createUser: notUsed('createUser'),
+      deleteUser: notUsed('deleteUser'),
+      async verifyPassword(email, password) {
+        if (email.trim().toLowerCase() !== AE1_EMAIL) {
+          return null;
+        }
+        if (password === AE1_PASSWORD) {
+          // Right password, email not confirmed — exactly GoTrue's
+          // `email_not_confirmed` response per AE-1.
+          throw new SupabaseEmailNotConfirmedError();
+        }
+        // Wrong password against the same (unconfirmed) account — must
+        // behave exactly like any other wrong password: an ordinary `null`,
+        // never the confirmation-status error. This is the enumeration-
+        // safety half of AE-1.
+        return null;
+      },
+      enrollTotpFactor: notUsed('enrollTotpFactor'),
+      challengeTotpFactor: notUsed('challengeTotpFactor'),
+      verifyTotpFactor: notUsed('verifyTotpFactor'),
+      findVerifiedTotpFactor: notUsed('findVerifiedTotpFactor'),
+      updateUserPassword: notUsed('updateUserPassword'),
+      generateEmailVerificationLink: notUsed('generateEmailVerificationLink'),
+      sendSignupConfirmationEmail: notUsed('sendSignupConfirmationEmail'),
+      sendPasswordRecoveryEmail: notUsed('sendPasswordRecoveryEmail'),
+      sendInvitationEmail: notUsed('sendInvitationEmail'),
+      getUserByEmail: async () => null,
+      getUserFromAccessToken: notUsed('getUserFromAccessToken'),
+      isUserEmailConfirmed: async () => false,
+      verifySignupToken: notUsed('verifySignupToken'),
+      generatePasswordResetLink: notUsed('generatePasswordResetLink'),
+      verifyRecoveryToken: notUsed('verifyRecoveryToken'),
+      mintTransientUserAccessToken: notUsed('mintTransientUserAccessToken'),
+      signOutAllUserSessions: notUsed('signOutAllUserSessions'),
+    } as unknown as SupabaseAdmin;
+
+    return buildMinimalCtx({
+      accounts: accounts as unknown as AppContext['accounts'],
+      supabase,
+    });
+  }
+
+  it('a correct password on an unverified account gets ACCOUNT_NOT_ACTIVE, not INVALID_CREDENTIALS, and never locks the account out', async () => {
+    const ctx = createAe1Ctx();
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      // More than LOGIN_LOCKOUT.perIdentifierAttempts (5) correct-password
+      // attempts in a row — if this were (mis)counted as a login failure,
+      // the account would be 423-locked well before attempt 6.
+      for (let i = 0; i < 6; i++) {
+        const response = await fetch(`${baseUrl}/auth/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: AE1_EMAIL, password: AE1_PASSWORD }),
+        });
+        const body = (await response.json()) as { error?: { code: string } };
+        expect(response.status, `attempt ${i}: ${JSON.stringify(body)}`).toBe(403);
+        expect(body.error?.code, `attempt ${i}`).toBe('ACCOUNT_NOT_ACTIVE');
+      }
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('a wrong password on an unverified account still returns INVALID_CREDENTIALS (not an enumeration leak) and still counts toward lockout', async () => {
+    const ctx = createAe1Ctx();
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      // LOGIN_LOCKOUT.perIdentifierAttempts is 5 — the first 5 wrong-password
+      // attempts must each come back INVALID_CREDENTIALS (never
+      // ACCOUNT_NOT_ACTIVE: that would leak that this email exists and is
+      // merely unconfirmed), and the 6th must be locked — proving the
+      // counter genuinely incremented on each of the first 5.
+      for (let i = 0; i < 5; i++) {
+        const response = await fetch(`${baseUrl}/auth/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: AE1_EMAIL, password: 'definitely-the-wrong-password' }),
+        });
+        const body = (await response.json()) as { error?: { code: string } };
+        expect(response.status, `attempt ${i}: ${JSON.stringify(body)}`).toBe(401);
+        expect(body.error?.code, `attempt ${i}`).toBe('INVALID_CREDENTIALS');
+      }
+
+      const lockedResponse = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: AE1_EMAIL, password: 'definitely-the-wrong-password' }),
+      });
+      const lockedBody = (await lockedResponse.json()) as { error?: { code: string } };
+      expect(lockedResponse.status, JSON.stringify(lockedBody)).toBe(423);
+      expect(lockedBody.error?.code).toBe('ACCOUNT_LOCKED');
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+});
+
+/**
  * SR-007-1 (security-review.md §8.2): a completed password reset must also
  * disable every device's push token for the account, not just revoke
  * sessions — otherwise a stolen-device attacker with a still-live session
@@ -2409,6 +2541,470 @@ describe('INC-003 C-12 / B-1 — GoTrue-verified user is bound to the account ac
       const res = await post(baseUrl, '/auth/reset-password/confirm', { email: A.email, resetToken: HASH_A, newPassword: 'short' });
       expect(res.status).toBe(400);
       expect(res.body.error?.code).toBe('VALIDATION_ERROR');
+    });
+  });
+});
+
+/**
+ * ADR-0014 §15.5/§18.3, condition CS-1 (Phase 1 exit criterion). Every writer
+ * that creates or activates a customer account must now write an
+ * `account_created`/`email_verified` audit row, and none of the four routes'
+ * response shapes, status codes, or branch-distinguishing side effects may
+ * change as a result (the uniform-response rule binds `/auth/signup`,
+ * `/auth/resend-verification` and `/auth/notify-email-verified` exactly as it
+ * did before this change).
+ */
+describe('ADR-0014 CS-1 — account_created / email_verified audit rows', () => {
+  function fakeAuditLogWithEvents() {
+    const events: Array<{ accountId: string | null; eventType: string; ipAddress?: string | null }> = [];
+    return {
+      events,
+      async record(event: { accountId: string | null; eventType: string; ipAddress?: string | null }) {
+        events.push(event);
+      },
+    };
+  }
+
+  async function post(baseUrl: string, path: string, body: unknown) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+  }
+
+  async function withServer<T>(ctx: AppContext, fn: (baseUrl: string) => Promise<T>): Promise<T> {
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      return await fn(baseUrl);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  }
+
+  const PASSWORD = 'a-good-long-password';
+
+  describe('POST /auth/signup', () => {
+    it('writes account_created for a newly created account, and does not change the 202 response', async () => {
+      const auditLog = fakeAuditLogWithEvents();
+      const created: string[] = [];
+      const rows = new Map<string, AccountRow>();
+      const notUsed = (name: string) => (): never => {
+        throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+      };
+      const supabase = new Proxy(
+        {
+          async createUser(email: string) {
+            const userId = randomUUID();
+            created.push(email);
+            return { userId };
+          },
+          async sendSignupConfirmationEmail() {
+            return undefined;
+          },
+        } as Record<string, unknown>,
+        { get: (target, prop: string) => (prop in target ? target[prop] : notUsed(prop)) },
+      ) as unknown as SupabaseAdmin;
+      const accounts = {
+        async findByEmail(email: string) {
+          return rows.get(email) ?? null;
+        },
+        async createCustomerAccount(id: string, email: string) {
+          const row: AccountRow = {
+            id,
+            userType: 'customer',
+            accountState: 'pending_verification',
+            email,
+            phone: null,
+            mfaRequired: false,
+            partnerOrganizationId: null,
+            invitedBy: null,
+            createdAt: new Date(),
+          };
+          rows.set(email, row);
+          return row;
+        },
+      };
+      const ctx = buildMinimalCtx({
+        accounts: accounts as unknown as AppContext['accounts'],
+        supabase,
+        auditLog: auditLog as unknown as AppContext['auditLog'],
+      });
+      const response = await withServer(ctx, (baseUrl) =>
+        post(baseUrl, '/auth/signup', { email: 'new-cs1@example.com', password: PASSWORD, consentAccepted: true, client: 'web' }),
+      );
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ message: 'If this email is new, check your inbox to verify your account.' });
+
+      const createdAccount = rows.get('new-cs1@example.com');
+      expect(createdAccount).toBeDefined();
+      expect(auditLog.events).toContainEqual(
+        expect.objectContaining({ accountId: createdAccount!.id, eventType: 'account_created' }),
+      );
+    });
+
+    it('writes no account_created row for an already-registered email (uniform 202, no new account)', async () => {
+      const auditLog = fakeAuditLogWithEvents();
+      const existing: AccountRow = {
+        id: randomUUID(),
+        userType: 'customer',
+        accountState: 'active',
+        email: 'taken-cs1@example.com',
+        phone: null,
+        mfaRequired: false,
+        partnerOrganizationId: null,
+        invitedBy: null,
+        createdAt: new Date(),
+      };
+      const accounts = {
+        async findByEmail(email: string) {
+          return email === existing.email ? existing : null;
+        },
+        async createCustomerAccount(): Promise<AccountRow> {
+          throw new Error('must not be called — account already exists');
+        },
+      };
+      const ctx = buildMinimalCtx({
+        accounts: accounts as unknown as AppContext['accounts'],
+        supabase: {} as unknown as SupabaseAdmin,
+        auditLog: auditLog as unknown as AppContext['auditLog'],
+      });
+      const response = await withServer(ctx, (baseUrl) =>
+        post(baseUrl, '/auth/signup', { email: existing.email, password: PASSWORD, consentAccepted: true, client: 'web' }),
+      );
+      expect(response.status).toBe(202);
+      expect(auditLog.events).toEqual([]);
+    });
+  });
+
+  describe('POST /auth/verify-email', () => {
+    function harness() {
+      const auditLog = fakeAuditLogWithEvents();
+      const markEmailVerifiedCalls: string[] = [];
+      const account: AccountRow = {
+        id: randomUUID(),
+        userType: 'customer',
+        accountState: 'pending_verification',
+        email: 'verify-cs1@example.com',
+        phone: null,
+        mfaRequired: false,
+        partnerOrganizationId: null,
+        invitedBy: null,
+        createdAt: new Date(),
+      };
+      const accounts = {
+        async findById(id: string): Promise<AccountRow | null> {
+          return id === account.id ? account : null;
+        },
+        async findByEmail(email: string): Promise<AccountRow | null> {
+          return email === account.email ? account : null;
+        },
+        async markEmailVerified(id: string): Promise<void> {
+          markEmailVerifiedCalls.push(id);
+          if (id === account.id) account.accountState = 'active';
+        },
+      };
+      const notUsed = (name: string) => (): never => {
+        throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+      };
+      const supabase = new Proxy(
+        {
+          async verifySignupToken(email: string, token: string) {
+            if (token !== 'good-token') return null;
+            return { userId: account.id };
+          },
+        } as Record<string, unknown>,
+        { get: (target, prop: string) => (prop in target ? target[prop] : notUsed(prop)) },
+      ) as unknown as SupabaseAdmin;
+      const ctx = buildMinimalCtx({
+        accounts: accounts as unknown as AppContext['accounts'],
+        supabase,
+        auditLog: auditLog as unknown as AppContext['auditLog'],
+      });
+      return { ctx, auditLog, account, markEmailVerifiedCalls };
+    }
+
+    it('writes email_verified on a genuine pending_verification -> active transition, without changing the 200 response', async () => {
+      const h = harness();
+      const response = await withServer(h.ctx, (baseUrl) =>
+        post(baseUrl, '/auth/verify-email', { email: h.account.email, token: 'good-token' }),
+      );
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ message: 'Email verified.' });
+      expect(h.auditLog.events).toContainEqual(
+        expect.objectContaining({ accountId: h.account.id, eventType: 'email_verified' }),
+      );
+    });
+
+    it('does not write email_verified for a replayed token against an already-active account', async () => {
+      const h = harness();
+      h.account.accountState = 'active'; // already verified before this request
+      const response = await withServer(h.ctx, (baseUrl) =>
+        post(baseUrl, '/auth/verify-email', { email: h.account.email, token: 'good-token' }),
+      );
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ message: 'Email verified.' });
+      // markEmailVerified is still called (its own UPDATE is a no-op against
+      // a non-pending row) but no new audit row should result.
+      expect(h.markEmailVerifiedCalls).toEqual([h.account.id]);
+      expect(h.auditLog.events.filter((e) => e.eventType === 'email_verified')).toEqual([]);
+    });
+
+    it('writes no audit row for an expired/invalid token (unchanged 4xx)', async () => {
+      const h = harness();
+      const response = await withServer(h.ctx, (baseUrl) =>
+        post(baseUrl, '/auth/verify-email', { email: h.account.email, token: 'bad-token' }),
+      );
+      expect(response.status).toBe(410);
+      expect(h.auditLog.events).toEqual([]);
+    });
+  });
+
+  describe('POST /auth/notify-email-verified', () => {
+    function harness(opts: { confirmedInGoTrue: boolean }) {
+      const auditLog = fakeAuditLogWithEvents();
+      const accountId = randomUUID();
+      const email = 'backfill-cs1@example.com';
+      const rows = new Map<string, AccountRow>();
+      const notUsed = (name: string) => (): never => {
+        throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+      };
+      const supabase = new Proxy(
+        {
+          async getUserByEmail() {
+            return { userId: accountId };
+          },
+          async isUserEmailConfirmed() {
+            return opts.confirmedInGoTrue;
+          },
+        } as Record<string, unknown>,
+        { get: (target, prop: string) => (prop in target ? target[prop] : notUsed(prop)) },
+      ) as unknown as SupabaseAdmin;
+      const accounts = {
+        async findById(id: string): Promise<AccountRow | null> {
+          return rows.get(id) ?? null;
+        },
+        async createCustomerAccount(id: string, em: string) {
+          const row: AccountRow = {
+            id,
+            userType: 'customer',
+            accountState: 'pending_verification',
+            email: em,
+            phone: null,
+            mfaRequired: false,
+            partnerOrganizationId: null,
+            invitedBy: null,
+            createdAt: new Date(),
+          };
+          rows.set(id, row);
+          return row;
+        },
+        async markEmailVerified(id: string): Promise<void> {
+          const row = rows.get(id);
+          if (row) row.accountState = 'active';
+        },
+      };
+      const authNotifications = {
+        async notifyEmailAlreadyVerified() {
+          return false;
+        },
+      };
+      const ctx = buildMinimalCtx({
+        accounts: accounts as unknown as AppContext['accounts'],
+        supabase,
+        auditLog: auditLog as unknown as AppContext['auditLog'],
+        authNotifications: authNotifications as unknown as AppContext['authNotifications'],
+      });
+      return { ctx, auditLog, accountId, email, rows };
+    }
+
+    it('backfills app.accounts and writes both account_created and email_verified for a GoTrue-only, already-confirmed user — uniform 202 unchanged', async () => {
+      const h = harness({ confirmedInGoTrue: true });
+      const response = await withServer(h.ctx, (baseUrl) => post(baseUrl, '/auth/notify-email-verified', { email: h.email }));
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({
+        message: 'If this account needs anything from us, check your inbox — you can also try logging in.',
+      });
+      expect(h.auditLog.events).toEqual([
+        expect.objectContaining({ accountId: h.accountId, eventType: 'account_created' }),
+        expect.objectContaining({ accountId: h.accountId, eventType: 'email_verified' }),
+      ]);
+      expect(h.rows.get(h.accountId)?.accountState).toBe('active');
+    });
+
+    it('writes no audit row when GoTrue reports the email not yet confirmed (uniform 202 unchanged)', async () => {
+      const h = harness({ confirmedInGoTrue: false });
+      const response = await withServer(h.ctx, (baseUrl) => post(baseUrl, '/auth/notify-email-verified', { email: h.email }));
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({
+        message: 'If this account needs anything from us, check your inbox — you can also try logging in.',
+      });
+      expect(h.auditLog.events).toEqual([]);
+      expect(h.rows.size).toBe(0);
+    });
+  });
+
+  describe('POST /auth/supabase/exchange', () => {
+    it('backfills app.accounts and writes account_created for a GoTrue-only user, without changing the success response shape', async () => {
+      const auditLog = fakeAuditLogWithEvents();
+      const accountId = randomUUID();
+      const email = 'exchange-cs1@example.com';
+      const accessToken = 'exchange-cs1-token';
+      const rows = new Map<string, AccountRow>();
+      const notUsed = (name: string) => (): never => {
+        throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+      };
+      const supabase = new Proxy(
+        {
+          async getUserFromAccessToken(token: string) {
+            if (token !== accessToken) return null;
+            return { userId: accountId, email, emailConfirmed: true };
+          },
+          async findVerifiedTotpFactor() {
+            return null;
+          },
+        } as Record<string, unknown>,
+        { get: (target, prop: string) => (prop in target ? target[prop] : notUsed(prop)) },
+      ) as unknown as SupabaseAdmin;
+      const accounts = {
+        async findById(id: string): Promise<AccountRow | null> {
+          return rows.get(id) ?? null;
+        },
+        async createCustomerAccount(id: string, em: string) {
+          const row: AccountRow = {
+            id,
+            userType: 'customer',
+            accountState: 'pending_verification',
+            email: em,
+            phone: null,
+            mfaRequired: false,
+            partnerOrganizationId: null,
+            invitedBy: null,
+            createdAt: new Date(),
+          };
+          rows.set(id, row);
+          return row;
+        },
+        async markEmailVerified(id: string): Promise<void> {
+          const row = rows.get(id);
+          if (row) row.accountState = 'active';
+        },
+      };
+      const ctx = buildMinimalCtx({
+        accounts: accounts as unknown as AppContext['accounts'],
+        supabase,
+        auditLog: auditLog as unknown as AppContext['auditLog'],
+      });
+      const response = await withServer(ctx, (baseUrl) => post(baseUrl, '/auth/supabase/exchange', { accessToken }));
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(
+        expect.objectContaining({ accessToken: expect.any(String), refreshToken: expect.any(String), sessionId: expect.any(String) }),
+      );
+      expect(auditLog.events).toContainEqual(
+        expect.objectContaining({ accountId, eventType: 'account_created' }),
+      );
+      // Exactly one account_created row — the exchange route does not also
+      // write email_verified for its own resolveCustomerAccountAfterSupabaseAuth
+      // activation (out of CS-1's scope as written; see this test file's
+      // accompanying report).
+      expect(auditLog.events.filter((e) => e.eventType === 'account_created')).toHaveLength(1);
+    });
+
+    it('writes no account_created row when the account already exists', async () => {
+      const auditLog = fakeAuditLogWithEvents();
+      const accountId = randomUUID();
+      const email = 'exchange-existing-cs1@example.com';
+      const accessToken = 'exchange-existing-cs1-token';
+      const existing: AccountRow = {
+        id: accountId,
+        userType: 'customer',
+        accountState: 'active',
+        email,
+        phone: null,
+        mfaRequired: false,
+        partnerOrganizationId: null,
+        invitedBy: null,
+        createdAt: new Date(),
+      };
+      const notUsed = (name: string) => (): never => {
+        throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+      };
+      const supabase = new Proxy(
+        {
+          async getUserFromAccessToken(token: string) {
+            if (token !== accessToken) return null;
+            return { userId: accountId, email, emailConfirmed: true };
+          },
+          async findVerifiedTotpFactor() {
+            return null;
+          },
+        } as Record<string, unknown>,
+        { get: (target, prop: string) => (prop in target ? target[prop] : notUsed(prop)) },
+      ) as unknown as SupabaseAdmin;
+      const accounts = {
+        async findById(id: string): Promise<AccountRow | null> {
+          return id === existing.id ? existing : null;
+        },
+        async createCustomerAccount(): Promise<AccountRow> {
+          throw new Error('must not be called — account already exists');
+        },
+      };
+      const ctx = buildMinimalCtx({
+        accounts: accounts as unknown as AppContext['accounts'],
+        supabase,
+        auditLog: auditLog as unknown as AppContext['auditLog'],
+      });
+      const response = await withServer(ctx, (baseUrl) => post(baseUrl, '/auth/supabase/exchange', { accessToken }));
+      expect(response.status).toBe(200);
+      expect(auditLog.events.filter((e) => e.eventType === 'account_created')).toEqual([]);
+    });
+  });
+
+  describe('POST /auth/resend-verification', () => {
+    it('writes no new audit event (neither account_created nor email_verified) for a pending account that gets re-mailed', async () => {
+      const auditLog = fakeAuditLogWithEvents();
+      const account: AccountRow = {
+        id: randomUUID(),
+        userType: 'customer',
+        accountState: 'pending_verification',
+        email: 'resend-cs1@example.com',
+        phone: null,
+        mfaRequired: false,
+        partnerOrganizationId: null,
+        invitedBy: null,
+        createdAt: new Date(),
+      };
+      const notUsed = (name: string) => (): never => {
+        throw new Error(`[test fake] SupabaseAdmin.${name} should not be called in this test`);
+      };
+      const supabase = new Proxy(
+        {
+          async sendSignupConfirmationEmail() {
+            return undefined;
+          },
+        } as Record<string, unknown>,
+        { get: (target, prop: string) => (prop in target ? target[prop] : notUsed(prop)) },
+      ) as unknown as SupabaseAdmin;
+      const accounts = {
+        async findByEmail(email: string) {
+          return email === account.email ? account : null;
+        },
+      };
+      const ctx = buildMinimalCtx({
+        accounts: accounts as unknown as AppContext['accounts'],
+        supabase,
+        auditLog: auditLog as unknown as AppContext['auditLog'],
+      });
+      const response = await withServer(ctx, (baseUrl) =>
+        post(baseUrl, '/auth/resend-verification', { email: account.email, client: 'web' }),
+      );
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({
+        message: 'If this account needs verifying, check your inbox.',
+        retryAfterSeconds: expect.any(Number),
+      });
+      expect(auditLog.events).toEqual([]);
     });
   });
 });

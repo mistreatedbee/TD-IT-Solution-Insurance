@@ -52,6 +52,37 @@ export class SupabaseUserAlreadyExistsError extends Error {
   }
 }
 
+/**
+ * ADR-0014 §14.5 AE-1: thrown by `verifyPassword` when GoTrue's password
+ * grant was rejected specifically because the account's email is not yet
+ * confirmed (GoTrue `error_code`/`code` `email_not_confirmed`), as opposed to
+ * an ordinary wrong-password 400/401 (which still resolves to `null`, not an
+ * exception — see `verifyPassword`'s doc comment).
+ *
+ * SECURITY NOTE — read before relying on this distinction anywhere else.
+ * Surfacing "email not confirmed" as different from "invalid credentials" is
+ * only safe from an account-enumeration standpoint if GoTrue's password-grant
+ * handler checks the PASSWORD before it checks confirmation status — i.e. a
+ * WRONG password against an unconfirmed email must still come back as an
+ * ordinary failure (`null`), never this error, or anyone submitting a wrong
+ * password against an arbitrary email learns whether that email exists and
+ * is merely unconfirmed. ADR-0014 §5.2 names this exact check as "Open check
+ * G-4" — confirmed against a live GoTrue instance for the password-reset path
+ * only, NOT yet for this password-grant path. This implementation proceeds on
+ * the reasoned (not live-verified) understanding that GoTrue's `token.go`
+ * password-grant flow authenticates the password first and evaluates
+ * `email_confirmed_at` only after a successful password match, which is the
+ * documented/expected GoTrue behavior but was not independently confirmed
+ * live for this change. If that assumption is ever found to be wrong, this
+ * class must stop being thrown (fall back to uniform `null`) until G-4 is
+ * re-run and confirms the order.
+ */
+export class SupabaseEmailNotConfirmedError extends Error {
+  constructor() {
+    super('[db/supabase] password grant rejected: email not confirmed');
+  }
+}
+
 const CALL_TIMEOUT_MS = 5_000;
 
 async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
@@ -103,7 +134,11 @@ export interface SupabaseAdmin {
    * apikey (SR-4 — never the anon key). Returns `null` on invalid
    * credentials (GoTrue 400/401), never throws for that case — an
    * invalid-credentials response is expected, ordinary control flow, not a
-   * fault. Throws `SupabaseUnavailableError` for network/5xx/timeout. */
+   * fault. Throws `SupabaseUnavailableError` for network/5xx/timeout.
+   * ADR-0014 §14.5 AE-1: throws `SupabaseEmailNotConfirmedError` (see that
+   * class's doc comment for the enumeration-risk caveat) when GoTrue
+   * specifically rejected the grant for an unconfirmed email rather than a
+   * wrong password. */
   verifyPassword(email: string, password: string): Promise<PasswordVerificationResult | null>;
   enrollTotpFactor(userAccessToken: string): Promise<TotpEnrollment>;
   challengeTotpFactor(userAccessToken: string, factorId: string): Promise<{ challengeId: string }>;
@@ -256,6 +291,22 @@ export function getSupabaseAdmin(env: Env): SupabaseAdmin {
         body: JSON.stringify({ email, password }),
       });
       if (response.status === 400 || response.status === 401) {
+        // ADR-0014 §14.5 AE-1: distinguish "email not confirmed" from an
+        // ordinary wrong password. Read defensively — if GoTrue's error
+        // shape ever omits/renames the discriminator, fall through to the
+        // pre-existing safe default (`null`, i.e. ordinary invalid
+        // credentials) rather than guessing. See `SupabaseEmailNotConfirmedError`'s
+        // doc comment for the enumeration-risk caveat this depends on.
+        let errorCode: unknown;
+        try {
+          const errorBody = (await response.json()) as { error_code?: unknown; code?: unknown; error?: unknown };
+          errorCode = errorBody.error_code ?? errorBody.code ?? errorBody.error;
+        } catch {
+          errorCode = undefined;
+        }
+        if (errorCode === 'email_not_confirmed') {
+          throw new SupabaseEmailNotConfirmedError();
+        }
         return null; // invalid credentials — ordinary, not a fault
       }
       if (!response.ok) {

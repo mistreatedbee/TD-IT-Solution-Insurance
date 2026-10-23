@@ -32,7 +32,7 @@ import {
   consumeResetMfaVerificationToken,
 } from '../lib/reset-mfa-verification.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
-import { SupabaseUnavailableError, SupabaseUserAlreadyExistsError } from '../db/supabase.js';
+import { SupabaseUnavailableError, SupabaseUserAlreadyExistsError, SupabaseEmailNotConfirmedError } from '../db/supabase.js';
 import { issueEnrollmentTicket } from '../lib/enrollment-ticket.js';
 import { storePendingEnrollment } from '../lib/enrollment-pending-store.js';
 import { revokeJtisInKv } from '../lib/revocation.js';
@@ -162,6 +162,15 @@ export function createAuthRouter(ctx: AppContext): Router {
               throw err;
             }
             await ctx.accounts.createCustomerAccount(created.userId, normalizedEmail);
+            // ADR-0014 CS-1: the account row now exists — record it
+            // regardless of whether the confirmation email below succeeds.
+            // Side effect only: does not change the response below (FR-5/AC-2).
+            await ctx.auditLog.record({
+              accountId: created.userId,
+              eventType: 'account_created',
+              ipAddress: clientIp(req),
+              userAgent: req.header('user-agent') ?? null,
+            });
             try {
               await ctx.supabase.sendSignupConfirmationEmail(normalizedEmail, verificationRedirectFor(client));
             } catch (emailErr) {
@@ -248,7 +257,22 @@ export function createAuthRouter(ctx: AppContext): Router {
         return;
       }
       if (account) {
+        // `account` was fetched before markEmailVerified() below runs, so
+        // this is the pre-update state — only a genuine
+        // pending_verification -> active transition gets an `email_verified`
+        // row, not a replayed/already-verified token (markEmailVerified's own
+        // UPDATE is a no-op in that case). ADR-0014 CS-1: side effect only —
+        // does not change the 200 below.
+        const wasPendingVerification = account.accountState === 'pending_verification';
         await ctx.accounts.markEmailVerified(account.id);
+        if (wasPendingVerification) {
+          await ctx.auditLog.record({
+            accountId: account.id,
+            eventType: 'email_verified',
+            ipAddress: clientIp(req),
+            userAgent: req.header('user-agent') ?? null,
+          });
+        }
         if (account.userType === 'customer') {
           notifyInBackground(
             'onboarding.welcome',
@@ -264,6 +288,18 @@ export function createAuthRouter(ctx: AppContext): Router {
 
   // ---------------------------------------------------------------
   // POST /auth/resend-verification
+  //
+  // ADR-0014 CS-1 (§15.5): this route gets no new audit event type. It
+  // neither creates an account (that already happened at /auth/signup or
+  // /auth/notify-email-verified's backfill branch) nor verifies one (that
+  // happens at /auth/verify-email or GoTrue's own confirmation link) — it
+  // only re-sends the confirmation email for an account already sitting in
+  // `pending_verification`, confirmed by the existing `account_created` row.
+  // A `verification_email_resent` event was floated as optional in the ADR;
+  // it is skipped because nothing here changes account state, and because
+  // writing one on every call would itself become a per-account rate-limit
+  // signal this anti-enumeration route (SR-006-2-style uniform response) is
+  // built to avoid leaking through timing/side channels.
   // ---------------------------------------------------------------
   const resendSchema = z.object({
     email: z.string().email(),
@@ -398,10 +434,30 @@ export function createAuthRouter(ctx: AppContext): Router {
         if (!account) {
           await ctx.accounts.createCustomerAccount(supabaseUser.userId, normalizedEmail);
           account = await ctx.accounts.findById(supabaseUser.userId);
+          // ADR-0014 CS-1 (§18.1/§18.3): this branch backfills app.accounts
+          // for a GoTrue-only user — a genuine account creation that must not
+          // go unrecorded. Side effect only: does not change the uniform 202
+          // below.
+          if (account) {
+            await ctx.auditLog.record({
+              accountId: account.id,
+              eventType: 'account_created',
+              ipAddress: clientIp(req),
+              userAgent: req.header('user-agent') ?? null,
+            });
+          }
         }
 
         if (account && account.accountState === 'pending_verification') {
           await ctx.accounts.markEmailVerified(account.id);
+          // ADR-0014 CS-1: side effect only — does not change the uniform
+          // 202 below.
+          await ctx.auditLog.record({
+            accountId: account.id,
+            eventType: 'email_verified',
+            ipAddress: clientIp(req),
+            userAgent: req.header('user-agent') ?? null,
+          });
           notifyInBackground(
             'onboarding.welcome',
             ctx.onboardingNotifications.notifyWelcomeIfNeeded(account.id),
@@ -471,6 +527,17 @@ export function createAuthRouter(ctx: AppContext): Router {
           try {
             await ctx.accounts.createCustomerAccount(supabaseUser.userId, supabaseUser.email);
             account = await ctx.accounts.findById(supabaseUser.userId);
+            // ADR-0014 CS-1 (§18.1/§18.3): this branch backfills app.accounts
+            // for a GoTrue-only user until Phase 3 removes this route. Side
+            // effect only — does not change any response below.
+            if (account) {
+              await ctx.auditLog.record({
+                accountId: account.id,
+                eventType: 'account_created',
+                ipAddress: ip,
+                userAgent: req.header('user-agent') ?? null,
+              });
+            }
           } catch (err) {
             next(err);
             return;
@@ -651,6 +718,26 @@ export function createAuthRouter(ctx: AppContext): Router {
         try {
           verification = account ? await ctx.supabase.verifyPassword(normalizedEmail, password) : null;
         } catch (err) {
+          if (err instanceof SupabaseEmailNotConfirmedError) {
+            // ADR-0014 §14.5 AE-1: the password was correct — the account is
+            // just unverified. Answer ACCOUNT_NOT_ACTIVE (the wizard's
+            // existing branch for this, CustomerOnboardingPage.tsx), and do
+            // NOT record this as a login failure: FR-11 lockout must not
+            // fire for someone who entered the right password. The
+            // per-identifier counter is left untouched (no
+            // recordLoginFailure call) — only an audit trail entry is
+            // written, same shape as an ordinary login_failure, so this is
+            // still visible to credential-stuffing/anomaly review.
+            await ctx.auditLog.record({
+              accountId: account?.id ?? null,
+              eventType: 'login_failure',
+              attemptedIdentifier: normalizedEmail,
+              ipAddress: ip,
+              userAgent: req.header('user-agent') ?? null,
+            });
+            next(apiError('ACCOUNT_NOT_ACTIVE'));
+            return;
+          }
           if (err instanceof SupabaseUnavailableError) {
             next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
             return;

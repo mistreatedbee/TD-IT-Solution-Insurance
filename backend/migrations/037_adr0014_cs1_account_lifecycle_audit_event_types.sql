@@ -1,0 +1,32 @@
+-- ADR-0014 §15.5/§18.3, condition CS-1 (Phase 1 exit criterion) — new
+-- `app.audit_event_type` values for account creation and email verification.
+--
+-- `compliance-specialist` (§15.5, independently re-affirmed §18.3) found that
+-- `AuditEventType` had no event for account creation or email verification,
+-- and that none of `/auth/signup`, `/auth/verify-email`,
+-- `/auth/notify-email-verified` or `/auth/supabase/exchange` wrote one when
+-- they create or activate an account — so "when, and from where, was this
+-- account created and verified" cannot be answered for any account, which
+-- POPIA s23 access requests and s22 breach scoping both need.
+--
+-- Status: WRITTEN, NOT YET APPLIED to any project, live or otherwise — whoever
+-- applies this must correct this header per the precedent migrations/032's and
+-- migrations/035's headers document (029/030/031 were left stale after
+-- application).
+--
+-- Continues the numbering from migrations/036. Follows the exact pattern
+-- migrations/032/035 used for prior `app.audit_event_type` additions — a
+-- forward `alter type ... add value if not exists`, nothing else. No CHECK
+-- constraint accompanies these two values (unlike the privileged-access pair
+-- in migrations/033): `account_created` and `email_verified` carry a subject
+-- `account_id` the same way `login_success` does, and need no new invariant
+-- beyond what `repositories/audit-log.ts`'s existing guards already enforce.
+--
+-- `verification_email_resent` (floated as optional in the ADR) is
+-- deliberately NOT added here — see `backend/src/routes/auth.ts`'s comment on
+-- `POST /auth/resend-verification`: that route only resends an email for an
+-- already-`pending_verification` account; it creates and verifies nothing
+-- itself, so it needs no event of its own.
+
+alter type app.audit_event_type add value if not exists 'account_created';
+alter type app.audit_event_type add value if not exists 'email_verified';

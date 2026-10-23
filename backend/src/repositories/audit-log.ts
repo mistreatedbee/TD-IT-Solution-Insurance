@@ -60,7 +60,17 @@ export type AuditEventType =
   // migrations/035. High-signal ATO indicator on a burst of the `_failed`
   // variant against a privileged account (§5.2/C-4).
   | 'mfa_step_up_verified'
-  | 'mfa_step_up_failed';
+  | 'mfa_step_up_failed'
+  // ADR-0014 §15.5/§18.3, condition CS-1 — a Phase 1 exit criterion. Added by
+  // migrations/037. Before this, "when and from where was this account
+  // created/verified" could not be answered for any account (POPIA s23
+  // access requests, s22 breach scoping). Written from every writer CS-1
+  // names: `/auth/signup`, `/auth/verify-email`, `/auth/notify-email-verified`
+  // (both the backfill-create and the activate branch) and
+  // `/auth/supabase/exchange`'s backfill-create branch. `resend-verification`
+  // deliberately gets neither — see the route's own comment.
+  | 'account_created'
+  | 'email_verified';
 
 /**
  * Event types that record privileged access to another account's data and
