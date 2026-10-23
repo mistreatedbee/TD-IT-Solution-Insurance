@@ -195,6 +195,7 @@ export function CustomersListPage() {
           <DataTable
             columns={[
               { key: 'email', header: 'Email', render: (row) => <AdminNavLink to={`/admin/accounts/${row.id}`}>{String(row.email)}</AdminNavLink> },
+              { key: 'accountNumber', header: 'Account #', render: (row) => (row.accountNumber ? String(row.accountNumber) : '—') },
               { key: 'accountState', header: 'State', render: (row) => <StatusBadge value={String(row.accountState)} /> },
               { key: 'createdAt', header: 'Created', render: (row) => new Date(String(row.createdAt)).toLocaleDateString() },
             ]}
@@ -494,7 +495,13 @@ export function AccountDetailPage({ accountId }: { accountId: string }) {
 
   return (
     <Card padding="lg">
-      <SectionHeading as="h1" title={account.email} size="md" className="mb-4" />
+      <SectionHeading
+        as="h1"
+        title={account.email}
+        subtitle={`Account Number: ${account.accountNumber ?? '—'}`}
+        size="md"
+        className="mb-4"
+      />
       <DetailGrid
         rows={[
           { label: 'User type', value: account.userType.replace(/_/g, ' ') },

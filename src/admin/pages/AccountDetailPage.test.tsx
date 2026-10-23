@@ -1,11 +1,12 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountDetailPage } from './AdminDataPages';
-import type { AdminAccountDetail } from '../api/admin-data';
+import { AccountDetailPage, CustomersListPage } from './AdminDataPages';
+import type { AdminAccountDetail, AdminAccountSummary } from '../api/admin-data';
 
 vi.mock('../api/admin-data', () => ({
   getAdminAccount: vi.fn(),
+  listAdminAccounts: vi.fn(),
   listAdminPolicies: vi.fn(),
   listAdminAssets: vi.fn(),
   updateAdminAccountState: vi.fn(),
@@ -18,7 +19,7 @@ vi.mock('../api/admin-verification', () => ({
   getAdminCustomerProfile: vi.fn(),
 }));
 
-import { getAdminAccount, listAdminAssets, listAdminPolicies } from '../api/admin-data';
+import { getAdminAccount, listAdminAccounts, listAdminAssets, listAdminPolicies } from '../api/admin-data';
 import { getAdminCustomerProfile } from '../api/admin-verification';
 
 function customerDetail(overrides: Partial<AdminAccountDetail> = {}): AdminAccountDetail {
@@ -87,5 +88,78 @@ describe('AccountDetailPage — verification status + policy/asset counts', () =
     await waitFor(() => expect(screen.getByText('support agent')).toBeInTheDocument());
     expect(screen.queryByText('Verification')).not.toBeInTheDocument();
     expect(getAdminCustomerProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe('AccountDetailPage — account number', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(listAdminPolicies).mockResolvedValue({ data: [], pagination: { nextCursor: null, hasMore: false } });
+    vi.mocked(listAdminAssets).mockResolvedValue({ data: [], pagination: { nextCursor: null, hasMore: false } });
+  });
+
+  it('displays the account number prominently when the API provides it', async () => {
+    vi.mocked(getAdminAccount).mockResolvedValue(customerDetail({ accountNumber: 'TD-7F3K9Q' }));
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Account Number: TD-7F3K9Q')).toBeInTheDocument());
+  });
+
+  it('falls back to an em dash without crashing when the backend has not shipped accountNumber yet', async () => {
+    vi.mocked(getAdminAccount).mockResolvedValue(customerDetail());
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Account Number: —')).toBeInTheDocument());
+  });
+});
+
+describe('CustomersListPage — account number column', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function summary(overrides: Partial<AdminAccountSummary> = {}): AdminAccountSummary {
+    return {
+      id: 'acct-1',
+      email: 'customer@example.com',
+      userType: 'customer',
+      accountState: 'active',
+      partnerOrganizationId: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  function renderList() {
+    return render(
+      <MemoryRouter>
+        <CustomersListPage />
+      </MemoryRouter>,
+    );
+  }
+
+  it('shows the account number column when present', async () => {
+    vi.mocked(listAdminAccounts).mockResolvedValue({
+      data: [summary({ accountNumber: 'TD-7F3K9Q' })],
+      pagination: { nextCursor: null, hasMore: false },
+    });
+
+    renderList();
+
+    await waitFor(() => expect(screen.getByText('TD-7F3K9Q')).toBeInTheDocument());
+  });
+
+  it('renders a dash without crashing when accountNumber is missing', async () => {
+    vi.mocked(listAdminAccounts).mockResolvedValue({
+      data: [summary()],
+      pagination: { nextCursor: null, hasMore: false },
+    });
+
+    renderList();
+
+    await waitFor(() => expect(screen.getByText('customer@example.com')).toBeInTheDocument());
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 });

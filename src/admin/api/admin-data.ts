@@ -7,6 +7,9 @@ export interface AdminAccountSummary {
   accountState: string;
   partnerOrganizationId: string | null;
   createdAt: string;
+  /** Human-readable account reference (format `TD-XXXXXX`) for support calls.
+   * Optional until the backend rollout is complete — render defensively. */
+  accountNumber?: string;
 }
 
 export interface AdminAccountDetail extends AdminAccountSummary {
