@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=24.22.1 <25"
   },
   "description": "TD IT Solution Insurance — Node.js/TypeScript backend API (ADR-0001). Separate deployable from the web frontend, per ADR-0001's service decomposition.",
   "scripts": {

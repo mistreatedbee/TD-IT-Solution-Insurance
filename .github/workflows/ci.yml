@@ -31,7 +31,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '24.22.1'
+          check-latest: true
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
@@ -60,7 +61,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '24.22.1'
+          check-latest: true
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
@@ -84,7 +86,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '24.22.1'
+          check-latest: true
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
@@ -132,7 +135,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '24.22.1'
+          check-latest: true
           cache: 'npm'
           cache-dependency-path: mobile/package-lock.json
 
