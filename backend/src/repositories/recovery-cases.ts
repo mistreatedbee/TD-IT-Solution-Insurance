@@ -528,6 +528,24 @@ export function createRecoveryCasesRepo(db: Db) {
     },
 
     /**
+     * Feature 010 candidate #4 (call-centre dashboard dedicated case-detail route) —
+     * resolves a case by its Mongo id OR its customer/partner-facing reference number
+     * (`RC-YYYYMMDD-XXXX`), with NO `accountId` scoping. Not partner-/customer-facing:
+     * only `routes/support-lookup.ts` (an authenticated `support_agent`-only router)
+     * calls this, mirroring the same file's pre-existing `appendCallCentreNote`, which
+     * already resolves a case by id alone with no account check — same role, same
+     * trust boundary, same compensating `privileged_data_access` audit write at the
+     * route layer.
+     */
+    async findByIdOrReferenceForCallCentre(idOrReference: string): Promise<RecoveryCaseDocument | null> {
+      const filter = ObjectId.isValid(idOrReference)
+        ? { _id: new ObjectId(idOrReference) }
+        : { referenceNumber: idOrReference.toUpperCase() };
+      const row = await collection().findOne(filter);
+      return row ? toCase(row) : null;
+    },
+
+    /**
      * PDM-2 — queried as two independent, separately-projected branches (claimed-by-
      * caller, and the shared unclaimed-open pool) rather than one `$or` query with a
      * single projection, because the two branches need different field exclusions

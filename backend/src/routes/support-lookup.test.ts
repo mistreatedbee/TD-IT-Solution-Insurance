@@ -205,6 +205,12 @@ function createHarness() {
                 assetType: 'smartphone',
                 displayName: 'My phone',
                 status: 'active',
+                details: {
+                  brand: 'Apple',
+                  model: 'iPhone 15',
+                  imei: '490154203237518',
+                  serialNumber: null,
+                },
               },
             ]
           : [];
@@ -264,6 +270,52 @@ function createHarness() {
           legalHold: false,
           createdAt: new Date('2026-08-28T10:00:00.000Z'),
           updatedAt: new Date('2026-08-28T11:00:00.000Z'),
+        };
+      },
+      async findByIdOrReferenceForCallCentre(idOrReference: string) {
+        if (idOrReference !== 'c'.repeat(24) && idOrReference !== 'RC-20260828-AB12') return null;
+        return {
+          id: 'c'.repeat(24),
+          accountId: customerId,
+          assetId: 'd'.repeat(24),
+          partnerOrganizationId: null,
+          status: 'investigating' as const,
+          referenceNumber: 'RC-20260828-AB12',
+          reportedAt: new Date('2026-08-28T10:00:00.000Z'),
+          closedAt: null,
+          notes: 'Customer reported theft from vehicle.',
+          callCentreNotes: [
+            { agentAccountId: supportAgentId, text: 'Called back, no update.', createdAt: new Date('2026-08-29T09:00:00.000Z') },
+          ],
+          lastLocationAt: new Date('2026-08-29T09:30:00.000Z'),
+          lastLocation: { latitude: -26.2, longitude: 28.0, accuracyMeters: 10, recordedAt: new Date('2026-08-29T09:30:00.000Z') },
+          legalHold: false,
+          sapsCaseNumber: '123/01/2026',
+          reportingStation: 'Sandton SAPS',
+          reportedToPoliceAt: new Date('2026-08-29T00:00:00.000Z'),
+          policeReportHistory: [],
+          policeReportReminderSentAt: null,
+          createdAt: new Date('2026-08-28T10:00:00.000Z'),
+          updatedAt: new Date('2026-08-29T09:30:00.000Z'),
+        };
+      },
+    },
+    notificationPreferences: {
+      async getOrCreate(accountId: string) {
+        return {
+          id: 'f'.repeat(24),
+          accountId,
+          channels: {
+            theft_critical: { push: true, email: true, sms: false },
+            device_status: { push: true, email: true, sms: false },
+            billing: { push: true, email: true, sms: false },
+            account: { push: true, email: true, sms: false },
+            claims: { push: true, email: true, sms: false },
+            general: { push: false, email: true, sms: false },
+            marketing: { push: false, email: false, sms: false },
+          },
+          createdAt: new Date('2026-08-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-08-01T00:00:00.000Z'),
         };
       },
     },
@@ -359,6 +411,44 @@ describe('GET /support/customer-lookup', () => {
       expect(body.data.subscription?.assetUsageLabel).toBe('1 / 10 assets');
       expect(body.data.subscription?.supportLevel).toBe('Priority');
       expect(auditCalls.length).toBe(1);
+    });
+  });
+
+  // Call Centre Dashboard candidate #1 (04-product-feature-candidates-2026-10.md
+  // item 1) — make/model/serialNumber/imei surfaced on each looked-up asset.
+  it('includes make/model/serialNumber/imei on each asset', async () => {
+    const { app, env } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(
+        `${baseUrl}/v1/support/customer-lookup?email=${encodeURIComponent('customer@example.com')}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: {
+          assets: Array<{ make: string | null; model: string | null; serialNumber: string | null; imei: string | null }>;
+        };
+      };
+      expect(body.data.assets).toHaveLength(1);
+      expect(body.data.assets[0]).toMatchObject({
+        make: 'Apple',
+        model: 'iPhone 15',
+        serialNumber: null,
+        imei: '490154203237518',
+      });
     });
   });
 
@@ -605,6 +695,182 @@ describe('POST /support/recovery-cases/:caseId/notes', () => {
         body: JSON.stringify({ text: 'Note' }),
       });
       expect(res.status).toBe(404);
+    });
+  });
+});
+
+describe('GET /support/recovery-cases/:idOrReference', () => {
+  function supportAgentToken(env: Env): string {
+    return signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+  }
+
+  it('returns case detail by Mongo id, excluding location and police-report fields', async () => {
+    const { app, env, auditCalls } = createHarness();
+    const token = supportAgentToken(env);
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/recovery-cases/${'c'.repeat(24)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: Record<string, unknown> };
+      expect(body.data.id).toBe('c'.repeat(24));
+      expect(body.data.accountId).toBe(customerId);
+      expect(body.data.referenceNumber).toBe('RC-20260828-AB12');
+      expect(body.data.status).toBe('investigating');
+      expect(body.data.notes).toBe('Customer reported theft from vehicle.');
+      expect((body.data.callCentreNotes as unknown[]).length).toBe(1);
+
+      const FORBIDDEN_KEYS = [
+        'lastLocation',
+        'sapsCaseNumber',
+        'reportingStation',
+        'reportedToPoliceAt',
+        'policeReport',
+        'policeReportHistory',
+        'policeReportReminderSentAt',
+      ];
+      for (const key of FORBIDDEN_KEYS) {
+        expect(Object.keys(body.data)).not.toContain(key);
+      }
+      expect(auditCalls.length).toBe(1);
+    });
+  });
+
+  it('returns case detail by reference number', async () => {
+    const { app, env } = createHarness();
+    const token = supportAgentToken(env);
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/recovery-cases/RC-20260828-AB12`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { id: string } };
+      expect(body.data.id).toBe('c'.repeat(24));
+    });
+  });
+
+  it('returns 404 for an unknown id or reference', async () => {
+    const { app, env } = createHarness();
+    const token = supportAgentToken(env);
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/recovery-cases/RC-20260828-ZZ99`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  it('rejects non-support roles', async () => {
+    const { app, env } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: randomUUID(),
+        user_type: 'customer',
+        mfa_required: false,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/recovery-cases/${'c'.repeat(24)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(403);
+    });
+  });
+});
+
+describe('GET /support/customers/:accountId/notification-preferences', () => {
+  it('returns the channel preferences for support_agent', async () => {
+    const { app, env, auditCalls } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/customers/${customerId}/notification-preferences`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { accountId: string; channels: { theft_critical: { push: boolean; email: boolean; sms: boolean } } };
+      };
+      expect(body.data.accountId).toBe(customerId);
+      expect(body.data.channels.theft_critical).toEqual({ push: true, email: true, sms: false });
+      expect(auditCalls.length).toBe(1);
+    });
+  });
+
+  it('returns 404 for a non-customer or unknown account', async () => {
+    const { app, env } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/customers/${randomUUID()}/notification-preferences`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  it('rejects non-support roles', async () => {
+    const { app, env } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: randomUUID(),
+        user_type: 'customer',
+        mfa_required: false,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/v1/support/customers/${customerId}/notification-preferences`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(403);
     });
   });
 });
