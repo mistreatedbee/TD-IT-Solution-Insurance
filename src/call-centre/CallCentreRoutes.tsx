@@ -6,11 +6,17 @@ import { CallCentreAuthGate, CallCentreLayout } from './layout/CallCentreLayout'
 import { CustomerLookupPage } from './pages/CustomerLookupPage';
 import { CreateSupportCasePage, SupportCaseDetailPage, SupportCasesListPage } from './pages/SupportCasesPages';
 import { CallCentreHomePage } from './pages/CallCentreHomePage';
+import { RecoveryCaseDetailPage } from './pages/RecoveryCaseDetailPage';
 
 function SupportCaseDetailRoute() {
   const { caseId } = useParams();
   if (!caseId) return <Navigate to="/call-centre/cases" replace />;
   return <SupportCaseDetailPage caseId={caseId} />;
+}
+
+function RecoveryCaseDetailRoute() {
+  const { idOrReference } = useParams();
+  return <RecoveryCaseDetailPage idOrReference={idOrReference} />;
 }
 
 export default function CallCentreRoutes() {
@@ -39,6 +45,8 @@ export default function CallCentreRoutes() {
             <Route path="cases" element={<SupportCasesListPage />} />
             <Route path="cases/new" element={<CreateSupportCasePage />} />
             <Route path="cases/:caseId" element={<SupportCaseDetailRoute />} />
+            <Route path="recovery-cases" element={<RecoveryCaseDetailPage />} />
+            <Route path="recovery-cases/:idOrReference" element={<RecoveryCaseDetailRoute />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="login" replace />} />

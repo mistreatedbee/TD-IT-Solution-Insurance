@@ -23,6 +23,11 @@ export interface SupportCustomerLookup {
     assetType: string;
     displayName: string;
     status: string;
+    /** Additive asset identifiers (Feature 010 candidate #1) — nullable per-type. */
+    make: string | null;
+    model: string | null;
+    serialNumber: string | null;
+    imei: string | null;
   }>;
   /** Primary plan summary from customer-lookup API. */
   subscription?: {
@@ -84,4 +89,54 @@ export async function addCallCentreCaseNote(caseId: string, text: string) {
     method: 'POST',
     body: { text },
   }).then((r) => r.data);
+}
+
+/**
+ * Candidate #2 (`GET /v1/support/recovery-cases/:idOrReference`) — accepts either the
+ * Mongo ObjectId or the `RC-YYYYMMDD-XXXX` reference number. Deliberately excludes
+ * location coordinates and SAPS police-report fields — the backend never returns them to
+ * this route, so this shape does not declare them either.
+ */
+export interface SupportRecoveryCaseDetail {
+  id: string;
+  accountId: string;
+  assetId: string;
+  status: string;
+  referenceNumber: string;
+  reportedAt: string;
+  closedAt: string | null;
+  notes: string | null;
+  lastLocationAt: string | null;
+  callCentreNotes: Array<{
+    agentAccountId: string;
+    text: string;
+    createdAt: string;
+  }>;
+}
+
+export async function getRecoveryCaseForCallCentre(idOrReference: string): Promise<SupportRecoveryCaseDetail> {
+  return apiFetch<{ data: SupportRecoveryCaseDetail }>(
+    `/support/recovery-cases/${encodeURIComponent(idOrReference)}`,
+  ).then((r) => r.data);
+}
+
+/**
+ * Candidate #3 (`GET /v1/support/customers/:accountId/notification-preferences`) —
+ * agent-visibility-only read of a customer's notification channel preferences. No edit
+ * capability exists on this route or anywhere in this client.
+ */
+export type SupportNotificationChannelPreferences = { push: boolean; email: boolean; sms: boolean };
+
+export interface SupportCustomerNotificationPreferences {
+  accountId: string;
+  channels: Record<string, SupportNotificationChannelPreferences>;
+  updatedAt: string;
+}
+
+export async function getCustomerNotificationPreferencesForCallCentre(
+  accountId: string,
+): Promise<SupportCustomerNotificationPreferences> {
+  return apiFetch<{ data: SupportCustomerNotificationPreferences }>(
+    `/support/customers/${encodeURIComponent(accountId)}/notification-preferences`,
+  ).then((r) => r.data);
 }

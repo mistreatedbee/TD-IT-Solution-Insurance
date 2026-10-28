@@ -48,6 +48,7 @@ export function CallCentreLayout() {
       navItems={[
         { to: '/call-centre/lookup', label: 'Customer lookup' },
         { to: '/call-centre/cases', label: 'My cases' },
+        { to: '/call-centre/recovery-cases', label: 'Recovery case lookup' },
       ]}
       onSignOut={() => void signOut()}
     >

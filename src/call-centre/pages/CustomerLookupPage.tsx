@@ -4,9 +4,11 @@ import { Badge, Button, Card, Input, SectionHeading } from '../../components';
 import { DetailGrid, InlineAlert, LoadingState } from '../../dashboard/components/ui';
 import {
   addCallCentreCaseNote,
+  getCustomerNotificationPreferencesForCallCentre,
   lookupCustomerByEmail,
   lookupCustomerByPhone,
   lookupCustomerByPolicyId,
+  type SupportCustomerNotificationPreferences,
   type SupportCustomerPolicy,
 } from '../api/support-lookup';
 import { ApiError } from '../../dashboard/api/errors';
@@ -41,6 +43,82 @@ function formatPolicyAssetUsage(policy: SupportCustomerPolicy, totalAssets: numb
   return `${totalAssets} assets`;
 }
 
+/** Nullable asset-identifier fallback (Feature 010 candidate #1) — these fields are
+ * absent for whole classes of asset (e.g. no `imei` on a vehicle), not a data-quality
+ * problem, so render a plain em-dash rather than an error state. */
+function fallback(value: string | null | undefined): string {
+  return value && value.trim() ? value : '—';
+}
+
+/**
+ * Candidate #3 — read-only, agent-visibility-only display of a customer's notification
+ * channel preferences. Loaded on demand (not part of the main lookup payload) since it's
+ * a secondary detail most lookups won't need.
+ */
+function NotificationPreferencesPanel({ accountId }: { accountId: string }) {
+  const [prefs, setPrefs] = useState<SupportCustomerNotificationPreferences | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [opened, setOpened] = useState(false);
+
+  async function load() {
+    setOpened(true);
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getCustomerNotificationPreferencesForCallCentre(accountId);
+      setPrefs(data);
+    } catch {
+      setError('Could not load notification preferences. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!opened) {
+    return (
+      <Button type="button" size="sm" variant="secondary" onClick={() => void load()}>
+        View notification preferences
+      </Button>
+    );
+  }
+
+  return (
+    <div>
+      {loading ? <LoadingState label="Loading notification preferences…" /> : null}
+      {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+      {prefs ? (
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="min-w-full divide-y divide-border text-sm">
+            <thead className="bg-background-alt">
+              <tr>
+                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Category</th>
+                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Push</th>
+                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Email</th>
+                <th className="px-4 py-2 text-left font-semibold text-text-secondary">SMS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border bg-background">
+              {Object.entries(prefs.channels).map(([category, channels]) => (
+                <tr key={category}>
+                  <td className="px-4 py-2 text-text-primary">{category.replace(/_/g, ' ')}</td>
+                  <td className="px-4 py-2 text-text-primary">{channels.push ? 'On' : 'Off'}</td>
+                  <td className="px-4 py-2 text-text-primary">{channels.email ? 'On' : 'Off'}</td>
+                  <td className="px-4 py-2 text-text-primary">{channels.sms ? 'On' : 'Off'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="px-4 py-2 text-xs text-text-secondary">
+            Last updated {new Date(prefs.updatedAt).toLocaleString()}. Agent-visibility only — preferences
+            cannot be changed from here.
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function RecoveryCasePanel({
   recoveryCase,
   onNoteAdded,
@@ -73,8 +151,13 @@ function RecoveryCasePanel({
   return (
     <li className="rounded-lg border border-border bg-background p-4">
       <p className="text-sm font-medium text-text-primary">
-        {recoveryCase.referenceNumber} · {recoveryCase.status} ·{' '}
-        {new Date(recoveryCase.reportedAt).toLocaleString()}
+        <Link
+          className="text-primary hover:underline"
+          to={`/call-centre/recovery-cases/${encodeURIComponent(recoveryCase.id)}`}
+        >
+          {recoveryCase.referenceNumber}
+        </Link>{' '}
+        · {recoveryCase.status} · {new Date(recoveryCase.reportedAt).toLocaleString()}
       </p>
 
       {recoveryCase.callCentreNotes.length > 0 ? (
@@ -370,13 +453,23 @@ export function CustomerLookupPage() {
               <h2 className="mb-2 text-sm font-semibold text-text-primary">Assets</h2>
               <ul className="space-y-2 text-sm text-text-secondary">
                 {result.assets.map((asset) => (
-                  <li key={asset.id}>
-                    {asset.displayName} · {asset.assetType} · {asset.status}
+                  <li key={asset.id} className="rounded-lg border border-border bg-background p-3">
+                    <p className="text-text-primary">
+                      {asset.displayName} · {asset.assetType} · {asset.status}
+                    </p>
+                    <p className="mt-1 text-xs">
+                      Make: {fallback(asset.make)} · Model: {fallback(asset.model)} · Serial:{' '}
+                      {fallback(asset.serialNumber)} · IMEI: {fallback(asset.imei)}
+                    </p>
                   </li>
                 ))}
               </ul>
             </div>
           ) : null}
+          <div>
+            <h2 className="mb-2 text-sm font-semibold text-text-primary">Notification preferences</h2>
+            <NotificationPreferencesPanel key={result.accountId} accountId={result.accountId} />
+          </div>
           {result.recoveryCases.length > 0 ? (
             <div>
               <h2 className="mb-3 text-sm font-semibold text-text-primary">Open recovery cases</h2>
