@@ -53,3 +53,16 @@ export function claimSecurityCase(caseId: string) {
     method: 'POST',
   });
 }
+
+export function releaseSecurityCase(caseId: string) {
+  return apiFetch<SecurityRecoveryCase>(`/security/cases/${encodeURIComponent(caseId)}/release`, {
+    method: 'POST',
+  });
+}
+
+export function contactSecurityCaseCustomer(caseId: string, message: string) {
+  return apiFetch<{ data: { accepted: boolean } }>(`/security/cases/${encodeURIComponent(caseId)}/messages`, {
+    method: 'POST',
+    body: { message },
+  });
+}

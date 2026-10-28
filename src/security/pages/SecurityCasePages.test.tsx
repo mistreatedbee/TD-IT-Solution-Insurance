@@ -5,6 +5,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CaseDetailPage } from './SecurityCasePages';
 import type { SecurityRecoveryCase } from '../api/cases';
 
+// CaseDetailPage reads the signed-in operator's org via useDashboardAuth to decide
+// whether it was this org that claimed the case (release / contact-customer gating).
+// Mocked here rather than rendered under a real DashboardAuthProvider so each test
+// can set the account independently of session hydration/login flow.
+let mockDashboardAccount: { partnerOrganizationId: string | null } | null = null;
+vi.mock('../../dashboard/auth/DashboardAuthProvider', () => ({
+  useDashboardAuth: () => ({ account: mockDashboardAccount }),
+}));
+
 function renderCaseDetail(caseId = 'case-1') {
   return render(
     <MemoryRouter initialEntries={[`/security/cases/${caseId}`]}>
@@ -30,6 +39,7 @@ const baseCase: SecurityRecoveryCase = {
 };
 
 afterEach(() => {
+  mockDashboardAccount = null;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -194,5 +204,83 @@ describe('Security Dashboard offline-tolerance (CaseDetailPage setStatus/claimCa
     await waitFor(() =>
       expect(screen.getByText('This case could not be found. It may have been closed or reassigned.')).toBeInTheDocument(),
     );
+  });
+});
+
+describe('CaseDetailPage: release case', () => {
+  const claimedByMe: SecurityRecoveryCase = {
+    ...baseCase,
+    status: 'investigating',
+    partnerOrganizationId: 'org-1',
+  };
+
+  function stubDashboardAuthAccount() {
+    mockDashboardAccount = { partnerOrganizationId: 'org-1' };
+  }
+
+  it('shows "Release case" only when the case is investigating/tracking and claimed by my org', async () => {
+    stubDashboardAuthAccount();
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => jsonResponse(claimedByMe)));
+
+    renderCaseDetail();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Release case' })).toBeInTheDocument());
+  });
+
+  it('does not show "Release case" for an open/unclaimed case', async () => {
+    stubDashboardAuthAccount();
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => jsonResponse(baseCase)));
+
+    renderCaseDetail();
+
+    await waitFor(() => expect(screen.getByText('REF-001')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Release case' })).not.toBeInTheDocument();
+  });
+
+  it('releases the case and the backend response (open, no partner org) replaces the view', async () => {
+    stubDashboardAuthAccount();
+    const released: SecurityRecoveryCase = { ...baseCase, status: 'open', partnerOrganizationId: null };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse(claimedByMe)) // initial GET
+      .mockImplementationOnce(() => jsonResponse(released)); // release POST
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', { onLine: true });
+
+    renderCaseDetail();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Release case' })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Release case' }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Release case' })).not.toBeInTheDocument());
+    expect(fetchMock.mock.calls[1][0]).toContain('/security/cases/case-1/release');
+  });
+});
+
+describe('CaseDetailPage: contact customer', () => {
+  const claimedByMe: SecurityRecoveryCase = {
+    ...baseCase,
+    status: 'investigating',
+    partnerOrganizationId: 'org-1',
+  };
+
+  it('opens a message composer, sends the message, and shows a confirmation', async () => {
+    mockDashboardAccount = { partnerOrganizationId: 'org-1' };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse(claimedByMe)) // initial GET
+      .mockImplementationOnce(() => jsonResponse({ data: { accepted: true } }, 202)); // message POST
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCaseDetail();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Contact customer' })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Contact customer' }));
+    await userEvent.type(screen.getByLabelText('Message to customer'), 'Please call us back.');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(screen.getByText('Message sent to the customer.')).toBeInTheDocument());
+    expect(fetchMock.mock.calls[1][0]).toContain('/security/cases/case-1/messages');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ message: 'Please call us back.' });
   });
 });
