@@ -18,6 +18,7 @@ import { PlanCreatePage, PlanEditRoute, PlansListPage } from './pages/AdminPlans
 import { AdminAnalyticsPage } from './pages/AdminAnalyticsPage';
 import { AdminAuditLogPage } from './pages/AdminAuditLogPage';
 import { InviteStaffPage } from './pages/InviteStaffPage';
+import { ClaimDetailPage, ClaimsQueuePage } from './pages/AdminClaimsPages';
 
 function AccountDetailRoute() {
   const { accountId } = useParams();
@@ -35,6 +36,12 @@ function AssetDetailRoute() {
   const { assetId } = useParams();
   if (!assetId) return <Navigate to="/admin/assets" replace />;
   return <AssetDetailPage assetId={assetId} />;
+}
+
+function ClaimDetailRoute() {
+  const { claimId } = useParams();
+  if (!claimId) return <Navigate to="/admin/claims" replace />;
+  return <ClaimDetailPage />;
 }
 
 export default function AdminRoutes() {
@@ -73,6 +80,8 @@ export default function AdminRoutes() {
             <Route path="verification" element={<VerificationQueuePage />} />
             <Route path="verification/:accountId" element={<VerificationReviewPage />} />
             <Route path="audit-log" element={<AdminAuditLogPage />} />
+            <Route path="claims" element={<ClaimsQueuePage />} />
+            <Route path="claims/:claimId" element={<ClaimDetailRoute />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="login" replace />} />

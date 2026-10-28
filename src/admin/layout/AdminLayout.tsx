@@ -49,6 +49,7 @@ export function AdminLayout() {
         { to: '/admin/verification', label: 'Verification' },
         { to: '/admin/policies', label: 'Policies' },
         { to: '/admin/assets', label: 'Assets' },
+        { to: '/admin/claims', label: 'Claims' },
         { to: '/admin/plans', label: 'Plans' },
         { to: '/admin/analytics', label: 'Analytics' },
         { to: '/admin/audit-log', label: 'Audit log' },
