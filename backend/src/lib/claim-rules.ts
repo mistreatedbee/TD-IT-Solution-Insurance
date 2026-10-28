@@ -22,6 +22,22 @@ export function isTerminalClaimStatus(status: ClaimStatus): boolean {
 }
 
 /**
+ * §1.5 "at most one claim in a non-terminal state per asset" — the complete
+ * open-claim set. Everything NOT in `TERMINAL_CLAIM_STATUSES` and not
+ * `'approved'` (which is never a persisted resting status — `approveAndAdvance`
+ * moves it straight to `awaiting_payout` in the same write, per §2.4). Single
+ * source of truth for both the application-layer duplicate-claim check
+ * (`repositories/claims.ts`'s `findNonTerminalByAssetForAccount`) and the
+ * database-layer partial unique index (`db/claims-collections.ts`) that
+ * backstops it against the check-then-insert race (SR-018-5).
+ */
+export const NON_TERMINAL_CLAIM_STATUSES: readonly ClaimStatus[] = [
+  'submitted',
+  'under_review',
+  'more_info_requested',
+];
+
+/**
  * business-requirements.md §2.2 transition table. Forward-only — no entry
  * ever points back into a terminal state, and there is deliberately no
  * `rejected`/`closed` -> anything (§2.5, "no reopen transition"). `approved`
@@ -45,6 +61,30 @@ export function isForwardClaimTransition(from: ClaimStatus, to: ClaimStatus): bo
 /** §1.3 — a business-analyst placeholder pending compliance-specialist
  * ratification; lives as a single named constant exactly as the spec requires. */
 export const CLAIM_WAITING_PERIOD_DAYS = 30;
+
+/**
+ * SR-018-3 — a platform-wide hard ceiling applied to both `claimedAmount`
+ * (at filing) and `approvedAmount` (at approval), regardless of whether
+ * `coverageLimits` has a matching entry for the asset type. This is NOT a
+ * real business/coverage limit — no such limits are configured today
+ * (every policy's `coverageLimits` is `[]`) — it exists purely so "no
+ * coverage limit configured" never means "literally unbounded" (e.g.
+ * `1e15`). `product-manager`/`compliance-specialist` should replace this
+ * with real per-plan/per-asset-type coverage ceilings and revisit this
+ * constant once that work lands.
+ */
+export const MAX_CLAIM_APPROVED_AMOUNT = 10_000_000;
+
+/**
+ * Currency amounts carry at most 2 decimal places (no fractional cents).
+ * Compares in integer cents to avoid floating-point drift (e.g. 19.99 * 100
+ * landing on 1998.9999999999998).
+ */
+export function hasAtMostTwoDecimalPlaces(amount: number): boolean {
+  if (!Number.isFinite(amount)) return false;
+  const cents = amount * 100;
+  return Math.abs(cents - Math.round(cents)) < 1e-6;
+}
 
 /**
  * §5 item 3 (corrected 2026-10-28, business-requirements.md commit a5625d4) —
@@ -115,10 +155,15 @@ export type FraudFlag =
   | 'FLAG_NEAR_WAITING_PERIOD_BOUNDARY'
   | 'FLAG_RECENT_POLICY_REINSTATEMENT'
   | 'FLAG_AMOUNT_OUTLIER'
-  | 'FLAG_RATE_THRESHOLD';
+  | 'FLAG_RATE_THRESHOLD'
+  | 'FLAG_INCIDENT_BEFORE_ELIGIBILITY';
 
 export interface FraudFlagInput {
   filedAt: Date;
+  /** SR-018-7 — the claimed incident date, compared against the waiting-
+   * period anchor (policy effectiveDate / asset registeredAt, whichever is
+   * later) to catch a pre-existing-loss filed after waiting out the period. */
+  incidentDate: Date;
   policyEffectiveDate: Date;
   assetRegisteredAt: Date;
   policyUpdatedAt: Date;
@@ -159,16 +204,48 @@ export function computeFraudFlags(input: FraudFlagInput): FraudFlag[] {
     flags.push('FLAG_RATE_THRESHOLD');
   }
 
+  // SR-018-7 — flag (never block) an incident predating the waiting-period
+  // anchor itself (the later of policy.effectiveDate / asset.registeredAt),
+  // which the pre-existing filing-date-only check could not catch.
+  const anchor = waitingPeriodAnchor(input.policyEffectiveDate, input.assetRegisteredAt);
+  if (input.incidentDate.getTime() < anchor.getTime()) {
+    flags.push('FLAG_INCIDENT_BEFORE_ELIGIBILITY');
+  }
+
   return flags;
 }
 
-/** §1.4 — only enforced when a matching coverageLimits entry exists. */
+/**
+ * §1.4 — only enforced when a matching coverageLimits entry exists.
+ *
+ * SR-018-4: a `coverageLimits` entry is scoped to a currency
+ * (`limit.currency`). Previously this ignored currency entirely, so an
+ * `approvedAmount` compared against a limit written in a different
+ * currency could silently pass or fail. Now:
+ *   - If no entry matches `assetType` at all, there is no cap (unchanged).
+ *   - If entries match `assetType` but NONE of them are in
+ *     `approvedCurrency`, the currency is unknown/mismatched — fail CLOSED
+ *     (treated as exceeded) rather than silently ignoring the limit.
+ *   - If multiple entries match both `assetType` and `approvedCurrency`,
+ *     the STRICTEST (minimum) amount applies.
+ */
 export function exceedsCoverageLimit(
   approvedAmount: number,
-  coverageLimits: readonly { assetType: string; amount: number }[],
+  approvedCurrency: string,
+  coverageLimits: readonly { assetType: string; amount: number; currency: string }[],
   assetType: string,
 ): boolean {
-  const match = coverageLimits.find((limit) => limit.assetType === assetType);
-  if (!match) return false;
-  return approvedAmount > match.amount;
+  const matchingAssetType = coverageLimits.filter((limit) => limit.assetType === assetType);
+  if (matchingAssetType.length === 0) return false;
+
+  const matchingCurrency = matchingAssetType.filter((limit) => limit.currency === approvedCurrency);
+  if (matchingCurrency.length === 0) {
+    // A limit IS configured for this asset type, just not in this currency.
+    // Failing open here would mean "no cap" whenever currencies disagree —
+    // fail closed instead.
+    return true;
+  }
+
+  const strictestLimit = Math.min(...matchingCurrency.map((limit) => limit.amount));
+  return approvedAmount > strictestLimit;
 }

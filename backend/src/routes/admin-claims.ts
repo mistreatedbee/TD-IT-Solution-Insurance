@@ -14,7 +14,13 @@ import { apiError } from '../lib/errors.js';
 import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js';
 import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { serializeClaimForAdmin } from '../lib/claim-serializers.js';
-import { exceedsCoverageLimit, isForwardClaimTransition, type ClaimStatus } from '../lib/claim-rules.js';
+import {
+  exceedsCoverageLimit,
+  hasAtMostTwoDecimalPlaces,
+  isForwardClaimTransition,
+  MAX_CLAIM_APPROVED_AMOUNT,
+  type ClaimStatus,
+} from '../lib/claim-rules.js';
 import { InvalidClaimStatusTransitionError } from '../repositories/claims.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
@@ -41,7 +47,19 @@ const requiredReasonSchema = z.string().trim().min(1).max(2000);
 const patchBodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('start_review') }),
   z.object({ action: z.literal('more_info_requested'), reviewNote: requiredReasonSchema }),
-  z.object({ action: z.literal('approved'), approvedAmount: z.number().positive() }),
+  z.object({
+    action: z.literal('approved'),
+    // SR-018-3: a hard platform ceiling (safety backstop, not a real
+    // business/coverage limit — see MAX_CLAIM_APPROVED_AMOUNT's doc comment)
+    // plus a 2-decimal-place precision rule (currency has no fractional
+    // cents). The approvedAmount <= claimedAmount check needs the claim
+    // itself, so it is enforced in the handler below, not here.
+    approvedAmount: z
+      .number()
+      .positive()
+      .max(MAX_CLAIM_APPROVED_AMOUNT, { message: `approvedAmount must not exceed ${MAX_CLAIM_APPROVED_AMOUNT}` })
+      .refine(hasAtMostTwoDecimalPlaces, { message: 'approvedAmount must have at most 2 decimal places' }),
+  }),
   z.object({ action: z.literal('rejected'), rejectionReason: requiredReasonSchema }),
   z.object({ action: z.literal('closed'), closeReason: requiredReasonSchema }),
 ]);
@@ -212,11 +230,34 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
           return;
         }
 
-        // §1.4 — coverage-limit cap check, admin-set approvedAmount only.
+        // §1.4 / SR-018-3 / SR-018-4 — approval guardrails, admin-set
+        // approvedAmount only.
         if (body.action === 'approved') {
+          // SR-018-3: an admin cannot approve more than what was claimed.
+          if (body.approvedAmount > existing.claimedAmount) {
+            next(apiError('APPROVED_AMOUNT_EXCEEDS_CLAIMED'));
+            return;
+          }
+
+          // SR-018-4: a missing policy at approval time must fail CLOSED —
+          // never silently treated as "no coverage limit configured". A
+          // claim's policyId is set from a `findByIdForAccount` lookup at
+          // filing time (claims.ts), but policies can later be deleted/
+          // migrated; this is not a case the earlier filing-time check
+          // already rules out, so it needs its own guard here.
           const policy = await ctx.policies.findByIdForAdmin(existing.policyId);
-          const coverageLimits = policy?.coverageLimits ?? [];
-          if (exceedsCoverageLimit(body.approvedAmount, coverageLimits, existing.assetTypeSnapshot)) {
+          if (!policy) {
+            next(apiError('CLAIM_POLICY_NOT_FOUND'));
+            return;
+          }
+          if (
+            exceedsCoverageLimit(
+              body.approvedAmount,
+              existing.claimedAmountCurrency,
+              policy.coverageLimits,
+              existing.assetTypeSnapshot,
+            )
+          ) {
             next(apiError('APPROVED_AMOUNT_EXCEEDS_COVERAGE_LIMIT'));
             return;
           }
@@ -229,7 +270,14 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
               ? body.rejectionReason
               : body.action === 'closed'
                 ? body.closeReason
-                : null;
+                : body.action === 'approved'
+                  // SR-018-3: the approved figure was missing from the
+                  // privileged-access decision record — only the mutable
+                  // domain document carried it. Reuse the existing optional
+                  // `reason` field (same "widen, don't fork" posture already
+                  // used for this column) rather than add a new one.
+                  ? `approvedAmount=${body.approvedAmount.toFixed(2)} ${existing.claimedAmountCurrency}`
+                  : null;
 
         // Write the decision record BEFORE the mutation (§18.8 ruling (b)).
         await ctx.adminAccessLog.recordStateChange({

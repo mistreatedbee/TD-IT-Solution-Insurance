@@ -147,7 +147,7 @@ export function createMfaRouter(ctx: AppContext): Router {
   const verifySchema = z.object({ enrollmentId: z.string().min(1), code: z.string().length(6) });
   router.post(
     '/mfa/enroll/verify',
-    requireIdempotencyKey('POST /v1/mfa/enroll/verify', ctx.idempotency),
+    requireIdempotencyKey('POST /v1/mfa/enroll/verify', ctx.idempotency, ctx.kv),
     validateBody(verifySchema),
     async (req, res, next) => {
       try {

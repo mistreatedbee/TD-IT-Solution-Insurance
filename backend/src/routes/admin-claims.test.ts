@@ -18,7 +18,7 @@ import type { AccountStatus } from '../repositories/accounts.js';
 import type { AssetDocument } from '../repositories/assets.js';
 import type { PolicyDocument } from '../repositories/policies.js';
 import type { ClaimDocument } from '../repositories/claims.js';
-import { isForwardClaimTransition, type ClaimStatus } from '../lib/claim-rules.js';
+import { isForwardClaimTransition, MAX_CLAIM_APPROVED_AMOUNT, type ClaimStatus } from '../lib/claim-rules.js';
 import type { Env } from '../config/env.js';
 import type {
   AdminAccessBulkDisclosureInput,
@@ -284,7 +284,15 @@ describe('PATCH /v1/admin/claims/{claimId}', () => {
   it('AC-6: rejects an approvedAmount above a configured coverage limit', async () => {
     const acctId = randomUUID();
     const policy = samplePolicy(acctId, { coverageLimits: [{ assetType: 'laptop', amount: 5000, currency: 'ZAR' }] });
-    const harness = createHarness({ accountId: acctId, policy, asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+    // claimedAmount raised above the coverage limit under test so this
+    // scenario exercises the coverage-limit guardrail specifically, not the
+    // (lower-priority-to-report-but-also-true) approvedAmount > claimedAmount guardrail (SR-018-3).
+    const harness = createHarness({
+      accountId: acctId,
+      policy,
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { claimedAmount: 10000 }),
+    });
     const listened = await listen(harness.app);
     activeServer = listened.server;
     const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
@@ -303,7 +311,14 @@ describe('PATCH /v1/admin/claims/{claimId}', () => {
   it('AC-7/AC-9: approves successfully and auto-advances to awaiting_payout when no coverage limit is configured', async () => {
     const acctId = randomUUID();
     const policy = samplePolicy(acctId, { coverageLimits: [] });
-    const harness = createHarness({ accountId: acctId, policy, asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+    // claimedAmount raised so an approvedAmount comfortably inside the
+    // SR-018-3 hard ceiling can still be <= claimedAmount.
+    const harness = createHarness({
+      accountId: acctId,
+      policy,
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { claimedAmount: 50000 }),
+    });
     const listened = await listen(harness.app);
     activeServer = listened.server;
     const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
@@ -320,6 +335,154 @@ describe('PATCH /v1/admin/claims/{claimId}', () => {
     // one state-change audit row, never a payout-related side effect.
     expect(harness.stateChanges).toHaveLength(1);
     expect(harness.stateChanges[0]!.toStatus).toBe('awaiting_payout');
+    // SR-018-3: the approved figure is now recorded on the decision record
+    // itself (reusing the existing `reason` field), not only on the mutable
+    // domain document.
+    expect(harness.stateChanges[0]!.reason).toBe('approvedAmount=50000.00 ZAR');
+  });
+
+  it('SR-018-3: rejects approvedAmount above claimedAmount with 422 APPROVED_AMOUNT_EXCEEDS_CLAIMED', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { claimedAmount: 1000 }),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'approved', approvedAmount: 1500 }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error.code).toBe('APPROVED_AMOUNT_EXCEEDS_CLAIMED');
+    expect(harness.getClaim().status).toBe('under_review');
+    expect(harness.stateChanges).toHaveLength(0);
+  });
+
+  it('SR-018-3: allows approvedAmount exactly equal to claimedAmount', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { claimedAmount: 1000 }),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'approved', approvedAmount: 1000 }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('SR-018-3: rejects an approvedAmount above the platform hard ceiling with 400 VALIDATION_ERROR', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { claimedAmount: MAX_CLAIM_APPROVED_AMOUNT + 1_000_000 }),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'approved', approvedAmount: MAX_CLAIM_APPROVED_AMOUNT + 1 }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+    expect(harness.getClaim().status).toBe('under_review');
+  });
+
+  it('SR-018-3: rejects an approvedAmount with more than 2 decimal places with 400 VALIDATION_ERROR', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { claimedAmount: 1000 }),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'approved', approvedAmount: 999.999 }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('SR-018-4: a configured coverage limit in a different currency fails closed (treated as exceeded)', async () => {
+    const acctId = randomUUID();
+    const policy = samplePolicy(acctId, {
+      coverageLimits: [{ assetType: 'laptop', amount: 50000, currency: 'USD' }],
+    });
+    const harness = createHarness({
+      accountId: acctId,
+      policy,
+      asset: sampleAsset(acctId),
+      // claim's claimedAmountCurrency defaults to 'ZAR' (sampleClaim), which
+      // does not match the USD-denominated limit above.
+      claim: sampleClaim(acctId, { claimedAmount: 1000, claimedAmountCurrency: 'ZAR' }),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'approved', approvedAmount: 1 }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error.code).toBe('APPROVED_AMOUNT_EXCEEDS_COVERAGE_LIMIT');
+    expect(harness.getClaim().status).toBe('under_review');
+  });
+
+  it('SR-018-4: a missing policy at approval time fails CLOSED (409), never an uncapped approval', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      // No policy registered in the harness at all — findByIdForAdmin
+      // returns null for any id, simulating a policy that can no longer be
+      // found at approval time.
+      policy: undefined,
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { claimedAmount: 1000 }),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'approved', approvedAmount: 500 }),
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe('CLAIM_POLICY_NOT_FOUND');
+    expect(harness.getClaim().status).toBe('under_review');
+    expect(harness.stateChanges).toHaveLength(0);
   });
 
   it('AC-8: rejecting a claim without a rejectionReason returns 400 VALIDATION_ERROR and leaves status unchanged', async () => {

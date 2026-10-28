@@ -517,3 +517,56 @@ running the fix script directly (per INC-003 §39 — not an agent connecting to
 
 Both items are CLOSED with production evidence. SR-018-3 through SR-018-7 remain open and are not
 addressed by this section.
+
+## 8. SR-018-5 fix (backend-engineer, 2026-10-28)
+
+Addresses the check-then-insert "one open claim per asset" race and the non-atomic idempotency-key
+reservation §1.5/§1.7 flagged. Not yet re-reviewed by `cybersecurity-architect` — this section records
+the implementation only; §6 sign-off for SR-018-5 is still pending that re-review.
+
+- **Database-level backstop (the primary fix):** a partial unique index,
+  `claims_one_open_claim_per_asset`, on `{ assetId: 1 }`, scoped to
+  `status: { $in: NON_TERMINAL_CLAIM_STATUSES } }` (`'submitted' | 'under_review' |
+  'more_info_requested'` — `lib/claim-rules.ts`, the same set `findNonTerminalByAssetForAccount`
+  already used, now exported as a single source of truth). Defined in a new
+  `db/claims-collections.ts`, wired into the existing `db/mongo-bootstrap.ts` startup sequence
+  (non-fatal on failure, matching every other collection bootstrap's try/catch there). No
+  `$jsonSchema` validator was added — the `claims` collection predates this file and already has
+  data/tests against it without one; retrofitting strict validation is a separate, larger change,
+  out of scope here.
+- **Graceful error translation:** `repositories/claims.ts`'s `createForAccount` now catches a Mongo
+  duplicate-key error (code `11000`) against that index and throws a new `DuplicateOpenClaimError`
+  (DB-aware, not a route-layer concern). `routes/claims.ts`'s `POST /v1/claims` catches it, re-resolves
+  the actual winning claim via the existing `findNonTerminalByAssetForAccount` lookup, and returns the
+  same `409 DUPLICATE_OPEN_CLAIM` shape (with `claimId`) the pre-insert check already returns on a
+  non-concurrent duplicate — never a raw database error reaching the client.
+- **Idempotency-key reservation — confirmed to be a real gap, now fixed.** Read the shared
+  `middleware/idempotency.ts` directly before assuming the finding: it stored a replay record only
+  when the ORIGINAL response finished (`res.json` patched to call `repo.store()` at response time),
+  with no reservation step at request-arrival time. Two requests sharing an `Idempotency-Key` could
+  both miss the Postgres `find()` lookup and both run the full handler body before either stored a
+  cached response — confirmed as a genuine gap, not a finding to dismiss. Fixed by adding an atomic
+  claim step using the existing Redis-class `KeyValueStore.incrWithTtl` (the same primitive the
+  fixed-window rate limiter already uses for "am I first" semantics, chosen over a Postgres schema
+  change because `app.idempotency_keys`' `response_status`/`response_body` columns are `not null`
+  — see `database-addendum-001.md` §2 — so a nullable "pending" placeholder row isn't a one-line
+  change there). A concurrent duplicate that hasn't finished yet now gets a new `409
+  IDEMPOTENCY_KEY_IN_PROGRESS` (distinct from the existing `IDEMPOTENCY_KEY_REUSE`, which is same-key-
+  different-body); a duplicate that arrives after the first finished still replays the cached response
+  exactly as before. All 11 `requireIdempotencyKey(...)` call sites across the backend (`policies.ts`,
+  `assets.ts`, `session.ts`, `support-cases.ts`, `invitations.ts` x2, `claims.ts`, `auth.ts` x2, `mfa.ts`,
+  `recovery.ts`) were updated to pass `ctx.kv` — a signature change to shared middleware, flagged here
+  per the CLAUDE.md escalation norm even though it is additive/non-breaking to callers outside this repo
+  (no external API contract changed).
+- **Test:** `routes/claims.test.ts` ("SR-018-5: two simultaneous claim-filing requests...") fires two
+  concurrent `POST /v1/claims` requests (different `Idempotency-Key`s, so it isolates the asset-race
+  guard from the idempotency-key guard) against a harness whose fake `createForAccount` reproduces the
+  real check-then-insert interleaving and throws the real `DuplicateOpenClaimError` class. Asserts
+  exactly one `201` and one `409 DUPLICATE_OPEN_CLAIM` (never a `500`), and that the `claims` array
+  ends with exactly one row for the asset. A second, real-MongoDB integration test,
+  `db/claims-collections.test.ts`, proves the actual partial unique index against a live `mongod`
+  (connect-or-skip, same pattern as `repositories/plan-catalog.test.ts`; skipped in this sandbox, which
+  has no local Mongo — not run against production or Atlas).
+- **Verification:** `tsc --noEmit` clean; full suite `857/857` passing across `76` test files
+  (`npm test`), including the new tests above.
+- Commit: see this section's accompanying commit hash in `git log` for `fix(claims): SR-018-5 ...`.

@@ -55,7 +55,7 @@ export function createInvitationsRouter(ctx: AppContext): Router {
     // middleware at all, so nothing gets cached until the request actually
     // clears step-up and reaches the real handler.
     requireStepUp(ctx, STEP_UP_WINDOW_SECONDS.invitationIssuance),
-    requireIdempotencyKey('POST /v1/invitations', ctx.idempotency),
+    requireIdempotencyKey('POST /v1/invitations', ctx.idempotency, ctx.kv),
     validateBody(createSchema),
     async (req, res, next) => {
       try {
@@ -177,7 +177,7 @@ export function createInvitationsRouter(ctx: AppContext): Router {
   const acceptSchema = z.object({ password: z.string().min(1) });
   router.post(
     '/invitations/:token/accept',
-    requireIdempotencyKey('POST /v1/invitations/{token}/accept', ctx.idempotency),
+    requireIdempotencyKey('POST /v1/invitations/{token}/accept', ctx.idempotency, ctx.kv),
     validateBody(acceptSchema),
     async (req, res, next) => {
       try {

@@ -4,10 +4,12 @@ import {
   CLAIM_WAITING_PERIOD_DAYS,
   computeFraudFlags,
   exceedsCoverageLimit,
+  hasAtMostTwoDecimalPlaces,
   isForwardClaimTransition,
   isOverClaimRateThreshold,
   isTerminalClaimStatus,
   isWaitingPeriodMet,
+  MAX_CLAIM_APPROVED_AMOUNT,
   waitingPeriodClearsAt,
   type ClaimStatus,
 } from './claim-rules.js';
@@ -86,6 +88,7 @@ describe('waiting period (§1.3/§1.3a)', () => {
 describe('§5 fraud flags — deterministic, surfaced to admins only, never blocking', () => {
   const base = {
     filedAt: new Date('2026-10-28T00:00:00.000Z'),
+    incidentDate: new Date('2026-10-20T00:00:00.000Z'),
     policyEffectiveDate: new Date('2026-01-01T00:00:00.000Z'),
     assetRegisteredAt: new Date('2026-01-01T00:00:00.000Z'),
     policyUpdatedAt: new Date('2020-01-01T00:00:00.000Z'),
@@ -142,21 +145,93 @@ describe('§5 fraud flags — deterministic, surfaced to admins only, never bloc
     const underThreshold = computeFraudFlags({ ...base, priorClaimsInRateWindow: 2 });
     expect(underThreshold).not.toContain('FLAG_RATE_THRESHOLD');
   });
+
+  // SR-018-7 — pre-existing-loss bypass: the waiting period previously only
+  // measured the FILING date, never the incident date against the asset's
+  // registeredAt/policy's effectiveDate. These assert the new flag.
+  it('SR-018-7: flags an incident predating both the policy effectiveDate and asset registeredAt', () => {
+    const flags = computeFraudFlags({
+      ...base,
+      policyEffectiveDate: new Date('2026-01-01T00:00:00.000Z'),
+      assetRegisteredAt: new Date('2026-09-01T00:00:00.000Z'),
+      incidentDate: new Date('2026-08-15T00:00:00.000Z'), // before registeredAt (the later anchor)
+    });
+    expect(flags).toContain('FLAG_INCIDENT_BEFORE_ELIGIBILITY');
+  });
+
+  it('SR-018-7: flags an incident predating the policy effectiveDate even when the asset was registered earlier', () => {
+    const flags = computeFraudFlags({
+      ...base,
+      policyEffectiveDate: new Date('2026-10-01T00:00:00.000Z'),
+      assetRegisteredAt: new Date('2026-01-01T00:00:00.000Z'),
+      incidentDate: new Date('2026-09-15T00:00:00.000Z'), // before effectiveDate (the later anchor)
+    });
+    expect(flags).toContain('FLAG_INCIDENT_BEFORE_ELIGIBILITY');
+  });
+
+  it('SR-018-7: does not flag a legitimate incident after both the policy effectiveDate and asset registeredAt', () => {
+    const flags = computeFraudFlags({
+      ...base,
+      policyEffectiveDate: new Date('2026-01-01T00:00:00.000Z'),
+      assetRegisteredAt: new Date('2026-01-15T00:00:00.000Z'),
+      incidentDate: new Date('2026-10-20T00:00:00.000Z'),
+    });
+    expect(flags).not.toContain('FLAG_INCIDENT_BEFORE_ELIGIBILITY');
+  });
 });
 
 describe('§1.4 coverage-limit interaction', () => {
   it('AC-6: enforces the cap when a matching coverageLimits entry exists', () => {
     const limits = [{ assetType: 'laptop', amount: 5000, currency: 'ZAR' }];
-    expect(exceedsCoverageLimit(6000, limits, 'laptop')).toBe(true);
-    expect(exceedsCoverageLimit(5000, limits, 'laptop')).toBe(false);
+    expect(exceedsCoverageLimit(6000, 'ZAR', limits, 'laptop')).toBe(true);
+    expect(exceedsCoverageLimit(5000, 'ZAR', limits, 'laptop')).toBe(false);
   });
 
   it('AC-7: no cap enforced when coverageLimits is empty (default for every policy today)', () => {
-    expect(exceedsCoverageLimit(50000, [], 'laptop')).toBe(false);
+    expect(exceedsCoverageLimit(50000, 'ZAR', [], 'laptop')).toBe(false);
   });
 
   it('does not cap an unrelated asset type even when coverageLimits is non-empty', () => {
     const limits = [{ assetType: 'laptop', amount: 5000, currency: 'ZAR' }];
-    expect(exceedsCoverageLimit(999999, limits, 'smartphone')).toBe(false);
+    expect(exceedsCoverageLimit(999999, 'ZAR', limits, 'smartphone')).toBe(false);
+  });
+
+  it('SR-018-4: fails closed (treated as exceeded) when the limit for this assetType is in a different currency', () => {
+    const limits = [{ assetType: 'laptop', amount: 5000, currency: 'USD' }];
+    // Even a tiny amount in the mismatched currency is rejected — the
+    // currency disagreement itself is the problem, not the magnitude.
+    expect(exceedsCoverageLimit(1, 'ZAR', limits, 'laptop')).toBe(true);
+  });
+
+  it('SR-018-4: uses the strictest (minimum) amount when multiple entries match assetType + currency', () => {
+    const limits = [
+      { assetType: 'laptop', amount: 8000, currency: 'ZAR' },
+      { assetType: 'laptop', amount: 5000, currency: 'ZAR' },
+    ];
+    expect(exceedsCoverageLimit(6000, 'ZAR', limits, 'laptop')).toBe(true);
+    expect(exceedsCoverageLimit(4000, 'ZAR', limits, 'laptop')).toBe(false);
+  });
+});
+
+describe('SR-018-3 — approved/claimed amount guardrails', () => {
+  it('MAX_CLAIM_APPROVED_AMOUNT is a large, named sentinel ceiling', () => {
+    expect(MAX_CLAIM_APPROVED_AMOUNT).toBeGreaterThan(0);
+    expect(Number.isFinite(MAX_CLAIM_APPROVED_AMOUNT)).toBe(true);
+  });
+
+  it('hasAtMostTwoDecimalPlaces accepts whole numbers and 2-decimal amounts', () => {
+    expect(hasAtMostTwoDecimalPlaces(1200)).toBe(true);
+    expect(hasAtMostTwoDecimalPlaces(1200.5)).toBe(true);
+    expect(hasAtMostTwoDecimalPlaces(1200.99)).toBe(true);
+  });
+
+  it('hasAtMostTwoDecimalPlaces rejects more than 2 decimal places', () => {
+    expect(hasAtMostTwoDecimalPlaces(1200.999)).toBe(false);
+    expect(hasAtMostTwoDecimalPlaces(0.001)).toBe(false);
+  });
+
+  it('hasAtMostTwoDecimalPlaces rejects non-finite values', () => {
+    expect(hasAtMostTwoDecimalPlaces(Infinity)).toBe(false);
+    expect(hasAtMostTwoDecimalPlaces(NaN)).toBe(false);
   });
 });

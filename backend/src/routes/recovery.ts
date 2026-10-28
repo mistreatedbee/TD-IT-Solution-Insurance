@@ -68,7 +68,7 @@ export function createRecoveryRouter(ctx: AppContext): Router {
       DEFAULT_AUTHENTICATED_LIMIT,
       (req) => `recovery-create:${req.auth!.accountId}`,
     ),
-    requireIdempotencyKey('POST /v1/recovery/cases', ctx.idempotency),
+    requireIdempotencyKey('POST /v1/recovery/cases', ctx.idempotency, ctx.kv),
     async (req, res, next) => {
       try {
         const parsed = createCaseSchema.safeParse(req.body);

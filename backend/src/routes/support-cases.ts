@@ -143,7 +143,7 @@ export function createSupportCasesRouter(ctx: AppContext): Router {
     authenticate,
     requireUserType('support_agent'),
     rateLimit,
-    requireIdempotencyKey('POST /v1/support-cases', ctx.idempotency),
+    requireIdempotencyKey('POST /v1/support-cases', ctx.idempotency, ctx.kv),
     async (req, res, next) => {
       try {
         const parsed = createSupportCaseSchema.safeParse(req.body);

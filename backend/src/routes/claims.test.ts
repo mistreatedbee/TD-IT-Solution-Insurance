@@ -19,8 +19,8 @@ import type { AppContext } from '../context.js';
 import type { AccountStatus } from '../repositories/accounts.js';
 import type { AssetDocument } from '../repositories/assets.js';
 import type { PolicyDocument } from '../repositories/policies.js';
-import type { ClaimDocument } from '../repositories/claims.js';
-import { isForwardClaimTransition, type ClaimStatus } from '../lib/claim-rules.js';
+import { DuplicateOpenClaimError, type ClaimDocument } from '../repositories/claims.js';
+import { isForwardClaimTransition, MAX_CLAIM_APPROVED_AMOUNT, type ClaimStatus } from '../lib/claim-rules.js';
 import type { Env } from '../config/env.js';
 import type { IdempotencyRepo } from '../repositories/idempotency.js';
 
@@ -196,6 +196,18 @@ function createHarness(opts: {
   const accountId = opts.accountId ?? randomUUID();
   const sessionId = randomUUID();
   const claims = [...(opts.claims ?? [])];
+  // SR-018-5 concurrency test support: mirrors the real `claims` collection's
+  // partial-unique-index behavior (`db/claims-collections.ts`) in-memory — an
+  // assetId can be "reserved" by at most one non-terminal claim at a time. The
+  // `await setImmediate` below deliberately reopens the check-then-insert race
+  // window a real two-phase commit would have, so `Promise.all`-fired concurrent
+  // `createForAccount` calls exercise the same interleaving a real unique-index
+  // collision does, including on the losing call throwing `DuplicateOpenClaimError`
+  // exactly as the real repository now does on Mongo error code 11000.
+  const NON_TERMINAL = ['submitted', 'under_review', 'more_info_requested'];
+  const reservedAssetIds = new Set<string>(
+    claims.filter((c) => NON_TERMINAL.includes(c.status)).map((c) => c.assetId),
+  );
 
   const ctx = {
     env,
@@ -231,6 +243,14 @@ function createHarness(opts: {
     },
     claims: {
       async createForAccount(input: Record<string, unknown>) {
+        const assetId = input.assetId as string;
+        // Yield so two concurrent callers both reach this point before either
+        // has reserved the assetId — the check-then-insert race SR-018-5 covers.
+        await new Promise((resolve) => setImmediate(resolve));
+        if (reservedAssetIds.has(assetId)) {
+          throw new DuplicateOpenClaimError(assetId);
+        }
+        reservedAssetIds.add(assetId);
         const created = sampleClaim(accountId, {
           id: randomUUID().replace(/-/g, '').slice(0, 24),
           ...input,
@@ -344,6 +364,89 @@ describe('POST /v1/claims', () => {
     expect(body.error.code).toBe('POLICY_NOT_ACTIVE');
   });
 
+  it('SR-018-4: ignores a customer-supplied claimedAmountCurrency and always uses the policy currency', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      asset: sampleAsset(acctId),
+      policy: samplePolicy(acctId), // billing.currency: 'ZAR'
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const res = await fetch(`${listened.baseUrl}/claims`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+      body: JSON.stringify({
+        policyId: POLICY_ID,
+        assetId: ASSET_ID,
+        incidentDescription: 'Laptop was stolen from my car overnight.',
+        incidentDate: '2026-09-15',
+        claimedAmount: 1000,
+        // Attempting to file in a currency the policy is not written in.
+        claimedAmountCurrency: 'USD',
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.claimedAmountCurrency).toBe('ZAR');
+  });
+
+  it('SR-018-3: rejects a claimedAmount above the platform hard ceiling with 400 VALIDATION_ERROR', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      asset: sampleAsset(acctId),
+      policy: samplePolicy(acctId),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const res = await fetch(`${listened.baseUrl}/claims`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+      body: JSON.stringify({
+        policyId: POLICY_ID,
+        assetId: ASSET_ID,
+        incidentDescription: 'Laptop was stolen from my car overnight.',
+        incidentDate: '2026-09-15',
+        claimedAmount: MAX_CLAIM_APPROVED_AMOUNT + 1,
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('SR-018-3: rejects a claimedAmount with more than 2 decimal places with 400 VALIDATION_ERROR', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      asset: sampleAsset(acctId),
+      policy: samplePolicy(acctId),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const res = await fetch(`${listened.baseUrl}/claims`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+      body: JSON.stringify({
+        policyId: POLICY_ID,
+        assetId: ASSET_ID,
+        incidentDescription: 'Laptop was stolen from my car overnight.',
+        incidentDate: '2026-09-15',
+        claimedAmount: 999.999,
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('AC-2: rejects a claim filed before the waiting period clears (policy-effectiveDate path)', async () => {
     const acctId = randomUUID();
     const now = new Date('2026-10-28T00:00:00.000Z');
@@ -398,6 +501,57 @@ describe('POST /v1/claims', () => {
     const body = await res.json();
     expect(body.error.code).toBe('DUPLICATE_OPEN_CLAIM');
     expect(body.error.claimId).toBe(existing.id);
+  });
+
+  it('SR-018-5: two simultaneous claim-filing requests for the same asset produce exactly one created claim and one 409 DUPLICATE_OPEN_CLAIM (never a raw 500)', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      asset: sampleAsset(acctId),
+      policy: samplePolicy(acctId),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const fire = () =>
+      fetch(`${listened.baseUrl}/claims`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+          // Different idempotency keys — this proves the asset-level race guard
+          // itself (DB unique index + DuplicateOpenClaimError translation), not
+          // the separate idempotency-key reservation path.
+          'idempotency-key': randomUUID(),
+        },
+        body: JSON.stringify({
+          policyId: POLICY_ID,
+          assetId: ASSET_ID,
+          incidentDescription: 'Laptop was stolen from my car overnight.',
+          incidentDate: '2026-09-15',
+          claimedAmount: 1000,
+        }),
+      });
+
+    const [resA, resB] = await Promise.all([fire(), fire()]);
+    const [bodyA, bodyB] = await Promise.all([resA.json(), resB.json()]);
+    const results = [
+      { status: resA.status, body: bodyA },
+      { status: resB.status, body: bodyB },
+    ];
+
+    const created = results.filter((r) => r.status === 201);
+    const duplicates = results.filter((r) => r.status === 409);
+
+    expect(created).toHaveLength(1);
+    expect(duplicates).toHaveLength(1);
+    expect(duplicates[0]!.body.error.code).toBe('DUPLICATE_OPEN_CLAIM');
+    // The duplicate response names the claim that actually won the race, not a
+    // raw database error — and the harness's in-memory `claims` array ends up
+    // with exactly one row for this asset.
+    expect(duplicates[0]!.body.error.claimId).toBe(created[0]!.body.id);
+    expect(harness.claims.filter((c) => c.assetId === ASSET_ID)).toHaveLength(1);
   });
 
   it('AC-5: allows a new claim on the same asset once the prior claim is terminal (rejected)', async () => {

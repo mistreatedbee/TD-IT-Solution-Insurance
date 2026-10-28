@@ -55,7 +55,7 @@ export function createAssetsRouter(ctx: AppContext): Router {
       { attempts: DEFAULT_AUTHENTICATED_LIMIT.attempts, windowSeconds: DEFAULT_AUTHENTICATED_LIMIT.windowSeconds },
       (req) => `assets-create:${req.auth!.accountId}`,
     ),
-    requireIdempotencyKey('POST /v1/assets', ctx.idempotency),
+    requireIdempotencyKey('POST /v1/assets', ctx.idempotency, ctx.kv),
     validateBody(createAssetBodySchema),
     async (req, res, next) => {
       try {

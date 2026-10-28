@@ -26,7 +26,17 @@ export function serializeClaimForCustomer(claim: ClaimDocument) {
     claimedAmountCurrency: claim.claimedAmountCurrency,
     approvedAmount: claim.approvedAmount,
     rejectionReason: claim.rejectionReason,
-    reviewNotes: claim.reviewNotes.map((n) => ({ text: n.text, createdAt: n.createdAt.toISOString() })),
+    // SR-018-6 — administrative close reason, customer-visible like rejectionReason.
+    // Only ever populated on an admin-initiated close (never a customer withdrawal).
+    closeReason: claim.closeReason,
+    // SR-018-6 — `authorRole` lets the customer tell an admin's more-info
+    // request apart from their own prior response, without ever exposing
+    // `actorAccountId` (admin-only).
+    reviewNotes: claim.reviewNotes.map((n) => ({
+      authorRole: n.authorRole,
+      text: n.text,
+      createdAt: n.createdAt.toISOString(),
+    })),
     submittedAt: claim.submittedAt.toISOString(),
     decidedAt: claim.decidedAt?.toISOString() ?? null,
     updatedAt: claim.updatedAt.toISOString(),
@@ -45,6 +55,11 @@ export function coverageLimitStatusFor(
   coverageLimits: readonly CoverageLimit[],
   assetType: string,
   approvedAmount: number | null,
+  /** SR-018-4 — the currency `approvedAmount` is denominated in. There is no
+   * separate `approvedAmountCurrency` field: an approval is always recorded
+   * in the claim's own `claimedAmountCurrency` (itself always the policy's
+   * currency per SR-018-4, never customer-supplied). */
+  approvedCurrency: string,
 ): CoverageLimitStatus {
   const match = coverageLimits.find((limit) => limit.assetType === assetType);
   if (!match) {
@@ -54,7 +69,10 @@ export function coverageLimitStatusFor(
     configured: true,
     limitAmount: match.amount,
     limitCurrency: match.currency,
-    wouldExceed: approvedAmount != null ? exceedsCoverageLimit(approvedAmount, coverageLimits, assetType) : null,
+    wouldExceed:
+      approvedAmount != null
+        ? exceedsCoverageLimit(approvedAmount, approvedCurrency, coverageLimits, assetType)
+        : null,
   };
 }
 
@@ -77,7 +95,12 @@ export function serializeClaimForAdmin(
       clearedAt: waitingPeriodClearedAt.toISOString(),
       wasMetAtFiling: claim.submittedAt.getTime() >= waitingPeriodClearedAt.getTime(),
     },
-    coverageLimit: coverageLimitStatusFor(context.coverageLimits, claim.assetTypeSnapshot, claim.approvedAmount),
+    coverageLimit: coverageLimitStatusFor(
+      context.coverageLimits,
+      claim.assetTypeSnapshot,
+      claim.approvedAmount,
+      claim.claimedAmountCurrency,
+    ),
     duplicateOpenClaimIdAtFiling: context.duplicateOpenClaimId,
   };
 }

@@ -57,7 +57,7 @@ export function createPoliciesRouter(ctx: AppContext): Router {
       { attempts: DEFAULT_AUTHENTICATED_LIMIT.attempts, windowSeconds: DEFAULT_AUTHENTICATED_LIMIT.windowSeconds },
       (req) => `policies-create:${req.auth!.accountId}`,
     ),
-    requireIdempotencyKey('POST /v1/policies', ctx.idempotency),
+    requireIdempotencyKey('POST /v1/policies', ctx.idempotency, ctx.kv),
     validateBody(createPolicySchema),
     async (req, res, next) => {
       try {

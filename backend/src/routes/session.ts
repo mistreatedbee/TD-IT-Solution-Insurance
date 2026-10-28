@@ -73,7 +73,7 @@ export function createSessionRouter(ctx: AppContext): Router {
   router.post(
     '/session/logout-all',
     authenticate,
-    requireIdempotencyKey('POST /v1/session/logout-all', ctx.idempotency),
+    requireIdempotencyKey('POST /v1/session/logout-all', ctx.idempotency, ctx.kv),
     async (req, res, next) => {
       try {
         const auth = req.auth!;

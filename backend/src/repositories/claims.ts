@@ -9,12 +9,17 @@ import { mongoCursorFilter, type MongoDecodedCursor } from '../lib/mongo-paginat
 import {
   isForwardClaimTransition,
   isTerminalClaimStatus,
+  NON_TERMINAL_CLAIM_STATUSES,
   type ClaimStatus,
   type FraudFlag,
 } from '../lib/claim-rules.js';
 
 export interface ClaimReviewNote {
   actorAccountId: string;
+  /** SR-018-6 — distinguishes an admin's more-info request from the
+   * customer's own response so the customer-facing serializer can surface
+   * the admin's text without ever exposing `actorAccountId`. */
+  authorRole: 'admin' | 'customer';
   text: string;
   createdAt: Date;
 }
@@ -50,6 +55,10 @@ export interface ClaimDocument {
 
   approvedAmount: number | null;
   rejectionReason: string | null;
+  /** SR-018-6 — administrative close reason (admin-initiated `closed` only;
+   * left null for a customer withdrawal, which already carries its own
+   * fixed statusHistory reason). Customer-visible, like `rejectionReason`. */
+  closeReason: string | null;
   reviewNotes: ClaimReviewNote[];
   statusHistory: ClaimStatusChange[];
   /** §5 — computed once at filing, admin-only, never shown to the customer. */
@@ -101,6 +110,7 @@ function toClaim(row: ClaimDbRow): ClaimDocument {
     claimedAmountCurrency: row.claimedAmountCurrency,
     approvedAmount: row.approvedAmount ?? null,
     rejectionReason: row.rejectionReason ?? null,
+    closeReason: row.closeReason ?? null,
     reviewNotes: row.reviewNotes ?? [],
     statusHistory: row.statusHistory ?? [],
     fraudFlags: row.fraudFlags ?? [],
@@ -111,9 +121,6 @@ function toClaim(row: ClaimDbRow): ClaimDocument {
   };
 }
 
-/** NON_TERMINAL set — §1.5 "at most one claim in a non-terminal state" per asset. */
-const NON_TERMINAL_STATUSES: readonly ClaimStatus[] = ['submitted', 'under_review', 'more_info_requested'];
-
 export class InvalidClaimStatusTransitionError extends Error {
   constructor(
     readonly fromStatus: ClaimStatus,
@@ -122,6 +129,31 @@ export class InvalidClaimStatusTransitionError extends Error {
     super(`invalid claim status transition: ${fromStatus} -> ${toStatus}`);
     this.name = 'InvalidClaimStatusTransitionError';
   }
+}
+
+/**
+ * SR-018-5 — thrown when `createForAccount`'s insert collides with the
+ * `claims_one_open_claim_per_asset` partial unique index (`db/claims-collections.ts`).
+ * This is the database-level backstop for the same §1.5 rule
+ * `findNonTerminalByAssetForAccount`'s pre-insert check already enforces at the
+ * application layer: two concurrent requests can both pass that check before
+ * either insert lands, but only one insert can win against the index. The
+ * route layer (`routes/claims.ts`) catches this and re-resolves it into the
+ * same `DUPLICATE_OPEN_CLAIM` response the pre-insert check already returns,
+ * so a client never sees a raw database error.
+ */
+export class DuplicateOpenClaimError extends Error {
+  constructor(readonly assetId: string) {
+    super(`duplicate open claim for asset: ${assetId}`);
+    this.name = 'DuplicateOpenClaimError';
+  }
+}
+
+/** Mongo duplicate-key error — code 11000, including inside a `WriteError` wrapper. */
+function isMongoDuplicateKeyError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const code = (err as { code?: unknown }).code;
+  return code === 11000;
 }
 
 export function createClaimsRepo(db: Db) {
@@ -147,6 +179,7 @@ export function createClaimsRepo(db: Db) {
         claimedAmountCurrency: input.claimedAmountCurrency,
         approvedAmount: null,
         rejectionReason: null,
+        closeReason: null,
         reviewNotes: [],
         statusHistory: [],
         fraudFlags: input.fraudFlags,
@@ -155,8 +188,15 @@ export function createClaimsRepo(db: Db) {
         createdAt: now,
         updatedAt: now,
       };
-      const result = await collection().insertOne(doc as ClaimDbRow);
-      return toClaim({ _id: result.insertedId, ...doc });
+      try {
+        const result = await collection().insertOne(doc as ClaimDbRow);
+        return toClaim({ _id: result.insertedId, ...doc });
+      } catch (err) {
+        if (isMongoDuplicateKeyError(err)) {
+          throw new DuplicateOpenClaimError(input.assetId);
+        }
+        throw err;
+      }
     },
 
     async listByAccount(
@@ -183,7 +223,7 @@ export function createClaimsRepo(db: Db) {
       const row = await collection().findOne({
         accountId,
         assetId,
-        status: { $in: NON_TERMINAL_STATUSES },
+        status: { $in: NON_TERMINAL_CLAIM_STATUSES },
       });
       return row ? toClaim(row) : null;
     },
@@ -256,13 +296,27 @@ export function createClaimsRepo(db: Db) {
       };
       const $set: Record<string, unknown> = { status: input.toStatus, updatedAt: now };
       if (input.toStatus === 'rejected') $set.rejectionReason = input.reason;
+      // SR-018-6 — administrative close reason, customer-visible like rejectionReason.
+      if (input.toStatus === 'closed') $set.closeReason = input.reason;
       if (isTerminalClaimStatus(input.toStatus)) {
         // decidedAt set-once-on-first-terminal-entry (§3 notes, mirrors recovery_cases.closedAt).
         $set.decidedAt = now;
       }
+      // SR-018-6 — surface the admin's more-info-request text to the customer
+      // via reviewNotes (authorRole: 'admin'), not just statusHistory, which
+      // the customer-facing serializer never reads.
+      const $push: Record<string, unknown> = { statusHistory: entry };
+      if (input.toStatus === 'more_info_requested' && input.reason) {
+        $push.reviewNotes = {
+          actorAccountId: input.actorAccountId,
+          authorRole: 'admin',
+          text: input.reason,
+          createdAt: now,
+        } satisfies ClaimReviewNote;
+      }
       const row = await collection().findOneAndUpdate(
         { _id: new ObjectId(claimId), status: input.expectedStatus },
-        { $set, $push: { statusHistory: entry } },
+        { $set, $push },
         { returnDocument: 'after' },
       );
       return row ? toClaim(row) : null;
@@ -326,7 +380,12 @@ export function createClaimsRepo(db: Db) {
     ): Promise<ClaimDocument | null> {
       if (!ObjectId.isValid(claimId)) return null;
       const now = new Date();
-      const note: ClaimReviewNote = { actorAccountId: accountId, text: input.text, createdAt: now };
+      const note: ClaimReviewNote = {
+        actorAccountId: accountId,
+        authorRole: 'customer',
+        text: input.text,
+        createdAt: now,
+      };
       const entry: ClaimStatusChange = {
         fromStatus: 'more_info_requested',
         toStatus: 'under_review',

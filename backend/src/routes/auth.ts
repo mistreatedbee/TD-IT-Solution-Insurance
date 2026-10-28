@@ -1018,7 +1018,7 @@ export function createAuthRouter(ctx: AppContext): Router {
     });
   router.post(
     '/auth/reset-password/confirm',
-    requireIdempotencyKey('POST /v1/auth/reset-password/confirm', ctx.idempotency),
+    requireIdempotencyKey('POST /v1/auth/reset-password/confirm', ctx.idempotency, ctx.kv),
     validateBody(resetConfirmSchema),
     async (req, res, next) => {
       let redeemedResetToken = false;
@@ -1223,7 +1223,7 @@ export function createAuthRouter(ctx: AppContext): Router {
   const resetMfaVerifySchema = z.object({ mfaVerificationToken: z.string().min(1), code: z.string().length(6) });
   router.post(
     '/auth/reset-password/mfa-verify',
-    requireIdempotencyKey('POST /v1/auth/reset-password/mfa-verify', ctx.idempotency),
+    requireIdempotencyKey('POST /v1/auth/reset-password/mfa-verify', ctx.idempotency, ctx.kv),
     validateBody(resetMfaVerifySchema),
     async (req, res, next) => {
       try {

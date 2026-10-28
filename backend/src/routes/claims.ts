@@ -12,13 +12,15 @@ import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { serializeClaimForCustomer } from '../lib/claim-serializers.js';
 import {
   computeFraudFlags,
+  hasAtMostTwoDecimalPlaces,
   isForwardClaimTransition,
   isWaitingPeriodMet,
+  MAX_CLAIM_APPROVED_AMOUNT,
   rateThresholdWindowStart,
   waitingPeriodClearsAt,
   type ClaimStatus,
 } from '../lib/claim-rules.js';
-import { InvalidClaimStatusTransitionError } from '../repositories/claims.js';
+import { DuplicateOpenClaimError, InvalidClaimStatusTransitionError } from '../repositories/claims.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
@@ -34,8 +36,19 @@ const createClaimSchema = z.object({
   incidentDescription: z.string().trim().min(20).max(5000),
   incidentDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
   evidenceDescription: z.string().trim().max(5000).optional(),
-  claimedAmount: z.number().positive(),
-  claimedAmountCurrency: z.string().trim().length(3).optional(),
+  // SR-018-3: same platform ceiling + 2-decimal-place precision rule as
+  // `approvedAmount` on the admin side — otherwise an absurd claimedAmount
+  // (e.g. `1e300`) would skew every later FLAG_AMOUNT_OUTLIER baseline for
+  // this account. SR-018-4: `claimedAmountCurrency` is intentionally NOT a
+  // field here — currency is never a customer choice; see the handler,
+  // which always sets it from `policy.billing.currency` server-side. Any
+  // `claimedAmountCurrency` sent in the request body is stripped by this
+  // non-passthrough schema and has no effect.
+  claimedAmount: z
+    .number()
+    .positive()
+    .max(MAX_CLAIM_APPROVED_AMOUNT, { message: `claimedAmount must not exceed ${MAX_CLAIM_APPROVED_AMOUNT}` })
+    .refine(hasAtMostTwoDecimalPlaces, { message: 'claimedAmount must have at most 2 decimal places' }),
 });
 
 const claimIdParamsSchema = z.object({ claimId: objectIdSchema });
@@ -70,7 +83,7 @@ export function createClaimsRouter(ctx: AppContext): Router {
     authenticate,
     requireUserType('customer'),
     createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `claims-create:${req.auth!.accountId}`),
-    requireIdempotencyKey('POST /v1/claims', ctx.idempotency),
+    requireIdempotencyKey('POST /v1/claims', ctx.idempotency, ctx.kv),
     async (req, res, next) => {
       try {
         const parsed = createClaimSchema.safeParse(req.body);
@@ -155,6 +168,7 @@ export function createClaimsRouter(ctx: AppContext): Router {
         const priorClaimsOfSameAssetType = await ctx.claims.listByAccountAndAssetType(accountId, asset.assetType);
         const fraudFlags = computeFraudFlags({
           filedAt: new Date(),
+          incidentDate,
           policyEffectiveDate: policy.effectiveDate,
           assetRegisteredAt: asset.registeredAt,
           policyUpdatedAt: policy.updatedAt,
@@ -163,22 +177,40 @@ export function createClaimsRouter(ctx: AppContext): Router {
           priorClaimsInRateWindow: recentClaims.length,
         });
 
-        const claim = await ctx.claims.createForAccount({
-          accountId,
-          policyId: policy.id,
-          assetId: asset.id,
-          recoveryCaseId,
-          supersedesClaimId: body.supersedesClaimId ?? null,
-          assetTypeSnapshot: asset.assetType,
-          assetDisplayNameSnapshot: asset.displayName,
-          policyPlanTierSnapshot: policy.planTier,
-          incidentDescription: body.incidentDescription,
-          incidentDate,
-          evidenceDescription: body.evidenceDescription ?? null,
-          claimedAmount: body.claimedAmount,
-          claimedAmountCurrency: body.claimedAmountCurrency ?? policy.billing.currency,
-          fraudFlags,
-        });
+        let claim;
+        try {
+          claim = await ctx.claims.createForAccount({
+            accountId,
+            policyId: policy.id,
+            assetId: asset.id,
+            recoveryCaseId,
+            supersedesClaimId: body.supersedesClaimId ?? null,
+            assetTypeSnapshot: asset.assetType,
+            assetDisplayNameSnapshot: asset.displayName,
+            policyPlanTierSnapshot: policy.planTier,
+            incidentDescription: body.incidentDescription,
+            incidentDate,
+            evidenceDescription: body.evidenceDescription ?? null,
+            claimedAmount: body.claimedAmount,
+            // SR-018-4: always the policy's own currency, server-side. The
+            // customer never supplies (or overrides) this.
+            claimedAmountCurrency: policy.billing.currency,
+            fraudFlags,
+          });
+        } catch (err) {
+          // SR-018-5 — the pre-insert `findNonTerminalByAssetForAccount` check above
+          // is check-then-insert and can lose a race to a concurrent request for the
+          // same asset; the database's partial unique index is the real backstop.
+          // Translate the resulting duplicate-key error into the same
+          // `DUPLICATE_OPEN_CLAIM` response the pre-insert check returns, instead of
+          // letting a raw database error reach the client.
+          if (err instanceof DuplicateOpenClaimError) {
+            const winner = await ctx.claims.findNonTerminalByAssetForAccount(accountId, body.assetId);
+            next(apiError('DUPLICATE_OPEN_CLAIM', winner ? { claimId: winner.id } : undefined));
+            return;
+          }
+          throw err;
+        }
 
         res.status(201).json(serializeClaimForCustomer(claim));
       } catch (err) {

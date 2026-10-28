@@ -23,6 +23,14 @@ export const ERROR_CATALOG = {
     statusCode: 409,
     message: 'This Idempotency-Key was already used with a different request body.',
   },
+  // SR-018-5 — a second request with the same Idempotency-Key arrived while the first
+  // request (which reserved the key) is still being processed and has not yet stored a
+  // cached response to replay. Distinct from IDEMPOTENCY_KEY_REUSE (same key, different
+  // body): this is the same key, same or unknown body, just not resolved yet.
+  IDEMPOTENCY_KEY_IN_PROGRESS: {
+    statusCode: 409,
+    message: 'A request with this Idempotency-Key is already being processed. Please retry shortly.',
+  },
   CONFLICT: {
     statusCode: 409,
     message: 'The request conflicts with the current state of the resource.',
@@ -118,6 +126,18 @@ export const ERROR_CATALOG = {
   APPROVED_AMOUNT_EXCEEDS_COVERAGE_LIMIT: {
     statusCode: 422,
     message: 'The approved amount exceeds the configured coverage limit for this asset type.',
+  },
+  // SR-018-3: an admin cannot approve more than the customer claimed.
+  APPROVED_AMOUNT_EXCEEDS_CLAIMED: {
+    statusCode: 422,
+    message: 'The approved amount cannot exceed the claimed amount.',
+  },
+  // SR-018-4: fail closed, not open, when the claim's policy cannot be
+  // found at approval time (so the coverage-limit check is never silently
+  // skipped as "no cap").
+  CLAIM_POLICY_NOT_FOUND: {
+    statusCode: 409,
+    message: 'The policy referenced by this claim could not be found. This claim cannot be adjudicated.',
   },
   INTERNAL_ERROR: { statusCode: 500, message: 'An internal error occurred.' },
 } as const satisfies Record<string, ErrorCatalogEntry>;
