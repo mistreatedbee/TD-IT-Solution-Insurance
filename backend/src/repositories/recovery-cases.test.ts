@@ -341,6 +341,105 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
     });
   });
 
+  describe('releaseForPartnerOrg — release/unclaim back to the shared pool', () => {
+    it('releases a claimed, investigating case: partnerOrganizationId -> null, status -> open', async () => {
+      const id = new ObjectId();
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'investigating' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.releaseForPartnerOrg('org-1', id.toHexString());
+
+      expect(row).not.toBeNull();
+      expect(row!.status).toBe('open');
+      expect(row!.partnerOrganizationId).toBeNull();
+      expect(docs[0]!.partnerOrganizationId).toBeNull();
+      expect(docs[0]!.status).toBe('open');
+    });
+
+    it('also releases a "tracking" case', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'tracking' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.releaseForPartnerOrg('org-1', id.toHexString());
+      expect(row).not.toBeNull();
+      expect(row!.status).toBe('open');
+    });
+
+    it('returns null for a case claimed by a different org (no cross-tenant release)', async () => {
+      const id = new ObjectId();
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-2', status: 'investigating' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.releaseForPartnerOrg('org-1', id.toHexString());
+      expect(row).toBeNull();
+      expect(docs[0]!.partnerOrganizationId).toBe('org-2');
+    });
+
+    it('returns null for an already-terminal case (recovered/closed cannot be released)', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'closed', closedAt: new Date() }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.releaseForPartnerOrg('org-1', id.toHexString());
+      expect(row).toBeNull();
+    });
+
+    it('returns null for an already-unclaimed case', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([baseDoc({ _id: id, partnerOrganizationId: null, status: 'open' })]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.releaseForPartnerOrg('org-1', id.toHexString());
+      expect(row).toBeNull();
+    });
+
+    it('write-path read-back never returns police-report fields or the offer-tier-excluded fields', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({
+          _id: id,
+          partnerOrganizationId: 'org-1',
+          status: 'investigating',
+          sapsCaseNumber: 'CAS-1/1/2026',
+          notes: 'customer-authored notes',
+        }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.releaseForPartnerOrg('org-1', id.toHexString());
+      expect(row).not.toBeNull();
+      expect(row!.sapsCaseNumber).toBeNull();
+      // `notes` is one of the offer-tier-excluded fields (OFFER_TIER_FIELD_EXCLUSION_PROJECTION)
+      // — a released case is offer-tier again, so this key is absent from the
+      // projected row entirely, not merely null (same "excluded at the query level"
+      // discipline SR-011-1a documents for the police-report fields).
+      expect(row!.notes).toBeUndefined();
+    });
+
+    it('a released case can be claimed again (including by a different org)', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'investigating' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      await repo.releaseForPartnerOrg('org-1', id.toHexString());
+      const claimed = await repo.claimForPartnerOrg('org-2', id.toHexString());
+      expect(claimed).not.toBeNull();
+      expect(claimed!.partnerOrganizationId).toBe('org-2');
+      expect(claimed!.status).toBe('investigating');
+    });
+  });
+
   describe('SR-011-4 + C-011-11: closedAt setter', () => {
     it('sets closedAt on the transition into "closed"', async () => {
       const id = new ObjectId();

@@ -9,6 +9,7 @@ import type { PushNotificationService } from './push-notification-service.js';
 import {
   buildRecoveryCaseAssignedEmail,
   buildRecoveryCaseClosedEmail,
+  buildRecoveryCaseMessageEmail,
   buildRecoveryCaseUpdateEmail,
   buildRecoverySuccessfulEmail,
   buildTheftReportSubmittedEmail,
@@ -60,6 +61,18 @@ export interface RecoveryNotificationService {
     caseId: string;
     referenceNumber: string;
   }): Promise<void>;
+  /** Security-operator-authored "contact customer" message (Security Company
+   * Dashboard). Reuses this service's existing email+push dispatch path, which
+   * already resolves/respects the customer's `theft_critical` notification
+   * preferences (`isEmailEnabled`/`isPushEnabledForCategory`) — this is not a new
+   * delivery channel. */
+  notifyCaseMessage(params: {
+    accountId: string;
+    assetName: string;
+    caseId: string;
+    referenceNumber: string;
+    message: string;
+  }): Promise<void>;
 }
 
 function isEmailEnabled(
@@ -99,7 +112,8 @@ async function sendTheftEmailAndPush(
         | 'recovery.case.updated'
         | 'recovery.case.assigned'
         | 'recovery.case.recovered'
-        | 'recovery.case.closed';
+        | 'recovery.case.closed'
+        | 'recovery.case.message';
       variables: Record<string, string | undefined>;
     };
   },
@@ -208,6 +222,18 @@ export function createRecoveryNotificationService(deps: {
         push: {
           templateId: 'recovery.case.closed',
           variables: { assetName, caseId, referenceNumber },
+        },
+      });
+    },
+
+    async notifyCaseMessage({ accountId, assetName, caseId, referenceNumber, message }) {
+      const email = buildRecoveryCaseMessageEmail({ assetName, referenceNumber, message });
+      await sendTheftEmailAndPush(deps, {
+        accountId,
+        email: { subject: email.subject, html: email.html },
+        push: {
+          templateId: 'recovery.case.message',
+          variables: { assetName, caseId, referenceNumber, message },
         },
       });
     },

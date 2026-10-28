@@ -322,6 +322,21 @@ export function toClaimedTierView(doc: RecoveryCaseDocument): ClaimedTierRecover
   };
 }
 
+/** `OfferTierRecoveryCase` built from a full, already-converted
+ * `RecoveryCaseDocument` — used by `releaseForPartnerOrg`'s write path, which keeps
+ * `accountId` available internally for PDM-8 audit logging but must never let it
+ * reach the response (mirrors `toClaimedTierView` above). */
+export function toOfferTierView(doc: RecoveryCaseDocument): OfferTierRecoveryCase {
+  return {
+    id: doc.id,
+    partnerOrganizationId: doc.partnerOrganizationId,
+    status: doc.status,
+    referenceNumber: doc.referenceNumber,
+    reportedAt: doc.reportedAt,
+    updatedAt: doc.updatedAt,
+  };
+}
+
 export function serializeOfferTierRecoveryCase(doc: OfferTierRecoveryCase) {
   return {
     id: doc.id,
@@ -774,6 +789,40 @@ export function createRecoveryCasesRepo(db: Db) {
         },
         { $set: setFields },
         { returnDocument: 'after', projection: CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION },
+      );
+      return result ? toCase(result as unknown as RecoveryCaseDbRow) : null;
+    },
+
+    /**
+     * Release/unclaim — a claimed case returns to the shared unassigned pool
+     * (`partnerOrganizationId: null`, `status: 'open'`), so any partner org can claim
+     * it again via `claimForPartnerOrg`. Scoped to a single-partner-org model: there is
+     * no `partner_organizations` collection yet and no "reassign to a specific other
+     * org" concept in the data model (see `partnerOrganizationId: string | null` above
+     * — just an opaque id, not a foreign key into any org directory) — this is
+     * deliberately "release back to the pool", not a targeted reassignment.
+     *
+     * Only permitted while the case is still mid-investigation (`investigating` or
+     * `tracking`) — a case already `recovered`/`closed` is done and releasing it would
+     * silently re-open a finished case outside `isForwardStatusTransition`'s rules.
+     * Compare-and-set on `partnerOrganizationId` (must still be claimed by the caller's
+     * org) mirrors `updateStatusForPartnerOrg`'s C-A discipline — a concurrent release/
+     * status-change between a caller's pre-read and this call causes the match to miss
+     * (returns `null`), which the route layer maps to `NOT_FOUND`, never a 2xx.
+     */
+    async releaseForPartnerOrg(
+      partnerOrganizationId: string,
+      caseId: string,
+    ): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const result = await collection().findOneAndUpdate(
+        {
+          _id: new ObjectId(caseId),
+          partnerOrganizationId,
+          status: { $in: ['investigating', 'tracking'] },
+        },
+        { $set: { partnerOrganizationId: null, status: 'open', updatedAt: new Date() } },
+        { returnDocument: 'after', projection: OFFER_TIER_FIELD_EXCLUSION_PROJECTION },
       );
       return result ? toCase(result as unknown as RecoveryCaseDbRow) : null;
     },

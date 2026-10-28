@@ -516,6 +516,32 @@ export function buildRecoveryCaseUpdateEmail(params: {
   };
 }
 
+export function buildRecoveryCaseMessageEmail(params: {
+  assetName: string;
+  referenceNumber: string;
+  message: string;
+}): { subject: string; html: string; preheader: string } {
+  const preheader = 'Your recovery partner sent you a message. Open the app for details.';
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+    Your recovery partner has a message about your case for
+    <strong>${escapeHtml(params.assetName)}</strong>:
+  </p>
+  <p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;white-space:pre-wrap;">${escapeHtml(params.message)}</p>
+  <p style="margin:0;font-size:14px;color:#6B6156;">Reference: ${escapeHtml(params.referenceNumber)}</p>`;
+
+  return {
+    preheader,
+    subject: `Message about your case — ${NOTIFICATION_BRAND.name}`,
+    html: wrapBrandedEmail({
+      preheader,
+      title: 'Message from your recovery partner',
+      bodyHtml,
+      ctaLabel: 'Open app',
+      ctaUrl: `${NOTIFICATION_BRAND.siteUrl}`,
+    }),
+  };
+}
+
 export function buildRecoverySuccessfulEmail(params: {
   assetName: string;
   referenceNumber: string;

@@ -182,7 +182,8 @@ function createHarness(opts: {
   const partnerOrgId = opts.partnerOrgId ?? randomUUID();
   const cases = [...(opts.cases ?? [])];
   const auditCalls: Array<{ kind: 'record' | 'bulk'; event: unknown }> = [];
-  const mutationCalls = { claim: 0, updateStatus: 0 };
+  const mutationCalls = { claim: 0, updateStatus: 0, release: 0 };
+  const caseMessageCalls: Array<{ accountId: string; assetName: string; caseId: string; referenceNumber: string; message: string }> = [];
   const accessLogCalls: Array<
     | { kind: 'detail'; event: unknown }
     | { kind: 'caseBulk'; event: unknown }
@@ -284,6 +285,23 @@ function createHarness(opts: {
           .filter(({ tier }) => tier !== null)
           .filter(({ c }) => (filters.status ? c.status === filters.status : true)).length;
       },
+      async releaseForPartnerOrg(orgId: string, caseId: string) {
+        mutationCalls.release += 1;
+        const idx = cases.findIndex(
+          (c) =>
+            c.id === caseId &&
+            c.partnerOrganizationId === orgId &&
+            (c.status === 'investigating' || c.status === 'tracking'),
+        );
+        if (idx < 0) return null;
+        cases[idx] = {
+          ...cases[idx]!,
+          partnerOrganizationId: null,
+          status: 'open',
+          updatedAt: new Date(),
+        };
+        return cases[idx]!;
+      },
     },
     auditLog: {
       async record(event: unknown) {
@@ -334,6 +352,15 @@ function createHarness(opts: {
       async notifySecurityOperatorsTheftReported() {
         return undefined;
       },
+      async notifyCaseMessage(params: {
+        accountId: string;
+        assetName: string;
+        caseId: string;
+        referenceNumber: string;
+        message: string;
+      }) {
+        caseMessageCalls.push(params);
+      },
     },
     customerNotifications: {
       async notifyAssetRecovered() {
@@ -359,6 +386,7 @@ function createHarness(opts: {
     auditCalls,
     accessLogCalls,
     mutationCalls,
+    caseMessageCalls,
     token: operatorToken(env, operatorId, sessionId, partnerOrgId),
     async start() {
       await new Promise<void>((resolve) => {
@@ -1570,6 +1598,363 @@ describe('routes/security-cases', () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as { data: { count: number } };
       expect(typeof body.data.count).toBe('number');
+    });
+  });
+
+  // Gap-closure #1 — POST /security/cases/:caseId/release.
+  describe('POST /security/cases/:caseId/release', () => {
+    it('releases a case this org has claimed back to the unassigned pool', async () => {
+      const orgId = randomUUID();
+      const accountId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId,
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/release'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Record<string, unknown>;
+      // Offer-tier response shape — released case is unclaimed again, so no
+      // accountId/notes/assetId/location fields (PDM-1/PDM-2).
+      expectExactKeys(body, OFFER_TIER_RESPONSE_KEYS);
+      expect(body.status).toBe('open');
+      expect(body.partnerOrganizationId).toBeNull();
+
+      expect(harness.mutationCalls.release).toBe(1);
+      const stateChange = harness.accessLogCalls.find((c) => c.kind === 'stateChange');
+      expect(stateChange).toBeDefined();
+      expect(stateChange!.event).toMatchObject({
+        targetAccountId: accountId,
+        resourceType: 'recovery_case',
+        resourceId: '507f1f77bcf86cd799439011',
+        fromStatus: 'investigating',
+        toStatus: 'open',
+      });
+
+      // The now-unclaimed case is claimable again by any org, including this one.
+      const claimRes = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/claim'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(claimRes.status).toBe(200);
+    });
+
+    it('allows releasing a "tracking" case too', async () => {
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'tracking',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/release'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('404s on a case not claimed by the caller org (no cross-tenant release)', async () => {
+      const orgId = randomUUID();
+      const otherOrgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: otherOrgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/release'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(404);
+      expect(harness.accessLogCalls).toHaveLength(0);
+    });
+
+    it('404s on an already-recovered/closed case (no re-opening via release)', async () => {
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'closed',
+            closedAt: new Date(),
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/release'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(404);
+      expect(harness.mutationCalls.release).toBe(0);
+    });
+
+    it('404s on an unclaimed/offer-tier case', async () => {
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: null,
+            status: 'open',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/release'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 403 for a wrong-role token', async () => {
+      const env = fakeEnv();
+      const token = signAccessToken(
+        {
+          sub: randomUUID(),
+          user_type: 'support_agent',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+
+      harness = createHarness({});
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/release'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // Gap-closure #2 — POST /security/cases/:caseId/messages ("contact customer").
+  describe('POST /security/cases/:caseId/messages', () => {
+    it('accepts a message to the customer on a case this org has claimed', async () => {
+      const orgId = randomUUID();
+      const accountId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId,
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+            referenceNumber: 'RC-20260801-ABCD',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/messages'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'We need a clearer photo of the asset to proceed.' }),
+      });
+      expect(res.status).toBe(202);
+      const body = (await res.json()) as { data: { accepted: boolean } };
+      expect(body.data.accepted).toBe(true);
+
+      // Audit trail written — no status change (fromStatus === toStatus), reason tags
+      // the action, and the message's free text is NOT written to the audit row.
+      const stateChange = harness.accessLogCalls.find((c) => c.kind === 'stateChange');
+      expect(stateChange).toBeDefined();
+      expect(stateChange!.event).toMatchObject({
+        targetAccountId: accountId,
+        resourceType: 'recovery_case',
+        resourceId: '507f1f77bcf86cd799439011',
+        fromStatus: 'investigating',
+        toStatus: 'investigating',
+        reason: 'security_operator_contacted_customer',
+      });
+      const stateChangeEvent = stateChange!.event as Record<string, unknown>;
+      expect(JSON.stringify(stateChangeEvent)).not.toContain('clearer photo');
+
+      // Dispatched via the existing recovery-notification infrastructure, which
+      // itself gates on the customer's notification preferences — not a new
+      // delivery channel.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(harness.caseMessageCalls).toHaveLength(1);
+      expect(harness.caseMessageCalls[0]).toMatchObject({
+        accountId,
+        caseId: '507f1f77bcf86cd799439011',
+        referenceNumber: 'RC-20260801-ABCD',
+        message: 'We need a clearer photo of the asset to proceed.',
+      });
+    });
+
+    it('404s — and does not dispatch a notification — on a case not claimed by the caller org', async () => {
+      const orgId = randomUUID();
+      const otherOrgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: otherOrgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/messages'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'Hello' }),
+      });
+      expect(res.status).toBe(404);
+      expect(harness.accessLogCalls).toHaveLength(0);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(harness.caseMessageCalls).toHaveLength(0);
+    });
+
+    it('404s on an unclaimed/offer-tier case (must claim before messaging)', async () => {
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: null,
+            status: 'open',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/messages'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'Hello' }),
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects an empty message with a validation error', async () => {
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/messages'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: '   ' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects a message over 500 characters', async () => {
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/messages'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'x'.repeat(501) }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 403 for a wrong-role token', async () => {
+      const env = fakeEnv();
+      const token = signAccessToken(
+        {
+          sub: randomUUID(),
+          user_type: 'support_agent',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+
+      harness = createHarness({});
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/messages'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'Hello' }),
+      });
+      expect(res.status).toBe(403);
     });
   });
 });

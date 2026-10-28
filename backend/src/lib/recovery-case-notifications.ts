@@ -75,3 +75,42 @@ export function scheduleCustomerRecoveryCaseChange(
     notifyCustomerRecoveryCaseChange(ctx, params),
   );
 }
+
+/** Minimal case identity `notifyCustomerRecoveryCaseMessage` needs — deliberately
+ * narrower than `RecoveryCaseDocument` so a security-dashboard caller working from
+ * a claimed-tier (PDM-1/PDM-2-projected) read result doesn't need to fabricate the
+ * police-report/call-centre-note fields that read never fetched. */
+export interface RecoveryCaseMessageTarget {
+  id: string;
+  accountId: string;
+  assetId: string;
+  referenceNumber: string;
+}
+
+/** Security Company Dashboard "contact customer" action — reuses the same
+ * email+push dispatch path (and the same preference/opt-out gating) as every
+ * other recovery-case notification above, rather than a new delivery channel. */
+export async function notifyCustomerRecoveryCaseMessage(
+  ctx: Pick<AppContext, 'recoveryNotifications' | 'assets'>,
+  params: { recoveryCase: RecoveryCaseMessageTarget; message: string },
+): Promise<void> {
+  const { recoveryCase, message } = params;
+  const asset = await resolveAssetName(ctx, recoveryCase.accountId, recoveryCase.assetId);
+  await ctx.recoveryNotifications.notifyCaseMessage({
+    accountId: recoveryCase.accountId,
+    assetName: asset.name,
+    caseId: recoveryCase.id,
+    referenceNumber: recoveryCase.referenceNumber,
+    message,
+  });
+}
+
+export function scheduleCustomerRecoveryCaseMessage(
+  ctx: Pick<AppContext, 'recoveryNotifications' | 'assets'>,
+  params: { recoveryCase: RecoveryCaseMessageTarget; message: string },
+): void {
+  notifyInBackground(
+    'recovery.case.message',
+    notifyCustomerRecoveryCaseMessage(ctx, params),
+  );
+}

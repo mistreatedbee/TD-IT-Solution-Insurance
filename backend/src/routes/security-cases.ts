@@ -22,10 +22,14 @@ import {
   serializeOfferTierRecoveryCase,
   serializeClaimedTierRecoveryCase,
   toClaimedTierView,
+  toOfferTierView,
   isForwardStatusTransition,
   type PartnerVisibleCaseResult,
 } from '../repositories/recovery-cases.js';
-import { scheduleCustomerRecoveryCaseChange } from '../lib/recovery-case-notifications.js';
+import {
+  scheduleCustomerRecoveryCaseChange,
+  scheduleCustomerRecoveryCaseMessage,
+} from '../lib/recovery-case-notifications.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
@@ -42,10 +46,16 @@ const updateStatusSchema = z.object({
   status: z.enum(['investigating', 'tracking', 'recovered', 'closed']),
 });
 
+const contactCustomerSchema = z.object({
+  message: z.string().trim().min(1).max(500),
+});
+
 const ENDPOINT_LIST = 'GET /v1/security/cases';
 const ENDPOINT_DETAIL = 'GET /v1/security/cases/:caseId';
 const ENDPOINT_CLAIM = 'POST /v1/security/cases/:caseId/claim';
 const ENDPOINT_UPDATE = 'PATCH /v1/security/cases/:caseId';
+const ENDPOINT_RELEASE = 'POST /v1/security/cases/:caseId/release';
+const ENDPOINT_CONTACT = 'POST /v1/security/cases/:caseId/messages';
 
 /** PDM-2 — picks the matching serializer for a tagged partner-visible result; keeps
  * every call site from having to re-derive which serializer applies to which tier. */
@@ -359,6 +369,159 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
         });
         // (5) respond.
         res.status(200).json(serializeClaimedTierRecoveryCase(toClaimedTierView(updated)));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Gap-closure #1 — case reassignment. There is no `partner_organizations`
+  // collection / directory of orgs yet (`partnerOrganizationId` is an opaque string
+  // on the case document, not a foreign key — see repositories/recovery-cases.ts),
+  // so "reassign to a specific other org" has no selector to build against. Scoped
+  // to what the data model actually supports today: an operator releases a case
+  // they've claimed back to the shared unassigned pool (`releaseForPartnerOrg`),
+  // where any partner org — including this one — can claim it again via the
+  // existing POST /security/cases/:caseId/claim.
+  router.post(
+    '/security/cases/:caseId/release',
+    authenticate,
+    requireUserType('security_company_operator'),
+    requirePartnerOrg,
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `security-cases-release:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const parsed = caseIdParamsSchema.safeParse(req.params);
+        if (!parsed.success) {
+          next(apiError('VALIDATION_ERROR'));
+          return;
+        }
+        const orgId = req.auth!.partnerOrganizationId!;
+        const caseId = parsed.data.caseId;
+
+        // §18.8 C-B sequence: (1) pre-read.
+        const existing = await ctx.recoveryCases.findByIdForPartnerOrg(orgId, caseId);
+        // (2) precondition: only a case claimed by THIS org, still mid-investigation
+        // (not recovered/closed), can be released. Fail with no audit row.
+        if (
+          !existing ||
+          existing.tier !== 'claimed' ||
+          (existing.case.status !== 'investigating' && existing.case.status !== 'tracking')
+        ) {
+          next(apiError('NOT_FOUND', { message: 'Case is not available to release.' }));
+          return;
+        }
+
+        // (3) write the decision record before the mutation (§18.8 ruling (b)).
+        // `resourceId` is `existing.case.id` from the database row, never the
+        // `:caseId` path parameter (§18.8(a)(1)).
+        await ctx.adminAccessLog.recordStateChange({
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          targetAccountId: existing.accountId,
+          resourceType: 'recovery_case',
+          resourceId: existing.case.id,
+          fromStatus: existing.case.status,
+          toStatus: 'open',
+          endpoint: ENDPOINT_RELEASE,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        // (4) the conditional mutation — compare-and-set inside releaseForPartnerOrg
+        // (still owned by this org, still investigating/tracking).
+        const released = await ctx.recoveryCases.releaseForPartnerOrg(orgId, caseId);
+        if (!released) {
+          // Concurrent status change / release between pre-read and this call — must
+          // not return 2xx (§18.8 C-B).
+          next(apiError('NOT_FOUND', { message: 'Case is not available to release.' }));
+          return;
+        }
+
+        // (5) respond — offer-tier view: the case is unclaimed again, so this
+        // response must not leak `accountId`, `notes`, `assetId`, or location data to
+        // this (or any) operator (PDM-1/PDM-2).
+        res.status(200).json(serializeOfferTierRecoveryCase(toOfferTierView(released)));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Gap-closure #2 — contact customer. Reuses the existing recovery-notification
+  // infrastructure (`ctx.recoveryNotifications`, the same email+push dispatch path
+  // every other recovery-case event already uses) rather than a new delivery
+  // channel, so the customer's `theft_critical` notification preferences/opt-outs
+  // are respected exactly as they already are for status-change notifications.
+  router.post(
+    '/security/cases/:caseId/messages',
+    authenticate,
+    requireUserType('security_company_operator'),
+    requirePartnerOrg,
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `security-cases-contact:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const paramsParsed = caseIdParamsSchema.safeParse(req.params);
+        if (!paramsParsed.success) {
+          next(apiError('VALIDATION_ERROR'));
+          return;
+        }
+        const bodyParsed = contactCustomerSchema.safeParse(req.body);
+        if (!bodyParsed.success) {
+          next(apiError('VALIDATION_ERROR', { details: bodyParsed.error.issues.map((i) => i.message) }));
+          return;
+        }
+        const orgId = req.auth!.partnerOrganizationId!;
+        const caseId = paramsParsed.data.caseId;
+
+        // A message may only be sent on a case claimed by THIS org — an operator may
+        // not message a customer on a case it hasn't claimed (no audit row on a
+        // NOT_FOUND here, matching every other read-first branch in this router).
+        const existing = await ctx.recoveryCases.findByIdForPartnerOrg(orgId, caseId);
+        if (!existing || existing.tier !== 'claimed') {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        // Audit trail — not a state change (status doesn't move), so fromStatus/
+        // toStatus are both the case's current, unchanged status; the `reason` field
+        // (already optional/additive on this row shape) carries the action label.
+        // The message's own free text is NOT written to the audit row — only that an
+        // operator contacted the customer, consistent with not logging full PII/
+        // message content (backend-engineer best practice / compliance posture).
+        await ctx.adminAccessLog.recordStateChange({
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          targetAccountId: existing.accountId,
+          resourceType: 'recovery_case',
+          resourceId: existing.case.id,
+          fromStatus: existing.case.status,
+          toStatus: existing.case.status,
+          endpoint: ENDPOINT_CONTACT,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+          reason: 'security_operator_contacted_customer',
+        });
+
+        // Dispatch in the background via the shared recovery-case notification path —
+        // `notifyCaseMessage` -> `sendTheftEmailAndPush`, which already checks
+        // `notificationPreferences` (email) and push-category opt-out before sending.
+        // `existing`'s claimed-tier result carries `accountId` (PDM-8 audit-only
+        // field, per the tier types' doc comments) and `case.assetId` even though
+        // neither reaches this route's own HTTP response.
+        scheduleCustomerRecoveryCaseMessage(ctx, {
+          recoveryCase: {
+            id: existing.case.id,
+            accountId: existing.accountId,
+            assetId: existing.case.assetId,
+            referenceNumber: existing.case.referenceNumber,
+          },
+          message: bodyParsed.data.message,
+        });
+
+        res.status(202).json({ data: { accepted: true } });
       } catch (err) {
         next(err);
       }

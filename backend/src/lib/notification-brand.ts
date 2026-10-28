@@ -30,6 +30,7 @@ export type PushTemplateId =
   | 'recovery.case.recovered'
   | 'recovery.case.closed'
   | 'recovery.case.partner.new'
+  | 'recovery.case.message'
   | 'policy.created'
   | 'policy.pending_activation'
   | 'asset.created'
@@ -61,6 +62,7 @@ export interface PushTemplateVariables {
   daysUntil?: string;
   amount?: string;
   statusLabel?: string;
+  message?: string;
 }
 
 export interface BrandedPushContent {
@@ -209,6 +211,28 @@ export function buildBrandedPushMessage(
           ...(variables.caseId ? { caseId: variables.caseId } : {}),
           ...(variables.referenceNumber ? { referenceNumber: variables.referenceNumber } : {}),
           ...(partnerDeepLink ? { deepLink: partnerDeepLink } : {}),
+        },
+      };
+    }
+    case 'recovery.case.message': {
+      const messageDeepLink = variables.caseId ? deepLink(`live-tracking/${variables.caseId}`) : undefined;
+      return {
+        eventId: templateId,
+        title: 'Message from your recovery partner',
+        body: variables.message
+          ? variables.message
+          : 'Your recovery partner has a question about your case. Open the app for details.',
+        subtitle,
+        category: 'theft_critical',
+        deepLink: messageDeepLink,
+        priority: 'high',
+        data: {
+          event: templateId,
+          brand: NOTIFICATION_BRAND.name,
+          logoUrl: NOTIFICATION_BRAND.logoUrl,
+          ...(variables.caseId ? { caseId: variables.caseId } : {}),
+          ...(variables.referenceNumber ? { referenceNumber: variables.referenceNumber } : {}),
+          ...(messageDeepLink ? { deepLink: messageDeepLink } : {}),
         },
       };
     }
