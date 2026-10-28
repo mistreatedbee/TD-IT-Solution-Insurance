@@ -1226,3 +1226,84 @@ CR-018-1 … CR-018-3 close.
 | Role | Decision | Date |
 |---|---|---|
 | `compliance-specialist` (C) | **CONCUR with BLOCKED.** SR-018-7 and SR-018-6 rulings made (§12.2, §12.3). SR-018-2(2) closed (§12.1). Concurrence with discharge requires CR-018-1 … CR-018-9 to be closed and re-read in code | 2026-10-28 |
+
+## 13. SR-018-9 closure and Stage 8 current state (`cybersecurity-architect`, chair, 2026-10-28)
+
+This section is append-only. It does not change §0 to §12. It closes the finding I raised in §11.2.
+
+**Not done by me in this pass. Stated plainly so nobody cites it as done:** as in §11, I had no shell in
+this session. I did **not** run `npx tsc --noEmit` or `npm test`, and I did **not** commit this section
+myself. Everything below comes from reading the code at `HEAD` = `0dc7ff9`, with a clean working tree at
+the start of the session. Independent run evidence is still owed. §13.3 says who owes it and what it must
+show.
+
+### 13.1 SR-018-9: CLOSED in code
+
+| Check (from §11.2 "Required") | Result | Evidence |
+|---|---|---|
+| 1. Customer gate scoped to `/claims` | **Met** | `claims.ts:83`: `router.use('/claims', …)`. It is still registered ahead of every route and before `authenticate`, still fails closed on `claimsApiEnabled !== true`, and still answers `apiError('NOT_FOUND')`. |
+| 1. Admin gate scoped to `/admin/claims` | **Met** | `admin-claims.ts:82`: `router.use('/admin/claims', …)`. Same ordering and fail-closed semantics. `/admin/claims` does not prefix-match `/admin/analytics` on a segment boundary. |
+| 2. Regression test, real or faithfully extracted mount order (**SR-018-8(g)**) | **Met** | `backend/src/routes/root-mount-order.test.ts`, suite `SR-018-9: claims kill switch must not shadow routers mounted after it`. `buildApp()` mounts `createClaimsRouter` → `createAdminClaimsRouter` → `'/analytics'` → `'/admin/analytics'` → `'/support'` → `createSupportCasesRouter`. That order and those prefixes match `index.ts:182-189` line for line. The suite runs with `claimsApiEnabled: false`. Test 1 asserts 404 on `POST /claims` and `GET /admin/claims`. Tests 2 to 5 assert non-404 on `POST /analytics/events`, `GET /admin/analytics/dau`, `GET /support/customer-lookup`, and `POST /support-cases`. If the path-less form came back, every request in the suite would 404 and tests 2 to 5 would fail. So the test discriminates the defect and is not a tautology. |
+| 3. Platform sweep for the same pattern | **Done by me** | The only `.use(` calls in non-test `backend/src/routes/*.ts` are the two scoped gates above. No other root-mounted router has a path-less `router.use`. The INC-001 `locationIngestionEnabled` precedent is checked **inside** handlers (`assets.ts:122`, `recovery.ts:285`), not as router middleware, so it does not have this defect. |
+| 4. Incident record and production recovery confirmation | **Not verified by me. Still open** (`site-reliability-engineer`) | I found no incident record. The outage window runs from the `c2ff720` deploy to the `0dc7ff9` deploy. A production read of `/v1/support-cases*` and `/v1/analytics/events` returning a non-404 after deploy is the §11.5 item 1 evidence. Pushing to `main` is not that evidence. |
+
+Non-blocking notes on the test (new conditions):
+- **C-018-19:** the header comment of `root-mount-order.test.ts` (lines 4-11) still describes the gate in
+  the present tense as path-less. It should be reworded to the past tense so a reader does not think the
+  defect is current. This is a documentation fix only.
+- **C-018-20:** the test uses a hand-copied extraction of the mount order, not `index.ts` itself, so it
+  can drift if someone reorders `index.ts` or adds a router after the claims routers. It is acceptable
+  under §11.2(2) "or a faithful extraction". The durable fix is for `backend-architect` to export the
+  `v1` router assembly from `index.ts` as a factory and have this test call it. Until then, anyone
+  adding a router after line 183 must add it to this test too.
+- The reachability assertion is `not.toBe(404)`. A 4xx or 5xx from the downstream router's own
+  auth or validation also satisfies it. That is the correct property ("got past the claims gate") and
+  not a weakness, because none of those routers return 404 for these unauthenticated requests by
+  design.
+
+**Disposition: SR-018-9 is CLOSED in code** (commit `0dc7ff9`, test
+`root-mount-order.test.ts` › `SR-018-9: claims kill switch must not shadow routers mounted after it`,
+5 cases). Closure is by my reading of the code. It is not yet backed by a test run I reproduced
+myself (§13.3). The production-recovery half (§11.5 item 1) stays open until SRE confirms it.
+
+### 13.2 SR-018-8 test remainder: current state
+
+I checked the claims test files for each item. I found no new tests for (a), (c), (d) or (e) since §11.4.
+
+| Item | Status now |
+|---|---|
+| (a) Revoked session on admin PATCH → `STEP_UP_REQUIRED` | **Open** |
+| (b) `fraudFlags` absent from customer JSON | Closed (§11.4) |
+| (c) 4th claim **persists** `FLAG_RATE_THRESHOLD` | **Open.** `claims.test.ts:588` asserts that a 4th claim is accepted with 201, which is the flag-only behaviour. My §11.4 requirement is the assertion that the persisted claim carries `FLAG_RATE_THRESHOLD`. Whoever closes this must point at that assertion explicitly. |
+| (d) Missing or non-UUID `Idempotency-Key` → 400, no claim created | **Open** |
+| (e) One `privileged_state_change` `'claim'` row per admin action, and no mutation when the audit write throws (AUD-10) | **Open** |
+| (f) Validator test and concurrency test | Closed, except that the real-`mongod` index test still needs one non-skipped run (§11.4) |
+| (g) Real-mount-order kill-switch test | **Closed** by `root-mount-order.test.ts` (§13.1) |
+| (h) Idempotency middleware tests (C-018-16) | **Open.** `backend/src/middleware/` has no `idempotency.test.ts` yet. It is being dispatched separately, so I did not duplicate that work here. |
+
+### 13.3 Where Stage 8 stands
+
+**Verdict: still BLOCKED.** SR-018-9 no longer blocks the gate. What is left, in the §11.5 order:
+
+1. **SR-018-9 production recovery:** SRE confirms that `/v1/support-cases*`, `/v1/support/*` and
+   `/v1/analytics/*` are reachable in production after the `0dc7ff9` deploy, and files the incident
+   record (§11.2 item 4).
+2. **SR-018-8 tests (a), (c), (d), (e), (h):** must land. Then `npx tsc --noEmit` and `npm test` run
+   clean in `backend/`, and the result is recorded with the commit hash and the pass count. That run must
+   include `root-mount-order.test.ts`. It is the only independent evidence I still need for §13.1, and it
+   is owed by me or by `security-engineer`, whichever re-check happens first.
+3. **Production `db.claims.getIndexes()` read-back** showing `claims_one_open_claim_per_asset`
+   (owner-run).
+4. **Compliance CR-018-1 … CR-018-9 (§12.6):** these are rulings only so far. The §12.2 eligibility
+   hold (CR-018-1 … CR-018-3) and the §12.3 decision-notice template (CR-018-5, CR-018-6) still need code.
+   That work is being dispatched separately. CR-018-4, CR-018-7, CR-018-8 and CR-018-9 also need owner,
+   product or legal action, not only engineering. I will re-review the code changes against §12 in the
+   same pass as item 2.
+5. **`security-engineer` re-concurrence** after SR-018-9, because §10 predates it.
+
+`CLAIMS_API_ENABLED` stays unset. The mobile `FEATURE_CLAIMS` waiver and the absence of
+`flagEnableApproved` stand unchanged (§11.4).
+
+| Role | Decision | Date |
+|---|---|---|
+| `cybersecurity-architect` (chair, A) | **BLOCKED (narrowed further).** SR-018-9 CLOSED in code (`0dc7ff9`, `root-mount-order.test.ts`), verified by reading code only, with test run evidence owed (§13.3 item 2). SR-018-8(g) closed. Remaining: SR-018-8 (a)/(c)/(d)/(e)/(h), production recovery confirmation, index read-back, CR-018-1 … CR-018-9 in code, and security-engineer re-concurrence. | 2026-10-28 |
