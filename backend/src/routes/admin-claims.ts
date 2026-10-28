@@ -1,0 +1,268 @@
+/**
+ * Admin `/admin/claims` endpoints — Feature 018 (claims filing and
+ * adjudication), business-requirements.md §2.3, §4.
+ *
+ * Any authenticated admin may review/adjudicate any claim (§2.3/§4.3 — no
+ * dedicated claims-reviewer role exists). Every negative/information-seeking
+ * action requires a non-empty, customer-safe reason, mirroring
+ * `admin-verification.ts`'s "A customer-safe reason is required." precedent.
+ */
+import { Router } from 'express';
+import { z } from 'zod';
+import type { AppContext } from '../context.js';
+import { apiError } from '../lib/errors.js';
+import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js';
+import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
+import { serializeClaimForAdmin } from '../lib/claim-serializers.js';
+import { exceedsCoverageLimit, isForwardClaimTransition, type ClaimStatus } from '../lib/claim-rules.js';
+import { InvalidClaimStatusTransitionError } from '../repositories/claims.js';
+import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
+import { requireUserType } from '../middleware/require-role.js';
+import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
+import { validateBody } from '../lib/validation.js';
+
+const ENDPOINT_LIST = 'GET /v1/admin/claims';
+const ENDPOINT_DETAIL = 'GET /v1/admin/claims/{claimId}';
+const ENDPOINT_PATCH = 'PATCH /v1/admin/claims/{claimId}';
+
+const claimIdParamsSchema = z.object({ claimId: z.string().regex(/^[0-9a-f]{24}$/i) });
+
+const listFiltersSchema = z.object({
+  status: z
+    .enum(['submitted', 'under_review', 'more_info_requested', 'approved', 'awaiting_payout', 'rejected', 'closed'])
+    .optional(),
+  accountId: z.string().uuid().optional(),
+  policyId: z.string().regex(/^[0-9a-f]{24}$/i).optional(),
+});
+
+const requiredReasonSchema = z.string().trim().min(1).max(2000);
+
+const patchBodySchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('start_review') }),
+  z.object({ action: z.literal('more_info_requested'), reviewNote: requiredReasonSchema }),
+  z.object({ action: z.literal('approved'), approvedAmount: z.number().positive() }),
+  z.object({ action: z.literal('rejected'), rejectionReason: requiredReasonSchema }),
+  z.object({ action: z.literal('closed'), closeReason: requiredReasonSchema }),
+]);
+
+export function createAdminClaimsRouter(ctx: AppContext): Router {
+  const router = Router();
+  const authenticate = createAuthenticateMiddleware(ctx.env, ctx.kv);
+
+  async function loadAdminSerializationContext(claim: Awaited<ReturnType<typeof ctx.claims.findByIdForAdmin>>) {
+    if (!claim) return null;
+    const [policy, asset, duplicate] = await Promise.all([
+      ctx.policies.findByIdForAdmin(claim.policyId),
+      ctx.assets.findByIdForAdmin(claim.assetId),
+      ctx.claims.findNonTerminalByAssetForAccount(claim.accountId, claim.assetId),
+    ]);
+    return serializeClaimForAdmin(claim, {
+      accountId: claim.accountId,
+      coverageLimits: policy?.coverageLimits ?? [],
+      policyEffectiveDate: policy?.effectiveDate ?? claim.submittedAt,
+      assetRegisteredAt: asset?.registeredAt ?? claim.submittedAt,
+      duplicateOpenClaimId: duplicate && duplicate.id !== claim.id ? duplicate.id : null,
+    });
+  }
+
+  router.get(
+    '/admin/claims',
+    authenticate,
+    requireUserType('admin'),
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `admin-claims-list:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const filtersParsed = listFiltersSchema.safeParse(req.query);
+        if (!filtersParsed.success) {
+          next(apiError('VALIDATION_ERROR', { details: filtersParsed.error.issues.map((i) => i.message) }));
+          return;
+        }
+        const { limit, cursor } = parseMongoPaginationQuery(req.query as Record<string, unknown>);
+        const rows = await ctx.claims.listForAdmin(filtersParsed.data, limit + 1, cursor);
+        const page = buildPage(rows, limit);
+
+        await ctx.adminAccessLog.recordBulkDisclosure({
+          disclosedAccountIds: page.data.map((row) => row.accountId),
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          resourceType: 'claim',
+          endpoint: ENDPOINT_LIST,
+          resultCount: page.data.length,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        const enriched = await Promise.all(page.data.map((claim) => loadAdminSerializationContext(claim)));
+        res.status(200).json({
+          data: enriched,
+          pagination: { nextCursor: page.nextCursor, hasMore: page.hasMore },
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.get(
+    '/admin/claims/:claimId',
+    authenticate,
+    requireUserType('admin'),
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `admin-claims-detail:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const parsed = claimIdParamsSchema.safeParse(req.params);
+        if (!parsed.success) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+        const claim = await ctx.claims.findByIdForAdmin(parsed.data.claimId);
+        if (!claim) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        await ctx.adminAccessLog.recordDetail({
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          targetAccountId: claim.accountId,
+          resourceType: 'claim',
+          resourceId: claim.id,
+          endpoint: ENDPOINT_DETAIL,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        res.status(200).json(await loadAdminSerializationContext(claim));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // §2.2/§2.3/§4.2 — the single admin-adjudication entrypoint. Sequence
+  // mirrors admin-policies.ts: pre-read -> precondition (fail, no audit row)
+  // -> write the decision record before the mutation (§18.8 ruling (b)) ->
+  // conditional mutation -> respond.
+  router.patch(
+    '/admin/claims/:claimId',
+    authenticate,
+    requireUserType('admin'),
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `admin-claims-patch:${req.auth!.accountId}`),
+    validateBody(patchBodySchema),
+    async (req, res, next) => {
+      try {
+        const paramsParsed = claimIdParamsSchema.safeParse(req.params);
+        if (!paramsParsed.success) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+        const claimId = paramsParsed.data.claimId;
+        const body = req.body as z.infer<typeof patchBodySchema>;
+
+        const existing = await ctx.claims.findByIdForAdmin(claimId);
+        if (!existing) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        const fromStatus: ClaimStatus = existing.status;
+        let toStatus: ClaimStatus;
+        switch (body.action) {
+          case 'start_review':
+            toStatus = 'under_review';
+            break;
+          case 'more_info_requested':
+            toStatus = 'more_info_requested';
+            break;
+          case 'approved':
+            toStatus = 'approved';
+            break;
+          case 'rejected':
+            toStatus = 'rejected';
+            break;
+          case 'closed':
+            toStatus = 'closed';
+            break;
+        }
+
+        // Precondition — forward-only, no reopening a terminal claim (§2.2/§2.5,
+        // AC-10). Fails with no audit row, same posture admin-policies.ts takes.
+        if (!isForwardClaimTransition(fromStatus, toStatus)) {
+          next(apiError('CONFLICT'));
+          return;
+        }
+
+        // §1.4 — coverage-limit cap check, admin-set approvedAmount only.
+        if (body.action === 'approved') {
+          const policy = await ctx.policies.findByIdForAdmin(existing.policyId);
+          const coverageLimits = policy?.coverageLimits ?? [];
+          if (exceedsCoverageLimit(body.approvedAmount, coverageLimits, existing.assetTypeSnapshot)) {
+            next(apiError('APPROVED_AMOUNT_EXCEEDS_COVERAGE_LIMIT'));
+            return;
+          }
+        }
+
+        const reason =
+          body.action === 'more_info_requested'
+            ? body.reviewNote
+            : body.action === 'rejected'
+              ? body.rejectionReason
+              : body.action === 'closed'
+                ? body.closeReason
+                : null;
+
+        // Write the decision record BEFORE the mutation (§18.8 ruling (b)).
+        await ctx.adminAccessLog.recordStateChange({
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          targetAccountId: existing.accountId,
+          resourceType: 'claim',
+          resourceId: existing.id,
+          fromStatus,
+          toStatus: body.action === 'approved' ? 'awaiting_payout' : toStatus,
+          reason,
+          endpoint: ENDPOINT_PATCH,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        let updated;
+        try {
+          if (body.action === 'approved') {
+            updated = await ctx.claims.approveAndAdvance(claimId, {
+              expectedStatus: fromStatus,
+              approvedAmount: body.approvedAmount,
+              actorAccountId: req.auth!.accountId,
+            });
+          } else {
+            updated = await ctx.claims.transitionForAdmin(claimId, {
+              expectedStatus: fromStatus,
+              toStatus,
+              actorAccountId: req.auth!.accountId,
+              reason,
+            });
+          }
+        } catch (err) {
+          if (err instanceof InvalidClaimStatusTransitionError) {
+            next(apiError('CONFLICT'));
+            return;
+          }
+          throw err;
+        }
+        if (!updated) {
+          next(apiError('CONFLICT'));
+          return;
+        }
+
+        res.status(200).json(await loadAdminSerializationContext(updated));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  return router;
+}

@@ -94,6 +94,31 @@ export const ERROR_CATALOG = {
     statusCode: 503,
     message: 'The service is temporarily unavailable. Please try again shortly.',
   },
+  // Feature 018 (claims filing and adjudication) — business-requirements.md §1/§5/§7.
+  POLICY_NOT_ACTIVE: {
+    statusCode: 422,
+    message: 'A claim cannot be filed against this policy because it is not currently active.',
+  },
+  ASSET_NOT_ELIGIBLE: {
+    statusCode: 422,
+    message: 'A claim cannot be filed against this asset because it is not currently active.',
+  },
+  WAITING_PERIOD_NOT_MET: {
+    statusCode: 422,
+    message: 'This policy or asset has not yet cleared the waiting period for new claims.',
+  },
+  DUPLICATE_OPEN_CLAIM: {
+    statusCode: 409,
+    message: 'There is already an open claim for this asset.',
+  },
+  RECOVERY_CASE_MISMATCH: {
+    statusCode: 422,
+    message: 'The referenced recovery case does not belong to this account and asset.',
+  },
+  APPROVED_AMOUNT_EXCEEDS_COVERAGE_LIMIT: {
+    statusCode: 422,
+    message: 'The approved amount exceeds the configured coverage limit for this asset type.',
+  },
   INTERNAL_ERROR: { statusCode: 500, message: 'An internal error occurred.' },
 } as const satisfies Record<string, ErrorCatalogEntry>;
 

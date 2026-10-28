@@ -61,6 +61,8 @@ import { createAnalyticsRouter } from './routes/analytics.js';
 import { createAdminAnalyticsRouter } from './routes/admin-analytics.js';
 import { createSupportLookupRouter } from './routes/support-lookup.js';
 import { createSupportCasesRouter } from './routes/support-cases.js';
+import { createClaimsRouter } from './routes/claims.js';
+import { createAdminClaimsRouter } from './routes/admin-claims.js';
 import { requestIdMiddleware, notFoundHandler, errorHandler } from './middleware/error-handler.js';
 
 async function main(): Promise<void> {
@@ -177,6 +179,8 @@ async function main(): Promise<void> {
   v1.use(createTrackingDevicesRouter(ctx));
   v1.use(createAlertsRouter(ctx));
   v1.use(createAdminVerificationRouter(ctx));
+  v1.use(createClaimsRouter(ctx));
+  v1.use(createAdminClaimsRouter(ctx));
   v1.use('/analytics', createAnalyticsRouter(ctx));
   v1.use('/admin/analytics', createAdminAnalyticsRouter(ctx));
   v1.use('/support', createSupportLookupRouter(ctx));

@@ -20,7 +20,10 @@ import { ObjectId, type Db, type Collection } from 'mongodb';
 // `targetAccountId` on a 'plan' row is the ACTING admin's own account id, not a
 // customer's. Documented at the one call site that writes it
 // (`routes/admin-plans.ts`), not re-derived here.
-export type AdminAccessResourceType = 'policy' | 'asset' | 'recovery_case' | 'plan';
+// 'claim' added — Feature 018 (claims filing and adjudication). Same
+// "extend, don't fork" posture §18.2 set for this collection: claim
+// disclosures/decisions reuse Trail B/§18.4 exactly, no new audit mechanism.
+export type AdminAccessResourceType = 'policy' | 'asset' | 'recovery_case' | 'plan' | 'claim';
 // ADR-0006 §18.4 — 'privileged_state_change' records an operator DECISION (a claim or
 // a status transition), not a read/disclosure. Same collection, same join key, same
 // retention clock, per §18.2's "extend, don't fork" ruling (confirmed by

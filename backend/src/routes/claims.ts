@@ -1,0 +1,307 @@
+/**
+ * Customer claims routes — Feature 018 (claims filing and adjudication),
+ * business-requirements.md §1-§3, §7.
+ */
+import { Router } from 'express';
+import { z } from 'zod';
+import type { AppContext } from '../context.js';
+import { apiError } from '../lib/errors.js';
+import { requireActiveAccount } from '../lib/account-gate.js';
+import { buildPage, parseMongoPaginationQuery } from '../lib/mongo-pagination.js';
+import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
+import { serializeClaimForCustomer } from '../lib/claim-serializers.js';
+import {
+  computeFraudFlags,
+  isForwardClaimTransition,
+  isWaitingPeriodMet,
+  rateThresholdWindowStart,
+  waitingPeriodClearsAt,
+  type ClaimStatus,
+} from '../lib/claim-rules.js';
+import { InvalidClaimStatusTransitionError } from '../repositories/claims.js';
+import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
+import { requireUserType } from '../middleware/require-role.js';
+import { createRateLimiter } from '../middleware/rate-limit.js';
+import { requireIdempotencyKey } from '../middleware/idempotency.js';
+
+const objectIdSchema = z.string().regex(/^[0-9a-f]{24}$/i);
+
+const createClaimSchema = z.object({
+  policyId: objectIdSchema,
+  assetId: objectIdSchema,
+  recoveryCaseId: objectIdSchema.optional(),
+  supersedesClaimId: objectIdSchema.optional(),
+  incidentDescription: z.string().trim().min(20).max(5000),
+  incidentDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
+  evidenceDescription: z.string().trim().max(5000).optional(),
+  claimedAmount: z.number().positive(),
+  claimedAmountCurrency: z.string().trim().length(3).optional(),
+});
+
+const claimIdParamsSchema = z.object({ claimId: objectIdSchema });
+
+const respondBodySchema = z.object({
+  text: z.string().trim().min(1).max(5000),
+  incidentDescription: z.string().trim().min(20).max(5000).optional(),
+});
+
+function parseIncidentDate(raw: string): Date {
+  return raw.length === 10 ? new Date(`${raw}T00:00:00.000Z`) : new Date(raw);
+}
+
+export function createClaimsRouter(ctx: AppContext): Router {
+  const router = Router();
+  const authenticate = createAuthenticateMiddleware(ctx.env, ctx.kv);
+
+  router.post(
+    '/claims',
+    authenticate,
+    requireUserType('customer'),
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `claims-create:${req.auth!.accountId}`),
+    requireIdempotencyKey('POST /v1/claims', ctx.idempotency),
+    async (req, res, next) => {
+      try {
+        const parsed = createClaimSchema.safeParse(req.body);
+        if (!parsed.success) {
+          next(apiError('VALIDATION_ERROR', { details: parsed.error.issues.map((i) => i.message) }));
+          return;
+        }
+        const body = parsed.data;
+        const accountId = req.auth!.accountId;
+        await requireActiveAccount(ctx.accounts, accountId);
+
+        const incidentDate = parseIncidentDate(body.incidentDate);
+        if (Number.isNaN(incidentDate.getTime()) || incidentDate.getTime() > Date.now()) {
+          next(apiError('VALIDATION_ERROR', { details: ['incidentDate must be a valid date not in the future'] }));
+          return;
+        }
+
+        // §1.1 — policy status gate.
+        const policy = await ctx.policies.findByIdForAccount(accountId, body.policyId);
+        if (!policy) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+        if (policy.status !== 'active') {
+          next(apiError('POLICY_NOT_ACTIVE'));
+          return;
+        }
+
+        // §1.2 — asset status gate (same accountId as the policy, enforced by both
+        // lookups being scoped to the same accountId).
+        const asset = await ctx.assets.findByIdForAccount(accountId, body.assetId);
+        if (!asset) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+        if (asset.status !== 'active') {
+          next(apiError('ASSET_NOT_ELIGIBLE'));
+          return;
+        }
+
+        if (incidentDate.getTime() < policy.effectiveDate.getTime()) {
+          next(
+            apiError('VALIDATION_ERROR', {
+              details: ['incidentDate must not be earlier than the policy effectiveDate'],
+            }),
+          );
+          return;
+        }
+
+        // §1.3/§1.3a — waiting period, computed from the LATER of
+        // policy.effectiveDate / asset.registeredAt.
+        if (!isWaitingPeriodMet(policy.effectiveDate, asset.registeredAt)) {
+          next(
+            apiError('WAITING_PERIOD_NOT_MET', {
+              waitingPeriodClearsAt: waitingPeriodClearsAt(policy.effectiveDate, asset.registeredAt).toISOString(),
+            }),
+          );
+          return;
+        }
+
+        // §1.5 — one open claim per asset at a time.
+        const duplicate = await ctx.claims.findNonTerminalByAssetForAccount(accountId, body.assetId);
+        if (duplicate) {
+          next(apiError('DUPLICATE_OPEN_CLAIM', { claimId: duplicate.id }));
+          return;
+        }
+
+        // §1.6 — optional recovery-case linkage, validated but not duplicated.
+        let recoveryCaseId: string | null = null;
+        if (body.recoveryCaseId) {
+          const recoveryCase = await ctx.recoveryCases.findByIdForAccount(accountId, body.recoveryCaseId);
+          if (!recoveryCase || recoveryCase.assetId !== body.assetId) {
+            next(apiError('RECOVERY_CASE_MISMATCH'));
+            return;
+          }
+          recoveryCaseId = recoveryCase.id;
+        }
+
+        // §5 — fraud flags, computed once at filing, admin-only.
+        const rateWindowStart = rateThresholdWindowStart();
+        const recentClaims = await ctx.claims.listSinceForAccount(accountId, rateWindowStart);
+        const priorClaimsOfSameAssetType = await ctx.claims.listByAccountAndAssetType(accountId, asset.assetType);
+        const fraudFlags = computeFraudFlags({
+          filedAt: new Date(),
+          policyEffectiveDate: policy.effectiveDate,
+          assetRegisteredAt: asset.registeredAt,
+          policyUpdatedAt: policy.updatedAt,
+          claimedAmount: body.claimedAmount,
+          priorClaimedAmountsSameAssetType: priorClaimsOfSameAssetType.map((c) => c.claimedAmount),
+          priorClaimsInRateWindow: recentClaims.length,
+        });
+
+        const claim = await ctx.claims.createForAccount({
+          accountId,
+          policyId: policy.id,
+          assetId: asset.id,
+          recoveryCaseId,
+          supersedesClaimId: body.supersedesClaimId ?? null,
+          assetTypeSnapshot: asset.assetType,
+          assetDisplayNameSnapshot: asset.displayName,
+          policyPlanTierSnapshot: policy.planTier,
+          incidentDescription: body.incidentDescription,
+          incidentDate,
+          evidenceDescription: body.evidenceDescription ?? null,
+          claimedAmount: body.claimedAmount,
+          claimedAmountCurrency: body.claimedAmountCurrency ?? policy.billing.currency,
+          fraudFlags,
+        });
+
+        res.status(201).json(serializeClaimForCustomer(claim));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.get(
+    '/claims',
+    authenticate,
+    requireUserType('customer'),
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `claims-list:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const { limit, cursor } = parseMongoPaginationQuery(req.query as Record<string, unknown>);
+        const rows = await ctx.claims.listByAccount(req.auth!.accountId, limit + 1, cursor);
+        const page = buildPage(rows, limit);
+        res.status(200).json({
+          data: page.data.map(serializeClaimForCustomer),
+          pagination: { nextCursor: page.nextCursor, hasMore: page.hasMore },
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.get(
+    '/claims/:claimId',
+    authenticate,
+    requireUserType('customer'),
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `claims-detail:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const parsed = claimIdParamsSchema.safeParse(req.params);
+        if (!parsed.success) {
+          next(apiError('VALIDATION_ERROR'));
+          return;
+        }
+        const claim = await ctx.claims.findByIdForAccount(req.auth!.accountId, parsed.data.claimId);
+        if (!claim) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+        res.status(200).json(serializeClaimForCustomer(claim));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // §2.2 — customer responds to a `more_info_requested` claim.
+  router.patch(
+    '/claims/:claimId/respond',
+    authenticate,
+    requireUserType('customer'),
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `claims-respond:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const paramsParsed = claimIdParamsSchema.safeParse(req.params);
+        if (!paramsParsed.success) {
+          next(apiError('VALIDATION_ERROR'));
+          return;
+        }
+        const bodyParsed = respondBodySchema.safeParse(req.body);
+        if (!bodyParsed.success) {
+          next(apiError('VALIDATION_ERROR', { details: bodyParsed.error.issues.map((i) => i.message) }));
+          return;
+        }
+        const accountId = req.auth!.accountId;
+        const existing = await ctx.claims.findByIdForAccount(accountId, paramsParsed.data.claimId);
+        if (!existing) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+        if (existing.status !== 'more_info_requested') {
+          next(apiError('CONFLICT'));
+          return;
+        }
+        const updated = await ctx.claims.respondToInfoRequest(accountId, paramsParsed.data.claimId, bodyParsed.data);
+        if (!updated) {
+          next(apiError('CONFLICT'));
+          return;
+        }
+        res.status(200).json(serializeClaimForCustomer(updated));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // §2.2 — customer withdrawal, any non-terminal status.
+  router.patch(
+    '/claims/:claimId/withdraw',
+    authenticate,
+    requireUserType('customer'),
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `claims-withdraw:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const paramsParsed = claimIdParamsSchema.safeParse(req.params);
+        if (!paramsParsed.success) {
+          next(apiError('VALIDATION_ERROR'));
+          return;
+        }
+        const accountId = req.auth!.accountId;
+        const existing = await ctx.claims.findByIdForAccount(accountId, paramsParsed.data.claimId);
+        if (!existing) {
+          next(apiError('NOT_FOUND'));
+          return;
+        }
+        if (!isForwardClaimTransition(existing.status as ClaimStatus, 'closed')) {
+          next(apiError('CONFLICT'));
+          return;
+        }
+        let updated;
+        try {
+          updated = await ctx.claims.withdrawForAccount(accountId, paramsParsed.data.claimId, existing.status);
+        } catch (err) {
+          if (err instanceof InvalidClaimStatusTransitionError) {
+            next(apiError('CONFLICT'));
+            return;
+          }
+          throw err;
+        }
+        if (!updated) {
+          next(apiError('CONFLICT'));
+          return;
+        }
+        res.status(200).json(serializeClaimForCustomer(updated));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  return router;
+}
