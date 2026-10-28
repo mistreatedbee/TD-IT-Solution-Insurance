@@ -139,6 +139,14 @@ export const ERROR_CATALOG = {
     statusCode: 409,
     message: 'The policy referenced by this claim could not be found. This claim cannot be adjudicated.',
   },
+  // §12.2 R7-3 (compliance ruling 2026-10-28) — approval hold on a claim
+  // carrying FLAG_INCIDENT_BEFORE_ELIGIBILITY until an admin records why the
+  // loss is nonetheless within cover.
+  ELIGIBILITY_DETERMINATION_REQUIRED: {
+    statusCode: 422,
+    message:
+      'This claim has an incident-date eligibility flag. An eligibility determination must be recorded before it can be approved.',
+  },
   INTERNAL_ERROR: { statusCode: 500, message: 'An internal error occurred.' },
 } as const satisfies Record<string, ErrorCatalogEntry>;
 

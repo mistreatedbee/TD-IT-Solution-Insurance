@@ -169,6 +169,23 @@ describe('§5 fraud flags — deterministic, surfaced to admins only, never bloc
     expect(flags).toContain('FLAG_INCIDENT_BEFORE_ELIGIBILITY');
   });
 
+  // §12.2 R7-2 (compliance ruling 2026-10-28, chair's Scenario B) — the
+  // comparison must be against the waiting period's END
+  // (`waitingPeriodClearsAt`), not its start (`waitingPeriodAnchor`), or an
+  // incident dated inside the 30-day waiting window itself is missed.
+  it('§12.2 R7-2 / Scenario B: flags an incident dated inside the waiting period itself (on/after the anchor, before it clears)', () => {
+    const flags = computeFraudFlags({
+      ...base,
+      policyEffectiveDate: new Date('2026-01-01T00:00:00.000Z'),
+      assetRegisteredAt: new Date('2026-01-01T00:00:00.000Z'),
+      // subscribe day 0, loss day 3 — on/after the anchor, so the OLD
+      // (anchor-based) check would miss this; the waiting period (30 days)
+      // only clears 2026-01-31, so the incident is still before it clears.
+      incidentDate: new Date('2026-01-04T00:00:00.000Z'),
+    });
+    expect(flags).toContain('FLAG_INCIDENT_BEFORE_ELIGIBILITY');
+  });
+
   it('SR-018-7: does not flag a legitimate incident after both the policy effectiveDate and asset registeredAt', () => {
     const flags = computeFraudFlags({
       ...base,

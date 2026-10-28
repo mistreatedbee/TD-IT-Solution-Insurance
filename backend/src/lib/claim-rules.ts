@@ -204,11 +204,13 @@ export function computeFraudFlags(input: FraudFlagInput): FraudFlag[] {
     flags.push('FLAG_RATE_THRESHOLD');
   }
 
-  // SR-018-7 — flag (never block) an incident predating the waiting-period
-  // anchor itself (the later of policy.effectiveDate / asset.registeredAt),
-  // which the pre-existing filing-date-only check could not catch.
-  const anchor = waitingPeriodAnchor(input.policyEffectiveDate, input.assetRegisteredAt);
-  if (input.incidentDate.getTime() < anchor.getTime()) {
+  // SR-018-7 / §12.2 R7-2 (compliance ruling 2026-10-28) — flag (never block)
+  // an incident dated before the waiting period actually CLEARS, not just
+  // before it starts. This covers all three cases the ruling requires:
+  // before policy inception, before asset registration, AND an incident
+  // dated inside the 30-day waiting window itself (Scenario B), which a
+  // comparison against `waitingPeriodAnchor` (the start) would miss.
+  if (input.incidentDate.getTime() < clearsAt.getTime()) {
     flags.push('FLAG_INCIDENT_BEFORE_ELIGIBILITY');
   }
 

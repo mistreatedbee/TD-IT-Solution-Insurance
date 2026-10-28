@@ -134,14 +134,13 @@ export function createClaimsRouter(ctx: AppContext): Router {
           return;
         }
 
-        if (incidentDate.getTime() < policy.effectiveDate.getTime()) {
-          next(
-            apiError('VALIDATION_ERROR', {
-              details: ['incidentDate must not be earlier than the policy effectiveDate'],
-            }),
-          );
-          return;
-        }
+        // §12.2 R7-1 (compliance ruling 2026-10-28) — an incident dated before
+        // the policy's effectiveDate is NOT an intake refusal. It is accepted
+        // and flagged (`FLAG_INCIDENT_BEFORE_ELIGIBILITY`, computed below) so
+        // a human reviewer must record an eligibility determination before
+        // approval. A hard block here would be an undisclosed intake refusal
+        // without the PPR rejection safeguards, and would also catch honest
+        // date typos.
 
         // §1.3/§1.3a — waiting period, computed from the LATER of
         // policy.effectiveDate / asset.registeredAt.

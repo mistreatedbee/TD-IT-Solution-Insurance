@@ -220,13 +220,45 @@ function createHarness(opts: {
       },
       async approveAndAdvance(
         _id: string,
-        input: { expectedStatus: ClaimStatus; approvedAmount: number; actorAccountId: string },
+        input: {
+          expectedStatus: ClaimStatus;
+          approvedAmount: number;
+          actorAccountId: string;
+          eligibilityDetermination?: string | null;
+        },
       ) {
         if (claim.status !== input.expectedStatus) return null;
         if (!isForwardClaimTransition(input.expectedStatus, 'approved')) {
           throw Object.assign(new Error('invalid'), { name: 'InvalidClaimStatusTransitionError' });
         }
-        claim = { ...claim, status: 'awaiting_payout', approvedAmount: input.approvedAmount, decidedAt: new Date(), updatedAt: new Date() };
+        claim = {
+          ...claim,
+          status: 'awaiting_payout',
+          approvedAmount: input.approvedAmount,
+          decidedAt: new Date(),
+          updatedAt: new Date(),
+          statusHistory: [
+            ...claim.statusHistory,
+            {
+              fromStatus: input.expectedStatus,
+              toStatus: 'approved',
+              actorAccountId: input.actorAccountId,
+              actorRole: 'admin',
+              reason: input.eligibilityDetermination
+                ? `eligibilityDetermination=${input.eligibilityDetermination}`
+                : null,
+              changedAt: new Date(),
+            },
+            {
+              fromStatus: 'approved',
+              toStatus: 'awaiting_payout',
+              actorAccountId: input.actorAccountId,
+              actorRole: 'system',
+              reason: null,
+              changedAt: new Date(),
+            },
+          ],
+        };
         return claim;
       },
     },
@@ -339,6 +371,97 @@ describe('PATCH /v1/admin/claims/{claimId}', () => {
     // itself (reusing the existing `reason` field), not only on the mutable
     // domain document.
     expect(harness.stateChanges[0]!.reason).toBe('approvedAmount=50000.00 ZAR');
+  });
+
+  // §12.2 R7-3 (compliance ruling 2026-10-28) — eligibility hold on approval.
+  describe('§12.2 R7-3: eligibility-determination hold on approving a FLAG_INCIDENT_BEFORE_ELIGIBILITY claim', () => {
+    it('blocks approval with 422 ELIGIBILITY_DETERMINATION_REQUIRED when the claim is flagged and no determination is supplied', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({
+        accountId: acctId,
+        policy: samplePolicy(acctId),
+        asset: sampleAsset(acctId),
+        claim: sampleClaim(acctId, { claimedAmount: 1000, fraudFlags: ['FLAG_INCIDENT_BEFORE_ELIGIBILITY'] }),
+      });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'approved', approvedAmount: 1000 }),
+      });
+      expect(res.status).toBe(422);
+      const body = await res.json();
+      expect(body.error.code).toBe('ELIGIBILITY_DETERMINATION_REQUIRED');
+      expect(harness.getClaim().status).toBe('under_review');
+      // No audit row and no mutation on a blocked attempt.
+      expect(harness.stateChanges).toHaveLength(0);
+    });
+
+    it('succeeds with an eligibilityDetermination, recording it in statusHistory and the admin audit trail, never in the customer response', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({
+        accountId: acctId,
+        policy: samplePolicy(acctId),
+        asset: sampleAsset(acctId),
+        claim: sampleClaim(acctId, { claimedAmount: 1000, fraudFlags: ['FLAG_INCIDENT_BEFORE_ELIGIBILITY'] }),
+      });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const determination =
+        'Customer confirmed the incident date was mistyped; actual date is within cover, corroborated by police report.';
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'approved',
+          approvedAmount: 1000,
+          eligibilityDetermination: determination,
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.status).toBe('awaiting_payout');
+      expect(body.approvedAmount).toBe(1000);
+
+      // Recorded in the admin audit trail (Trail B).
+      expect(harness.stateChanges).toHaveLength(1);
+      expect(harness.stateChanges[0]!.reason).toContain(`eligibilityDetermination=${determination}`);
+
+      // Recorded in the claim's own statusHistory.
+      const stored = harness.getClaim();
+      expect(stored.statusHistory.some((h) => h.reason?.includes(determination))).toBe(true);
+
+      // Never shown to the customer — not in the JSON response body at all,
+      // under any key.
+      expect(JSON.stringify(body)).not.toContain(determination);
+      expect(body.eligibilityDetermination).toBeUndefined();
+      expect(body.statusHistory).toBeUndefined();
+    });
+
+    it('does not require eligibilityDetermination for an ordinary (unflagged) approval', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({
+        accountId: acctId,
+        policy: samplePolicy(acctId),
+        asset: sampleAsset(acctId),
+        claim: sampleClaim(acctId, { claimedAmount: 1000, fraudFlags: [] }),
+      });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'approved', approvedAmount: 1000 }),
+      });
+      expect(res.status).toBe(200);
+    });
   });
 
   it('SR-018-3: rejects approvedAmount above claimedAmount with 422 APPROVED_AMOUNT_EXCEEDS_CLAIMED', async () => {

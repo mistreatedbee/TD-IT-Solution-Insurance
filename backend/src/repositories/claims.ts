@@ -331,7 +331,15 @@ export function createClaimsRepo(db: Db) {
      */
     async approveAndAdvance(
       claimId: string,
-      input: { expectedStatus: ClaimStatus; approvedAmount: number; actorAccountId: string },
+      input: {
+        expectedStatus: ClaimStatus;
+        approvedAmount: number;
+        actorAccountId: string;
+        /** §12.2 R7-3 — recorded ONLY when the claim carries
+         * `FLAG_INCIDENT_BEFORE_ELIGIBILITY`. Admin-only; must never be
+         * exposed to the customer serializer. */
+        eligibilityDetermination?: string | null;
+      },
     ): Promise<ClaimDocument | null> {
       if (!ObjectId.isValid(claimId)) return null;
       if (!isForwardClaimTransition(input.expectedStatus, 'approved')) {
@@ -344,7 +352,9 @@ export function createClaimsRepo(db: Db) {
           toStatus: 'approved',
           actorAccountId: input.actorAccountId,
           actorRole: 'admin',
-          reason: null,
+          reason: input.eligibilityDetermination
+            ? `eligibilityDetermination=${input.eligibilityDetermination}`
+            : null,
           changedAt: now,
         },
         {

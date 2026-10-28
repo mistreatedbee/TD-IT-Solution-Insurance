@@ -59,6 +59,11 @@ const patchBodySchema = z.discriminatedUnion('action', [
       .positive()
       .max(MAX_CLAIM_APPROVED_AMOUNT, { message: `approvedAmount must not exceed ${MAX_CLAIM_APPROVED_AMOUNT}` })
       .refine(hasAtMostTwoDecimalPlaces, { message: 'approvedAmount must have at most 2 decimal places' }),
+    // §12.2 R7-3 — required ONLY when the claim carries
+    // FLAG_INCIDENT_BEFORE_ELIGIBILITY (enforced in the handler, not here,
+    // since the schema cannot see the claim). Optional at the schema level
+    // so an ordinary approval body is unaffected.
+    eligibilityDetermination: z.string().trim().min(1).max(2000).optional(),
   }),
   z.object({ action: z.literal('rejected'), rejectionReason: requiredReasonSchema }),
   z.object({ action: z.literal('closed'), closeReason: requiredReasonSchema }),
@@ -268,6 +273,19 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
             next(apiError('APPROVED_AMOUNT_EXCEEDS_COVERAGE_LIMIT'));
             return;
           }
+
+          // §12.2 R7-3 — approval hold. A claim flagged
+          // FLAG_INCIDENT_BEFORE_ELIGIBILITY cannot be approved until an
+          // admin records an explicit eligibility determination. This is a
+          // hold on APPROVAL only — start_review, more_info_requested and
+          // rejected are unaffected.
+          if (
+            existing.fraudFlags.includes('FLAG_INCIDENT_BEFORE_ELIGIBILITY') &&
+            !body.eligibilityDetermination
+          ) {
+            next(apiError('ELIGIBILITY_DETERMINATION_REQUIRED'));
+            return;
+          }
         }
 
         const reason =
@@ -283,7 +301,14 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
                   // domain document carried it. Reuse the existing optional
                   // `reason` field (same "widen, don't fork" posture already
                   // used for this column) rather than add a new one.
-                  ? `approvedAmount=${body.approvedAmount.toFixed(2)} ${existing.claimedAmountCurrency}`
+                  // §12.2 R7-3: append the admin's eligibility determination
+                  // (present only on flagged claims) to the same audit row.
+                  // Admin-only — this field is never serialized to the
+                  // customer.
+                  ? `approvedAmount=${body.approvedAmount.toFixed(2)} ${existing.claimedAmountCurrency}` +
+                    (body.eligibilityDetermination
+                      ? ` eligibilityDetermination=${body.eligibilityDetermination}`
+                      : '')
                   : null;
 
         // Write the decision record BEFORE the mutation (§18.8 ruling (b)).
@@ -309,6 +334,7 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
               expectedStatus: fromStatus,
               approvedAmount: body.approvedAmount,
               actorAccountId: req.auth!.accountId,
+              eligibilityDetermination: body.eligibilityDetermination ?? null,
             });
           } else {
             updated = await ctx.claims.transitionForAdmin(claimId, {

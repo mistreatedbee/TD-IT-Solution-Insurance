@@ -473,6 +473,43 @@ describe('POST /v1/claims', () => {
     expect(body.error.code).toBe('WAITING_PERIOD_NOT_MET');
   });
 
+  // §12.2 R7-1 (compliance ruling 2026-10-28) — an incident dated before the
+  // policy's effectiveDate must be ACCEPTED and flagged, never hard-blocked
+  // at intake. The old `claims.ts:127` refusal is removed.
+  it('§12.2 R7-1: accepts and flags a claim whose incidentDate predates the policy effectiveDate, instead of rejecting it', async () => {
+    const acctId = randomUUID();
+    const policy = samplePolicy(acctId, { effectiveDate: new Date('2026-01-01T00:00:00.000Z') });
+    const asset = sampleAsset(acctId, { registeredAt: new Date('2026-01-01T00:00:00.000Z') });
+    const harness = createHarness({ accountId: acctId, asset, policy });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const res = await fetch(`${listened.baseUrl}/claims`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+      body: JSON.stringify({
+        policyId: POLICY_ID,
+        assetId: ASSET_ID,
+        incidentDescription: 'Laptop was stolen from my car overnight.',
+        // Before the policy effectiveDate — would previously have been a
+        // hard 400 VALIDATION_ERROR.
+        incidentDate: '2025-12-15',
+        claimedAmount: 1000,
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.error).toBeUndefined();
+    // Never shown to the customer.
+    expect(body.fraudFlags).toBeUndefined();
+    expect(body.statusHistory).toBeUndefined();
+
+    // But recorded admin-side on the stored domain document.
+    const stored = harness.claims.find((c) => c.id === body.id);
+    expect(stored?.fraudFlags).toContain('FLAG_INCIDENT_BEFORE_ELIGIBILITY');
+  });
+
   it('AC-4: rejects a duplicate open claim on the same asset with 409 DUPLICATE_OPEN_CLAIM', async () => {
     const acctId = randomUUID();
     const existing = sampleClaim(acctId, { status: 'under_review' });
