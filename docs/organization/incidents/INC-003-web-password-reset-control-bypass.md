@@ -3452,6 +3452,24 @@ question.
 
 ---
 
+**Production-access record (orchestrator, 2026-10-28):** the owner supplied the production
+Postgres password directly in chat again (same credential, `postgresql://postgres.mowaqxfbwqdmjssghpvt:***@aws-0-eu-central-1.pooler.supabase.com:5432/postgres`),
+to apply DEFECT-001's two drafted-but-unapplied migrations (`backend/migrations/038_defect001_verification_decision_audit_event_types.sql`,
+`039_defect001_verification_decision_column.sql`). Per the standing §21/§36 discipline: the
+password was never requested from the owner and was used only via an environment variable
+(`PG_ONEOFF_CONN`), never as a CLI argument; the owner ran the connecting script themselves
+(not an agent — consistent with the §21 rule that live production writes are run by the owner
+directly or via a short-lived scoped role, never an agent holding the app's own credential).
+Both migrations are additive-only (`add value if not exists`, `add column if not exists` /
+two new CHECK constraints that hold vacuously over 100% of pre-existing rows) and applied
+without error. No rollback needed, none attempted. The two migration files' headers have been
+corrected from "WRITTEN, NOT YET APPLIED" to "APPLIED ... 2026-10-28" per the migrations/032/033
+precedent. This is a new, independent access event from §21's C-2/A-6 record — not a
+continuation of that forensic question — and does not change the §36/§38 rotation-declined
+disposition, which stands unchanged.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*

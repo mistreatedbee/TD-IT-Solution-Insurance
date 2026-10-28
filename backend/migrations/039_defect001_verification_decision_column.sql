@@ -5,9 +5,11 @@
 -- migrations/032 vs. 033). Apply AFTER migrations/038.
 -- Author: backend-architect (design, §3) — database-architect (this file, confirmed,
 -- 2026-10-23).
--- Status: WRITTEN, NOT YET APPLIED to any project, live or otherwise — whoever applies this
--- must correct this header per the precedent migrations/032/033/035's headers document
--- (029/030/031 were left stale after application).
+-- Status: APPLIED to the production Supabase project (mowaqxfbwqdmjssghpvt), 2026-10-28,
+-- immediately after migrations/038, by the account owner directly via a one-off ad hoc script
+-- (password supplied by the owner in chat, used only via an env var, never as a CLI argument;
+-- the owner has separately declined credential rotation — see INC-003 §36/§38, recorded as an
+-- owner decision, not a lapse).
 --
 -- Continues the numbering from migrations/038.
 --

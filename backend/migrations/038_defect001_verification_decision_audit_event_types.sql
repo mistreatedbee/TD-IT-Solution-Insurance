@@ -2,9 +2,10 @@
 -- §3) — new `app.audit_event_type` values for the verify-then-swap / approval-race fix.
 -- Author: backend-architect (design, §3) — database-architect (this file, confirmed,
 -- 2026-10-23).
--- Status: WRITTEN, NOT YET APPLIED to any project, live or otherwise — whoever applies this
--- must correct this header per the precedent migrations/032/033/035's headers document
--- (029/030/031 were left stale after application).
+-- Status: APPLIED to the production Supabase project (mowaqxfbwqdmjssghpvt), 2026-10-28, by
+-- the account owner directly via a one-off ad hoc script (password supplied by the owner in
+-- chat, used only via an env var, never as a CLI argument; the owner has separately declined
+-- credential rotation — see INC-003 §36/§38, recorded as an owner decision, not a lapse).
 --
 -- Continues the numbering from migrations/037.
 --
