@@ -19,6 +19,17 @@ export interface ApiErrorBody {
      */
     caseId?: string;
     referenceNumber?: string;
+    /**
+     * Present on 409 DUPLICATE_OPEN_CLAIM from POST /v1/claims
+     * (backend/src/routes/claims.ts) — the existing open claim for this
+     * asset, so the caller can link to it instead of erroring blindly.
+     */
+    claimId?: string;
+    /**
+     * Present on 422 WAITING_PERIOD_NOT_MET from POST /v1/claims — ISO
+     * timestamp of when the asset/policy becomes eligible for a claim.
+     */
+    waitingPeriodClearsAt?: string;
   };
 }
 
@@ -29,6 +40,8 @@ export class ApiError extends Error {
   readonly attemptsRemaining: number | null;
   readonly caseId: string | null;
   readonly referenceNumber: string | null;
+  readonly claimId: string | null;
+  readonly waitingPeriodClearsAt: string | null;
 
   constructor(status: number, body: ApiErrorBody) {
     super(body.error.message);
@@ -39,6 +52,8 @@ export class ApiError extends Error {
     this.attemptsRemaining = body.error.attemptsRemaining ?? null;
     this.caseId = body.error.caseId ?? null;
     this.referenceNumber = body.error.referenceNumber ?? null;
+    this.claimId = body.error.claimId ?? null;
+    this.waitingPeriodClearsAt = body.error.waitingPeriodClearsAt ?? null;
   }
 }
 

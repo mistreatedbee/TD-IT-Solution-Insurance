@@ -149,6 +149,16 @@ function mapApiErrorByCode(code: string, status: number, message: string, contex
     case 'CONFLICT':
     case 'IDEMPOTENCY_KEY_REUSE':
       return 'This action was already processed. Refresh the screen to see the latest state.';
+    case 'POLICY_NOT_ACTIVE':
+      return 'That policy is not active, so a claim cannot be filed against it right now.';
+    case 'ASSET_NOT_ELIGIBLE':
+      return 'That asset is not currently eligible for a claim (check its status).';
+    case 'WAITING_PERIOD_NOT_MET':
+      return 'This policy or asset is still in its waiting period and is not yet eligible for a claim.';
+    case 'RECOVERY_CASE_MISMATCH':
+      return 'The selected theft report does not match this asset. Choose a different report or leave it blank.';
+    case 'DUPLICATE_OPEN_CLAIM':
+      return 'There is already an open claim for this asset.';
     case 'DEVICE_MISMATCH':
       return 'Complete this action on the device you used to sign in.';
     case 'STEP_UP_REQUIRED':

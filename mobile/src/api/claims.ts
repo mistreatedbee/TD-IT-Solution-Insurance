@@ -1,20 +1,56 @@
 /**
- * Phase 2 Claims API — client contract stub.
- * Backend routes do not exist yet; calls fail until claims domain ships.
+ * Claims API — wired to Feature 018 backend (backend/src/routes/claims.ts).
+ * Customer-facing shape only; `fraudFlags` is never sent to this client
+ * (serializeClaimForCustomer omits it server-side).
  */
 import { apiFetch } from './client';
 import { newIdempotencyKey } from './idempotency';
 
-export type ClaimStatus = 'submitted' | 'under_review' | 'approved' | 'denied' | 'closed';
+export type ClaimStatus =
+  | 'submitted'
+  | 'under_review'
+  | 'more_info_requested'
+  | 'approved'
+  | 'awaiting_payout'
+  | 'rejected'
+  | 'closed';
+
+/** Non-terminal statuses — a claim in one of these may still be withdrawn. */
+export const NON_TERMINAL_CLAIM_STATUSES: ReadonlySet<ClaimStatus> = new Set([
+  'submitted',
+  'under_review',
+  'more_info_requested',
+  'approved',
+  'awaiting_payout',
+]);
+
+export interface ClaimReviewNote {
+  text: string;
+  createdAt: string;
+}
 
 export interface Claim {
   id: string;
+  policyId: string;
   assetId: string;
+  recoveryCaseId: string | null;
+  supersedesClaimId: string | null;
   status: ClaimStatus;
-  referenceNumber: string;
+  assetType: string;
+  assetDisplayName: string;
+  policyPlanTier: string;
+  incidentDescription: string;
+  /** ISO date-time. */
+  incidentDate: string;
+  evidenceDescription: string | null;
+  claimedAmount: number;
+  claimedAmountCurrency: string;
+  approvedAmount: number | null;
+  rejectionReason: string | null;
+  reviewNotes: ClaimReviewNote[];
   submittedAt: string;
-  incidentSummary?: string | null;
-  recoveryCaseId?: string | null;
+  decidedAt: string | null;
+  updatedAt: string;
 }
 
 export interface ClaimListPage {
@@ -23,9 +59,21 @@ export interface ClaimListPage {
 }
 
 export interface CreateClaimRequest {
+  policyId: string;
   assetId: string;
-  incidentSummary: string;
   recoveryCaseId?: string;
+  supersedesClaimId?: string;
+  incidentDescription: string;
+  /** "YYYY-MM-DD" — not in the future, not before the policy's effectiveDate. */
+  incidentDate: string;
+  evidenceDescription?: string;
+  claimedAmount: number;
+  claimedAmountCurrency?: string;
+}
+
+export interface RespondToClaimRequest {
+  text: string;
+  incidentDescription?: string;
 }
 
 export function listClaims(params?: { cursor?: string; limit?: number }) {
@@ -40,10 +88,30 @@ export function getClaim(claimId: string) {
   return apiFetch<Claim>(`/claims/${encodeURIComponent(claimId)}`, { method: 'GET' });
 }
 
-export function createClaim(body: CreateClaimRequest) {
+/**
+ * `POST /v1/claims` requires `Idempotency-Key`. Pass a stable key when the
+ * caller needs safe retry across a dropped connection (same convention as
+ * `createRecoveryCase` in `recovery.ts`) — otherwise a fresh key is minted.
+ */
+export function createClaim(body: CreateClaimRequest, idempotencyKey = newIdempotencyKey()) {
   return apiFetch<Claim>('/claims', {
     method: 'POST',
     body,
-    headers: { 'Idempotency-Key': newIdempotencyKey() },
+    headers: { 'Idempotency-Key': idempotencyKey },
+  });
+}
+
+/** Only valid while `claim.status === 'more_info_requested'`. */
+export function respondToClaim(claimId: string, body: RespondToClaimRequest) {
+  return apiFetch<Claim>(`/claims/${encodeURIComponent(claimId)}/respond`, {
+    method: 'PATCH',
+    body,
+  });
+}
+
+/** Valid from any non-terminal status; no request body. */
+export function withdrawClaim(claimId: string) {
+  return apiFetch<Claim>(`/claims/${encodeURIComponent(claimId)}/withdraw`, {
+    method: 'PATCH',
   });
 }

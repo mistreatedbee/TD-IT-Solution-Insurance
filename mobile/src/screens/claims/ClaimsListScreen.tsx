@@ -1,13 +1,13 @@
 /**
- * Phase 2 — claims list (empty until claims API ships).
+ * Claims list — Feature 018 backend (GET /v1/claims).
  */
 import { useRouter, type Href } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { PlusIcon } from 'lucide-react-native';
 import { useClaimsQuery } from '../../api/hooks/useClaims';
-import { ApiError } from '../../api/errors';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { claimStatusBadgeTone, formatClaimStatus } from '../../lib/claim-labels';
 import { Alert, Badge, Button, Card, Screen } from '../../theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
 
@@ -16,7 +16,6 @@ export function ClaimsListScreen() {
   const { data, isLoading, isError, error } = useClaimsQuery();
 
   const claims = data?.data ?? [];
-  const apiMissing = isError && error instanceof ApiError && error.status === 404;
 
   return (
     <Screen scroll={false} padded={false}>
@@ -26,21 +25,12 @@ export function ClaimsListScreen() {
       </View>
 
       <View style={styles.padded}>
-        {apiMissing ? (
-          <Alert tone="info">
-            Claims service is not deployed yet. You can preview the filing flow — submissions will
-            not be stored until the backend is live.
-          </Alert>
-        ) : null}
-
         {isLoading ? (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : isError && !apiMissing ? (
-          <Alert tone="danger">
-            {mapUserFacingError(error, { context: 'claim' })}
-          </Alert>
+        ) : isError ? (
+          <Alert tone="danger">{mapUserFacingError(error, { context: 'claim' })}</Alert>
         ) : claims.length === 0 ? (
           <>
             <Text style={styles.empty}>
@@ -60,11 +50,12 @@ export function ClaimsListScreen() {
             >
               <Card>
                 <View style={styles.claimHeader}>
-                  <Text style={styles.claimRef}>{claim.referenceNumber}</Text>
-                  <Badge tone="gold">{claim.status.replace(/_/g, ' ')}</Badge>
+                  <Text style={styles.claimRef}>{claim.assetDisplayName}</Text>
+                  <Badge tone={claimStatusBadgeTone(claim.status)}>{formatClaimStatus(claim.status)}</Badge>
                 </View>
                 <Text style={styles.claimMeta}>
-                  Submitted {new Date(claim.submittedAt).toLocaleDateString()}
+                  Submitted {new Date(claim.submittedAt).toLocaleDateString()} ·{' '}
+                  {claim.claimedAmountCurrency} {claim.claimedAmount.toLocaleString()}
                 </Text>
               </Card>
             </Pressable>

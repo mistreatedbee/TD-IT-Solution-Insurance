@@ -1,17 +1,26 @@
 /**
- * Phase 2 — single claim detail.
+ * Claim detail — Feature 018 backend (GET/PATCH /v1/claims/:claimId*).
  */
 import { useLocalSearchParams } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { useClaimQuery } from '../../api/hooks/useClaims';
-import { Alert, Badge, Card, Screen } from '../../theme/primitives';
+import { useClaimQuery, useRespondToClaimMutation, useWithdrawClaimMutation } from '../../api/hooks/useClaims';
+import { Alert, Badge, Button, Card, Input, Screen } from '../../theme/primitives';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { claimStatusBadgeTone, formatClaimStatus, isClaimWithdrawable } from '../../lib/claim-labels';
+import { formatAssetType } from '../../lib/asset-labels';
+import type { AssetType } from '../../api/assets';
 import { colors, spacing, typography } from '../../theme/tokens';
 
 export function ClaimDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { data: claim, isLoading, isError, error } = useClaimQuery(id);
+  const respondMutation = useRespondToClaimMutation(id ?? '');
+  const withdrawMutation = useWithdrawClaimMutation(id ?? '');
+
+  const [responseText, setResponseText] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmingWithdraw, setConfirmingWithdraw] = useState(false);
 
   if (isLoading) {
     return (
@@ -27,31 +36,148 @@ export function ClaimDetailScreen() {
     return (
       <Screen>
         <Text style={styles.title}>Claim</Text>
-        <Alert tone="danger">
-          {mapUserFacingError(error, { context: 'claim' })}
-        </Alert>
+        <Alert tone="danger">{mapUserFacingError(error, { context: 'claim' })}</Alert>
       </Screen>
     );
   }
 
+  async function handleRespond() {
+    setActionError(null);
+    if (responseText.trim().length < 1) {
+      setActionError('Enter a response before submitting.');
+      return;
+    }
+    try {
+      await respondMutation.mutateAsync({ text: responseText.trim() });
+      setResponseText('');
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'claim' }));
+    }
+  }
+
+  async function handleWithdraw() {
+    setActionError(null);
+    try {
+      await withdrawMutation.mutateAsync();
+      setConfirmingWithdraw(false);
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'claim' }));
+    }
+  }
+
   return (
     <Screen>
-      <Text style={styles.title}>{claim.referenceNumber}</Text>
-      <Badge tone="gold">{claim.status.replace(/_/g, ' ')}</Badge>
+      <Text style={styles.title}>{claim.assetDisplayName}</Text>
+      <Badge tone={claimStatusBadgeTone(claim.status)}>{formatClaimStatus(claim.status)}</Badge>
 
       <Card style={styles.section}>
+        <DetailRow label="Asset type" value={formatAssetType(claim.assetType as AssetType)} />
+        <DetailRow label="Policy plan" value={claim.policyPlanTier} />
         <DetailRow label="Submitted" value={new Date(claim.submittedAt).toLocaleString()} />
-        <DetailRow label="Asset ID" value={claim.assetId} />
-        {claim.recoveryCaseId ? (
-          <DetailRow label="Recovery case" value={claim.recoveryCaseId} />
+        <DetailRow label="Incident date" value={new Date(claim.incidentDate).toLocaleDateString()} />
+        <DetailRow
+          label="Claimed amount"
+          value={`${claim.claimedAmountCurrency} ${claim.claimedAmount.toLocaleString()}`}
+        />
+        {claim.approvedAmount != null ? (
+          <DetailRow
+            label="Approved amount"
+            value={`${claim.claimedAmountCurrency} ${claim.approvedAmount.toLocaleString()}`}
+          />
         ) : null}
+        {claim.recoveryCaseId ? <DetailRow label="Recovery case" value={claim.recoveryCaseId} /> : null}
       </Card>
 
-      {claim.incidentSummary ? (
+      <Card style={styles.section}>
+        <Text style={styles.sectionTitle}>Incident description</Text>
+        <Text style={styles.body}>{claim.incidentDescription}</Text>
+      </Card>
+
+      {claim.evidenceDescription ? (
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Incident summary</Text>
-          <Text style={styles.body}>{claim.incidentSummary}</Text>
+          <Text style={styles.sectionTitle}>Evidence description</Text>
+          <Text style={styles.body}>{claim.evidenceDescription}</Text>
         </Card>
+      ) : null}
+
+      {claim.rejectionReason ? (
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Rejection reason</Text>
+          <Text style={styles.body}>{claim.rejectionReason}</Text>
+        </Card>
+      ) : null}
+
+      {claim.reviewNotes.length > 0 ? (
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Reviewer notes</Text>
+          {claim.reviewNotes.map((note, idx) => (
+            <View key={idx} style={styles.noteRow}>
+              <Text style={styles.body}>{note.text}</Text>
+              <Text style={styles.noteMeta}>{new Date(note.createdAt).toLocaleString()}</Text>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
+      {actionError ? (
+        <View style={styles.section}>
+          <Alert tone="danger">{actionError}</Alert>
+        </View>
+      ) : null}
+
+      {claim.status === 'more_info_requested' ? (
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Respond to reviewer</Text>
+          <Input
+            label="Your response"
+            value={responseText}
+            onChangeText={setResponseText}
+            multiline
+            numberOfLines={4}
+            style={styles.multilineInput}
+          />
+          <Button
+            variant="primary"
+            fullWidth
+            loading={respondMutation.isPending}
+            disabled={responseText.trim().length === 0}
+            onPress={handleRespond}
+          >
+            Send response
+          </Button>
+        </Card>
+      ) : null}
+
+      {isClaimWithdrawable(claim.status) ? (
+        <View style={styles.section}>
+          {confirmingWithdraw ? (
+            <>
+              <Alert tone="warning">Withdraw this claim? This cannot be undone.</Alert>
+              <View style={styles.withdrawActions}>
+                <Button
+                  variant="tertiary"
+                  fullWidth
+                  disabled={withdrawMutation.isPending}
+                  onPress={() => setConfirmingWithdraw(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="secondary"
+                  fullWidth
+                  loading={withdrawMutation.isPending}
+                  onPress={handleWithdraw}
+                >
+                  Confirm withdraw
+                </Button>
+              </View>
+            </>
+          ) : (
+            <Button variant="tertiary" fullWidth onPress={() => setConfirmingWithdraw(true)}>
+              Withdraw claim
+            </Button>
+          )}
+        </View>
       ) : null}
     </Screen>
   );
@@ -98,6 +224,23 @@ const styles = StyleSheet.create({
   rowValue: {
     fontSize: typography.sizes.base,
     color: colors.textPrimary,
+  },
+  noteRow: {
+    marginBottom: spacing.sm,
+  },
+  noteMeta: {
+    fontSize: typography.sizes.xs,
+    color: colors.slate[500],
+    marginTop: spacing.xs,
+  },
+  multilineInput: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  withdrawActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.md,
   },
   centered: {
     flex: 1,
