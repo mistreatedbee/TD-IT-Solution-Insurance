@@ -335,6 +335,46 @@ describe('routes/admin-plans', () => {
       expect(body.maxAssets).toBe(5);
     });
 
+    it('writes an audit-log state-change entry on a successful update', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011', { isActive: true, maxAssets: 5 });
+      const { app, adminBearer, stateChangeCalls } = createHarness({ plans: [plan] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/${plan.id}`, {
+        method: 'PATCH',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ maxAssets: 8, reason: 'pricing review' }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(stateChangeCalls).toHaveLength(1);
+      expect(stateChangeCalls[0]).toMatchObject({
+        resourceType: 'plan',
+        resourceId: plan.id,
+        fromStatus: 'active',
+        toStatus: 'active',
+        reason: 'pricing review',
+        endpoint: 'PATCH /v1/admin/plans/{planId}',
+      });
+    });
+
+    it('does not write an audit-log entry when the update fails validation', async () => {
+      const plan = samplePlan('507f1f77bcf86cd799439011');
+      const { app, adminBearer, stateChangeCalls } = createHarness({ plans: [plan] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/plans/${plan.id}`, {
+        method: 'PATCH',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ monthlyAmountCents: -100 }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(stateChangeCalls).toHaveLength(0);
+    });
+
     it('rejects a malformed body (negative monthlyAmountCents) with VALIDATION_ERROR', async () => {
       const plan = samplePlan('507f1f77bcf86cd799439011');
       const { app, adminBearer } = createHarness({ plans: [plan] });

@@ -14,6 +14,7 @@ import { validateBody } from '../lib/validation.js';
 import { requireStepUp, STEP_UP_WINDOW_SECONDS } from '../lib/step-up.js';
 
 const ENDPOINT_CREATE = 'POST /v1/admin/plans';
+const ENDPOINT_PATCH = 'PATCH /v1/admin/plans/{planId}';
 const ENDPOINT_DELETE = 'DELETE /v1/admin/plans/{planId}';
 
 const planIdParamsSchema = z.object({ planId: z.string().regex(/^[0-9a-f]{24}$/i) });
@@ -114,6 +115,7 @@ const updatePlanSchema = z.object({
   features: z.array(z.string().min(1).max(200)).optional(),
   accountTypes: z.array(z.enum(['individual', 'business', 'both'])).optional(),
   entitlements: entitlementSchema.optional(),
+  reason: z.string().trim().min(1).max(2000).optional(),
 });
 
 export function createAdminPlansRouter(ctx: AppContext): Router {
@@ -225,10 +227,37 @@ export function createAdminPlansRouter(ctx: AppContext): Router {
         if (!planId) {
           return next(apiError('NOT_FOUND'));
         }
-        const updated = await ctx.planCatalog.updateById(planId, req.body);
+
+        const existing = await ctx.planCatalog.findById(planId);
+        if (!existing) {
+          return next(apiError('NOT_FOUND'));
+        }
+
+        const { reason, ...patch } = req.body;
+        const updated = await ctx.planCatalog.updateById(planId, patch);
         if (!updated) {
           return next(apiError('NOT_FOUND'));
         }
+
+        // Price/entitlement/etc. changes are at least as consequential as
+        // create/delete — write the same audit trail those routes write
+        // (see POST/DELETE handlers above) so this shows up in the admin
+        // audit-log viewer and Mongo audit trail.
+        await ctx.adminAccessLog.recordStateChange({
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          targetAccountId: req.auth!.accountId,
+          resourceType: 'plan',
+          resourceId: updated.id,
+          fromStatus: existing.isActive ? 'active' : 'inactive',
+          toStatus: updated.isActive ? 'active' : 'inactive',
+          reason: reason ?? null,
+          endpoint: ENDPOINT_PATCH,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
         res.status(200).json(serializePlanCatalog(updated));
       } catch (err) {
         next(err);
