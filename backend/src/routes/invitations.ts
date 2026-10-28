@@ -66,6 +66,21 @@ export function createInvitationsRouter(ctx: AppContext): Router {
           return;
         }
 
+        // Partner-organizations directory now exists (repositories/partner-organizations.ts)
+        // — validate the referenced org is real and active, rather than accepting any
+        // UUID-shaped string as before.
+        if (userType === 'security_company_operator' && partnerOrganizationId) {
+          const partnerOrg = await ctx.partnerOrganizations.findById(partnerOrganizationId);
+          if (!partnerOrg) {
+            next(apiError('VALIDATION_ERROR', { details: ['partnerOrganizationId does not refer to a known partner organization'] }));
+            return;
+          }
+          if (partnerOrg.status !== 'active') {
+            next(apiError('VALIDATION_ERROR', { details: ['partnerOrganizationId refers to a suspended partner organization'] }));
+            return;
+          }
+        }
+
         const normalizedEmail = email.trim().toLowerCase();
         const alreadyPending = await ctx.invitations.hasPendingForEmail(normalizedEmail);
         if (alreadyPending) {

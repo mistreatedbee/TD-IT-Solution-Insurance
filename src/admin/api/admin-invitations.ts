@@ -23,16 +23,14 @@ export { requestStepUpChallenge, verifyStepUp } from './step-up';
 export type { StepUpChallengeResult, StepUpVerifyResult } from './step-up';
 
 /**
- * Scope note (Feature 017 D-2): `security_company_operator` is intentionally
- * excluded. There is no `partner_organizations` table in this codebase
- * today (no such table under `backend/migrations/`) — `partnerOrganizationId`
- * on the backend schema is a bare UUID column with nothing to pick a value
- * from. Building a partner-org picker here would mean inventing a data model
- * client-side. This is CTO-flagged follow-up work, not silently dropped
- * scope — see docs/organization/adr/0012-step-up-authentication-for-privileged-actions.md
- * §3 SU-FU-1 area and Feature 017's own scope notes.
+ * `security_company_operator` re-enabled now that
+ * `backend/src/repositories/partner-organizations.ts` provides a real
+ * directory to attach the invite's `partnerOrganizationId` to (previously
+ * excluded here and disabled in `InviteStaffPage` — see
+ * docs/organization/adr/0012-step-up-authentication-for-privileged-actions.md
+ * §3 SU-FU-1 area and Feature 017's scope notes for that history).
  */
-export type InvitableUserType = 'admin' | 'support_agent';
+export type InvitableUserType = 'admin' | 'support_agent' | 'security_company_operator';
 
 export interface CreateInvitationResult {
   id: string;
@@ -41,7 +39,7 @@ export interface CreateInvitationResult {
 }
 
 export function createInvitation(
-  body: { email: string; userType: InvitableUserType },
+  body: { email: string; userType: InvitableUserType; partnerOrganizationId?: string },
   idempotencyKey: string,
 ): Promise<CreateInvitationResult> {
   return apiFetch<CreateInvitationResult>('/invitations', {

@@ -11,7 +11,12 @@ vi.mock('../api/admin-invitations', () => ({
   verifyStepUp: vi.fn(),
 }));
 
+vi.mock('../api/admin-partner-organizations', () => ({
+  listPartnerOrganizations: vi.fn(),
+}));
+
 import { createInvitation, requestStepUpChallenge, verifyStepUp } from '../api/admin-invitations';
+import { listPartnerOrganizations } from '../api/admin-partner-organizations';
 
 function renderPage() {
   return render(
@@ -48,6 +53,19 @@ function mfaInvalidError(attemptsRemaining: number) {
 describe('InviteStaffPage (Feature 017 D-2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listPartnerOrganizations).mockResolvedValue({
+      data: [
+        {
+          id: 'org-1',
+          name: 'Acme Recovery',
+          status: 'active',
+          contactEmail: 'ops@acme.example',
+          notes: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
   });
 
   it('sends the invitation immediately when the session is already fresh (no step-up needed)', async () => {
@@ -132,14 +150,52 @@ describe('InviteStaffPage (Feature 017 D-2)', () => {
     expect(createInvitation).toHaveBeenCalledTimes(1);
   });
 
-  it('excludes security_company_operator from the selectable account types, showing it disabled with an explanation', async () => {
+  it('offers security_company_operator alongside admin and support agent', async () => {
     renderPage();
 
     expect(screen.getByRole('radio', { name: 'Admin' })).toBeEnabled();
     expect(screen.getByRole('radio', { name: 'Support agent' })).toBeEnabled();
+    expect(screen.getByRole('radio', { name: 'Security company operator' })).toBeEnabled();
+  });
 
-    const partnerOption = screen.getByRole('radio', { name: 'Security company operator' });
-    expect(partnerOption).toBeDisabled();
-    expect(screen.getByText(/no partner-organization data model/)).toBeInTheDocument();
+  it('sends a security_company_operator invitation with the selected partner organization', async () => {
+    const user = userEvent.setup();
+    vi.mocked(createInvitation).mockResolvedValueOnce({
+      id: 'inv-3',
+      status: 'pending',
+      expiresAt: '2026-10-01T00:00:00.000Z',
+    });
+
+    renderPage();
+
+    await user.type(byName('email'), 'operator@example.com');
+    await user.click(screen.getByRole('radio', { name: 'Security company operator' }));
+
+    await waitFor(() => expect(listPartnerOrganizations).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Acme Recovery' })).toBeInTheDocument());
+
+    const select = document.querySelector<HTMLSelectElement>('select[name="partnerOrganizationId"]');
+    if (!select) throw new Error('no partnerOrganizationId select found');
+    await user.selectOptions(select, 'org-1');
+
+    await user.click(screen.getByRole('button', { name: 'Send invitation' }));
+
+    await waitFor(() => expect(screen.getByText(/Invitation sent to operator@example\.com/)).toBeInTheDocument());
+    expect(createInvitation).toHaveBeenCalledWith(
+      { email: 'operator@example.com', userType: 'security_company_operator', partnerOrganizationId: 'org-1' },
+      expect.any(String),
+    );
+  });
+
+  it('blocks submission of a security_company_operator invite with no partner org selected', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(byName('email'), 'operator2@example.com');
+    await user.click(screen.getByRole('radio', { name: 'Security company operator' }));
+    await user.click(screen.getByRole('button', { name: 'Send invitation' }));
+
+    await waitFor(() => expect(screen.getByText(/Choose a partner organization/)).toBeInTheDocument());
+    expect(createInvitation).not.toHaveBeenCalled();
   });
 });

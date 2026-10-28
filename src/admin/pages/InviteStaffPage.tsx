@@ -16,16 +16,17 @@
  * part of the retried call's arguments, so the hook replays it unchanged —
  * see `sendInvitationAction` below).
  *
- * Scope (Feature 017 D-2): `userType` is limited to `admin` and
- * `support_agent`. `security_company_operator` is shown as a disabled
- * option with an inline explanation — there is no `partner_organizations`
- * table in this codebase (`partnerOrganizationId` is a bare UUID column
- * with nothing to pick a value from), so a partner-org picker is out of
- * scope here. This is intentionally surfaced, not silently omitted; see
+ * `userType` covers `admin`, `support_agent`, and `security_company_operator`
+ * — the last of these re-enabled now that `backend/src/repositories/partner-
+ * organizations.ts` provides a real directory to pick a
+ * `partnerOrganizationId` from (previously disabled here; see
  * docs/organization/adr/0012-step-up-authentication-for-privileged-actions.md
- * §3 for the CTO-flagged follow-up.
+ * §3 for that history). Selecting "Security company operator" reveals a
+ * dropdown of active partner organizations, fetched from
+ * `GET /admin/partner-organizations`; a partner org must be selected before
+ * the invite can be sent.
  */
-import { FormEvent, useCallback, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Input, SectionHeading } from '../../components';
 import { InlineAlert } from '../../dashboard/components/ui';
@@ -40,22 +41,43 @@ import {
   type CreateInvitationResult,
   type InvitableUserType,
 } from '../api/admin-invitations';
+import { listPartnerOrganizations, type AdminPartnerOrganization } from '../api/admin-partner-organizations';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const INVITABLE_USER_TYPES: InvitableUserType[] = ['admin', 'support_agent'];
+const INVITABLE_USER_TYPES: InvitableUserType[] = ['admin', 'support_agent', 'security_company_operator'];
 
 function userTypeLabel(userType: InvitableUserType): string {
-  return userType === 'admin' ? 'Admin' : 'Support agent';
+  if (userType === 'admin') return 'Admin';
+  if (userType === 'support_agent') return 'Support agent';
+  return 'Security company operator';
 }
 
 export function InviteStaffPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [userType, setUserType] = useState<InvitableUserType>('admin');
+  const [partnerOrganizationId, setPartnerOrganizationId] = useState('');
+  const [partnerOrgs, setPartnerOrgs] = useState<AdminPartnerOrganization[]>([]);
+  const [partnerOrgsError, setPartnerOrgsError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (userType !== 'security_company_operator' || partnerOrgs.length > 0) return;
+    let cancelled = false;
+    listPartnerOrganizations()
+      .then((res) => {
+        if (!cancelled) setPartnerOrgs(res.data.filter((org) => org.status === 'active'));
+      })
+      .catch((err) => {
+        if (!cancelled) setPartnerOrgsError(mapUserFacingError(err, { context: 'admin' }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userType, partnerOrgs.length]);
 
   // ADR-0012 §2.4: the SAME Idempotency-Key must be reused across the
   // STEP_UP_REQUIRED → challenge → verify → retry cycle. It's part of this
@@ -63,8 +85,13 @@ export function InviteStaffPage() {
   // no separate bookkeeping needed here.
   const sendInvitationAction = useCallback(
     (idempotencyKey: string) =>
-      createInvitation({ email: email.trim().toLowerCase(), userType }, idempotencyKey),
-    [email, userType],
+      createInvitation(
+        userType === 'security_company_operator'
+          ? { email: email.trim().toLowerCase(), userType, partnerOrganizationId }
+          : { email: email.trim().toLowerCase(), userType },
+        idempotencyKey,
+      ),
+    [email, userType, partnerOrganizationId],
   );
   const { stepUpOpen, run, onStepUpVerified, onStepUpCancel } = useStepUpRetry(sendInvitationAction);
 
@@ -78,6 +105,10 @@ export function InviteStaffPage() {
     }
     if (!INVITABLE_USER_TYPES.includes(userType)) {
       setFormError('Choose a valid account type.');
+      return false;
+    }
+    if (userType === 'security_company_operator' && !partnerOrganizationId) {
+      setFormError('Choose a partner organization.');
       return false;
     }
     return true;
@@ -96,6 +127,7 @@ export function InviteStaffPage() {
       setSuccess(`Invitation sent to ${sentTo}.`);
       setEmail('');
       setUserType('admin');
+      setPartnerOrganizationId('');
     } catch (err) {
       setFormError(mapUserFacingError(err, { context: 'admin' }));
     } finally {
@@ -129,8 +161,8 @@ export function InviteStaffPage() {
     <Card padding="lg" className="max-w-xl">
       <SectionHeading as="h1" title="Invite staff" size="md" className="mb-1" />
       <p className="mb-6 text-sm text-text-secondary">
-        Send an email invitation to a new platform administrator or support agent. They'll set their own
-        password and enroll two-factor authentication when they accept.
+        Send an email invitation to a new platform administrator, support agent, or security-company
+        operator. They'll set their own password and enroll two-factor authentication when they accept.
       </p>
 
       {success ? (
@@ -171,17 +203,34 @@ export function InviteStaffPage() {
                 {userTypeLabel(type)}
               </label>
             ))}
-            <label className="flex items-center gap-2 text-sm text-text-secondary opacity-70">
-              <input type="radio" name="userType" value="security_company_operator" disabled />
-              Security company operator
-            </label>
-            <p className="pl-6 text-xs text-text-secondary">
-              Security-company-operator invitations aren't available yet — this platform has no
-              partner-organization data model to attach the invite to (flagged as CTO follow-up work in
-              ADR-0012).
-            </p>
           </div>
         </fieldset>
+
+        {userType === 'security_company_operator' ? (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-800" htmlFor="partnerOrganizationId">
+              Partner organization
+            </label>
+            {partnerOrgsError ? (
+              <InlineAlert tone="danger">{partnerOrgsError}</InlineAlert>
+            ) : (
+              <select
+                id="partnerOrganizationId"
+                name="partnerOrganizationId"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                value={partnerOrganizationId}
+                onChange={(e) => setPartnerOrganizationId(e.target.value)}
+              >
+                <option value="">Select a partner organization…</option>
+                {partnerOrgs.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        ) : null}
 
         <div className="flex gap-3">
           <Button type="submit" loading={submitting}>

@@ -95,6 +95,10 @@ import {
 import { createAlertsRepo, type AlertsRepo } from './repositories/alerts.js';
 import { createProductEventsRepo, type ProductEventsRepo } from './repositories/product-events.js';
 import { createSupportCasesRepo, type SupportCasesRepo } from './repositories/support-cases.js';
+import {
+  createPartnerOrganizationsRepo,
+  type PartnerOrganizationsRepo,
+} from './repositories/partner-organizations.js';
 
 export interface AppContext {
   env: Env;
@@ -133,6 +137,7 @@ export interface AppContext {
   alerts: AlertsRepo;
   productEvents: ProductEventsRepo;
   supportCases: SupportCasesRepo;
+  partnerOrganizations: PartnerOrganizationsRepo;
 }
 
 export function buildAppContext(env: Env): AppContext {
@@ -224,5 +229,6 @@ export function buildAppContext(env: Env): AppContext {
     alerts: createAlertsRepo(getDb()),
     productEvents: createProductEventsRepo(getDb()),
     supportCases: createSupportCasesRepo(getDb()),
+    partnerOrganizations: createPartnerOrganizationsRepo(getDb()),
   };
 }
