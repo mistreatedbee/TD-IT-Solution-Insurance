@@ -222,6 +222,11 @@ export function AccountHubScreen() {
               <Text style={accountStyles.heroMeta}>
                 {account?.mfaEnrolled ? 'Two-factor authentication enabled' : 'Signed in to TD IT Solution'}
               </Text>
+              {account?.accountNumber ? (
+                <Text style={accountStyles.heroMeta}>
+                  Account Number: {account.accountNumber}
+                </Text>
+              ) : null}
               {account ? (
                 <Badge tone={account.accountState === 'active' ? 'emerald' : 'gold'}>
                   {account.accountState}

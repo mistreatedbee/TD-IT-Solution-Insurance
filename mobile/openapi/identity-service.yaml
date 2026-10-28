@@ -126,6 +126,14 @@ components:
         mfaEnrolled: { type: boolean }
         partnerOrganizationId: { type: string, format: uuid, nullable: true }
         createdAt: { type: string, format: date-time }
+        accountNumber:
+          type: string
+          nullable: true
+          description: >-
+            Human-readable reference (format TD-XXXXXX) customers read out on a
+            support call. Nullable until the one-time backfill runs
+            (backend/src/routes/session.ts).
+          example: TD-7F3K9Q
 
     SessionTokens:
       type: object

@@ -353,6 +353,11 @@ export interface components {
             partnerOrganizationId?: string | null;
             /** Format: date-time */
             createdAt?: string;
+            /**
+             * @description Human-readable reference (format TD-XXXXXX) customers read out on a support call. Nullable until the one-time backfill runs (backend/src/routes/session.ts).
+             * @example TD-7F3K9Q
+             */
+            accountNumber?: string | null;
         };
         SessionTokens: {
             /** @description Backend-minted JWT */
