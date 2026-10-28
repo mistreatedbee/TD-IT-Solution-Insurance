@@ -40,6 +40,9 @@ function fakeEnv(): Env {
 const customerId = randomUUID();
 const supportAgentId = randomUUID();
 const policyId = 'a'.repeat(24);
+// Second customer fixture — no open recovery case, no active claim — exercises
+// situationSummary's false/zero branches.
+const quietCustomerId = randomUUID();
 
 function createHarness() {
   const env = fakeEnv();
@@ -56,6 +59,19 @@ function createHarness() {
             userType: 'customer',
             accountState: 'active',
             phone: '+27821234567',
+            mfaRequired: false,
+            partnerOrganizationId: null,
+            invitedBy: null,
+            createdAt: new Date(),
+          };
+        }
+        if (email === 'quiet@example.com') {
+          return {
+            id: quietCustomerId,
+            email: 'quiet@example.com',
+            userType: 'customer',
+            accountState: 'active',
+            phone: '+27820000000',
             mfaRequired: false,
             partnerOrganizationId: null,
             invitedBy: null,
@@ -353,6 +369,23 @@ function createHarness() {
           : [];
       },
     },
+    claims: {
+      async listByAccount(accountId: string) {
+        return accountId === customerId
+          ? [
+              {
+                id: 'g'.repeat(24),
+                accountId: customerId,
+                policyId,
+                assetId: 'b'.repeat(24),
+                status: 'under_review' as const,
+                submittedAt: new Date('2026-09-05T10:00:00.000Z'),
+                createdAt: new Date('2026-09-05T10:00:00.000Z'),
+              },
+            ]
+          : [];
+      },
+    },
     auditLog: {
       async record(event: unknown) {
         auditCalls.push(event);
@@ -419,6 +452,11 @@ describe('GET /support/customer-lookup', () => {
             assetUsageLabel: string;
             supportLevel: string;
           } | null;
+          situationSummary: {
+            hasOpenRecoveryCase: boolean;
+            hasActiveClaim: boolean;
+            recentRecoveryCaseCount: number;
+          };
         };
       };
       expect(body.data.email).toBe('customer@example.com');
@@ -428,6 +466,47 @@ describe('GET /support/customer-lookup', () => {
       expect(body.data.subscription?.assetUsageLabel).toBe('1 / 10 assets');
       expect(body.data.subscription?.supportLevel).toBe('Priority');
       expect(auditCalls.length).toBe(1);
+      expect(body.data.situationSummary).toEqual({
+        hasOpenRecoveryCase: true,
+        hasActiveClaim: true,
+        recentRecoveryCaseCount: 1,
+      });
+    });
+  });
+
+  // Product differentiation research — "unified customer situation" summary.
+  // `quiet@example.com` resolves to an account with no recovery cases and no claims
+  // at all, proving the summary degrades cleanly to false/zero rather than erroring
+  // or defaulting to a truthy value on an empty array.
+  it('situationSummary reports false/zero when no open case or active claim exist', async () => {
+    const { app, env } = createHarness();
+    const token = signAccessToken(
+      {
+        sub: supportAgentId,
+        user_type: 'support_agent',
+        mfa_required: true,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(
+        `${baseUrl}/v1/support/customer-lookup?email=${encodeURIComponent('quiet@example.com')}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { situationSummary: { hasOpenRecoveryCase: boolean; hasActiveClaim: boolean; recentRecoveryCaseCount: number } };
+      };
+      expect(body.data.situationSummary).toEqual({
+        hasOpenRecoveryCase: false,
+        hasActiveClaim: false,
+        recentRecoveryCaseCount: 0,
+      });
     });
   });
 

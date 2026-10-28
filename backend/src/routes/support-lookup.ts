@@ -14,6 +14,7 @@ import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 import { serializeSupportCaseLookupSummary } from '../repositories/support-cases.js';
 import { serializeNotificationPreferences } from '../repositories/notification-preferences.js';
 import { normalizeAccountNumber } from '../repositories/accounts.js';
+import { NON_TERMINAL_CLAIM_STATUSES } from '../lib/claim-rules.js';
 
 const phoneQuerySchema = z
   .string()
@@ -43,6 +44,18 @@ const lookupQuerySchema = z
   });
 
 const OPEN_RECOVERY_STATUSES = new Set(['open', 'investigating', 'tracking']);
+
+// Product differentiation research — "unified customer situation" summary for a
+// panicked theft-report caller. Purely a derived/aggregated view over data this
+// handler already fetches (recovery cases) plus one additional account-scoped claims
+// read; no new disclosure surface, no restructuring of the existing response shape.
+const RECOVERY_CASE_RECURRENCE_WINDOW_MONTHS = 6;
+
+function monthsAgo(months: number): Date {
+  const date = new Date();
+  date.setUTCMonth(date.getUTCMonth() - months);
+  return date;
+}
 
 const caseIdParamsSchema = z.object({
   caseId: z.string().regex(/^[a-f0-9]{24}$/i),
@@ -214,7 +227,7 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
           throw apiError('NOT_FOUND');
         }
 
-        const [policyCount, assets, cases, primaryPolicy, openSupportCases] = await Promise.all([
+        const [policyCount, assets, cases, primaryPolicy, openSupportCases, recentClaims] = await Promise.all([
           ctx.policies.countByAccount(accountId),
           ctx.assets.listByAccount(accountId, 50, null),
           ctx.recoveryCases.listByAccount(accountId, 20, null),
@@ -222,11 +235,22 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
           // FR-11 addendum (Feature 010 Phase 2, api-design.md §3) — additive field only;
           // no change to this handler's existing auth/audit posture.
           ctx.supportCases.listOpenByAccount(accountId, 20),
+          // Situation-summary addendum — account-scoped claims read, "recent/open ones"
+          // only, same no-pagination posture as the other summary reads on this route
+          // (not a full claims list surface).
+          ctx.claims.listByAccount(accountId, 20, null),
         ]);
 
         const subscription = await buildPlanSubscriptionSummary(ctx, primaryPolicy ?? null);
 
         const openRecoveryCases = cases.filter((c) => OPEN_RECOVERY_STATUSES.has(c.status));
+        const hasActiveClaim = recentClaims.some((claim) =>
+          (NON_TERMINAL_CLAIM_STATUSES as readonly string[]).includes(claim.status),
+        );
+        const recoveryCaseRecurrenceCutoff = monthsAgo(RECOVERY_CASE_RECURRENCE_WINDOW_MONTHS);
+        const recentRecoveryCaseCount = cases.filter(
+          (c) => c.reportedAt >= recoveryCaseRecurrenceCutoff,
+        ).length;
 
         await ctx.auditLog.record({
           accountId,
@@ -279,6 +303,14 @@ export function createSupportLookupRouter(ctx: AppContext): Router {
             // openRecoveryCaseCount) — api-design.md §3.
             openSupportCaseCount: openSupportCases.length,
             supportCases: openSupportCases.map(serializeSupportCaseLookupSummary),
+            // Product differentiation research — "unified customer situation" summary,
+            // one-glance signal for a panicked theft-report caller. Purely derived from
+            // data already fetched/audited above; no new field-level disclosure.
+            situationSummary: {
+              hasOpenRecoveryCase: openRecoveryCases.length > 0,
+              hasActiveClaim,
+              recentRecoveryCaseCount,
+            },
           },
         });
       } catch (err) {
