@@ -496,3 +496,24 @@ appended below. The flag may flip only when all three signatures are recorded.
 | `cybersecurity-architect` (chair, A) | **BLOCKED** — SR-018-1 … SR-018-8 | 2026-10-28 |
 | `security-engineer` (R) | *pending* | |
 | `compliance-specialist` (C) | *pending* — specifically SR-018-6, SR-018-7 ruling, SR-018-2(2) disposition | |
+
+## 7. SR-018-1 / SR-018-2 production closure (orchestrator, 2026-10-28)
+
+Both urgent code fixes (commit `c2ff720`) are deployed. Production evidence, gathered by the owner
+running the fix script directly (per INC-003 §39 — not an agent connecting to production):
+
+- **SR-018-2 (kill switch):** `CLAIMS_API_ENABLED` was never set in Render's environment, confirmed
+  by the owner. The code now fails closed on any unset/non-`"true"` value, so all 8 claims routes
+  return 404 in production as of the `c2ff720` deploy. Closed.
+- **SR-018-1 (validator):** owner ran a `collMod` against the production Atlas cluster
+  (`tditsolutions.xtlqvx2.mongodb.net`, database `test` — confirmed as the correct production
+  database via `MONGODB_DB_NAME` being unset in Render, so the driver default applies). Read-back
+  before the `collMod` already showed `resourceType`'s enum including `'claim'` — something had
+  already applied this fix before the owner's run (cause not identified; the owner's run was a
+  verified no-op, not a failed write). **Production evidence requested by §6: the `claims`
+  collection holds 0 documents** — no claim, real or test, was ever created during the exposure
+  window. No compliance referral needed per §2 item 2's contingency; that contingency did not
+  trigger.
+
+Both items are CLOSED with production evidence. SR-018-3 through SR-018-7 remain open and are not
+addressed by this section.
