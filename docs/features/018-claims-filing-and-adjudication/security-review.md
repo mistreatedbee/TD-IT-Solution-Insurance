@@ -570,3 +570,58 @@ the implementation only; §6 sign-off for SR-018-5 is still pending that re-revi
 - **Verification:** `tsc --noEmit` clean; full suite `857/857` passing across `76` test files
   (`npm test`), including the new tests above.
 - Commit: see this section's accompanying commit hash in `git log` for `fix(claims): SR-018-5 ...`.
+
+## 9. SR-018-6 / SR-018-7 fix (backend-engineer, 2026-10-28)
+
+Both are code-level fixes landed in commit `c2e2f24` (`fix(claims): SR-018-5 close check-then-insert
+duplicate-claim race` — see that commit's message for why these two unrelated SR-018 fixes could not be
+split out separately: `routes/claims.ts` and `claim-rules.ts` had already been edited in the same
+working tree by a concurrent fix for SR-018-5, and the changes shared the same files down to
+adjacent lines). Not yet re-reviewed by `cybersecurity-architect` — this section records the
+implementation only; §6 sign-off for SR-018-6/SR-018-7 is still pending that re-review, and
+SR-018-7's own required **block-vs-flag ruling** (`product-manager` + `compliance-specialist`) remains
+open and is explicitly NOT made by this section.
+
+**SR-018-6 — customer now sees the admin's more-info request and close reason:**
+
+- `repositories/claims.ts`'s `ClaimReviewNote` gained `authorRole: 'admin' | 'customer'`.
+  `transitionForAdmin` now pushes a `reviewNotes` entry with `authorRole: 'admin'` (text = the admin's
+  `reviewNote`) whenever the transition is to `more_info_requested`, in addition to the existing
+  `statusHistory` entry — the customer-facing serializer reads `reviewNotes`, never `statusHistory`.
+  `respondToInfoRequest`'s own note-push now tags `authorRole: 'customer'`.
+- `ClaimDocument` gained `closeReason: string | null`, set by `transitionForAdmin` only when
+  `toStatus === 'closed'` (i.e. an *administrative* close via the admin PATCH action). A customer's own
+  `withdrawForAccount` close does not set it — a customer already knows why they withdrew their own
+  claim, and withdrawal was never the admin adverse-decision case §4.2/§8 is about.
+- `claim-serializers.ts`'s `serializeClaimForCustomer` now returns both `closeReason` and the mapped
+  `reviewNotes` (with `authorRole`, never `actorAccountId`). `fraudFlags` remains customer-serializer-only
+  absent — confirmed by test, not just by omission from the object literal.
+- `compliance-specialist`'s required confirmation of the closed-claim notice content (end of the
+  original SR-018-6 finding) is **not addressed by this section** — only the code path to deliver
+  whatever text an admin writes is built; the wording itself is still the admin's own free-text
+  `closeReason`/`reviewNote` input, unreviewed for Policyholder Protection Rules compliance.
+- **Tests:** new `lib/claim-serializers.test.ts` — asserts the admin's more-info text and close reason
+  are present in the customer shape when relevant, absent (`null`/no extra notes) when not, that
+  `actorAccountId` never appears in the serialized output, and that `fraudFlags` never does either.
+
+**SR-018-7 — new `FLAG_INCIDENT_BEFORE_ELIGIBILITY` fraud flag (flag only, not a block):**
+
+- `claim-rules.ts`'s `computeFraudFlags` gained an `incidentDate` input and now flags when
+  `incidentDate < waitingPeriodAnchor(policyEffectiveDate, assetRegisteredAt)` — the same "later of the
+  two" anchor the waiting-period check itself already uses, per this finding's own recommendation. This
+  is **additive only** — it does not change `isWaitingPeriodMet`/the `WAITING_PERIOD_NOT_MET` intake
+  gate, which still measures the filing date. Scenario A/B in the original finding (pre-existing loss
+  surviving the 30-day wait) still files successfully; it is now flagged for admin attention instead of
+  passing silently.
+- `routes/claims.ts`'s `POST /v1/claims` now passes the claim's own `incidentDate` into
+  `computeFraudFlags`.
+- The **required product/compliance ruling** on whether an incident predating eligibility should be an
+  intake rejection, a disclosed exclusion at adjudication, or a flag-only is explicitly **not made
+  here** — this is the "minimum" the finding called for pending that ruling.
+- The related §1.3 recovery-case waiting-period exception (C-018-8) remains unimplemented, unchanged by
+  this fix.
+- **Tests:** three new cases in `lib/claim-rules.test.ts` ("SR-018-7: ...") — flags an incident before
+  `assetRegisteredAt` (later anchor), flags one before `policyEffectiveDate` (later anchor), and does
+  not flag a legitimate incident after both.
+
+**Verification:** `tsc --noEmit` clean; full suite `857/857` passing across `76` test files (`npm test`).
