@@ -66,11 +66,21 @@ export function createClaimsRouter(ctx: AppContext): Router {
   const router = Router();
   const authenticate = createAuthenticateMiddleware(ctx.env, ctx.kv);
 
-  // SR-018-2: fail-closed kill switch. Runs before authentication so the
-  // surface is not even enumerable while the claims API is disabled. The
-  // mobile FEATURE_CLAIMS_ENABLED flag is a client rendering decision only
-  // and is not a trust boundary — this is the server-side gate.
-  router.use((_req, _res, next) => {
+  // SR-018-2 / SR-018-9: fail-closed kill switch. Runs before authentication
+  // so the surface is not even enumerable while the claims API is disabled.
+  // The mobile FEATURE_CLAIMS_ENABLED flag is a client rendering decision
+  // only and is not a trust boundary — this is the server-side gate.
+  //
+  // SR-018-9: this MUST be scoped to '/claims' (not path-less). This router
+  // is mounted at the v1 root (see index.ts) alongside every other
+  // root-mounted router; a path-less `router.use` on a root-mounted router
+  // runs for every request that reaches this router instance in Express's
+  // middleware chain, not just requests for paths this router defines —
+  // which, with the switch off, 404'd every route mounted after this one in
+  // index.ts (analytics, admin/analytics, support, support-cases) until this
+  // fix. Express matches '/claims' and '/claims/*' on segment boundaries, so
+  // this does not also (dis)gate something like a hypothetical '/claimsx'.
+  router.use('/claims', (_req, _res, next) => {
     if (ctx.env.claimsApiEnabled !== true) {
       next(apiError('NOT_FOUND'));
       return;
