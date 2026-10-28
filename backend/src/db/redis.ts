@@ -66,11 +66,21 @@ export class RedisKeyValueStore implements KeyValueStore {
   }
 
   async incrWithTtl(key: string, ttlSeconds: number): Promise<number> {
-    const count = await this.client.incr(key);
-    if (count === 1) {
-      await this.client.expire(key, ttlSeconds);
+    // C-018-18: `INCR` then `EXPIRE` as two separate round-trips leaves a
+    // window where a process crash (or network partition) between them
+    // creates a key with no TTL — for a lock/idempotency-reservation use,
+    // that wedges the key permanently since nothing ever expires it. The
+    // first-caller fast path is a single atomic `SET key 1 NX EX ttl`: if it
+    // succeeds, this is unambiguously the first caller this window, and the
+    // TTL is set in the very same command, so there is no crash window that
+    // can produce a TTL-less key. Only on the (rare) "already exists" path
+    // do we fall back to `INCR`, which never changes an existing key's TTL,
+    // so no second atomic step is needed there either.
+    const firstCall = await this.client.set(key, '1', 'EX', ttlSeconds, 'NX');
+    if (firstCall === 'OK') {
+      return 1;
     }
-    return count;
+    return this.client.incr(key);
   }
 
   async ttlSeconds(key: string): Promise<number> {
