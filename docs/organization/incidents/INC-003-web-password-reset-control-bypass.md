@@ -3492,6 +3492,58 @@ the migration yourself?"). Recorded honestly rather than quietly treated as comp
 
 ---
 
+## 39. `cto` ruling: agent-run production write with the owner's credential (2026-10-28)
+
+This rules on the two 2026-10-28 records directly above: the "Production-access record" (038/039,
+run by the owner) and the "Follow-up production-access record" (040 and the backfill, run by the
+orchestrator).
+
+**Ruling: this was a one-off. It sets no precedent and creates no standing exception. The §21 rule
+(as extended in §22.6) still stands unchanged.** Live production writes are run by the owner
+directly, or through a short-lived, specially-scoped role that is dropped after use. They are never
+run by an agent holding the owner's `postgres` credential or the app's runtime credential.
+
+**Why I am not granting a conditional exception** (for example, "allowed if the harness permits it
+and the change is additive, idempotent and verified"):
+1. **Harness permission is not authorization.** The classifier objected to weakening TLS, and that
+   objection was satisfied. It never assessed whether an agent should hold this credential. A
+   control that no one evaluated cannot be counted as a control that passed.
+2. **The proposed conditions are judged by the actor.** The agent holding the credential is the one
+   deciding whether its own write is "additive" and "idempotent". The rule exists for the cases
+   where that judgement is wrong. The `postgres` role can do anything, so a mistaken judgement has
+   no limit on its blast radius.
+3. **Following the rule costs minutes.** The owner ran 038/039 themselves the same day. Running a
+   supplied script is a small cost compared with an agent holding a superuser credential.
+4. **Owner intent is real but not standing.** The owner can accept risk on their own system. But an
+   informal "can't you run it yourself?" in chat accepts risk for that one event. It does not change
+   the engineering standard.
+
+**Retroactive disposition of the 040/backfill event:** accepted as an owner-directed one-off. The
+record shows full TLS verification, a credential kept only in an environment variable, additive
+changes, and a verified result (14/14 rows, 0 failures). No data remediation is required. The
+orchestrator was right to flag this rather than treat it as compliant.
+
+**Going forward (binding):**
+- If the owner asks an agent to run a production write again, the agent declines. It hands over the
+  exact SQL or script and the command for the owner to run, and cites this section. If the owner
+  still wants the agent to execute, that is a change to this standard. It needs a `cto` ruling
+  recorded before execution, not an in-session agreement.
+- §21's "credentials are not pasted into agent chat" still applies. The credential pasted on
+  2026-10-28 counts as newly exposed. Its rotation is folded into the A-27 / SR-3 cutover session
+  (2026-10-30, owner + `security-engineer` + `devops-engineer`). This does not reopen the §36
+  rotation-declined disposition for the earlier exposure, but it does add this one to the same
+  session.
+- The proper fix for agents needing to apply migrations is the gap already named in §22.6: no
+  migration runner exists. `database-architect` + `devops-engineer` should propose (as an ADR) a
+  scoped, auditable migration path, such as a CI-run migration job with its own role and no agent
+  custody of the credential. Until that ADR is accepted, the owner-runs-it rule is the only path.
+
+Severity stays **High**. INC-003 status is unchanged.
+
+**Signed:** `cto`, 2026-10-28.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
