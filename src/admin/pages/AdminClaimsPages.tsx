@@ -13,6 +13,8 @@ import {
   type FraudFlag,
 } from '../api/admin-claims';
 import { AdminNavLink } from '../layout/AdminLayout';
+import { StepUpDialog } from '../components/StepUpDialog';
+import { useStepUpRetry } from '../hooks/useStepUpRetry';
 
 const CLAIM_STATUSES: ClaimStatus[] = [
   'submitted',
@@ -229,12 +231,20 @@ function ClaimActions({
 
   const available = FORWARD_ACTIONS[claim.status] ?? [];
 
+  // ADR-0012 SU-FU-1 — claim adjudication (approvedAmount is a real financial
+  // figure) requires step-up, same Tier-A posture as admin-policies/admin-verification.
+  const { stepUpOpen, run: runStepUp, onStepUpVerified, onStepUpCancel } = useStepUpRetry(patchAdminClaim);
+
   async function run(body: Parameters<typeof patchAdminClaim>[1], kind: ActionKind) {
     setBusy(kind);
     setActionError(null);
     setActionInfo(null);
     try {
-      const updated = await patchAdminClaim(claim.id, body);
+      const updated = await runStepUp(claim.id, body);
+      if (updated === undefined) {
+        // STEP_UP_REQUIRED — dialog is open; handleStepUpVerified retries.
+        return;
+      }
       onUpdated(updated);
       setActionInfo('Claim updated.');
       setOpen(null);
@@ -243,6 +253,26 @@ function ClaimActions({
     } finally {
       setBusy(null);
     }
+  }
+
+  async function handleStepUpVerified() {
+    setActionError(null);
+    try {
+      const updated = await onStepUpVerified();
+      if (!updated) return;
+      onUpdated(updated);
+      setActionInfo('Claim updated.');
+      setOpen(null);
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function handleStepUpCancel() {
+    onStepUpCancel();
+    setBusy(null);
   }
 
   const amountNumber = Number(approvedAmount);
@@ -407,6 +437,14 @@ function ClaimActions({
             Confirm close
           </Button>
         </div>
+      ) : null}
+
+      {stepUpOpen ? (
+        <StepUpDialog
+          submitLabel="Verify and continue"
+          onVerified={() => void handleStepUpVerified()}
+          onCancel={handleStepUpCancel}
+        />
       ) : null}
     </div>
   );

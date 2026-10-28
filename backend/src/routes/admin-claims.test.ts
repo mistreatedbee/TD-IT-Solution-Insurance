@@ -153,7 +153,13 @@ function sampleClaim(accountId: string, overrides?: Partial<ClaimDocument>): Cla
   };
 }
 
-function createHarness(opts: { accountId?: string; policy?: PolicyDocument; asset?: AssetDocument; claim: ClaimDocument }) {
+function createHarness(opts: {
+  accountId?: string;
+  policy?: PolicyDocument;
+  asset?: AssetDocument;
+  claim: ClaimDocument;
+  mfaVerifiedAt?: Date | null;
+}) {
   const env = fakeEnv();
   const kv = new InMemoryKeyValueStore();
   const accountId = opts.accountId ?? randomUUID();
@@ -164,9 +170,21 @@ function createHarness(opts: { accountId?: string; policy?: PolicyDocument; asse
   const bulkDisclosures: AdminAccessBulkDisclosureInput[] = [];
   const detailAccesses: AdminAccessDetailInput[] = [];
 
+  const sessionRecord = {
+    id: adminSessionId,
+    accountId: adminAccountId,
+    revokedAt: null as Date | null,
+    mfaVerifiedAt: opts.mfaVerifiedAt !== undefined ? opts.mfaVerifiedAt : new Date(),
+  };
+
   const ctx = {
     env,
     kv,
+    sessions: {
+      async findById(id: string) {
+        return id === adminSessionId ? { ...sessionRecord } : null;
+      },
+    },
     claims: {
       async listForAdmin() {
         return [claim];
@@ -391,5 +409,76 @@ describe('PATCH /v1/admin/claims/{claimId}', () => {
     expect(ok.status).toBe(200);
     const body = await ok.json();
     expect(body.status).toBe('more_info_requested');
+  });
+
+  // ADR-0012 SU-FU-1 — claim adjudication sets approvedAmount, a real
+  // financial figure, same Tier-A posture as admin-policies.ts's cancel route.
+  it('requires step-up — stale mfaVerifiedAt returns STEP_UP_REQUIRED, claim unchanged', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId),
+      mfaVerifiedAt: new Date(Date.now() - 16 * 60 * 1000),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'rejected', rejectionReason: 'Insufficient evidence of ownership.' }),
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error.code).toBe('STEP_UP_REQUIRED');
+    expect(harness.getClaim().status).toBe('under_review');
+  });
+
+  it('requires step-up — no mfaVerifiedAt at all returns STEP_UP_REQUIRED', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId),
+      mfaVerifiedAt: null,
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'start_review' }),
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error.code).toBe('STEP_UP_REQUIRED');
+  });
+
+  it('succeeds with a fresh step-up (default harness mfaVerifiedAt = now)', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { status: 'submitted' }),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'start_review' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe('under_review');
   });
 });

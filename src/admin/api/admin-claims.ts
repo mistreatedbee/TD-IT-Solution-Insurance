@@ -2,9 +2,11 @@ import { apiFetch, type CursorPage } from '../../dashboard/api/client';
 
 /**
  * Feature 018 — admin claims adjudication client.
- * `backend/src/routes/admin-claims.ts` has no `requireStepUp` middleware (unlike
- * `admin-policies.ts`/`admin-verification.ts`'s Tier-A actions), so none of these
- * calls go through the step-up-retry flow.
+ * `backend/src/routes/admin-claims.ts`'s PATCH route requires step-up
+ * (ADR-0012 SU-FU-1 — approvedAmount is a real financial figure, same Tier-A
+ * posture as `admin-policies.ts`/`admin-verification.ts`), so
+ * `AdminClaimsPages.tsx`'s `ClaimActions` wraps `patchAdminClaim` in
+ * `useStepUpRetry`, same pattern those pages use.
  */
 export type ClaimStatus =
   | 'submitted'

@@ -20,6 +20,7 @@ import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 import { validateBody } from '../lib/validation.js';
+import { requireStepUp, STEP_UP_WINDOW_SECONDS } from '../lib/step-up.js';
 
 const ENDPOINT_LIST = 'GET /v1/admin/claims';
 const ENDPOINT_DETAIL = 'GET /v1/admin/claims/{claimId}';
@@ -150,6 +151,11 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
     authenticate,
     requireUserType('admin'),
     createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `admin-claims-patch:${req.auth!.accountId}`),
+    // ADR-0012 SU-FU-1 posture: claim adjudication sets approvedAmount, a real
+    // financial figure, and is as consequential as the other Tier-A admin
+    // actions gated this way (account state, policy cancel, asset legal-hold,
+    // plan catalog edits, verification decisions).
+    requireStepUp(ctx, STEP_UP_WINDOW_SECONDS.invitationIssuance),
     validateBody(patchBodySchema),
     async (req, res, next) => {
       try {

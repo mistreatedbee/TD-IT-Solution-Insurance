@@ -84,6 +84,13 @@ export const STEP_UP_ACTIONS: readonly StepUpActionDefinition[] = [
     status: 'enforced',
     rationale: 'SU-FU-1: commercial impact across every subscriber; effectively money-moving.',
   },
+  {
+    action: 'claim_adjudication',
+    route: 'PATCH /v1/admin/claims/:claimId',
+    windowSeconds: STEP_UP_WINDOW_SECONDS.invitationIssuance,
+    status: 'enforced',
+    rationale: 'Feature 018: sets approvedAmount, a real financial figure, matching the other Tier-A admin actions.',
+  },
 ] as const;
 
 /**
