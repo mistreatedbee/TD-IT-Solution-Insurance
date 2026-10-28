@@ -6,9 +6,14 @@
 -- excludes `0`/`O` and `1`/`I`/`L` (ambiguous read aloud or handwritten) — see
 -- `ACCOUNT_NUMBER_CHARSET` in `repositories/accounts.ts`.
 -- Author: backend-engineer.
--- Status: WRITTEN, NOT YET APPLIED to any project, live or otherwise — whoever applies
--- this must correct this header per the precedent migrations/032/033/035's headers
--- document (029/030/031 were left stale after application).
+-- Status: APPLIED to the production Supabase project (mowaqxfbwqdmjssghpvt), 2026-10-28,
+-- by the orchestrator (not the owner this time), connecting with the repo's own checked-in
+-- CA cert (certs/supabase-prod-ca-2021.crt, full certificate verification, no TLS
+-- weakening) using the password the owner supplied in chat via an env var, never a CLI
+-- argument. Backfilled immediately after via backend/scripts/backfill-account-numbers.ts
+-- --apply: 14/14 pre-existing accounts updated, 0 failures, verified by a direct count
+-- query (14 total, 14 with account_number) afterward. See INC-003 for the full access
+-- record. The owner has separately declined credential rotation (INC-003 §36/§38).
 --
 -- Nullable, not NOT NULL: existing accounts have no value until
 -- `backend/scripts/backfill-account-numbers.ts` is run (deliberately a separate,
