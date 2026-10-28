@@ -296,10 +296,19 @@ rejections. None of them block filing; all of them annotate the claim for the hu
    possible need for a lightweight `statusHistory` on `PolicyDocument` itself, same shape as this
    feature's own `ClaimStatusChange`; until that exists, this flag uses `updatedAt` as an
    approximation and must be documented in code as such.)
-3. **Repeat-claim rate limiting per account** — reject new submissions with `CLAIM_RATE_LIMITED`
+3. ~~**Repeat-claim rate limiting per account** — reject new submissions with `CLAIM_RATE_LIMITED`
    if the same `accountId` has filed more than 3 claims (any status) in a rolling 30-day window.
    This is a hard block, not just a flag, since it's cheap, unambiguous abuse-pattern protection
-   with no legitimate-customer cost in the ordinary case.
+   with no legitimate-customer cost in the ordinary case.~~ **VOID — superseded 2026-10-28, per
+   `compliance-specialist`'s §8 note below.** The "no legitimate-customer cost" reasoning was
+   wrong: one incident (e.g. a burglary) can produce several genuine per-asset claims the same
+   day, and blocking the 4th at intake functions as an undisclosed rejection without the
+   Policyholder Protection Rules safeguards (written reasons, decision notice, representation
+   window, Ombud referral) a real rejection requires. **Corrected:** this is now rate *flagging*,
+   not a block — if the same `accountId` has filed more than 3 claims (any status) in a rolling
+   30-day window, the new claim is still accepted and recorded; it is flagged
+   (`FLAG_RATE_THRESHOLD`) for priority admin review instead. A plain request-rate throttle
+   against API abuse (not claim-count-based) remains fine and is unaffected.
 4. **Claimed amount far exceeds any historical claim on the same asset type for this account** —
    flagged (`FLAG_AMOUNT_OUTLIER`) if `claimedAmount` is more than 3x the account's own average
    `claimedAmount` across its prior claims (only computed when the account has ≥ 2 prior claims;
@@ -385,11 +394,17 @@ When any actor attempts any further status-changing request against that claim i
 Then the API returns `409` (status-transition conflict) and the claim is unchanged.
 
 **AC-11 — Rate limiting**
-Given an account with 3 claims already filed within the last 30 days
+~~Given an account with 3 claims already filed within the last 30 days
 When that account submits a 4th claim within the same window
 Then the API returns `429 CLAIM_RATE_LIMITED` (or `422`, per the project's existing error-code
 convention for rate limits — to be confirmed against `backend-architect`'s existing precedent at
-Stage 2) and no claim is created.
+Stage 2) and no claim is created.~~ **VOID — superseded 2026-10-28, per §5 item 3's correction
+above.** Corrected:
+Given an account with 3 claims already filed within the last 30 days
+When that account submits a 4th claim within the same window
+Then the API accepts and creates the claim normally (`201`, `submitted` status) with
+`fraudFlags` including `FLAG_RATE_THRESHOLD` — no claim is ever refused by this check. The HTTP
+status-code question this AC previously raised is moot; there is no rejection response to design.
 
 **AC-12 — Customer cannot self-adjudicate**
 Given a claim in `submitted`, owned by customer account A
@@ -406,8 +421,10 @@ route) — this must be enforced by route-level auth middleware, not by a body-f
   sub-array — recommend top-level collection given independent lifecycle and admin-queue query
   patterns (list/filter by status across accounts), same reasoning that put `recovery_cases` and
   `policies` in their own collections rather than embedding.
-- `backend-architect`: confirm HTTP status code convention for `CLAIM_RATE_LIMITED` against
-  existing project precedent (AC-11).
+- ~~`backend-architect`: confirm HTTP status code convention for `CLAIM_RATE_LIMITED` against
+  existing project precedent (AC-11).~~ **VOID — moot as of 2026-10-28**: AC-11 no longer
+  refuses a claim, per the correction at §5 item 3 / AC-11 above, so there is no rejection
+  response whose status code needs confirming.
 - `database-architect`: evaluate adding a lightweight `statusHistory` to `PolicyDocument` to make
   §5 flag 2 exact rather than an `updatedAt` approximation.
 - `compliance-specialist`: review §1.3's 30-day waiting-period constant and §5's rate-limit
@@ -415,3 +432,27 @@ route) — this must be enforced by route-level auth middleware, not by a body-f
   pending regulatory/product confirmation, not final numbers.
 - `payment-engineer` (consulted): confirm nothing about the `awaiting_payout` terminal state
   creates rework when payout wiring eventually lands.
+- **`compliance-specialist` note (2026-10-28, quick check, not a full Stage 8 review):** Neither
+  number conflicts with anything already decided. Feature 004 BR §5 D-04 left "waiting periods"
+  open and §11 discharged only the per-tier asset-count part, so this spec is the first place any
+  waiting period is defined. As far as I know, South African short-term insurance law sets no
+  minimum or maximum waiting period; it is a contract term. Two conditions follow from that.
+  (1) **The waiting period (§1.3/§1.3a) is only enforceable if it is disclosed.** It must appear in
+  the policy wording and the pre-contract disclosure that customers see before they buy. Per
+  Feature 002 BR §12.2 it also may not be stated on marketing pages unless the full policy wording
+  is linked. The 30-day figure itself is fine. (2) **The rate limit (§5 item 3) should not be a hard
+  block on lodging a claim.** First, the "no legitimate-customer cost" rationale does not hold for
+  a multi-asset account: one burglary can produce 4 or more genuine per-asset claims on the same
+  day, and the 4th would be refused at intake. Second, refusing a claim at intake works like a
+  rejection without the safeguards that the Policyholder Protection Rules (Short-term) attach to a
+  rejection, and it sits poorly with TCF Outcome 6, which forbids unreasonable post-sale barriers
+  to submitting a claim. Those safeguards are written reasons, notice of the decision, the 90-day
+  window for representations, and Ombud referral details. **Recommendation:** accept and record
+  the claim, then raise a `FLAG_RATE_THRESHOLD` fraud flag for priority admin review instead of
+  returning `CLAIM_RATE_LIMITED`. A plain request-rate throttle against API abuse is still fine.
+  The same reasoning applies to `WAITING_PERIOD_NOT_MET`. Because it is a disclosed contract term,
+  blocking it at intake is acceptable, provided the customer gets the written reason and the date
+  the window clears (as AC-2 already requires). Both points need confirmation from the insurer's
+  legal/compliance function before Stage 8, because the licence position is still unconfirmed
+  (Feature 013 compliance review §2) and the current PPR rule numbering and wording were not
+  re-verified for this quick check.
