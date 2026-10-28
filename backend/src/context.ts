@@ -176,6 +176,7 @@ export function buildAppContext(env: Env): AppContext {
     notificationPreferences,
     pushNotifications,
   });
+  const auditLog = createAuditLogRepo(pool);
   return {
     env,
     pool,
@@ -186,7 +187,7 @@ export function buildAppContext(env: Env): AppContext {
     sessions: createSessionRepo(pool),
     enrollmentTickets: createEnrollmentTicketRepo(pool),
     resetMfaTokens: createResetMfaVerificationTokenRepo(pool),
-    auditLog: createAuditLogRepo(pool),
+    auditLog,
     idempotency: createIdempotencyRepo(pool),
     policies,
     assets: createAssetsRepo(getDb()),
@@ -215,7 +216,7 @@ export function buildAppContext(env: Env): AppContext {
     policyNotifications,
     policyActivation,
     recoveryNotifications,
-    customerProfiles: createCustomerProfilesRepo(getDb()),
+    customerProfiles: createCustomerProfilesRepo(getDb(), auditLog),
     customerProfilePictures: createCustomerProfilePicturesRepo(getDb()),
     trackingDevices: createTrackingDevicesRepo(getDb()),
     locationEvents: createLocationEventsRepo(getDb()),

@@ -66,6 +66,7 @@ function createInMemoryProfilesRepo(): CustomerProfilesRepo {
       verificationSubmittedAt: now,
       verificationReviewedAt: null,
       rejectionReasonCustomerSafe: null,
+      verificationRevision: 0,
       createdAt: now,
       updatedAt: now,
     };
@@ -99,10 +100,13 @@ function createInMemoryProfilesRepo(): CustomerProfilesRepo {
     async countByVerificationStatus(status) {
       return [...profiles.values()].filter((p) => p.verificationStatus === status).length;
     },
-    async reviewVerification(accountId, decision, rejectionReasonCustomerSafe) {
+    async reviewVerification(accountId, decision, rejectionReasonCustomerSafe, expectedRevision) {
       const profile = profiles.get(accountId);
       if (!profile || profile.verificationStatus !== 'pending_review') {
         throw new Error('INVALID_VERIFICATION_STATE');
+      }
+      if (profile.verificationRevision !== expectedRevision) {
+        throw new Error('REVISION_MISMATCH');
       }
       const updated: CustomerProfileDocument = {
         ...profile,
@@ -247,7 +251,7 @@ describe('admin verification routes', () => {
         Authorization: `Bearer ${adminToken()}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ decision: 'verified' }),
+      body: JSON.stringify({ decision: 'verified', expectedRevision: 0 }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { profile: { verificationStatus: string } };
@@ -264,6 +268,7 @@ describe('admin verification routes', () => {
       body: JSON.stringify({
         decision: 'rejected',
         rejectionReasonCustomerSafe: 'ID details could not be verified. Please update and resubmit.',
+        expectedRevision: 0,
       }),
     });
     expect(res.status).toBe(200);
@@ -272,6 +277,53 @@ describe('admin verification routes', () => {
     };
     expect(body.profile.verificationStatus).toBe('rejected');
     expect(body.profile.rejectionReasonCustomerSafe).toContain('could not be verified');
+  });
+
+  // DEFECT-001 §4.3/§5 — approval race (revision-checked review).
+  describe('DEFECT-001 revision-checked review', () => {
+    it('rejects a decision body with no expectedRevision -> 400 VALIDATION_ERROR', async () => {
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified' }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('stale expectedRevision -> 409 CONFLICT, profile unchanged', async () => {
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 1 }),
+      });
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('CONFLICT');
+
+      const profile = await customerProfiles.findByAccountId(customerId);
+      expect(profile?.verificationStatus).toBe('pending_review');
+    });
+
+    it('matching expectedRevision -> 200, writes a customer_verification_decision audit row carrying the decision', async () => {
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 0 }),
+      });
+      expect(res.status).toBe(200);
+
+      const decisionCalls = auditCalls.filter(
+        (c) => c.kind === 'record' && (c.event as { eventType: string }).eventType === 'customer_verification_decision',
+      );
+      expect(decisionCalls).toHaveLength(1);
+      expect(decisionCalls[0]!.event).toMatchObject({
+        accountId: customerId,
+        actorAccountId: adminId,
+        decision: 'verified',
+      });
+    });
   });
 
   // Feature 012 FR-4 — GET /admin/verification-requests/count (api-design.md §4, security-review.md §10).
@@ -358,7 +410,7 @@ describe('admin verification routes', () => {
       const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision: 'verified' }),
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 0 }),
       });
       expect(res.status).toBe(401);
       const body = (await res.json()) as { error: { code: string } };
@@ -375,7 +427,7 @@ describe('admin verification routes', () => {
       const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision: 'verified' }),
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 0 }),
       });
       expect(res.status).toBe(401);
       const body = (await res.json()) as { error: { code: string } };
@@ -393,7 +445,7 @@ describe('admin verification routes', () => {
       const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision: 'verified' }),
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 0 }),
       });
       expect(res.status).toBe(401);
       const body = (await res.json()) as { error: { code: string } };
@@ -422,7 +474,7 @@ describe('admin verification routes', () => {
       const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision: 'verified' }),
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 0 }),
       });
       expect(res.status).toBe(403);
     });
@@ -433,7 +485,7 @@ describe('admin verification routes', () => {
       const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision: 'verified' }),
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 0 }),
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { profile: { verificationStatus: string } };

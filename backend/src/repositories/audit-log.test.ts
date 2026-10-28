@@ -13,10 +13,11 @@
  *    so the failure lands in this file rather than as an opaque 23514 in
  *    production.
  *
- * Column order under test (migrations/033):
+ * Column order under test (migrations/033, plus `decision` added by
+ * migrations/039 for DEFECT-001):
  * [account_id, actor_account_id, actor_service, actor_session_id,
  *  audit_request_id, event_type, attempted_identifier, ip_address,
- *  user_agent, result_count]
+ *  user_agent, result_count, decision]
  */
 import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -34,8 +35,9 @@ const COL = {
   ipAddress: 7,
   userAgent: 8,
   resultCount: 9,
+  decision: 10,
 } as const;
-const COLUMN_COUNT = 10;
+const COLUMN_COUNT = 11;
 
 function createFakeDb() {
   const calls: Array<{ text: string; params: unknown[] }> = [];
@@ -341,6 +343,88 @@ describe('repositories/audit-log', () => {
       const call = onlyCall(calls);
       expect(call.text).not.toContain('where');
       expect(call.params).toEqual([25]);
+    });
+  });
+
+  // DEFECT-001 §3/migrations/039 — account_audit_log_decision_only_on_verification_decision.
+  describe('DEFECT-001 decision column', () => {
+    it('writes decision on a customer_verification_decision row and requires an actor (PRIVILEGED_ACCESS_EVENT_TYPES)', async () => {
+      const { db, calls } = createFakeDb();
+      const repo = createAuditLogRepo(db);
+      const accountId = randomUUID();
+      const adminId = randomUUID();
+
+      await repo.record({
+        accountId,
+        actorAccountId: adminId,
+        eventType: 'customer_verification_decision',
+        decision: 'verified',
+      });
+
+      const call = onlyCall(calls);
+      expect(call.params[COL.decision]).toBe('verified');
+      expect(call.params[COL.eventType]).toBe('customer_verification_decision');
+    });
+
+    it('rejects a customer_verification_decision row with no actor', async () => {
+      const { db } = createFakeDb();
+      const repo = createAuditLogRepo(db);
+
+      await expect(
+        repo.record({
+          accountId: randomUUID(),
+          eventType: 'customer_verification_decision',
+          decision: 'verified',
+        }),
+      ).rejects.toThrow(/requires an actor/);
+    });
+
+    it('rejects decision set on any other event type', async () => {
+      const { db } = createFakeDb();
+      const repo = createAuditLogRepo(db);
+
+      await expect(
+        repo.record({
+          accountId: randomUUID(),
+          actorAccountId: randomUUID(),
+          eventType: 'privileged_data_access',
+          decision: 'verified',
+        }),
+      ).rejects.toThrow(/decision is set on customer_verification_decision rows/);
+    });
+
+    it('rejects a customer_verification_decision row with no decision', async () => {
+      const { db } = createFakeDb();
+      const repo = createAuditLogRepo(db);
+
+      await expect(
+        repo.record({
+          accountId: randomUUID(),
+          actorAccountId: randomUUID(),
+          eventType: 'customer_verification_decision',
+        }),
+      ).rejects.toThrow(/decision is set on customer_verification_decision rows/);
+    });
+
+    it('customer_identity_reset is self-service — subject === actor, NOT in PRIVILEGED_ACCESS_EVENT_TYPES', async () => {
+      const { db, calls } = createFakeDb();
+      const repo = createAuditLogRepo(db);
+      const accountId = randomUUID();
+
+      // No actorAccountId/actorService at all — would throw for a
+      // PRIVILEGED_ACCESS_EVENT_TYPES member, but customer_identity_reset
+      // is deliberately not one.
+      await repo.record({
+        accountId,
+        actorAccountId: accountId,
+        eventType: 'customer_identity_reset',
+      });
+
+      const call = onlyCall(calls);
+      expect(call.params[COL.eventType]).toBe('customer_identity_reset');
+      expect(call.params[COL.accountId]).toBe(accountId);
+      expect(call.params[COL.actorAccountId]).toBe(accountId);
+      expect(call.params[COL.decision]).toBeNull();
     });
   });
 });

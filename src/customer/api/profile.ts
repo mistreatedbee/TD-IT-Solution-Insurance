@@ -46,6 +46,9 @@ export interface CustomerProfile {
   completionPercent: number;
   completionChecklist: ProfileChecklistItem[];
   profilePictureUrl: string | null;
+  /** DEFECT-001 §3/§5 — read-only. Admin surfaces read this and send it back
+   * as `expectedRevision` on the verification-decision PATCH. */
+  verificationRevision: number;
 }
 
 export interface UpdateCustomerProfileRequest {

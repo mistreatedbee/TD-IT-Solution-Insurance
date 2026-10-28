@@ -48,6 +48,7 @@ function profileResponse(
       emergencyContact: null,
       completionPercent: 100,
       rejectionReasonCustomerSafe: null,
+      verificationRevision: 0,
       ...overrides,
     } as AdminCustomerProfileResponse['profile'],
   };

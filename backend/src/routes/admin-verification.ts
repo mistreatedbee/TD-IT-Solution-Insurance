@@ -19,6 +19,10 @@ const idParamsSchema = z.object({ id: z.string().uuid() });
 const reviewBodySchema = z.object({
   decision: z.enum(['verified', 'rejected', 'action_required']),
   rejectionReasonCustomerSafe: z.string().trim().min(1).max(500).optional(),
+  // DEFECT-001 §5 — required. Admin must send back the `verificationRevision`
+  // it read off the profile it is deciding against; mismatch -> 409
+  // CONFLICT (closes the ABA resubmission race, §4.3).
+  expectedRevision: z.number().int().nonnegative(),
 });
 
 export function createAdminVerificationRouter(ctx: AppContext): Router {
@@ -56,6 +60,7 @@ export function createAdminVerificationRouter(ctx: AppContext): Router {
               idNumberMasked: profile.idNumberLast4 ? `********${profile.idNumberLast4}` : null,
               verificationStatus: profile.verificationStatus,
               verificationSubmittedAt: profile.verificationSubmittedAt?.toISOString() ?? null,
+              verificationRevision: profile.verificationRevision,
             };
           }),
         );
@@ -229,6 +234,7 @@ export function createAdminVerificationRouter(ctx: AppContext): Router {
             accountId,
             bodyParsed.data.decision,
             bodyParsed.data.rejectionReasonCustomerSafe ?? null,
+            bodyParsed.data.expectedRevision,
           );
 
           await ctx.auditLog.record({
@@ -237,6 +243,20 @@ export function createAdminVerificationRouter(ctx: AppContext): Router {
             actorSessionId: req.auth!.sessionId,
             auditRequestId: req.auditRequestId ?? null,
             eventType: 'privileged_data_access',
+            ipAddress: clientIp(req),
+            userAgent: req.header('user-agent') ?? null,
+          });
+
+          // DEFECT-001 §3/§5 — records WHAT was decided (the generic
+          // privileged_data_access row above records only that the admin
+          // accessed the record; it carries no decision value).
+          await ctx.auditLog.record({
+            accountId,
+            actorAccountId: req.auth!.accountId,
+            actorSessionId: req.auth!.sessionId,
+            auditRequestId: req.auditRequestId ?? null,
+            eventType: 'customer_verification_decision',
+            decision: bodyParsed.data.decision,
             ipAddress: clientIp(req),
             userAgent: req.header('user-agent') ?? null,
           });
@@ -261,6 +281,14 @@ export function createAdminVerificationRouter(ctx: AppContext): Router {
         } catch (err) {
           if (err instanceof Error && err.message === 'INVALID_VERIFICATION_STATE') {
             next(apiError('CONFLICT', { message: 'Profile is not pending review.' }));
+            return;
+          }
+          if (err instanceof Error && err.message === 'REVISION_MISMATCH') {
+            next(
+              apiError('CONFLICT', {
+                message: 'This verification request was updated since you opened it. Refresh and try again.',
+              }),
+            );
             return;
           }
           if (err instanceof Error && err.message === 'PROFILE_NOT_FOUND') {

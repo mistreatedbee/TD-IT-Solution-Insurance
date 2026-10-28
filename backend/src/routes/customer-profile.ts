@@ -13,6 +13,7 @@ import {
 import { apiError } from '../lib/errors.js';
 import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
 import { validateBody } from '../lib/validation.js';
+import { ProfileVerificationLockedError } from '../repositories/customer-profiles.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { syncAccountAlerts } from '../lib/sync-account-alerts.js';
@@ -128,7 +129,19 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
           patch.emergencyContact = body.emergencyContact;
         }
 
-        await ctx.customerProfiles.updateForAccount(accountId, patch);
+        try {
+          await ctx.customerProfiles.updateForAccount(accountId, patch);
+        } catch (err) {
+          if (err instanceof ProfileVerificationLockedError) {
+            next(
+              apiError('CONFLICT', {
+                message: 'Your profile is locked while your identity verification is under review.',
+              }),
+            );
+            return;
+          }
+          throw err;
+        }
         const refreshedAccount = await ctx.accounts.findById(accountId);
         if (!refreshedAccount) {
           next(apiError('UNAUTHORIZED'));

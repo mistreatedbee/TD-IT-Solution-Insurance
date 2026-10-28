@@ -80,6 +80,7 @@ function createInMemoryProfilesRepo(): CustomerProfilesRepo {
       verificationReviewedAt: null,
       rejectionReasonCustomerSafe: null,
       profilePictureUpdatedAt: null,
+      verificationRevision: 0,
       createdAt: now,
       updatedAt: now,
     };
@@ -150,10 +151,13 @@ function createInMemoryProfilesRepo(): CustomerProfilesRepo {
         .filter((p) => p.verificationStatus === status)
         .slice(0, limit);
     },
-    async reviewVerification(accountId, decision, rejectionReasonCustomerSafe) {
+    async reviewVerification(accountId, decision, rejectionReasonCustomerSafe, expectedRevision) {
       const profile = profiles.get(accountId);
       if (!profile || profile.verificationStatus !== 'pending_review') {
         throw new Error('INVALID_VERIFICATION_STATE');
+      }
+      if (profile.verificationRevision !== expectedRevision) {
+        throw new Error('REVISION_MISMATCH');
       }
       const updated: CustomerProfileDocument = {
         ...profile,

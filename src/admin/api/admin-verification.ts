@@ -10,6 +10,7 @@ export interface VerificationRequestSummary {
   idNumberMasked: string | null;
   verificationStatus: string;
   verificationSubmittedAt: string | null;
+  verificationRevision: number;
 }
 
 export interface AdminCustomerProfileResponse {
@@ -53,6 +54,9 @@ export function reviewCustomerVerification(
   body: {
     decision: 'verified' | 'rejected' | 'action_required';
     rejectionReasonCustomerSafe?: string;
+    // DEFECT-001 §5 — required. Must be the `verificationRevision` read off
+    // the profile being decided against, or the backend 409s.
+    expectedRevision: number;
   },
 ) {
   return apiFetch<AdminCustomerProfileResponse>(

@@ -70,7 +70,19 @@ export type AuditEventType =
   // `/auth/supabase/exchange`'s backfill-create branch. `resend-verification`
   // deliberately gets neither — see the route's own comment.
   | 'account_created'
-  | 'email_verified';
+  | 'email_verified'
+  // DEFECT-001 §3/§8 (customer-verification-integrity) — added by
+  // migrations/038. `customer_identity_reset` is written by
+  // `CustomerProfilesRepo.updateForAccount()` whenever an identity-bearing
+  // edit flips a `verified` profile back to `in_progress` (self-service,
+  // subject === actor, deliberately NOT in `PRIVILEGED_ACCESS_EVENT_TYPES`).
+  // `customer_verification_decision` is written by
+  // `PATCH /admin/accounts/:id/profile/verification` when
+  // `reviewVerification()` succeeds (subject = customer, actor = reviewing
+  // admin) — IS in `PRIVILEGED_ACCESS_EVENT_TYPES`, carries `decision`
+  // (migrations/039).
+  | 'customer_identity_reset'
+  | 'customer_verification_decision';
 
 /**
  * Event types that record privileged access to another account's data and
@@ -83,6 +95,7 @@ export type AuditEventType =
 const PRIVILEGED_ACCESS_EVENT_TYPES: ReadonlySet<AuditEventType> = new Set<AuditEventType>([
   'privileged_data_access',
   'privileged_bulk_access',
+  'customer_verification_decision',
 ]);
 
 interface AuditActor {
@@ -111,6 +124,10 @@ export interface AuditEventInput extends AuditActor {
    * (migrations/033's `account_audit_log_result_count_only_on_bulk`). Prefer
    * `recordBulkDisclosure()` over setting this by hand. */
   resultCount?: number | null;
+  /** DEFECT-001 §3/migrations/039 — set if and only if
+   * `eventType === 'customer_verification_decision'`, one of `'verified'`,
+   * `'rejected'`, `'action_required'`. */
+  decision?: 'verified' | 'rejected' | 'action_required' | null;
 }
 
 export interface BulkDisclosureInput extends AuditActor {
@@ -126,8 +143,8 @@ export interface BulkDisclosureInput extends AuditActor {
 
 const COLUMNS =
   'account_id, actor_account_id, actor_service, actor_session_id, audit_request_id, ' +
-  'event_type, attempted_identifier, ip_address, user_agent, result_count';
-const COLUMN_COUNT = 10;
+  'event_type, attempted_identifier, ip_address, user_agent, result_count, decision';
+const COLUMN_COUNT = 11;
 
 function rowValues(event: AuditEventInput): unknown[] {
   return [
@@ -141,6 +158,7 @@ function rowValues(event: AuditEventInput): unknown[] {
     event.ipAddress ?? null,
     event.userAgent ?? null,
     event.resultCount ?? null,
+    event.decision ?? null,
   ];
 }
 
@@ -178,6 +196,13 @@ function assertInvariants(event: AuditEventInput): void {
   if (hasResultCount !== (event.eventType === 'privileged_bulk_access')) {
     throw new Error(
       '[repositories/audit-log] resultCount is set on privileged_bulk_access rows and only on those rows',
+    );
+  }
+  // account_audit_log_decision_only_on_verification_decision (migrations/039, DEFECT-001 §3).
+  const hasDecision = event.decision !== undefined && event.decision !== null;
+  if (hasDecision !== (event.eventType === 'customer_verification_decision')) {
+    throw new Error(
+      '[repositories/audit-log] decision is set on customer_verification_decision rows and only on those rows',
     );
   }
 }

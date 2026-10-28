@@ -49,6 +49,11 @@ export const customerProfilesJsonSchemaValidator: Document = {
       verificationSubmittedAt: { bsonType: ['date', 'null'] },
       verificationReviewedAt: { bsonType: ['date', 'null'] },
       rejectionReasonCustomerSafe: { bsonType: ['string', 'null'] },
+      // DEFECT-001 §8.1 — optional, not in `required`: documents predating
+      // this field read back as 0 (CustomerProfilesRepo's toProfile()); this
+      // keeps the validator an accurate map of the real (partial) shape,
+      // same precedent as profilePictureUpdatedAt.
+      verificationRevision: { bsonType: ['int', 'long'] },
       createdAt: { bsonType: 'date' },
       updatedAt: { bsonType: 'date' },
     },

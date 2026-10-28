@@ -107,7 +107,7 @@ export function VerificationReviewPage() {
   }, [accountId]);
 
   async function decide(decision: 'verified' | 'rejected' | 'action_required') {
-    if (!accountId) return;
+    if (!accountId || !data) return;
     setActionError(null);
     setActionInfo(null);
     setBusy(decision);
@@ -117,6 +117,11 @@ export function VerificationReviewPage() {
         decision,
         rejectionReasonCustomerSafe:
           decision === 'rejected' || decision === 'action_required' ? reason.trim() : undefined,
+        // DEFECT-001 §5 — the revision this page actually read; a stale
+        // page (data fetched before someone else's decision/resubmission)
+        // 409s here rather than silently applying to data this admin never
+        // saw.
+        expectedRevision: data.profile.verificationRevision,
       });
       if (result === undefined) {
         // STEP_UP_REQUIRED — dialog is open; handleStepUpVerified retries.
