@@ -796,11 +796,9 @@ export function createRecoveryCasesRepo(db: Db) {
     /**
      * Release/unclaim — a claimed case returns to the shared unassigned pool
      * (`partnerOrganizationId: null`, `status: 'open'`), so any partner org can claim
-     * it again via `claimForPartnerOrg`. Scoped to a single-partner-org model: there is
-     * no `partner_organizations` collection yet and no "reassign to a specific other
-     * org" concept in the data model (see `partnerOrganizationId: string | null` above
-     * — just an opaque id, not a foreign key into any org directory) — this is
-     * deliberately "release back to the pool", not a targeted reassignment.
+     * it again via `claimForPartnerOrg`. Kept as-is alongside `reassignForPartnerOrg`
+     * (which hands a case directly to a specific target org, never through the pool) —
+     * this remains the "release back to the pool" action, not a targeted reassignment.
      *
      * Only permitted while the case is still mid-investigation (`investigating` or
      * `tracking`) — a case already `recovered`/`closed` is done and releasing it would
@@ -823,6 +821,51 @@ export function createRecoveryCasesRepo(db: Db) {
         },
         { $set: { partnerOrganizationId: null, status: 'open', updatedAt: new Date() } },
         { returnDocument: 'after', projection: OFFER_TIER_FIELD_EXCLUSION_PROJECTION },
+      );
+      return result ? toCase(result as unknown as RecoveryCaseDbRow) : null;
+    },
+
+    /**
+     * Reassignment — now that `partner_organizations` (repositories/partner-organizations.ts)
+     * exists as a real directory, a case claimed by the caller's org can be handed
+     * directly to a specific target org, without passing through the shared
+     * unassigned pool in between (unlike `releaseForPartnerOrg`, which deliberately
+     * does go through the pool and is unaffected by this addition). Going through the
+     * pool, even momentarily, would let any other org claim the case out from under
+     * the intended target (`claimForPartnerOrg` matches ANY unclaimed case) — this
+     * compare-and-set moves `partnerOrganizationId` straight from the caller's org to
+     * the target org in one atomic update, same discipline as `claimForPartnerOrg`/
+     * `releaseForPartnerOrg`: only matches while still owned by the caller
+     * (`partnerOrganizationId: callerPartnerOrganizationId`) and still mid-investigation
+     * (`investigating`/`tracking`).
+     *
+     * `status` is reset to `'investigating'` — matching the state a case is in
+     * immediately after `claimForPartnerOrg` — so a reassigned case looks, to the
+     * target org, identical to one it claimed itself fresh from the pool (no
+     * `'tracking'` progress the target org didn't earn is implied to be theirs, and no
+     * terminal-state confusion is possible since this only ever runs from
+     * investigating/tracking per the route-layer precondition).
+     */
+    async reassignForPartnerOrg(
+      callerPartnerOrganizationId: string,
+      caseId: string,
+      targetPartnerOrganizationId: string,
+    ): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const result = await collection().findOneAndUpdate(
+        {
+          _id: new ObjectId(caseId),
+          partnerOrganizationId: callerPartnerOrganizationId,
+          status: { $in: ['investigating', 'tracking'] },
+        },
+        {
+          $set: {
+            partnerOrganizationId: targetPartnerOrganizationId,
+            status: 'investigating',
+            updatedAt: new Date(),
+          },
+        },
+        { returnDocument: 'after', projection: CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION },
       );
       return result ? toCase(result as unknown as RecoveryCaseDbRow) : null;
     },

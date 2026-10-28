@@ -50,11 +50,16 @@ const contactCustomerSchema = z.object({
   message: z.string().trim().min(1).max(500),
 });
 
+const reassignCaseSchema = z.object({
+  targetPartnerOrganizationId: z.string().uuid(),
+});
+
 const ENDPOINT_LIST = 'GET /v1/security/cases';
 const ENDPOINT_DETAIL = 'GET /v1/security/cases/:caseId';
 const ENDPOINT_CLAIM = 'POST /v1/security/cases/:caseId/claim';
 const ENDPOINT_UPDATE = 'PATCH /v1/security/cases/:caseId';
 const ENDPOINT_RELEASE = 'POST /v1/security/cases/:caseId/release';
+const ENDPOINT_REASSIGN = 'POST /v1/security/cases/:caseId/reassign';
 const ENDPOINT_CONTACT = 'POST /v1/security/cases/:caseId/messages';
 
 /** PDM-2 — picks the matching serializer for a tagged partner-visible result; keeps
@@ -375,14 +380,11 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
     },
   );
 
-  // Gap-closure #1 — case reassignment. There is no `partner_organizations`
-  // collection / directory of orgs yet (`partnerOrganizationId` is an opaque string
-  // on the case document, not a foreign key — see repositories/recovery-cases.ts),
-  // so "reassign to a specific other org" has no selector to build against. Scoped
-  // to what the data model actually supports today: an operator releases a case
-  // they've claimed back to the shared unassigned pool (`releaseForPartnerOrg`),
-  // where any partner org — including this one — can claim it again via the
-  // existing POST /security/cases/:caseId/claim.
+  // Gap-closure #1 — release to the shared unassigned pool. An operator releases a
+  // case they've claimed back to the pool (`releaseForPartnerOrg`), where any
+  // partner org — including this one — can claim it again via the existing
+  // POST /security/cases/:caseId/claim. See the dedicated `/reassign` route below
+  // for handing a case directly to a specific target org instead.
   router.post(
     '/security/cases/:caseId/release',
     authenticate,
@@ -443,6 +445,110 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
         // response must not leak `accountId`, `notes`, `assetId`, or location data to
         // this (or any) operator (PDM-1/PDM-2).
         res.status(200).json(serializeOfferTierRecoveryCase(toOfferTierView(released)));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Case reassignment — now that `partner_organizations` (repositories/
+  // partner-organizations.ts) exists as a real directory, a case the caller's org
+  // holds can be handed directly to a specific target org, without an intermediate
+  // trip through the shared unassigned pool (which would let any other org snipe it
+  // mid-reassignment, since `claim` matches ANY unclaimed case).
+  router.post(
+    '/security/cases/:caseId/reassign',
+    authenticate,
+    requireUserType('security_company_operator'),
+    requirePartnerOrg,
+    createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT, (req) => `security-cases-reassign:${req.auth!.accountId}`),
+    async (req, res, next) => {
+      try {
+        const paramsParsed = caseIdParamsSchema.safeParse(req.params);
+        if (!paramsParsed.success) {
+          next(apiError('VALIDATION_ERROR'));
+          return;
+        }
+        const bodyParsed = reassignCaseSchema.safeParse(req.body);
+        if (!bodyParsed.success) {
+          next(apiError('VALIDATION_ERROR', { details: bodyParsed.error.issues.map((i) => i.message) }));
+          return;
+        }
+        const orgId = req.auth!.partnerOrganizationId!;
+        const caseId = paramsParsed.data.caseId;
+        const { targetPartnerOrganizationId } = bodyParsed.data;
+
+        if (targetPartnerOrganizationId === orgId) {
+          next(apiError('VALIDATION_ERROR', { details: ['targetPartnerOrganizationId must differ from the caller\'s own organization'] }));
+          return;
+        }
+
+        // Validate the target org exists and is active — same check/error pattern as
+        // `routes/invitations.ts`'s `partnerOrganizationId` validation.
+        const targetOrg = await ctx.partnerOrganizations.findById(targetPartnerOrganizationId);
+        if (!targetOrg) {
+          next(apiError('VALIDATION_ERROR', { details: ['targetPartnerOrganizationId does not refer to a known partner organization'] }));
+          return;
+        }
+        if (targetOrg.status !== 'active') {
+          next(apiError('VALIDATION_ERROR', { details: ['targetPartnerOrganizationId refers to a suspended partner organization'] }));
+          return;
+        }
+
+        // §18.8 C-B sequence: (1) pre-read.
+        const existing = await ctx.recoveryCases.findByIdForPartnerOrg(orgId, caseId);
+        // (2) precondition: only a case claimed by THIS org, still mid-investigation
+        // (not recovered/closed), can be reassigned. Fail with no audit row.
+        if (
+          !existing ||
+          existing.tier !== 'claimed' ||
+          (existing.case.status !== 'investigating' && existing.case.status !== 'tracking')
+        ) {
+          next(apiError('NOT_FOUND', { message: 'Case is not available to reassign.' }));
+          return;
+        }
+
+        // (3) write the decision record before the mutation (§18.8 ruling (b)).
+        // `resourceId` is `existing.case.id` from the database row, never the
+        // `:caseId` path parameter (§18.8(a)(1)). The org transition itself is
+        // carried in `reason` (free-text, same slot `/messages` uses for its action
+        // label) since `fromStatus`/`toStatus` are case-status fields, not org ids.
+        await ctx.adminAccessLog.recordStateChange({
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          targetAccountId: existing.accountId,
+          resourceType: 'recovery_case',
+          resourceId: existing.case.id,
+          fromStatus: existing.case.status,
+          toStatus: 'investigating',
+          endpoint: ENDPOINT_REASSIGN,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+          reason: `reassigned_from_partner_org:${orgId}_to_partner_org:${targetPartnerOrganizationId}`,
+        });
+
+        // (4) the conditional mutation — compare-and-set inside reassignForPartnerOrg
+        // (still owned by this org, still investigating/tracking).
+        const reassigned = await ctx.recoveryCases.reassignForPartnerOrg(orgId, caseId, targetPartnerOrganizationId);
+        if (!reassigned) {
+          // Concurrent status change / release/claim/reassign between pre-read and
+          // this call — must not return 2xx (§18.8 C-B).
+          next(apiError('NOT_FOUND', { message: 'Case is not available to reassign.' }));
+          return;
+        }
+
+        scheduleCustomerRecoveryCaseChange(ctx, {
+          recoveryCase: reassigned,
+          previousStatus: existing.case.status,
+          event: 'status_updated',
+        });
+
+        // (5) respond — claimed-tier view, scoped to the CALLER's org. The target
+        // org now holds the case; the caller (who initiated the reassignment) gets a
+        // confirmation of the resulting state, matching what `/claim` and `/release`
+        // already return to their respective callers.
+        res.status(200).json(serializeClaimedTierRecoveryCase(toClaimedTierView(reassigned)));
       } catch (err) {
         next(err);
       }

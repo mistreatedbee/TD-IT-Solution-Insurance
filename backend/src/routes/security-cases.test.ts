@@ -174,6 +174,9 @@ function createHarness(opts: {
    * must never run, and the response must be a 5xx, not a 2xx built from a mutation
    * that happened anyway. */
   failStateChangeAudit?: boolean;
+  /** Target-org fixtures for `ctx.partnerOrganizations.findById` — the reassign
+   * route's validation path. Defaults to an empty directory (every lookup 404s). */
+  partnerOrganizations?: Array<{ id: string; status: 'active' | 'suspended' }>;
 }) {
   const env = fakeEnv();
   const kv = new InMemoryKeyValueStore();
@@ -182,7 +185,7 @@ function createHarness(opts: {
   const partnerOrgId = opts.partnerOrgId ?? randomUUID();
   const cases = [...(opts.cases ?? [])];
   const auditCalls: Array<{ kind: 'record' | 'bulk'; event: unknown }> = [];
-  const mutationCalls = { claim: 0, updateStatus: 0, release: 0 };
+  const mutationCalls = { claim: 0, updateStatus: 0, release: 0, reassign: 0 };
   const caseMessageCalls: Array<{ accountId: string; assetName: string; caseId: string; referenceNumber: string; message: string }> = [];
   const accessLogCalls: Array<
     | { kind: 'detail'; event: unknown }
@@ -301,6 +304,38 @@ function createHarness(opts: {
           updatedAt: new Date(),
         };
         return cases[idx]!;
+      },
+      async reassignForPartnerOrg(callerOrgId: string, caseId: string, targetOrgId: string) {
+        mutationCalls.reassign += 1;
+        const idx = cases.findIndex(
+          (c) =>
+            c.id === caseId &&
+            c.partnerOrganizationId === callerOrgId &&
+            (c.status === 'investigating' || c.status === 'tracking'),
+        );
+        if (idx < 0) return null;
+        cases[idx] = {
+          ...cases[idx]!,
+          partnerOrganizationId: targetOrgId,
+          status: 'investigating',
+          updatedAt: new Date(),
+        };
+        return cases[idx]!;
+      },
+    },
+    partnerOrganizations: {
+      async findById(id: string) {
+        const found = (opts.partnerOrganizations ?? []).find((o) => o.id === id);
+        if (!found) return null;
+        return {
+          id: found.id,
+          name: 'Test Partner Org',
+          status: found.status,
+          contactEmail: 'partner@example.com',
+          notes: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
       },
     },
     auditLog: {
@@ -1768,6 +1803,254 @@ describe('routes/security-cases', () => {
       const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/release'), {
         method: 'POST',
         headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // POST /security/cases/:caseId/reassign — targeted reassignment to a specific
+  // partner org, now that `partner_organizations` exists.
+  describe('POST /security/cases/:caseId/reassign', () => {
+    it('reassigns a claimed case directly to a specific active target org', async () => {
+      const orgId = randomUUID();
+      const targetOrgId = randomUUID();
+      const accountId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        partnerOrganizations: [{ id: targetOrgId, status: 'active' }],
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId,
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'tracking',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/reassign'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: targetOrgId }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Record<string, unknown>;
+      // Claimed-tier response shape (PDM-1/PDM-2) — same as /claim's own response.
+      expectExactKeys(body, CLAIMED_TIER_RESPONSE_KEYS);
+      expect(body.status).toBe('investigating');
+      expect(body.partnerOrganizationId).toBe(targetOrgId);
+
+      expect(harness.mutationCalls.reassign).toBe(1);
+      // The case never passed through the shared unassigned pool — no claim call
+      // happened as part of this operation.
+      expect(harness.mutationCalls.claim).toBe(0);
+
+      const stateChange = harness.accessLogCalls.find((c) => c.kind === 'stateChange');
+      expect(stateChange).toBeDefined();
+      expect(stateChange!.event).toMatchObject({
+        targetAccountId: accountId,
+        resourceType: 'recovery_case',
+        resourceId: '507f1f77bcf86cd799439011',
+        fromStatus: 'tracking',
+        toStatus: 'investigating',
+      });
+
+      // The case is now claimed by the target org, not the pool — the original
+      // caller's org can no longer see/release it, and a third org cannot claim it.
+      const releaseRes = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/release'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(releaseRes.status).toBe(404);
+    });
+
+    it('404s on a case not claimed by the caller org (no cross-tenant reassign)', async () => {
+      const orgId = randomUUID();
+      const otherOrgId = randomUUID();
+      const targetOrgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        partnerOrganizations: [{ id: targetOrgId, status: 'active' }],
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: otherOrgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/reassign'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: targetOrgId }),
+      });
+      expect(res.status).toBe(404);
+      expect(harness.accessLogCalls).toHaveLength(0);
+      expect(harness.mutationCalls.reassign).toBe(0);
+    });
+
+    it('404s on an already-recovered/closed case', async () => {
+      const orgId = randomUUID();
+      const targetOrgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        partnerOrganizations: [{ id: targetOrgId, status: 'active' }],
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'closed',
+            closedAt: new Date(),
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/reassign'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: targetOrgId }),
+      });
+      expect(res.status).toBe(404);
+      expect(harness.mutationCalls.reassign).toBe(0);
+    });
+
+    it('rejects reassignment to an unknown target org', async () => {
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        partnerOrganizations: [],
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/reassign'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: randomUUID() }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error?: { code?: string } };
+      expect(body.error?.code).toBe('VALIDATION_ERROR');
+      expect(harness.mutationCalls.reassign).toBe(0);
+      expect(harness.accessLogCalls).toHaveLength(0);
+    });
+
+    it('rejects reassignment to a suspended target org', async () => {
+      const orgId = randomUUID();
+      const targetOrgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        partnerOrganizations: [{ id: targetOrgId, status: 'suspended' }],
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/reassign'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: targetOrgId }),
+      });
+      expect(res.status).toBe(400);
+      expect(harness.mutationCalls.reassign).toBe(0);
+    });
+
+    it('rejects reassignment to the caller\'s own org', async () => {
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        partnerOrganizations: [{ id: orgId, status: 'active' }],
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/reassign'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: orgId }),
+      });
+      expect(res.status).toBe(400);
+      expect(harness.mutationCalls.reassign).toBe(0);
+    });
+
+    it('rejects a non-UUID targetPartnerOrganizationId with VALIDATION_ERROR', async () => {
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: '507f1f77bcf86cd799439011',
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/reassign'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: 'not-a-uuid' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 403 for a wrong-role token', async () => {
+      const env = fakeEnv();
+      const token = signAccessToken(
+        {
+          sub: randomUUID(),
+          user_type: 'support_agent',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+
+      harness = createHarness({});
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011/reassign'), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: randomUUID() }),
       });
       expect(res.status).toBe(403);
     });

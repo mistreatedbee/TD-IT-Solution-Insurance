@@ -440,6 +440,105 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
     });
   });
 
+  describe('reassignForPartnerOrg — direct handoff to a specific target org', () => {
+    it('moves a claimed, investigating case straight to the target org, status reset to investigating', async () => {
+      const id = new ObjectId();
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'investigating' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.reassignForPartnerOrg('org-1', id.toHexString(), 'org-2');
+
+      expect(row).not.toBeNull();
+      expect(row!.status).toBe('investigating');
+      expect(row!.partnerOrganizationId).toBe('org-2');
+      expect(docs[0]!.partnerOrganizationId).toBe('org-2');
+      expect(docs[0]!.status).toBe('investigating');
+    });
+
+    it('also reassigns a "tracking" case, resetting status to investigating for the target org', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'tracking' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.reassignForPartnerOrg('org-1', id.toHexString(), 'org-2');
+      expect(row).not.toBeNull();
+      expect(row!.status).toBe('investigating');
+      expect(row!.partnerOrganizationId).toBe('org-2');
+    });
+
+    it('returns null for a case claimed by a different org (no cross-tenant reassign)', async () => {
+      const id = new ObjectId();
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-2', status: 'investigating' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.reassignForPartnerOrg('org-1', id.toHexString(), 'org-3');
+      expect(row).toBeNull();
+      expect(docs[0]!.partnerOrganizationId).toBe('org-2');
+    });
+
+    it('returns null for an already-terminal case', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'closed', closedAt: new Date() }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.reassignForPartnerOrg('org-1', id.toHexString(), 'org-2');
+      expect(row).toBeNull();
+    });
+
+    it('returns null for an already-unclaimed case', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([baseDoc({ _id: id, partnerOrganizationId: null, status: 'open' })]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.reassignForPartnerOrg('org-1', id.toHexString(), 'org-2');
+      expect(row).toBeNull();
+    });
+
+    it('never routes through the shared unassigned pool — a third org cannot claim it mid-reassignment', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'investigating' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      await repo.reassignForPartnerOrg('org-1', id.toHexString(), 'org-2');
+      // The case is claimed by org-2, never dropped to partnerOrganizationId: null —
+      // claimForPartnerOrg (which only matches the unclaimed pool) must fail.
+      const stolen = await repo.claimForPartnerOrg('org-3', id.toHexString());
+      expect(stolen).toBeNull();
+    });
+
+    it('write-path read-back never returns police-report fields or the claimed-tier-excluded fields', async () => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({
+          _id: id,
+          partnerOrganizationId: 'org-1',
+          status: 'investigating',
+          sapsCaseNumber: 'CAS-1/1/2026',
+          lastLocation: { latitude: 1, longitude: 2, recordedAt: new Date(), accuracyMeters: null },
+        }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const row = await repo.reassignForPartnerOrg('org-1', id.toHexString(), 'org-2');
+      expect(row).not.toBeNull();
+      expect(row!.sapsCaseNumber).toBeNull();
+      // `lastLocation` is one of the claimed-tier-excluded fields — absent from the
+      // projected row entirely, not merely null (same discipline as the release
+      // test's `notes` check above).
+      expect(row!.lastLocation).toBeUndefined();
+    });
+  });
+
   describe('SR-011-4 + C-011-11: closedAt setter', () => {
     it('sets closedAt on the transition into "closed"', async () => {
       const id = new ObjectId();
