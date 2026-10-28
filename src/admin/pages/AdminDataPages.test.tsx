@@ -174,3 +174,47 @@ describe('AccountDetailPage account-state step-up (ADR-0012 SU-FU-1)', () => {
     expect(screen.getByRole('heading', { name: 'customer@example.com' })).toBeInTheDocument();
   });
 });
+
+describe('AccountDetailPage — reactivation from a deactivated account', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  });
+
+  it('offers a Reactivate account button for a deactivated account and applies the same step-up flow', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getAdminAccount).mockResolvedValue(
+      account({ accountState: 'deactivated', deactivatedAt: '2026-09-01T00:00:00.000Z' }),
+    );
+    vi.mocked(updateAdminAccountState)
+      .mockRejectedValueOnce(stepUpRequiredError())
+      .mockResolvedValueOnce(account({ accountState: 'active' }));
+    vi.mocked(requestStepUpChallenge).mockResolvedValueOnce({ stepUpChallengeToken: 'chal-reactivate', expiresIn: 60 });
+    vi.mocked(verifyStepUp).mockResolvedValueOnce({
+      mfaVerifiedAt: '2026-10-02T00:00:00.000Z',
+      stepUpExpiresAt: '2026-10-02T00:15:00.000Z',
+    });
+
+    render(
+      <MemoryRouter>
+        <AccountDetailPage accountId="acct-1" />
+      </MemoryRouter>,
+    );
+
+    const reactivateButton = await screen.findByRole('button', { name: 'Reactivate account' });
+    // No Suspend/Deactivate buttons should be offered for an already-deactivated account.
+    expect(screen.queryByRole('button', { name: 'Suspend account' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Deactivate account' })).not.toBeInTheDocument();
+
+    await user.click(reactivateButton);
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
+    await user.type(byName('code'), '123456');
+    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Push notifications stay disabled until the customer re-registers/)).toBeInTheDocument(),
+    );
+    expect(updateAdminAccountState).toHaveBeenCalledWith('acct-1', { accountState: 'active' });
+    expect(updateAdminAccountState).toHaveBeenCalledTimes(2);
+  });
+});

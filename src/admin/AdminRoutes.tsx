@@ -14,8 +14,9 @@ import {
   StaffListPage,
 } from './pages/AdminDataPages';
 import { VerificationQueuePage, VerificationReviewPage } from './pages/AdminVerificationPages';
-import { PlanEditRoute, PlansListPage } from './pages/AdminPlansPages';
+import { PlanCreatePage, PlanEditRoute, PlansListPage } from './pages/AdminPlansPages';
 import { AdminAnalyticsPage } from './pages/AdminAnalyticsPage';
+import { AdminAuditLogPage } from './pages/AdminAuditLogPage';
 import { InviteStaffPage } from './pages/InviteStaffPage';
 
 function AccountDetailRoute() {
@@ -66,10 +67,12 @@ export default function AdminRoutes() {
             <Route path="assets" element={<AssetsListPage />} />
             <Route path="assets/:assetId" element={<AssetDetailRoute />} />
             <Route path="plans" element={<PlansListPage />} />
+            <Route path="plans/new" element={<PlanCreatePage />} />
             <Route path="plans/:planId" element={<PlanEditRoute />} />
             <Route path="analytics" element={<AdminAnalyticsPage />} />
             <Route path="verification" element={<VerificationQueuePage />} />
             <Route path="verification/:accountId" element={<VerificationReviewPage />} />
+            <Route path="audit-log" element={<AdminAuditLogPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="login" replace />} />

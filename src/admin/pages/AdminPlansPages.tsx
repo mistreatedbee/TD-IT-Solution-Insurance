@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Button, Card, Input, SectionHeading } from '../../components';
 import { DataTable, DetailGrid, InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
 import {
+  createAdminPlan,
+  deleteAdminPlan,
   formatPlanPrice,
   listAdminPlans,
   updateAdminPlan,
   type AdminPlanCatalogItem,
+  type CreateAdminPlanRequest,
   type UpdateAdminPlanRequest,
 } from '../api/admin-plans';
 import { AdminNavLink } from '../layout/AdminLayout';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { ApiError } from '../../dashboard/api/errors';
 import { formatSupportLevel } from '../../lib/plan-catalog-display';
 import { StepUpDialog } from '../components/StepUpDialog';
 import { useStepUpRetry } from '../hooks/useStepUpRetry';
@@ -41,7 +45,12 @@ export function PlansListPage() {
 
   return (
     <Card padding="lg">
-      <SectionHeading as="h1" title="Insurance plans" size="md" className="mb-2" />
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+        <SectionHeading as="h1" title="Insurance plans" size="md" className="mb-0" />
+        <Link to="/admin/plans/new">
+          <Button size="sm">Create plan</Button>
+        </Link>
+      </div>
       <p className="mb-4 text-sm text-text-secondary">
         Configure pricing, asset limits, and visibility for customer onboarding plan cards.
       </p>
@@ -100,9 +109,11 @@ export function PlansListPage() {
 }
 
 export function PlanEditPage({ planId }: { planId: string }) {
+  const navigate = useNavigate();
   const [plan, setPlan] = useState<AdminPlanCatalogItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -117,6 +128,7 @@ export function PlanEditPage({ planId }: { planId: string }) {
   const [accountTypes, setAccountTypes] = useState<string[]>([]);
 
   const { stepUpOpen, run, onStepUpVerified, onStepUpCancel } = useStepUpRetry(updateAdminPlan);
+  const deleteStepUp = useStepUpRetry(deleteAdminPlan);
 
   useEffect(() => {
     let cancelled = false;
@@ -244,6 +256,51 @@ export function PlanEditPage({ planId }: { planId: string }) {
     setSaving(false);
   }
 
+  function describeDeleteError(err: unknown): string {
+    // Surface the backend's specific "referenced by one or more policies"
+    // detail verbatim rather than the generic CONFLICT fallback — this is
+    // the one actionable piece of information in that response.
+    if (err instanceof ApiError && err.code === 'CONFLICT' && Array.isArray(err.details) && err.details.length > 0) {
+      return err.details.map(String).join(' ');
+    }
+    return mapUserFacingError(err, { context: 'admin' });
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`Delete the "${plan?.name}" plan? This cannot be undone.`)) return;
+    setError(null);
+    setSuccess(null);
+    setDeleting(true);
+    try {
+      const result = await deleteStepUp.run(planId, {});
+      if (result === undefined) return; // STEP_UP_REQUIRED — dialog is open.
+      navigate('/admin/plans');
+    } catch (err) {
+      setError(describeDeleteError(err));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleDeleteStepUpVerified() {
+    setError(null);
+    setDeleting(true);
+    try {
+      const result = await deleteStepUp.onStepUpVerified();
+      if (!result) return;
+      navigate('/admin/plans');
+    } catch (err) {
+      setError(describeDeleteError(err));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function handleDeleteStepUpCancel() {
+    deleteStepUp.onStepUpCancel();
+    setDeleting(false);
+  }
+
   if (loading) {
     return (
       <Card padding="lg">
@@ -358,9 +415,306 @@ export function PlanEditPage({ planId }: { planId: string }) {
         </fieldset>
       </div>
 
-      <div className="mt-8 flex gap-3">
-        <Button loading={saving} onClick={() => void handleSave()}>
+      <div className="mt-8 flex flex-wrap gap-3">
+        <Button loading={saving} disabled={deleting} onClick={() => void handleSave()}>
           Save changes
+        </Button>
+        <Link to="/admin/plans">
+          <Button variant="secondary">Cancel</Button>
+        </Link>
+        <Button
+          variant="secondary"
+          className="ml-auto text-red-700"
+          loading={deleting}
+          disabled={saving}
+          onClick={() => void handleDelete()}
+        >
+          Delete plan
+        </Button>
+      </div>
+
+      {stepUpOpen ? (
+        <StepUpDialog
+          submitLabel="Verify and continue"
+          onVerified={() => void handleStepUpVerified()}
+          onCancel={handleStepUpCancel}
+        />
+      ) : null}
+      {deleteStepUp.stepUpOpen ? (
+        <StepUpDialog
+          submitLabel="Verify and continue"
+          onVerified={() => void handleDeleteStepUpVerified()}
+          onCancel={handleDeleteStepUpCancel}
+        />
+      ) : null}
+    </Card>
+  );
+}
+
+const CREATE_PLAN_SUPPORT_LEVELS = ['standard', 'priority', 'enhanced', 'dedicated'] as const;
+
+/** Business-owner gap report item 5 — create-plan form. Field set/validation
+ * mirrors `PlanEditPage`'s existing pattern plus the extra fields only
+ * `POST /admin/plans` accepts (`slug`, `positioning`, `supportLevel`,
+ * `isMostPopular`) — see `backend/src/routes/admin-plans.ts`'s
+ * `createPlanSchema` for the authoritative field list. */
+export function PlanCreatePage() {
+  const navigate = useNavigate();
+  const [slug, setSlug] = useState('');
+  const [name, setName] = useState('');
+  const [tagline, setTagline] = useState('');
+  const [positioning, setPositioning] = useState('');
+  const [maxAssets, setMaxAssets] = useState('');
+  const [monthlyPrice, setMonthlyPrice] = useState('');
+  const [isCustomPricing, setIsCustomPricing] = useState(false);
+  const [isMostPopular, setIsMostPopular] = useState(false);
+  const [isActive, setIsActive] = useState(true);
+  const [sortOrder, setSortOrder] = useState('0');
+  const [supportLevel, setSupportLevel] = useState<(typeof CREATE_PLAN_SUPPORT_LEVELS)[number]>('standard');
+  const [features, setFeatures] = useState<string[]>([]);
+  const [accountTypes, setAccountTypes] = useState<string[]>(['both']);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { stepUpOpen, run, onStepUpVerified, onStepUpCancel } = useStepUpRetry(createAdminPlan);
+
+  function toggleAccountType(type: (typeof ACCOUNT_TYPE_OPTIONS)[number]) {
+    setAccountTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
+  }
+
+  function updateFeature(index: number, value: string) {
+    setFeatures((prev) => prev.map((f, i) => (i === index ? value : f)));
+  }
+
+  function addFeature() {
+    setFeatures((prev) => [...prev, '']);
+  }
+
+  function removeFeature(index: number) {
+    setFeatures((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function buildPatch(): CreateAdminPlanRequest | null {
+    const trimmedSlug = slug.trim();
+    const trimmedName = name.trim();
+    const trimmedTagline = tagline.trim();
+    const trimmedPositioning = positioning.trim();
+    if (!trimmedSlug || !trimmedName || !trimmedTagline || !trimmedPositioning) {
+      setError('Slug, display name, tagline, and positioning are all required.');
+      return null;
+    }
+    if (!/^[a-z0-9-]+$/.test(trimmedSlug)) {
+      setError('Slug must be lowercase letters, digits, and hyphens only.');
+      return null;
+    }
+
+    const body: CreateAdminPlanRequest = {
+      slug: trimmedSlug,
+      name: trimmedName,
+      tagline: trimmedTagline,
+      positioning: trimmedPositioning,
+      isMostPopular,
+      isActive,
+      sortOrder: Number.parseInt(sortOrder, 10) || 0,
+      supportLevel,
+      features: features.map((f) => f.trim()).filter(Boolean),
+      accountTypes: accountTypes as CreateAdminPlanRequest['accountTypes'],
+    };
+
+    if (isCustomPricing) {
+      body.isCustomPricing = true;
+      body.maxAssets = maxAssets.trim() ? Number.parseInt(maxAssets, 10) : null;
+      body.monthlyAmountCents = null;
+    } else {
+      const max = maxAssets.trim() ? Number.parseInt(maxAssets, 10) : null;
+      const price = monthlyPrice.trim() ? Math.round(Number.parseFloat(monthlyPrice) * 100) : null;
+      if (maxAssets.trim() && (max == null || max <= 0)) {
+        setError('Max assets must be a positive number.');
+        return null;
+      }
+      if (monthlyPrice.trim() && (price == null || price < 0 || Number.isNaN(price))) {
+        setError('Monthly price must be a valid amount in ZAR.');
+        return null;
+      }
+      body.isCustomPricing = false;
+      body.maxAssets = max;
+      body.monthlyAmountCents = price;
+    }
+
+    return body;
+  }
+
+  async function handleCreate() {
+    setError(null);
+    const patch = buildPatch();
+    if (!patch) return;
+
+    setSaving(true);
+    try {
+      const created = await run(patch);
+      if (created === undefined) return; // STEP_UP_REQUIRED — dialog is open.
+      navigate(`/admin/plans/${created.id}`);
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.code === 'CONFLICT'
+          ? 'A plan with this slug already exists. Choose a different slug.'
+          : mapUserFacingError(err, { context: 'admin' }),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleStepUpVerified() {
+    setError(null);
+    setSaving(true);
+    try {
+      const created = await onStepUpVerified();
+      if (!created) return;
+      navigate(`/admin/plans/${created.id}`);
+    } catch (err) {
+      setError(mapUserFacingError(err, { context: 'admin' }));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleStepUpCancel() {
+    onStepUpCancel();
+    setSaving(false);
+  }
+
+  return (
+    <Card padding="lg">
+      <SectionHeading as="h1" title="Create plan" size="md" className="mb-4" />
+      <Link to="/admin/plans" className="mb-6 inline-block text-sm text-primary hover:underline">
+        ← Back to plans
+      </Link>
+
+      {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+
+      <div className="space-y-4">
+        <Input
+          label="Slug"
+          name="slug"
+          value={slug}
+          onChange={(e) => setSlug(e.target.value)}
+          hint="Lowercase letters, digits, and hyphens only — must be unique."
+          required
+        />
+        <Input
+          label="Display name"
+          name="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+        <Input
+          label="Tagline"
+          name="tagline"
+          value={tagline}
+          onChange={(e) => setTagline(e.target.value)}
+          required
+        />
+        <Input
+          label="Positioning"
+          name="positioning"
+          value={positioning}
+          onChange={(e) => setPositioning(e.target.value)}
+          hint="Short internal description of who this plan is for."
+          required
+        />
+
+        <label className="flex items-center gap-2 text-sm text-text-primary">
+          <input type="checkbox" checked={isCustomPricing} onChange={(e) => setIsCustomPricing(e.target.checked)} />
+          Custom pricing (Business-style — no fixed monthly price)
+        </label>
+
+        {!isCustomPricing ? (
+          <Input
+            label="Monthly price (ZAR)"
+            value={monthlyPrice}
+            onChange={(e) => setMonthlyPrice(e.target.value)}
+            hint="Whole rands — stored as cents on the server."
+          />
+        ) : null}
+
+        <Input
+          label="Max assets"
+          value={maxAssets}
+          onChange={(e) => setMaxAssets(e.target.value)}
+          hint="Leave empty for unlimited / quote-only plans."
+        />
+
+        <Input label="Sort order" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
+
+        <label className="flex flex-col gap-1 text-sm text-text-primary">
+          Support level
+          <select
+            value={supportLevel}
+            onChange={(e) => setSupportLevel(e.target.value as (typeof CREATE_PLAN_SUPPORT_LEVELS)[number])}
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+          >
+            {CREATE_PLAN_SUPPORT_LEVELS.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-text-primary">
+          <input type="checkbox" checked={isMostPopular} onChange={(e) => setIsMostPopular(e.target.checked)} />
+          Most popular (highlighted on customer onboarding)
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-text-primary">
+          <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+          Active (visible to customers on onboarding)
+        </label>
+
+        <fieldset>
+          <legend className="mb-2 text-sm font-semibold text-text-primary">Account types</legend>
+          <div className="flex flex-wrap gap-4">
+            {ACCOUNT_TYPE_OPTIONS.map((type) => (
+              <label key={type} className="flex items-center gap-2 text-sm capitalize text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={accountTypes.includes(type)}
+                  onChange={() => toggleAccountType(type)}
+                />
+                {type}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend className="mb-2 text-sm font-semibold text-text-primary">Features (bullet list)</legend>
+          <div className="space-y-2">
+            {features.map((feature, index) => (
+              <div key={index} className="flex gap-2">
+                <Input
+                  label={`Feature ${index + 1}`}
+                  value={feature}
+                  onChange={(e) => updateFeature(index, e.target.value)}
+                  className="flex-1"
+                />
+                <Button type="button" variant="secondary" size="sm" onClick={() => removeFeature(index)}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+          <Button type="button" variant="secondary" size="sm" className="mt-2" onClick={addFeature}>
+            Add feature
+          </Button>
+        </fieldset>
+      </div>
+
+      <div className="mt-8 flex gap-3">
+        <Button loading={saving} onClick={() => void handleCreate()}>
+          Create plan
         </Button>
         <Link to="/admin/plans">
           <Button variant="secondary">Cancel</Button>

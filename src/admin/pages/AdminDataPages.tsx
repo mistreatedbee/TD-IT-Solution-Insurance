@@ -24,12 +24,16 @@ import {
 } from '../../lib/plan-catalog-display';
 import { listAdminPlans, type AdminPlanCatalogItem } from '../api/admin-plans';
 import {
+  archiveAdminAsset,
+  cancelAdminPolicy,
   getAdminAccount,
   getAdminAsset,
   getAdminPolicy,
   listAdminAccounts,
   listAdminAssets,
   listAdminPolicies,
+  setAdminAssetLegalHold,
+  setAdminPolicyLegalHold,
   updateAdminAccountState,
   type AdminAccountDetail,
   type AdminAccountSummary,
@@ -289,18 +293,14 @@ function AccountStateActions({
     );
   }
 
-  if (account.accountState === 'deactivated') {
+  if (
+    account.accountState !== 'active' &&
+    account.accountState !== 'suspended' &&
+    account.accountState !== 'deactivated'
+  ) {
     return (
       <p className="text-sm text-text-secondary">
-        This account is deactivated. Reactivation is not available through the admin panel.
-      </p>
-    );
-  }
-
-  if (account.accountState !== 'active' && account.accountState !== 'suspended') {
-    return (
-      <p className="text-sm text-text-secondary">
-        State changes are available only for active or suspended accounts.
+        State changes are available only for active, suspended, or deactivated accounts.
       </p>
     );
   }
@@ -429,6 +429,21 @@ function AccountStateActions({
               Deactivate account
             </Button>
           </>
+        ) : null}
+        {account.accountState === 'deactivated' ? (
+          <Button
+            size="sm"
+            loading={busy === 'active'}
+            disabled={busy !== null}
+            onClick={() =>
+              void applyState(
+                'active',
+                'Reactivate this deactivated account? The customer can sign in again. Push tokens remain disabled until they re-register a device.',
+              )
+            }
+          >
+            Reactivate account
+          </Button>
         ) : null}
       </div>
       {stepUpOpen ? (
@@ -642,6 +657,152 @@ export function PoliciesListPage() {
   );
 }
 
+/** Business-owner gap report items 2 & 4 — cancel + legal-hold actions for a
+ * single policy. Mirrors `AccountStateActions`'s confirm + step-up-retry
+ * pattern; each mutation has its own `useStepUpRetry` instance since the
+ * hook wraps exactly one action function. */
+function PolicyActions({
+  policy,
+  onUpdated,
+}: {
+  policy: AdminPolicyDetail;
+  onUpdated: (next: AdminPolicyDetail) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState<'cancel' | 'legal-hold' | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionInfo, setActionInfo] = useState<string | null>(null);
+
+  const cancelStepUp = useStepUpRetry(cancelAdminPolicy);
+  const legalHoldStepUp = useStepUpRetry(setAdminPolicyLegalHold);
+
+  const isTerminal = policy.status === 'cancelled' || policy.status === 'expired';
+
+  async function handleCancel() {
+    if (!window.confirm('Cancel this policy? This cannot be undone from the admin panel.')) return;
+    setBusy('cancel');
+    setActionError(null);
+    setActionInfo(null);
+    try {
+      const trimmedReason = reason.trim();
+      const updated = await cancelStepUp.run(policy.id, {
+        status: 'cancelled',
+        ...(trimmedReason ? { reason: trimmedReason } : {}),
+      });
+      if (updated === undefined) return; // STEP_UP_REQUIRED — dialog is open.
+      onUpdated(updated);
+      setActionInfo('Policy cancelled.');
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleLegalHoldToggle() {
+    const next = !policy.legalHold;
+    setBusy('legal-hold');
+    setActionError(null);
+    setActionInfo(null);
+    try {
+      const trimmedReason = reason.trim();
+      const updated = await legalHoldStepUp.run(policy.id, {
+        legalHold: next,
+        ...(trimmedReason ? { reason: trimmedReason } : {}),
+      });
+      if (updated === undefined) return; // STEP_UP_REQUIRED — dialog is open.
+      onUpdated(updated);
+      setActionInfo(next ? 'Legal hold placed on this policy.' : 'Legal hold removed from this policy.');
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleCancelStepUpVerified() {
+    setActionError(null);
+    try {
+      const updated = await cancelStepUp.onStepUpVerified();
+      if (!updated) return;
+      onUpdated(updated);
+      setActionInfo('Policy cancelled.');
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    }
+  }
+
+  async function handleLegalHoldStepUpVerified() {
+    setActionError(null);
+    try {
+      const updated = await legalHoldStepUp.onStepUpVerified();
+      if (!updated) return;
+      onUpdated(updated);
+      setActionInfo(updated.legalHold ? 'Legal hold placed on this policy.' : 'Legal hold removed from this policy.');
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Input
+        label="Reason (optional)"
+        type="textarea"
+        rows={2}
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+        placeholder="e.g. Customer requested cancellation"
+        disabled={busy !== null}
+      />
+      {actionError ? <InlineAlert tone="danger">{actionError}</InlineAlert> : null}
+      {actionInfo ? <InlineAlert tone="info">{actionInfo}</InlineAlert> : null}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={busy === 'legal-hold'}
+          disabled={busy !== null}
+          onClick={() => void handleLegalHoldToggle()}
+        >
+          {policy.legalHold ? 'Remove legal hold' : 'Place legal hold'}
+        </Button>
+        {!isTerminal ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={busy === 'cancel'}
+            disabled={busy !== null}
+            onClick={() => void handleCancel()}
+          >
+            Cancel policy
+          </Button>
+        ) : null}
+      </div>
+      {cancelStepUp.stepUpOpen ? (
+        <StepUpDialog
+          submitLabel="Verify and continue"
+          onVerified={() => void handleCancelStepUpVerified()}
+          onCancel={() => {
+            cancelStepUp.onStepUpCancel();
+            setBusy(null);
+          }}
+        />
+      ) : null}
+      {legalHoldStepUp.stepUpOpen ? (
+        <StepUpDialog
+          submitLabel="Verify and continue"
+          onVerified={() => void handleLegalHoldStepUpVerified()}
+          onCancel={() => {
+            legalHoldStepUp.onStepUpCancel();
+            setBusy(null);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function PolicyDetailPage({ policyId }: { policyId: string }) {
   const [policy, setPolicy] = useState<AdminPolicyDetail | null>(null);
   const [plans, setPlans] = useState<AdminPlanCatalogItem[]>([]);
@@ -704,6 +865,10 @@ export function PolicyDetailPage({ policyId }: { policyId: string }) {
           { label: 'Effective', value: new Date(policy.effectiveDate).toLocaleString() },
         ]}
       />
+      <div className="mt-8 border-t border-border pt-6">
+        <SectionHeading as="h2" title="Policy actions" size="md" className="mb-3" />
+        <PolicyActions policy={policy} onUpdated={setPolicy} />
+      </div>
     </Card>
   );
 }
@@ -880,6 +1045,150 @@ export function AssetsListPage() {
   );
 }
 
+/** Business-owner gap report items 3 & 4 — archive + legal-hold actions for a
+ * single asset. Same shape as `PolicyActions` above. */
+function AssetActions({
+  asset,
+  onUpdated,
+}: {
+  asset: AdminAssetDetail;
+  onUpdated: (next: AdminAssetDetail) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState<'archive' | 'legal-hold' | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionInfo, setActionInfo] = useState<string | null>(null);
+
+  const archiveStepUp = useStepUpRetry(archiveAdminAsset);
+  const legalHoldStepUp = useStepUpRetry(setAdminAssetLegalHold);
+
+  const isRemoved = asset.status === 'removed';
+
+  async function handleArchive() {
+    if (!window.confirm('Archive this asset? It will no longer count toward the customer’s plan usage.')) return;
+    setBusy('archive');
+    setActionError(null);
+    setActionInfo(null);
+    try {
+      const trimmedReason = reason.trim();
+      const updated = await archiveStepUp.run(asset.id, {
+        status: 'removed',
+        ...(trimmedReason ? { reason: trimmedReason } : {}),
+      });
+      if (updated === undefined) return; // STEP_UP_REQUIRED — dialog is open.
+      onUpdated(updated);
+      setActionInfo('Asset archived.');
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleLegalHoldToggle() {
+    const next = !asset.legalHold;
+    setBusy('legal-hold');
+    setActionError(null);
+    setActionInfo(null);
+    try {
+      const trimmedReason = reason.trim();
+      const updated = await legalHoldStepUp.run(asset.id, {
+        legalHold: next,
+        ...(trimmedReason ? { reason: trimmedReason } : {}),
+      });
+      if (updated === undefined) return; // STEP_UP_REQUIRED — dialog is open.
+      onUpdated(updated);
+      setActionInfo(next ? 'Legal hold placed on this asset.' : 'Legal hold removed from this asset.');
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleArchiveStepUpVerified() {
+    setActionError(null);
+    try {
+      const updated = await archiveStepUp.onStepUpVerified();
+      if (!updated) return;
+      onUpdated(updated);
+      setActionInfo('Asset archived.');
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    }
+  }
+
+  async function handleLegalHoldStepUpVerified() {
+    setActionError(null);
+    try {
+      const updated = await legalHoldStepUp.onStepUpVerified();
+      if (!updated) return;
+      onUpdated(updated);
+      setActionInfo(updated.legalHold ? 'Legal hold placed on this asset.' : 'Legal hold removed from this asset.');
+    } catch (err) {
+      setActionError(mapUserFacingError(err, { context: 'admin' }));
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Input
+        label="Reason (optional)"
+        type="textarea"
+        rows={2}
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+        placeholder="e.g. Reported as part of a fraud investigation"
+        disabled={busy !== null}
+      />
+      {actionError ? <InlineAlert tone="danger">{actionError}</InlineAlert> : null}
+      {actionInfo ? <InlineAlert tone="info">{actionInfo}</InlineAlert> : null}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={busy === 'legal-hold'}
+          disabled={busy !== null}
+          onClick={() => void handleLegalHoldToggle()}
+        >
+          {asset.legalHold ? 'Remove legal hold' : 'Place legal hold'}
+        </Button>
+        {!isRemoved ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={busy === 'archive'}
+            disabled={busy !== null}
+            onClick={() => void handleArchive()}
+          >
+            Archive asset
+          </Button>
+        ) : null}
+      </div>
+      {archiveStepUp.stepUpOpen ? (
+        <StepUpDialog
+          submitLabel="Verify and continue"
+          onVerified={() => void handleArchiveStepUpVerified()}
+          onCancel={() => {
+            archiveStepUp.onStepUpCancel();
+            setBusy(null);
+          }}
+        />
+      ) : null}
+      {legalHoldStepUp.stepUpOpen ? (
+        <StepUpDialog
+          submitLabel="Verify and continue"
+          onVerified={() => void handleLegalHoldStepUpVerified()}
+          onCancel={() => {
+            legalHoldStepUp.onStepUpCancel();
+            setBusy(null);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function AssetDetailPage({ assetId }: { assetId: string }) {
   const [asset, setAsset] = useState<AdminAssetDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -902,9 +1211,14 @@ export function AssetDetailPage({ assetId }: { assetId: string }) {
           { label: 'Status', value: <StatusBadge value={asset.status} /> },
           { label: 'Account', value: <AdminNavLink to={`/admin/accounts/${asset.accountId}`}>{asset.accountId}</AdminNavLink> },
           { label: 'GPS device', value: asset.gpsDeviceId ?? 'Not paired' },
+          { label: 'Legal hold', value: asset.legalHold ? 'Yes' : 'No' },
           { label: 'Registered', value: new Date(asset.registeredAt).toLocaleString() },
         ]}
       />
+      <div className="mt-8 border-t border-border pt-6">
+        <SectionHeading as="h2" title="Asset actions" size="md" className="mb-3" />
+        <AssetActions asset={asset} onUpdated={setAsset} />
+      </div>
     </Card>
   );
 }

@@ -108,6 +108,22 @@ export function getAdminPolicy(id: string) {
   return apiFetch<AdminPolicyDetail>(`/admin/policies/${encodeURIComponent(id)}`);
 }
 
+/** Business-owner gap report item 2 — PATCH /admin/policies/{policyId}: cancel. */
+export function cancelAdminPolicy(policyId: string, body: { status: 'cancelled'; reason?: string }) {
+  return apiFetch<AdminPolicyDetail>(`/admin/policies/${encodeURIComponent(policyId)}`, {
+    method: 'PATCH',
+    body,
+  });
+}
+
+/** Business-owner gap report item 4 — PATCH /admin/policies/{policyId}/legal-hold. */
+export function setAdminPolicyLegalHold(policyId: string, body: { legalHold: boolean; reason?: string }) {
+  return apiFetch<AdminPolicyDetail>(`/admin/policies/${encodeURIComponent(policyId)}/legal-hold`, {
+    method: 'PATCH',
+    body,
+  });
+}
+
 export function listAdminAssets(params?: {
   cursor?: string;
   accountId?: string;
@@ -125,4 +141,20 @@ export function listAdminAssets(params?: {
 
 export function getAdminAsset(id: string) {
   return apiFetch<AdminAssetDetail>(`/admin/assets/${encodeURIComponent(id)}`);
+}
+
+/** Business-owner gap report item 3 — PATCH /admin/assets/{assetId}: archive/remove. */
+export function archiveAdminAsset(assetId: string, body: { status: 'removed'; reason?: string }) {
+  return apiFetch<AdminAssetDetail>(`/admin/assets/${encodeURIComponent(assetId)}`, {
+    method: 'PATCH',
+    body,
+  });
+}
+
+/** Business-owner gap report item 4 — PATCH /admin/assets/{assetId}/legal-hold. */
+export function setAdminAssetLegalHold(assetId: string, body: { legalHold: boolean; reason?: string }) {
+  return apiFetch<AdminAssetDetail>(`/admin/assets/${encodeURIComponent(assetId)}/legal-hold`, {
+    method: 'PATCH',
+    body,
+  });
 }
