@@ -77,8 +77,8 @@ describe('db/feature004-collections — admin_access_log bootstrap specs', () =>
     ]);
     // ADR-0006 §18.7 item 5 — widened to add 'recovery_case' alongside 'policy'/'asset'.
     // Widened again (business-owner gap report item 5) to add 'plan' for admin
-    // plan-catalog create/delete.
-    expect(schema.properties.resourceType?.enum).toEqual(['policy', 'asset', 'recovery_case', 'plan']);
+    // plan-catalog create/delete. Widened again (SR-018-1, Feature 018) to add 'claim'.
+    expect(schema.properties.resourceType?.enum).toEqual(['policy', 'asset', 'recovery_case', 'plan', 'claim']);
   });
 
   it('encodes R-1 conditional invariants via $expr (MongoDB lacks if/then in $jsonSchema)', () => {
@@ -248,6 +248,48 @@ describe('db/feature004-collections — admin_access_log bootstrap specs', () =>
         targetAccountId: null,
         resourceId: null,
         resultCount: 0,
+        fromStatus: null,
+        toStatus: null,
+      };
+      expect(validatesAgainstMongoValidator(row)).toBe(true);
+    });
+
+    it('SR-018-1: accepts a privileged_state_change / claim row (admin claim adjudication audit)', () => {
+      const row = {
+        ...base,
+        eventType: 'privileged_state_change',
+        resourceType: 'claim',
+        targetAccountId: 'account-1',
+        resourceId: new ObjectId(),
+        resultCount: null,
+        fromStatus: 'under_review',
+        toStatus: 'approved',
+      };
+      expect(validatesAgainstMongoValidator(row)).toBe(true);
+    });
+
+    it('SR-018-1: accepts a privileged_data_access / claim row (admin claim detail view)', () => {
+      const row = {
+        ...base,
+        eventType: 'privileged_data_access',
+        resourceType: 'claim',
+        targetAccountId: 'account-1',
+        resourceId: new ObjectId(),
+        resultCount: null,
+        fromStatus: null,
+        toStatus: null,
+      };
+      expect(validatesAgainstMongoValidator(row)).toBe(true);
+    });
+
+    it('SR-018-1: accepts a privileged_bulk_access / claim row (admin claim list view)', () => {
+      const row = {
+        ...base,
+        eventType: 'privileged_bulk_access',
+        resourceType: 'claim',
+        targetAccountId: null,
+        resourceId: null,
+        resultCount: 3,
         fromStatus: null,
         toStatus: null,
       };

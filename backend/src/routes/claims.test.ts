@@ -24,7 +24,7 @@ import { isForwardClaimTransition, type ClaimStatus } from '../lib/claim-rules.j
 import type { Env } from '../config/env.js';
 import type { IdempotencyRepo } from '../repositories/idempotency.js';
 
-function fakeEnv(): Env {
+function fakeEnv(overrides?: Partial<Env>): Env {
   return {
     nodeEnv: 'test',
     isProduction: false,
@@ -43,6 +43,11 @@ function fakeEnv(): Env {
     emailVerificationRedirectUrl: 'tditinsurance://verify-email',
     passwordResetRedirectUrl: 'tditinsurance://reset-password',
     invitationAcceptRedirectUrl: 'tditinsurance://invitations/accept',
+    // SR-018-2: the claims API kill switch defaults to false (fail-closed).
+    // Every pre-existing test in this file exercises claims *behavior*, so it
+    // must opt in explicitly; the kill-switch-specific tests below override it.
+    claimsApiEnabled: true,
+    ...overrides,
   };
 }
 
@@ -184,8 +189,9 @@ function createHarness(opts: {
   asset?: AssetDocument | null;
   policy?: PolicyDocument | null;
   claims?: ClaimDocument[];
+  envOverrides?: Partial<Env>;
 }) {
-  const env = fakeEnv();
+  const env = fakeEnv(opts.envOverrides);
   const kv = new InMemoryKeyValueStore();
   const accountId = opts.accountId ?? randomUUID();
   const sessionId = randomUUID();
@@ -527,5 +533,127 @@ describe('PATCH /v1/claims/{claimId}/respond', () => {
       body: JSON.stringify({ text: 'Unsolicited update.' }),
     });
     expect(res.status).toBe(409);
+  });
+});
+
+describe('SR-018-2: claims API kill switch (CLAIMS_API_ENABLED)', () => {
+  it('GET /v1/claims returns 404 when claimsApiEnabled is unset (fail-closed default)', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({ accountId: acctId, envOverrides: { claimsApiEnabled: undefined } });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const res = await fetch(`${listened.baseUrl}/claims`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /v1/claims returns 404 when claimsApiEnabled is explicitly false', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({ accountId: acctId, envOverrides: { claimsApiEnabled: false } });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const res = await fetch(`${listened.baseUrl}/claims`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for the kill switch before authentication runs (no token, still 404 not 401)', async () => {
+    const harness = createHarness({ envOverrides: { claimsApiEnabled: false } });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+
+    const res = await fetch(`${listened.baseUrl}/claims`);
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /v1/claims returns 404 when disabled', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      asset: sampleAsset(acctId),
+      policy: samplePolicy(acctId),
+      envOverrides: { claimsApiEnabled: false },
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const res = await fetch(`${listened.baseUrl}/claims`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+      body: JSON.stringify({
+        policyId: POLICY_ID,
+        assetId: ASSET_ID,
+        incidentDescription: 'Laptop was stolen from my car overnight.',
+        incidentDate: '2026-08-15',
+        claimedAmount: 1000,
+      }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /v1/claims/{claimId} returns 404 when disabled', async () => {
+    const acctId = randomUUID();
+    const claim = sampleClaim(acctId);
+    const harness = createHarness({ accountId: acctId, claims: [claim], envOverrides: { claimsApiEnabled: false } });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const res = await fetch(`${listened.baseUrl}/claims/${claim.id}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH /v1/claims/{claimId}/respond returns 404 when disabled', async () => {
+    const acctId = randomUUID();
+    const claim = sampleClaim(acctId, { status: 'more_info_requested' });
+    const harness = createHarness({ accountId: acctId, claims: [claim], envOverrides: { claimsApiEnabled: false } });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const res = await fetch(`${listened.baseUrl}/claims/${claim.id}/respond`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'Response text.' }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH /v1/claims/{claimId}/withdraw returns 404 when disabled', async () => {
+    const acctId = randomUUID();
+    const claim = sampleClaim(acctId, { status: 'submitted' });
+    const harness = createHarness({ accountId: acctId, claims: [claim], envOverrides: { claimsApiEnabled: false } });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const res = await fetch(`${listened.baseUrl}/claims/${claim.id}/withdraw`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('still functions normally when claimsApiEnabled is explicitly true', async () => {
+    const acctId = randomUUID();
+    const claim = sampleClaim(acctId);
+    const harness = createHarness({ accountId: acctId, claims: [claim], envOverrides: { claimsApiEnabled: true } });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const res = await fetch(`${listened.baseUrl}/claims`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
   });
 });

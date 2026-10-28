@@ -168,6 +168,22 @@ export interface Env {
    * `false`.
    */
   locationIngestionEnabled?: boolean;
+
+  /**
+   * SR-018-2 kill switch: the Feature 018 claims API (`backend/src/routes/claims.ts`
+   * customer routes and `backend/src/routes/admin-claims.ts` admin routes) was
+   * mounted unconditionally in `index.ts`, with only a client-side mobile flag
+   * (`FEATURE_CLAIMS_ENABLED`) gating it — a rendering decision, not a trust
+   * boundary. Any authenticated customer could call the live production API.
+   * Fail-closed by design, same convention as `locationIngestionEnabled`
+   * (INC-001): this is `true` only when `CLAIMS_API_ENABLED` is present and is
+   * exactly the string `"true"`. Missing, empty, or any other value all
+   * resolve to `false` — all eight claims routes (customer + admin) return 404
+   * before authentication runs. Do not flip to true in production until
+   * Stage 8 (`docs/features/018-claims-filing-and-adjudication/security-review.md`)
+   * is discharged.
+   */
+  claimsApiEnabled?: boolean;
 }
 
 function requireEnv(name: string): string {
@@ -417,6 +433,20 @@ export function loadEnv(): Env {
     );
   }
 
+  // SR-018-2: fail-closed kill switch for the Feature 018 claims API — same
+  // convention as LOCATION_INGESTION_ENABLED above. Only the exact string
+  // "true" enables the claims routes; anything else is off.
+  const claimsApiEnabledRaw = process.env.CLAIMS_API_ENABLED;
+  const claimsApiEnabled = claimsApiEnabledRaw === 'true';
+  if (claimsApiEnabledRaw !== undefined && !claimsApiEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] CLAIMS_API_ENABLED is set to an unrecognized value ` +
+        `("${claimsApiEnabledRaw}"). Treating as disabled (fail-closed, SR-018-2). ` +
+        'Set it to exactly "true" to enable, or unset it to disable.',
+    );
+  }
+
   return {
     nodeEnv,
     isProduction,
@@ -444,5 +474,6 @@ export function loadEnv(): Env {
     invitationAcceptRedirectUrl,
     expoAccessToken,
     locationIngestionEnabled,
+    claimsApiEnabled,
   };
 }

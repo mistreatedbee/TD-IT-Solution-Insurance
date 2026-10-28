@@ -270,17 +270,21 @@ const adminAccessLogJsonSchemaBase: Document = {
         'Soft reference to Supabase app.accounts.id. Non-null on privileged_data_access; null on privileged_bulk_access (enforced below).',
     },
     resourceType: {
-      enum: ['policy', 'asset', 'recovery_case', 'plan'],
+      enum: ['policy', 'asset', 'recovery_case', 'plan', 'claim'],
       description:
         'ADR-0006 §18.7 item 5 — widened to add recovery_case for the Security Company ' +
         'Dashboard partner-case audit trail (PDM-8). Widened again (business-owner gap ' +
         'report item 5) to add plan for admin plan-catalog create/delete — on a plan row, ' +
-        'targetAccountId is the acting admin, not a customer (plans have no customer subject).',
+        'targetAccountId is the acting admin, not a customer (plans have no customer subject). ' +
+        'Widened again (SR-018-1, Feature 018) to add claim for admin claims list/detail/' +
+        'adjudication audit rows — this enum must stay in sync with the TypeScript ' +
+        '`AdminAccessResourceType` union in repositories/admin-access-log.ts; widen both in the ' +
+        'same commit.',
     },
     resourceId: {
       bsonType: ['objectId', 'null'],
       description:
-        'References policies._id, assets._id, or recovery_cases._id per resourceType. Null for list-level / call-scoped rows.',
+        'References policies._id, assets._id, recovery_cases._id, or claims._id per resourceType. Null for list-level / call-scoped rows.',
     },
     resultCount: {
       bsonType: ['int', 'long', 'null'],
