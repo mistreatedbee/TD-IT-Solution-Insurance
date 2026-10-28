@@ -625,3 +625,137 @@ open and is explicitly NOT made by this section.
   not flag a legitimate incident after both.
 
 **Verification:** `tsc --noEmit` clean; full suite `857/857` passing across `76` test files (`npm test`).
+
+## 10. `security-engineer` hands-on verification and concurrence (2026-10-28)
+
+Recorded per §6's required three-signature gate. This is an independent code read against the
+running source, not a review of §7–§9's prose. I ran `cd backend && npx tsc --noEmit && npm test`
+myself: `tsc --noEmit` clean; full suite `857/857` passing across `76` test files on a solo re-run
+(one unrelated flake observed in a mixed full-suite run — `admin-accounts.test.ts`'s stale-
+`mfaVerifiedAt` step-up test failed with `SyntaxError: Unexpected token 'U', "Unauthorized" is not
+valid JSON` under `vitest run`'s default parallelism, then passed 23/23 on an isolated re-run of
+that file alone. That test touches Feature 001 admin-accounts step-up, not any file this gate
+covers — not a Feature 018 regression, flagged here for `backend-engineer`/`automation-qa-engineer`
+to look at as a cross-file timing issue, not blocking this sign-off).
+
+**1. SR-018-2 kill switch — verified, no bypass found.** Read `src/routes/claims.ts:65-79` and
+`src/routes/admin-claims.ts:67-81` directly. In both files, `router.use((_req, _res, next) => { if
+(ctx.env.claimsApiEnabled !== true) { next(apiError('NOT_FOUND')); return; } next(); })` is
+registered as the *first* middleware on the router, before `authenticate` is constructed or applied
+on any of the router's routes. `ctx.env.claimsApiEnabled` is sourced in `src/config/env.ts:439-445`
+as `true` only when `process.env.CLAIMS_API_ENABLED === 'true'` exactly — missing, empty, `"1"`,
+`"True"`, or any other value all resolve to `false`/`undefined`, both of which fail the `!== true`
+check and 404. This is the same fail-closed convention as the existing `locationIngestionEnabled`
+(INC-001) switch, reusing a pattern already in production. I traced every one of the 8 routes
+(`POST /claims`, `GET /claims`, `GET /claims/:claimId`, `PATCH /claims/:claimId/respond`, `PATCH
+/claims/:claimId/withdraw`, `GET /admin/claims`, `GET /admin/claims/:claimId`, `PATCH
+/admin/claims/:claimId`) and confirmed each is registered on one of these two routers, with no
+third mount point and no route-specific exemption from the `router.use` guard. No bypass path
+found. §7's production evidence (switch never set in Render, so already defaulting to the fail-
+closed `false`) is consistent with what the code does when unset. **Verified.**
+
+**2. SR-018-5 idempotency reservation — verified correct, with one accepted residual risk
+documented.** Read `src/middleware/idempotency.ts` end to end and `src/db/redis.ts`'s
+`incrWithTtl` (both `RedisKeyValueStore` and `InMemoryKeyValueStore` implementations).
+- **Store unavailable/slow → fails closed.** Both the `repo.find` lookup and `kv.incrWithTtl` call
+  are inside a single `try { ... } catch (err) { next(err); return; }`. A Redis or Postgres outage
+  or timeout propagates as an error to Express's error handler (a 5xx to the caller) rather than
+  falling through to `next()` and letting the handler run unprotected. No request executes its side
+  effects without either a successful reservation or a successful replay lookup. This is the
+  correct choice per this project's "fail closed, not open" standard for a financial-claim-creating
+  endpoint, at the cost of availability during a KV outage — an acceptable trade here.
+- **Crashed-without-completing request → TTL-bounded, not permanently stuck.** The reservation is
+  `kv.incrWithTtl(lockKey, 60)`. Redis's real `EXPIRE` (and the in-memory store's `expiresAt`) is
+  set unconditionally on the *first* `INCR` to reach count 1 (`redis.ts:70-71`), so if the original
+  request crashes before calling `res.json` (and therefore before `repo.store()` ever runs), the
+  lock key still expires 60 seconds after it was first claimed — a concurrent or retried request
+  gets `409 IDEMPOTENCY_KEY_IN_PROGRESS` for at most 60s, then a fresh attempt can claim the key and
+  proceed normally. No permanent wedge. I checked the comment's own stated rationale
+  (`idempotency.ts:43-46`) against the actual TTL value and it matches the code.
+  - **Residual, non-blocking:** a legitimate request that genuinely takes longer than 60s (the
+    comment calls out "the slowest claims-filing path's several sequential Mongo reads" as the
+    reason for picking 60s) could have its lock expire while still running, letting a retry claim
+    the key and execute a second time before the first finishes — reopening the exact race SR-018-5
+    closes, just on a longer time budget. I did not find evidence any current claims-filing path
+    approaches 60s (it's a handful of account-scoped Mongo lookups plus one insert), so I accept
+    this as a reasonable engineering trade rather than a new finding, but flag it as a condition:
+    **C-018-12 (new, `backend-engineer`, low priority):** instrument/alert if `POST /v1/claims`
+    p99 latency approaches the 60s lock TTL, since that would silently reopen SR-018-5.
+- **`IDEMPOTENCY_KEY_IN_PROGRESS` 409 case** is correctly distinguished from `IDEMPOTENCY_KEY_REUSE`
+  (different body) — confirmed both error codes are distinct and neither masks the other via a
+  shared code path.
+- The reservation is scoped per `endpoint:accountId:key`, which also closes the cross-account key
+  collision the file's own header comment describes, consistent with the account-scoped
+  `repo.find` lookup already in place.
+- **Verified correct**, with C-018-12 tracked, not blocking.
+
+**3. SR-018-3 financial guardrail bypass check — no bypass found.** Read the full
+`admin-claims.ts` PATCH handler (`:179-330`) and `claim-rules.ts`'s amount helpers.
+- `approvedAmount > existing.claimedAmount` → `422 APPROVED_AMOUNT_EXCEEDS_CLAIMED`, checked before
+  any write. `claimedAmount` itself is bounded the same way at creation (`claims.ts`'s
+  `createClaimSchema`), so there is no way to get an oversized `claimedAmount` on record to approve
+  against in the first place.
+- Both `claimedAmount` and `approvedAmount` are `z.number().positive().max(MAX_CLAIM_APPROVED_AMOUNT
+  = 10_000_000).refine(hasAtMostTwoDecimalPlaces)` under **zod 4**. I specifically checked zod 4's
+  `z.number()` coercion behavior: it does not coerce strings, so `"1e300"` or any string-typed body
+  value fails type validation outright (zod 4 numbers require an actual JSON number token, not a
+  numeric string) — I did not find a coercion path in this schema (no `z.coerce.number()` is used
+  here). A literal JSON `1e300` parses to a `number` exceeding `MAX_CLAIM_APPROVED_AMOUNT` and is
+  rejected by `.max()`. A literal JSON `1e400` parses to `Infinity`, which `Number.isFinite` inside
+  `hasAtMostTwoDecimalPlaces` explicitly rejects, and separately `.positive()` under zod 4 also
+  rejects non-finite values. I could not construct a request that reaches the handler with an
+  out-of-bound or non-2-decimal amount.
+- `hasAtMostTwoDecimalPlaces` uses an integer-cents comparison with a `1e-6` epsilon specifically to
+  avoid float-drift false negatives/positives (e.g. `19.99`) — read the implementation and it is
+  correct for the stated purpose; I could not find an edge value (tested mentally against values
+  near cent boundaries, e.g. `0.005`, `99999999.99`) that both passes the precision check and lands
+  outside the ceiling undetected.
+- The amount is now recorded in the Trail B `privileged_state_change` row via the `reason` field
+  (`admin-claims.ts:266-280`) for every `approved` action — confirmed present, addressing the
+  original "cannot answer which admin approved what amount" gap. Minor, non-blocking observation:
+  this is a free-text `reason` string (`approvedAmount=1200.00 ZAR`), not a structured/queryable
+  field — fine for AUD-8 manual reconstruction, awkward for any future automated reconciliation
+  against `claims.approvedAmount`. Not a new finding; `cybersecurity-architect`'s §2 item 4 already
+  accepted either approach.
+- **No bypass found. SR-018-3 verified closed.**
+
+**4. Audit trail completeness — verified consistent, confirms §4's table.** Checked the `'claim'`
+resourceType end to end: TS union in `repositories/admin-access-log.ts`, the Mongo `$jsonSchema`
+enum in `feature004-collections.ts:272-279` (now includes `'claim'`, with a comment instructing
+future widenings to touch both files together — a reasonable process guard against SR-018-1
+recurring), and all three call sites in `admin-claims.ts` (`recordBulkDisclosure` on list,
+`recordDetail` on single read, `recordStateChange` on every PATCH action, written *before* the
+mutation per AUD-10, matching the existing `admin-policies.ts`/`recovery-cases.ts` convention). Every
+state transition (customer create/respond/withdraw via `statusHistory`, admin action via both
+`statusHistory` and Trail B) produces a traceable row, with the exceptions already disclosed and
+tracked as conditions (not blocking) in §4 and C-018-3 (missing creation entry in `statusHistory`)
+— I re-confirm that gap still exists (`createForAccount` still writes `statusHistory: []`) and is
+correctly left as a tracked condition, not a Stage-8 blocker, since the `submittedAt` timestamp and
+the Mongo `_id`'s own ObjectId timestamp already anchor "when" even without an explicit transition
+row. No inconsistency found between the TS union and the DB validator as of this read — recommend,
+as §2's SR-018-1 fix already does, the equality test it calls for actually land under SR-018-8(f)
+so this cannot drift again silently.
+
+**Items not independently re-verified in this pass (explicitly out of scope for hands-on
+verification, deferred to the parties the open findings already name):** SR-018-4's live Atlas
+`collMod`/read-back (owner-run per INC-003 §39 restriction — I do not have production DB access and
+did not attempt to simulate it); SR-018-6/7's compliance wording ruling (`compliance-specialist`'s
+open item, §9); SR-018-8's manifest/test-backlog items (process, not code, tracked against
+`automation-qa-engineer`/`cybersecurity-architect`); C-018-1 through C-018-11 (tracked conditions,
+not blockers, unchanged by this pass except for the new C-018-12 above).
+
+**Concurrence:** I concur with `cybersecurity-architect`'s verdict in §0/§6. SR-018-1, SR-018-2,
+SR-018-3, and SR-018-5 are hands-on verified closed in running code, with no bypass found on any of
+the four areas I was asked to check. SR-018-6 and SR-018-7's code paths are present and consistent
+with their closure notes (§9) on a read of `claim-serializers.ts`/`claim-rules.ts`, though I did not
+re-derive their test coverage line-by-line beyond confirming the suite is green. SR-018-4's
+code-side fix (currency pinned server-side, policy-missing fails closed, see
+`admin-claims.ts:242-263`) reads correctly, but its required production `collMod`/read-back evidence
+is outside this role's access and is not claimed here. **The flag must remain unflipped
+(`CLAIMS_API_ENABLED` stays unset/`false` in all non-development profiles) until SR-018-8's process
+items are closed and `compliance-specialist` records concurrence**, per §6's three-signature
+requirement — my concurrence on the code-level findings does not by itself discharge Stage 8.
+
+| Role | Decision | Date |
+|---|---|---|
+| `security-engineer` (R) | **CONCUR** with `cybersecurity-architect`'s BLOCKED verdict; SR-018-1/2/3/5 hands-on verified closed in code; SR-018-8 and `compliance-specialist`'s concurrence remain outstanding before the flag may flip | 2026-10-28 |
