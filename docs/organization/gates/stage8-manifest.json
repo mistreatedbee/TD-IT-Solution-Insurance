@@ -294,6 +294,40 @@
       }
     },
     {
+      "id": "backend-claims-customer",
+      "kind": "backend_route_group",
+      "pattern": "/claims*",
+      "feature": "018",
+      "stage8": {
+        "doc": "docs/features/018-claims-filing-and-adjudication/security-review.md",
+        "verdict": "blocked-re-review-2026-10-28-sr-018-9-sr-018-8",
+        "note": "SR-018-8 (added at re-review, security-review.md §11). Covers POST/GET /claims, GET /claims/:claimId, PATCH /claims/:claimId/respond, PATCH /claims/:claimId/withdraw. This entry records coverage for CI-1, which is a coverage check only; it is NOT a release approval. Release is enforced by the server kill switch CLAIMS_API_ENABLED (must stay unset/not \"true\" in every Render environment) and by mobile-claims carrying no flagEnableApproved.",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "CLAIMS_API_ENABLED must not be set to \"true\" in any non-development environment until security-review.md §6 carries all three signatures.",
+          "SR-018-9 (Critical, §11.2): the kill switch must be scoped to the claims paths so it no longer shadows /analytics, /admin/analytics, /support and /support-cases.",
+          "SR-018-8 remainder (§11.4): tests (a), (c), (d), (e) and the new (g)/(h).",
+          "Joint gate: security-engineer concurrence recorded (§10) but predates SR-018-9 and must be re-confirmed; compliance-specialist concurrence not yet recorded."
+        ]
+      }
+    },
+    {
+      "id": "backend-admin-claims",
+      "kind": "backend_route_group",
+      "pattern": "/admin/claims*",
+      "feature": "018",
+      "stage8": {
+        "doc": "docs/features/018-claims-filing-and-adjudication/security-review.md",
+        "verdict": "blocked-re-review-2026-10-28-sr-018-9-sr-018-8",
+        "note": "SR-018-8 (added at re-review, security-review.md §11). Distinct entry, NOT absorbed into backend-admin (/admin/*): the Feature 004 admin-surface review is not a review of Feature 018 adjudication (SR-012-5 precedent). Covers GET /admin/claims, GET /admin/claims/:claimId, PATCH /admin/claims/:claimId (step-up gated). Coverage record only, not a release approval; same kill-switch enforcement as backend-claims-customer.",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "Same conditions as backend-claims-customer.",
+          "C-018-4 / RR-018-1: no payout path may read awaiting_payout + approvedAmount without its own Stage 8 (dual control precondition)."
+        ]
+      }
+    },
+    {
       "id": "mobile-auth",
       "kind": "mobile_route_group",
       "pattern": "(auth)*",
@@ -347,7 +381,9 @@
       "feature": "005",
       "stage8": {
         "waived": true,
-        "reason": "Release Gate A — no claims backend; gated via FEATURE_CLAIMS",
+        "reason": "Release Gate A — no claims backend; gated via FEATURE_CLAIMS. [SUPERSEDED 2026-10-28 by cybersecurity-architect, Feature 018 security-review.md §11 (SR-018-8). The text before this bracket is retained for audit and is VOID as a statement of current status: a claims backend has existed since 4a16ced. Current status: these screens are the client half of Feature 018. Waiver STANDS and EXPO_PUBLIC_FEATURE_CLAIMS STAYS \"false\" in every non-development eas.json profile until the Feature 018 Stage 8 is discharged. No flagEnableApproved.]",
+        "doc": "docs/features/018-claims-filing-and-adjudication/security-review.md",
+        "verdict": "blocked-re-review-2026-10-28-sr-018-9-sr-018-8",
         "owner": "mobile-architect"
       }
     },
@@ -808,6 +844,18 @@
       "stage8": {
         "waived": true,
         "reason": "SH-1a backfill (2026-09-03) — Admin plan editor UI (src/admin/pages/AdminPlansPages.tsx). No Stage 8 record found in Feature 006's security-review.md (backend /plans* only); Feature 006's qa-test-strategy.md §... independently flags zero test evidence for this component's admin/non-admin boundary.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-claims",
+      "kind": "web_route_group",
+      "pattern": "/admin/claims*",
+      "feature": "018",
+      "stage8": {
+        "doc": "docs/features/018-claims-filing-and-adjudication/security-review.md",
+        "verdict": "blocked-re-review-2026-10-28-sr-018-9-sr-018-8",
+        "note": "SR-018-8 (added at re-review, security-review.md §11). Admin claims queue and detail (src/admin/pages/AdminClaimsPages.tsx, AdminRoutes.tsx claims + claims/:claimId). Reviewed only for STEP_UP_REQUIRED handling (useStepUpRetry); no wider web UI review is implied. The UI is not flag-gated; it is inert in production only because the backend kill switch returns 404.",
         "owner": "cybersecurity-architect"
       }
     },
