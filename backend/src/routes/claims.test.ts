@@ -340,6 +340,42 @@ afterEach(async () => {
 });
 
 describe('POST /v1/claims', () => {
+  // SR-018-8(d): the idempotency gate must run (and fail closed) before any
+  // claim is created, for both a missing header and a non-UUID value.
+  it.each([
+    ['missing', undefined],
+    ['non-UUID', 'not-a-uuid'],
+  ])('rejects a %s Idempotency-Key with 400 and creates no claim', async (_label, keyValue) => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      asset: sampleAsset(acctId),
+      policy: samplePolicy(acctId),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+
+    const headers: Record<string, string> = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+    if (keyValue !== undefined) headers['idempotency-key'] = keyValue;
+
+    const res = await fetch(`${listened.baseUrl}/claims`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        policyId: POLICY_ID,
+        assetId: ASSET_ID,
+        incidentDescription: 'Laptop was stolen from my car overnight.',
+        incidentDate: '2026-09-15',
+        claimedAmount: 1000,
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('IDEMPOTENCY_KEY_REQUIRED');
+    expect(harness.claims).toHaveLength(0);
+  });
+
   it('AC-1: rejects a claim against a non-active (cancelled) policy with 422 POLICY_NOT_ACTIVE', async () => {
     const acctId = randomUUID();
     const harness = createHarness({
@@ -657,6 +693,13 @@ describe('POST /v1/claims', () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.status).toBe('submitted');
+    // SR-018-8(c): the response body is admin-only-field-free by design
+    // (`serializeClaimForCustomer` strips `fraudFlags`), so the only way to
+    // prove the flag was actually computed AND persisted — not just eligible
+    // to be returned — is to read the stored document directly.
+    const persisted = harness.claims.find((c) => c.id === body.id);
+    expect(persisted).toBeDefined();
+    expect(persisted!.fraudFlags).toContain('FLAG_RATE_THRESHOLD');
   });
 });
 

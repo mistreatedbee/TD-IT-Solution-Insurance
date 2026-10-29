@@ -1,14 +1,19 @@
 /**
  * SR-018-9 regression test.
  *
- * `claims.ts` / `admin-claims.ts` register their `CLAIMS_API_ENABLED` kill
- * switch as a path-less `router.use(...)`. Both routers are mounted at the
- * v1 root with no path prefix (see `index.ts`). In Express, a path-less
+ * `claims.ts` / `admin-claims.ts` used to register their `CLAIMS_API_ENABLED`
+ * kill switch as a path-less `router.use(...)`. Both routers are mounted at
+ * the v1 root with no path prefix (see `index.ts`). In Express, a path-less
  * `router.use` on a root-mounted router runs for EVERY request that reaches
  * that router instance — not just the routes it itself defines. With the
  * switch off, that silently 404'd every router mounted AFTER claims in
  * index.ts's real mount order: `/analytics`, `/admin/analytics`, `/support`,
  * `/support-cases*`.
+ *
+ * This is now fixed: the gate is scoped to `router.use('/claims', ...)` /
+ * `router.use('/admin/claims', ...)` (segment-boundary matched), so it no
+ * longer intercepts requests for routers mounted after it. This test file
+ * is kept as the regression guard for that fix.
  *
  * This file builds a single Express app mounting the routers in the exact
  * relative order `index.ts` uses, starting from `createClaimsRouter` through

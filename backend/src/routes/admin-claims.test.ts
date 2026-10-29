@@ -191,6 +191,14 @@ function createHarness(opts: {
   asset?: AssetDocument;
   claim: ClaimDocument;
   mfaVerifiedAt?: Date | null;
+  /** SR-018-8(a): simulate a revoked admin session (`sessions.findById`
+   * returns a row with `revokedAt` set), distinct from a stale/null
+   * `mfaVerifiedAt` on an otherwise-live session. */
+  sessionRevokedAt?: Date | null;
+  /** SR-018-8(e)/AUD-10: when set, `adminAccessLog.recordStateChange` throws
+   * this instead of recording, to prove the claim mutation that follows it
+   * in the route never runs (fail-safe, not fail-open). */
+  auditLogThrows?: Error;
   envOverrides?: Partial<Env>;
   linkedRecoveryCase?: {
     id: string;
@@ -215,7 +223,7 @@ function createHarness(opts: {
   const sessionRecord = {
     id: adminSessionId,
     accountId: adminAccountId,
-    revokedAt: null as Date | null,
+    revokedAt: opts.sessionRevokedAt ?? null,
     mfaVerifiedAt: opts.mfaVerifiedAt !== undefined ? opts.mfaVerifiedAt : new Date(),
   };
 
@@ -351,6 +359,7 @@ function createHarness(opts: {
         bulkDisclosures.push(input);
       },
       async recordStateChange(input: AdminAccessStateChangeInput) {
+        if (opts.auditLogThrows) throw opts.auditLogThrows;
         stateChanges.push(input);
       },
     },
@@ -951,6 +960,86 @@ describe('PATCH /v1/admin/claims/{claimId}', () => {
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error.code).toBe('STEP_UP_REQUIRED');
+  });
+
+  // SR-018-8(a): a session that is otherwise fresh (mfaVerifiedAt = now) but
+  // has been revoked (e.g. logout / admin-forced revocation elsewhere) must
+  // still be rejected with STEP_UP_REQUIRED, not treated as a live session.
+  it('requires step-up — revoked session returns 401 STEP_UP_REQUIRED, claim unchanged', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId),
+      mfaVerifiedAt: new Date(),
+      sessionRevokedAt: new Date(),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'rejected', rejectionReason: 'Insufficient evidence of ownership.' }),
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error.code).toBe('STEP_UP_REQUIRED');
+    expect(harness.getClaim().status).toBe('under_review');
+    expect(harness.stateChanges).toHaveLength(0);
+  });
+
+  // SR-018-8(e)/AUD-10: exactly one audit row per admin action, and AUD-10's
+  // fail-safe ordering — the audit write happens before the mutation
+  // (security-review.md §12.3 "Write the decision record BEFORE the
+  // mutation"), so if it throws, the mutation must never run.
+  it('writes exactly one privileged_state_change claim audit row per admin action', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'rejected', rejectionReason: 'Insufficient evidence of ownership.', groundCode: 'INSUFFICIENT_EVIDENCE_OF_OWNERSHIP' }),
+    });
+    expect(res.status).toBe(200);
+    expect(harness.stateChanges).toHaveLength(1);
+    expect(harness.stateChanges[0]!.resourceType).toBe('claim');
+    expect(harness.stateChanges[0]!.resourceId).toBe(CLAIM_ID);
+  });
+
+  it('fails closed, with no claim mutation, when the audit-log write throws (AUD-10)', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId),
+      auditLogThrows: new Error('simulated audit-log outage'),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'rejected', rejectionReason: 'Insufficient evidence of ownership.', groundCode: 'INSUFFICIENT_EVIDENCE_OF_OWNERSHIP' }),
+    });
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    // The claim document must be untouched — the mutation never ran.
+    expect(harness.getClaim().status).toBe('under_review');
+    expect(harness.getClaim().rejectionReason).toBeNull();
   });
 
   it('succeeds with a fresh step-up (default harness mfaVerifiedAt = now)', async () => {
