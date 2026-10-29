@@ -5,6 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useClaimQuery, useRespondToClaimMutation, useWithdrawClaimMutation } from '../../api/hooks/useClaims';
+import type { Claim } from '../../api/claims';
 import { Alert, Badge, Button, Card, Input, Screen } from '../../theme/primitives';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { claimStatusBadgeTone, formatClaimStatus, isClaimWithdrawable } from '../../lib/claim-labels';
@@ -107,6 +108,52 @@ export function ClaimDetailScreen() {
         </Card>
       ) : null}
 
+      {claim.quantumReason ? (
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Why the approved amount differs from what you claimed</Text>
+          <DetailRow
+            label="Amount claimed"
+            value={`${claim.claimedAmountCurrency} ${claim.claimedAmount.toLocaleString()}`}
+          />
+          {claim.approvedAmount != null ? (
+            <DetailRow
+              label="Amount approved"
+              value={`${claim.claimedAmountCurrency} ${claim.approvedAmount.toLocaleString()}`}
+            />
+          ) : null}
+          <Text style={styles.body}>{claim.quantumReason}</Text>
+        </Card>
+      ) : null}
+
+      {claim.closeReason ? (
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Reason this claim was closed</Text>
+          <Text style={styles.body}>{claim.closeReason}</Text>
+        </Card>
+      ) : null}
+
+      {claim.decisionNotices.length > 0 ? (
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Important notices about this claim</Text>
+          {[...claim.decisionNotices]
+            .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
+            .map((notice, idx) => (
+              <View key={idx} style={styles.noticeBlock} testID={`decision-notice-${idx}`}>
+                <Text style={styles.noticeHeading}>{decisionNoticeHeading(notice.kind)}</Text>
+                <Text style={styles.noticeMeta}>{new Date(notice.issuedAt).toLocaleString()}</Text>
+                {notice.renderedText
+                  .split(/\n\n+/)
+                  .filter((p) => p.trim().length > 0)
+                  .map((paragraph, pIdx) => (
+                    <Text key={pIdx} style={styles.noticeParagraph}>
+                      {paragraph}
+                    </Text>
+                  ))}
+              </View>
+            ))}
+        </Card>
+      ) : null}
+
       {claim.reviewNotes.length > 0 ? (
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>Reviewer notes</Text>
@@ -183,6 +230,21 @@ export function ClaimDetailScreen() {
   );
 }
 
+function decisionNoticeHeading(kind: Claim['decisionNotices'][number]['kind']): string {
+  switch (kind) {
+    case 'rejection':
+      return 'Claim rejection notice';
+    case 'partial_approval_shortfall':
+      return 'Partial approval notice';
+    case 'administrative_close':
+      return 'Claim closed notice';
+    case 'more_info_request':
+      return 'Information request';
+    default:
+      return 'Notice';
+  }
+}
+
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.row}>
@@ -232,6 +294,28 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xs,
     color: colors.slate[500],
     marginTop: spacing.xs,
+  },
+  noticeBlock: {
+    marginBottom: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.slate[100],
+  },
+  noticeHeading: {
+    fontSize: typography.sizes.base,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  noticeMeta: {
+    fontSize: typography.sizes.xs,
+    color: colors.slate[500],
+    marginBottom: spacing.sm,
+  },
+  noticeParagraph: {
+    fontSize: typography.sizes.base,
+    color: colors.textSecondary,
+    lineHeight: typography.sizes.base * 1.4,
+    marginBottom: spacing.sm,
   },
   multilineInput: {
     minHeight: 100,

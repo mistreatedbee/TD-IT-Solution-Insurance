@@ -24,6 +24,9 @@ const baseClaim = {
   claimedAmountCurrency: 'ZAR',
   approvedAmount: null,
   rejectionReason: null,
+  closeReason: null,
+  quantumReason: null,
+  decisionNotices: [],
   reviewNotes: [],
   submittedAt: '2026-10-01T00:00:00.000Z',
   decidedAt: null,
@@ -123,5 +126,111 @@ describe('ClaimDetailScreen', () => {
     });
     await renderWithProviders(<ClaimDetailScreen />);
     expect(screen.queryByText('Withdraw claim')).toBeNull();
+  });
+
+  it('renders the full decision notice text, most recent first, for a rejected claim', async () => {
+    const olderNotice = {
+      kind: 'more_info_request' as const,
+      templateVersion: 1,
+      groundCode: null,
+      renderedText: 'We need more evidence to assess your claim.',
+      issuedAt: '2026-09-01T00:00:00.000Z',
+    };
+    const newerNotice = {
+      kind: 'rejection' as const,
+      templateVersion: 2,
+      groundCode: 'EXCLUDED_CAUSE',
+      renderedText:
+        'Claim reference: claim-1.\n\n' +
+        'Ground: EXCLUDED_CAUSE.\nReason: not covered under the policy.\n\n' +
+        'Your right to respond: you may make representations within 90 days. Contact: complaints@example.com.',
+      issuedAt: '2026-10-02T00:00:00.000Z',
+    };
+    mockUseClaimQuery.mockReturnValue({
+      data: {
+        ...baseClaim,
+        status: 'rejected',
+        rejectionReason: 'Not covered under the policy.',
+        decisionNotices: [olderNotice, newerNotice],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    await renderWithProviders(<ClaimDetailScreen />);
+
+    expect(screen.getByText('Important notices about this claim')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Your right to respond: you may make representations within 90 days. Contact: complaints@example.com.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Ground: EXCLUDED_CAUSE.\nReason: not covered under the policy.')).toBeTruthy();
+    expect(screen.getByText('We need more evidence to assess your claim.')).toBeTruthy();
+
+    // Most-recent-first: the rejection notice (newer) appears before the more-info notice (older).
+    const rejectionHeading = screen.getByText('Claim rejection notice');
+    const infoHeading = screen.getByText('Information request');
+    const tree = screen.toJSON();
+    const serialized = JSON.stringify(tree);
+    expect(serialized.indexOf('Claim rejection notice')).toBeLessThan(serialized.indexOf('Information request'));
+    expect(rejectionHeading).toBeTruthy();
+    expect(infoHeading).toBeTruthy();
+  });
+
+  it('shows quantumReason alongside claimed vs approved amount for a partial approval', async () => {
+    mockUseClaimQuery.mockReturnValue({
+      data: {
+        ...baseClaim,
+        status: 'approved',
+        approvedAmount: 600,
+        quantumReason: 'Depreciation applied per policy clause 4.2.',
+        decisionNotices: [
+          {
+            kind: 'partial_approval_shortfall' as const,
+            templateVersion: 1,
+            groundCode: 'QUANTUM_DISPUTED',
+            renderedText: 'We have approved a reduced amount for your claim.',
+            issuedAt: '2026-10-05T00:00:00.000Z',
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    await renderWithProviders(<ClaimDetailScreen />);
+
+    expect(screen.getByText('Why the approved amount differs from what you claimed')).toBeTruthy();
+    expect(screen.getByText('Depreciation applied per policy clause 4.2.')).toBeTruthy();
+    expect(screen.getAllByText('ZAR 1,000').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('ZAR 600').length).toBeGreaterThan(0);
+  });
+
+  it('shows closeReason for a closed claim', async () => {
+    mockUseClaimQuery.mockReturnValue({
+      data: {
+        ...baseClaim,
+        status: 'closed',
+        closeReason: 'Closed at customer request after a duplicate filing.',
+        decisionNotices: [
+          {
+            kind: 'administrative_close' as const,
+            templateVersion: 1,
+            groundCode: 'DUPLICATE_CLAIM',
+            renderedText: 'This claim has been closed administratively.',
+            issuedAt: '2026-10-06T00:00:00.000Z',
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    await renderWithProviders(<ClaimDetailScreen />);
+
+    expect(screen.getByText('Reason this claim was closed')).toBeTruthy();
+    expect(screen.getByText('Closed at customer request after a duplicate filing.')).toBeTruthy();
+    expect(screen.getByText('This claim has been closed administratively.')).toBeTruthy();
   });
 });

@@ -29,6 +29,27 @@ export interface ClaimReviewNote {
   createdAt: string;
 }
 
+export type ClaimDecisionNoticeKind =
+  | 'rejection'
+  | 'partial_approval_shortfall'
+  | 'administrative_close'
+  | 'more_info_request';
+
+/**
+ * Server-composed, versioned compliance disclosure (security-review.md
+ * §12.3 N-1 / CR-018-12) — `renderedText` carries the full legally-required
+ * content (90-day representation right, Ombud contacts, re-filing right,
+ * licence numbers, etc.) and must be shown to the customer in full, not
+ * summarized.
+ */
+export interface ClaimDecisionNotice {
+  kind: ClaimDecisionNoticeKind;
+  templateVersion: number;
+  groundCode: string | null;
+  renderedText: string;
+  issuedAt: string;
+}
+
 export interface Claim {
   id: string;
   policyId: string;
@@ -47,6 +68,12 @@ export interface Claim {
   claimedAmountCurrency: string;
   approvedAmount: number | null;
   rejectionReason: string | null;
+  /** Admin-initiated close reason (SR-018-6) — never set on a customer withdrawal. */
+  closeReason: string | null;
+  /** Admin's reason for disputing the claimed amount on a partial approval (§12.3 N-3). */
+  quantumReason: string | null;
+  /** Compliance disclosures for rejected/closed/partially-approved claims (CR-018-12). */
+  decisionNotices: ClaimDecisionNotice[];
   reviewNotes: ClaimReviewNote[];
   submittedAt: string;
   decidedAt: string | null;
