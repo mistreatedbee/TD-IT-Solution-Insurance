@@ -42,6 +42,14 @@ export function serializeClaimForCustomer(claim: ClaimDocument) {
       groundCode: n.groundCode,
       renderedText: n.renderedText,
       issuedAt: n.issuedAt,
+      // SR-018-10/CR-018-7 (security-review.md §16.4 item 3) — delivery
+      // attempts carry no sensitive content beyond what's already in this
+      // notice (channel/timestamp/outcome only), so they're safe to surface
+      // alongside it. This lets the claim detail view show "notice not yet
+      // delivered" when `deliveries` is empty or every attempt failed — the
+      // chair's flagged admin-UI follow-up still needs building on top of
+      // this, but the data is here now.
+      deliveries: n.deliveries,
     })),
     // SR-018-6 — `authorRole` lets the customer tell an admin's more-info
     // request apart from their own prior response, without ever exposing

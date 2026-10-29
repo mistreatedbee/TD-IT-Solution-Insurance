@@ -34,6 +34,35 @@ function createFakeDb(collections: Record<string, RawDoc[]>): Db {
           if (!row) return null;
           return applyInclusionProjection(row, options?.projection);
         },
+        // Minimal fake of the one `updateOne` shape `appendNoticeDelivery`
+        // uses: a `$push` on an `arrayFilters`-scoped array element,
+        // matched by `decisionNotices[].issuedAt`.
+        async updateOne(
+          filter: Record<string, unknown>,
+          update: { $push?: Record<string, unknown> },
+          options?: { arrayFilters?: Record<string, unknown>[] },
+        ) {
+          const idFilter = filter._id as ObjectId | undefined;
+          const row = docs.find((d) => (idFilter ? d._id.equals(idFilter) : true)) as
+            | (RawDoc & { decisionNotices?: { issuedAt: string; deliveries: unknown[] }[] })
+            | undefined;
+          if (!row) return { matchedCount: 0, modifiedCount: 0 };
+
+          const pushPath = update.$push ? Object.keys(update.$push)[0] : undefined;
+          if (!pushPath || !pushPath.startsWith('decisionNotices.$[n].')) {
+            return { matchedCount: 1, modifiedCount: 0 };
+          }
+          const field = pushPath.split('.').pop()!;
+          const expectedIssuedAt = options?.arrayFilters?.[0]?.['n.issuedAt'];
+          const notice = (row.decisionNotices ?? []).find((n) => n.issuedAt === expectedIssuedAt);
+          if (!notice) return { matchedCount: 1, modifiedCount: 0 };
+
+          (notice as Record<string, unknown>)[field] = [
+            ...((notice as Record<string, unknown>)[field] as unknown[]),
+            update.$push![pushPath],
+          ];
+          return { matchedCount: 1, modifiedCount: 1 };
+        },
       };
     },
   } as unknown as Db;
@@ -98,5 +127,96 @@ describe('getLinkedRecoveryCaseSummary', () => {
     const repo = createClaimsRepo(db);
 
     expect(await repo.getLinkedRecoveryCaseSummary('not-an-object-id')).toBeNull();
+  });
+});
+
+describe('appendNoticeDelivery', () => {
+  it('pushes a delivery onto the matching notice only, by issuedAt, leaving renderedText and other fields untouched', async () => {
+    const otherNotice = {
+      kind: 'administrative_close',
+      templateVersion: 1,
+      groundCode: 'DUPLICATE_CLAIM',
+      renderedText: 'other notice text',
+      issuedAt: '2026-10-01T00:00:00.000Z',
+      deliveries: [],
+    };
+    const targetNotice = {
+      kind: 'rejection',
+      templateVersion: 1,
+      groundCode: 'OTHER',
+      renderedText: 'the stored rejection text',
+      issuedAt: '2026-10-29T10:00:00.000Z',
+      deliveries: [],
+    };
+    const db = createFakeDb({
+      claims: [{ _id: CLAIM_ID, decisionNotices: [otherNotice, targetNotice] } as unknown as RawDoc],
+      recovery_cases: [],
+    });
+    const repo = createClaimsRepo(db);
+
+    const ok = await repo.appendNoticeDelivery(CLAIM_ID.toHexString(), {
+      noticeIssuedAt: targetNotice.issuedAt,
+      delivery: { channel: 'email', attemptedAt: '2026-10-29T10:00:01.000Z', succeeded: true },
+    });
+
+    expect(ok).toBe(true);
+    expect(targetNotice.deliveries).toEqual([
+      { channel: 'email', attemptedAt: '2026-10-29T10:00:01.000Z', succeeded: true },
+    ]);
+    // The other notice, and the target notice's own text/kind/groundCode,
+    // are never touched by this targeted update.
+    expect(otherNotice.deliveries).toEqual([]);
+    expect(targetNotice.renderedText).toBe('the stored rejection text');
+    expect(targetNotice.kind).toBe('rejection');
+  });
+
+  it('can record more than one delivery attempt on the same notice (retry)', async () => {
+    const notice = {
+      kind: 'rejection',
+      templateVersion: 1,
+      groundCode: 'OTHER',
+      renderedText: 'text',
+      issuedAt: '2026-10-29T10:00:00.000Z',
+      deliveries: [{ channel: 'email', attemptedAt: '2026-10-29T10:00:01.000Z', succeeded: false }],
+    };
+    const db = createFakeDb({
+      claims: [{ _id: CLAIM_ID, decisionNotices: [notice] } as unknown as RawDoc],
+      recovery_cases: [],
+    });
+    const repo = createClaimsRepo(db);
+
+    await repo.appendNoticeDelivery(CLAIM_ID.toHexString(), {
+      noticeIssuedAt: notice.issuedAt,
+      delivery: { channel: 'email', attemptedAt: '2026-10-29T11:00:00.000Z', succeeded: true },
+    });
+
+    expect(notice.deliveries).toEqual([
+      { channel: 'email', attemptedAt: '2026-10-29T10:00:01.000Z', succeeded: false },
+      { channel: 'email', attemptedAt: '2026-10-29T11:00:00.000Z', succeeded: true },
+    ]);
+  });
+
+  it('returns false when the claim id does not exist', async () => {
+    const db = createFakeDb({ claims: [], recovery_cases: [] });
+    const repo = createClaimsRepo(db);
+
+    const ok = await repo.appendNoticeDelivery(CLAIM_ID.toHexString(), {
+      noticeIssuedAt: '2026-10-29T10:00:00.000Z',
+      delivery: { channel: 'email', attemptedAt: '2026-10-29T10:00:01.000Z', succeeded: true },
+    });
+
+    expect(ok).toBe(false);
+  });
+
+  it('returns false for a malformed claimId', async () => {
+    const db = createFakeDb({ claims: [], recovery_cases: [] });
+    const repo = createClaimsRepo(db);
+
+    const ok = await repo.appendNoticeDelivery('not-an-object-id', {
+      noticeIssuedAt: '2026-10-29T10:00:00.000Z',
+      delivery: { channel: 'email', attemptedAt: '2026-10-29T10:00:01.000Z', succeeded: true },
+    });
+
+    expect(ok).toBe(false);
   });
 });

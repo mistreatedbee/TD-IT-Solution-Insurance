@@ -37,6 +37,7 @@ import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 import { validateBody } from '../lib/validation.js';
 import { requireStepUp, STEP_UP_WINDOW_SECONDS } from '../lib/step-up.js';
+import { notifyInBackground } from '../lib/customer-notification-service.js';
 
 const ENDPOINT_LIST = 'GET /v1/admin/claims';
 const ENDPOINT_DETAIL = 'GET /v1/admin/claims/{claimId}';
@@ -54,7 +55,16 @@ const listFiltersSchema = z.object({
 
 const requiredReasonSchema = z.string().trim().min(1).max(2000);
 
-const patchBodySchema = z.discriminatedUnion('action', [
+// CR-018-11: every other rejection ground code is itself a structured,
+// specific reason (e.g. `EXCLUDED_EVENT_OR_CAUSE`); `OTHER` alone explains
+// nothing, so it needs a longer minimum admin-supplied explanation than the
+// generic `requiredReasonSchema` (which only requires non-empty). Enforced
+// via `.superRefine` on the full union below, not a `.refine` on the
+// individual `rejected` member — zod's `discriminatedUnion` requires each
+// member to be a plain `ZodObject`, not a `ZodEffects`.
+const OTHER_GROUND_MIN_REASON_LENGTH = 20;
+
+const patchBodySchemaUnion = z.discriminatedUnion('action', [
   z.object({ action: z.literal('start_review') }),
   z.object({ action: z.literal('more_info_requested'), reviewNote: requiredReasonSchema }),
   z.object({
@@ -111,6 +121,19 @@ const patchBodySchema = z.discriminatedUnion('action', [
       .optional(),
   }),
 ]);
+
+const patchBodySchema = patchBodySchemaUnion.superRefine((body, ctx) => {
+  if (body.action === 'rejected' && body.groundCode === 'OTHER') {
+    const trimmedLength = body.rejectionReason.trim().length;
+    if (trimmedLength < OTHER_GROUND_MIN_REASON_LENGTH) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `rejectionReason must be at least ${OTHER_GROUND_MIN_REASON_LENGTH} characters when groundCode is 'OTHER' ("OTHER" alone explains nothing)`,
+        path: ['rejectionReason'],
+      });
+    }
+  }
+});
 
 export function createAdminClaimsRouter(ctx: AppContext): Router {
   const router = Router();
@@ -517,6 +540,26 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
         if (!updated) {
           next(apiError('CONFLICT'));
           return;
+        }
+
+        // SR-018-10/CR-018-7 (security-review.md §16.4) — dispatched only
+        // AFTER the decision has committed (claim status change + notice
+        // already written above). Fire-and-forget: a failed send must not
+        // roll back or block the already-committed decision; it only
+        // records a `{channel, attemptedAt, succeeded}` delivery attempt on
+        // the notice itself (`ClaimsNotificationService`), which stays
+        // retryable. Only the three adverse-decision notice kinds are ever
+        // emailed here — `notice` is undefined for `start_review` and
+        // `more_info_requested`.
+        if (notice) {
+          notifyInBackground(
+            'claims.decision.notice',
+            ctx.claimsNotifications.sendDecisionNoticeEmail({
+              accountId: existing.accountId,
+              claimId,
+              notice,
+            }),
+          );
         }
 
         res.status(200).json(await loadAdminSerializationContext(updated));

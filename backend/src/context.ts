@@ -100,6 +100,10 @@ import {
   type PartnerOrganizationsRepo,
 } from './repositories/partner-organizations.js';
 import { createClaimsRepo, type ClaimsRepo } from './repositories/claims.js';
+import {
+  createClaimsNotificationService,
+  type ClaimsNotificationService,
+} from './lib/claims-notification-service.js';
 
 export interface AppContext {
   env: Env;
@@ -140,6 +144,7 @@ export interface AppContext {
   supportCases: SupportCasesRepo;
   partnerOrganizations: PartnerOrganizationsRepo;
   claims: ClaimsRepo;
+  claimsNotifications: ClaimsNotificationService;
 }
 
 export function buildAppContext(env: Env): AppContext {
@@ -184,6 +189,7 @@ export function buildAppContext(env: Env): AppContext {
     pushNotifications,
   });
   const auditLog = createAuditLogRepo(pool);
+  const claims = createClaimsRepo(getDb());
   return {
     env,
     pool,
@@ -232,6 +238,7 @@ export function buildAppContext(env: Env): AppContext {
     productEvents: createProductEventsRepo(getDb()),
     supportCases: createSupportCasesRepo(getDb()),
     partnerOrganizations: createPartnerOrganizationsRepo(getDb()),
-    claims: createClaimsRepo(getDb()),
+    claims,
+    claimsNotifications: createClaimsNotificationService({ env, accounts, claims }),
   };
 }

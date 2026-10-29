@@ -13,7 +13,7 @@ import {
   type ClaimStatus,
   type FraudFlag,
 } from '../lib/claim-rules.js';
-import type { ClaimDecisionNotice } from '../lib/claim-decision-notice.js';
+import type { ClaimDecisionNotice, ClaimDecisionNoticeDelivery } from '../lib/claim-decision-notice.js';
 
 export interface ClaimReviewNote {
   actorAccountId: string;
@@ -533,6 +533,32 @@ export function createClaimsRepo(db: Db) {
         { returnDocument: 'after' },
       );
       return row ? toClaim(row) : null;
+    },
+
+    /**
+     * SR-018-10/CR-018-7 — records one delivery attempt for a SPECIFIC,
+     * already-issued decision notice. Uses an `arrayFilters`-scoped `$push`
+     * targeting only the matching element of `decisionNotices[]` (matched
+     * on `issuedAt`, which is set once per notice at composition time and is
+     * unique per PATCH decision on a claim) — this must never touch
+     * `renderedText` or any other field on the notice, and must never
+     * replace the whole `decisionNotices` array. Returns `false` (no-op)
+     * when the claim or the matching notice no longer exists, so a caller
+     * can log/ignore rather than throw — a failed delivery write must never
+     * surface as a failure of the decision itself (the decision already
+     * committed before this is ever called).
+     */
+    async appendNoticeDelivery(
+      claimId: string,
+      input: { noticeIssuedAt: string; delivery: ClaimDecisionNoticeDelivery },
+    ): Promise<boolean> {
+      if (!ObjectId.isValid(claimId)) return false;
+      const result = await collection().updateOne(
+        { _id: new ObjectId(claimId) },
+        { $push: { 'decisionNotices.$[n].deliveries': input.delivery } },
+        { arrayFilters: [{ 'n.issuedAt': input.noticeIssuedAt }] },
+      );
+      return result.modifiedCount > 0;
     },
   };
 }

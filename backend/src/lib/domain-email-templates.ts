@@ -566,6 +566,52 @@ export function buildRecoverySuccessfulEmail(params: {
   };
 }
 
+const CLAIM_DECISION_NOTICE_SUBJECT_LABEL: Record<
+  'rejection' | 'partial_approval_shortfall' | 'administrative_close',
+  string
+> = {
+  rejection: 'claim rejected',
+  partial_approval_shortfall: 'partial approval — shortfall notice',
+  administrative_close: 'claim closed',
+};
+
+/**
+ * SR-018-10/CR-018-7 — the adverse-decision notice email. Carries the
+ * stored `renderedText` VERBATIM (never re-rendered) as the body, per
+ * security-review.md §16.4 item 2. The subject deliberately carries only
+ * the claim reference and decision type — never the notice's text — so the
+ * substantive content (ground code, admin reason, rights/contacts) is only
+ * ever read inside the authenticated email body, consistent with keeping
+ * sensitive detail out of previews/subject lines.
+ */
+export function buildClaimDecisionNoticeEmail(params: {
+  claimId: string;
+  kind: 'rejection' | 'partial_approval_shortfall' | 'administrative_close';
+  renderedText: string;
+}): { subject: string; html: string; preheader: string } {
+  const label = CLAIM_DECISION_NOTICE_SUBJECT_LABEL[params.kind];
+  const preheader = 'A decision notice has been issued on your claim. Open the app for full details.';
+  const bodyHtml = `<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#1C1917;">
+    A decision notice has been issued on your claim (reference ${escapeHtml(params.claimId)}). The full
+    notice, verbatim, is below.
+  </p>
+  <div style="margin:0 0 16px;padding:16px;background:#FAF8F5;border:1px solid #E4DDD1;border-radius:8px;">
+    <pre style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1C1917;white-space:pre-wrap;word-break:break-word;">${escapeHtml(params.renderedText)}</pre>
+  </div>`;
+
+  return {
+    preheader,
+    subject: `Claim ${params.claimId} — ${label} — ${NOTIFICATION_BRAND.name}`,
+    html: wrapBrandedEmail({
+      preheader,
+      title: 'Decision on your claim',
+      bodyHtml,
+      ctaLabel: 'Open app',
+      ctaUrl: `${NOTIFICATION_BRAND.siteUrl}`,
+    }),
+  };
+}
+
 export function buildRecoveryCaseClosedEmail(params: {
   assetName: string;
   referenceNumber: string;

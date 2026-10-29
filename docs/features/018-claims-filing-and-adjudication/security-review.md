@@ -1868,3 +1868,65 @@ are met in code but does not approve the flip (§16.5).
 | Role | Decision | Date |
 |---|---|---|
 | `cybersecurity-architect` (chair, A) | **BLOCKED (code items remain).** SR-018-1 … SR-018-9 CLOSED; SR-018-9 production recovery independently reproduced (§18.3); test evidence accepted from §17 (964/964, `tsc` clean, `acaebe2`). CR-018-1/2/3/5/6/9 verified in backend code. Still code-blocked on **SR-018-10/CR-018-7** (notice email delivery), **SR-018-11/CR-018-10** (placeholder config accepted), **CR-018-11** (`OTHER` minimum), **CR-018-12** (mobile notice display). When those land and are re-verified, this row becomes "BLOCKED — pending non-engineering items only": tracker items 1–5, production index read-back, and the SR-018-8(f) live-`mongod` run. Not committed by me (no shell). | 2026-10-29 |
+
+## 19. SR-018-10 / CR-018-7 fix (`notification-engineer`, 2026-10-29)
+
+Closes the code gap §18.1 and §16.4 both raised: adverse-decision notices were composed and
+stored but never emailed, so the 90-day representation clock (which runs from the customer's
+*receipt* of the notice) had no delivery event to run from.
+
+**What landed:**
+
+- `lib/claims-notification-service.ts` (new) — `createClaimsNotificationService`. Sends the
+  already-stored `notice.renderedText` **verbatim** by email; it never calls
+  `buildRejectionNotice`/`buildPartialApprovalShortfallNotice`/`buildAdministrativeCloseNotice`.
+  Covers all three adverse kinds (`rejection`, `partial_approval_shortfall`,
+  `administrative_close`); refuses `more_info_request` (not an adverse decision, §12.3 N-5).
+- `lib/domain-email-templates.ts` — `buildClaimDecisionNoticeEmail`. Wraps `renderedText` in the
+  existing branded HTML shell. Subject is `Claim {claimId} — {decision type} — {brand}` only —
+  the notice text itself never appears in the subject line.
+- `repositories/claims.ts` — `appendNoticeDelivery(claimId, { noticeIssuedAt, delivery })`. A
+  `$push` scoped by Mongo `arrayFilters` to the one `decisionNotices[]` element matching
+  `issuedAt` (unique per issued notice). Never touches `renderedText`, `kind`, or any other
+  notice/claim field, and never replaces the array.
+- `routes/admin-claims.ts` — after `approveAndAdvance`/`transitionForAdmin` commits (i.e. after
+  the status change and the notice write have already landed), fires
+  `ctx.claimsNotifications.sendDecisionNoticeEmail(...)` through the existing
+  `notifyInBackground` helper (same non-blocking pattern `routes/recovery.ts` already uses). A
+  failed send cannot roll back or block the decision; the response still returns 200 with the
+  committed claim.
+- Verified-email gate (§16.4 item 4): sends only when `account.userType === 'customer'` and
+  `account.accountState !== 'pending_verification'` — this codebase's existing "email verified"
+  signal (`lib/sync-email-verification.ts`, `lib/gotrue-session-revocation.ts`), not a new one.
+- Every attempt — success, Resend-not-configured, Resend API failure, unverified/missing account —
+  is recorded via `appendNoticeDelivery`, so a non-delivery is visible on the claim as a
+  `deliveries[]` entry with `succeeded: false` rather than silently dropped.
+- `lib/claim-serializers.ts` — `decisionNotices[].deliveries` is now exposed on both the
+  customer and admin serializers (it carries only channel/timestamp/outcome, nothing more
+  sensitive than what the notice already discloses). This gives an admin claim-detail view
+  everything it needs to show "notice not yet delivered" — **building that admin UI affordance
+  is a follow-up, not done in this pass.**
+
+**Explicitly not done here, flagged as follow-ups:**
+
+- Admin Dashboard UI surfacing "notice not yet delivered" / a retry action. The backend data
+  (`deliveries[]`) is there; no `src/admin/` screen reads it yet.
+- Production Resend delivery confirmation remains the pre-existing, separately owned open item.
+- CR-018-11 (`OTHER` ground-code minimum length) and CR-018-12 (mobile notice display) — §18.1's
+  other two open code items — are untouched by this pass.
+
+**Tests:** `lib/claims-notification-service.test.ts` (new, 10 cases — all three adverse kinds,
+Resend-not-configured, Resend API failure, unverified account, missing account, non-adverse
+`more_info_request` refusal, and a verbatim-text assertion against the outgoing email body),
+`repositories/claims.test.ts` (new `appendNoticeDelivery` cases — targeted single-notice push,
+multiple retry attempts, missing claim, malformed id), `routes/admin-claims.test.ts` (new
+`SR-018-10/CR-018-7` describe block — dispatch asserted for all three adverse actions, and
+asserted absent for `start_review`/`more_info_requested`).
+
+**Verification run (`notification-engineer`, 2026-10-29, commit pending at write time):**
+`npx tsc --noEmit` clean. `npm test`: **83 test files, 992 tests, all passing** (up from §17's
+964/964 — the net new tests above account for the difference).
+
+This does not change the chair's or compliance's verdict rows (§18, §16) — those are theirs to
+re-review. It closes one of the four open code items §18.1 listed; CR-018-11, CR-018-12 and the
+admin-UI delivery-status follow-up above remain open.
