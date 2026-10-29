@@ -1101,3 +1101,50 @@ location work). D3 is the part that becomes wasted effort if the answer is "no l
 7. **Separate Stage 8 and Stage 10 for each flag.** These are hard gates and are not skipped.
 
 Revisit triggers are unchanged. The OQ-3 answer is now the trigger most likely to fire first.
+
+---
+
+## `cloud-infrastructure-architect` capacity confirmation (2026-10-29) — R-5
+
+**Scope: this is the short sanity check R-5 asked for, not a capacity-planning exercise.** It covers
+only `partner_location_share_grants` and `partner_location_preauthorizations` as specified in
+`database-architect`'s review above.
+
+**What I checked.** I looked for a documented Atlas cluster tier before writing anything else, rather
+than assuming one. ADR-0002 (identity/domain split) does not state a tier. ADR-0008 says explicitly, in
+its "What is not ratified here" section: *"Not an Atlas tier, cost, or access-control ruling."* I found
+no other document in `docs/organization/` or `docs/features/` that records the live Atlas tier/cluster
+size. **That is a documentation gap, not a capacity problem** — flagging it so it isn't silently assumed
+settled, but it does not block this confirmation, for the reason below.
+
+**Assessment.** The cluster already runs seven collection-spec modules today (`feature004-collections.ts`,
+`recovery-collections.ts`, `notification-collections.ts`, `customer-profile-collections.ts`,
+`tracking-device-collections.ts`, `location-events-collections.ts`, `alerts-collections.ts`, per
+ADR-0008's condition 3), including `recovery_cases` itself, which the two new collections attach to and
+are of the same general size class as (one document per case/action, not per GPS ping). `database-architect`'s
+review is explicit that volume here is per-case: zero-or-few grants and at most one live pre-authorisation
+per case, not a per-ping or per-poll write pattern — their own §2 explicitly rejects a TTL-sweep model in
+part because volume doesn't warrant it. The ADR's own framing ("individual security-company recovery
+cases, not high-frequency data") matches what's already running on this cluster at comparable or greater
+scale (`recovery_cases`, `location_events` for Feature 008 self-device pings, which is the actual
+high-frequency collection on this cluster today and already coexists without reported strain).
+
+Two new collections holding low-thousands of modestly-sized documents (a handful of fields each, no
+embedded arrays — database-architect's design is explicitly flat, append-only, no location payload stored)
+plus the three compound partial indexes specified (`{caseId, partnerOrganizationId, endedAt, expiresAt}`,
+`{accountId, activatedAt}`, `{caseId, consumedAt, withdrawnAt}`) add negligible storage and working-set
+footprint next to what the cluster already carries for `recovery_cases` and `location_events`. Partial
+indexes (scoped to the "still live" predicate) keep index size bounded as the collections age, which is
+the right call already made by `database-architect` and reduces rather than adds to this concern.
+
+**Conclusion: no capacity concern.** Whatever tier is currently provisioned for this workload (confirmed
+to already run higher-volume collections without issue) comfortably accommodates these two additions
+under the stated expected volume. This is not expected to require a tier change, and I am not
+recommending one.
+
+**One follow-up, not a blocker:** the live Atlas tier/cluster size should be recorded somewhere
+documented (an infra note or an addendum to ADR-0002/ADR-0008) so future capacity sanity checks like this
+one don't have to re-derive it from "which collections already coexist." I'll pick that up as routine
+documentation hygiene; it does not hold up Stage 6 on this ADR.
+
+R-5 is satisfied.
