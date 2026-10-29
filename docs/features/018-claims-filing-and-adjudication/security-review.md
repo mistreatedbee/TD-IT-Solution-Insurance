@@ -1930,3 +1930,64 @@ asserted absent for `start_review`/`more_info_requested`).
 This does not change the chair's or compliance's verdict rows (§18, §16) — those are theirs to
 re-review. It closes one of the four open code items §18.1 listed; CR-018-11, CR-018-12 and the
 admin-UI delivery-status follow-up above remain open.
+
+## 20. Chair confirmation pass on the four §18.1 code items (`cybersecurity-architect`, chair, 2026-10-29)
+
+This section only adds to the document. It does not change §0 to §19. It is the confirmation pass
+`08-roadmap.md` §F item 1 asks for, against the four code items in my §18.1 table.
+
+**What I did and did not do.** I had no shell in this session. I could **not** run
+`git log 2cda9ed..56c4c65` or `git diff 2cda9ed..56c4c65`, `tsc` or `npm test`, and I did not
+commit this section. I read the current working-tree source directly instead. Treat what follows
+as a reading of the code as it is now. It is not a reading of that commit range. The only run
+evidence is `notification-engineer`'s in §19 (992/992, 83 files, commit pending when written). No
+one has reproduced it, and no mobile test run is recorded for CR-018-12. Also, §19 is the only
+engineering write-up for the four items. No section records who landed SR-018-11, CR-018-11 or
+CR-018-12, or in which commit.
+
+### 20.1 Per-item result
+
+| ID | Result | Evidence (read directly) |
+|---|---|---|
+| **SR-018-10 / CR-018-7** (email delivery) | **Closed in code.** Real delivery still waits on the Resend owner action, which is expected and non-engineering. | `lib/claims-notification-service.ts` sends the stored `renderedText` word for word and never calls a builder. It refuses `more_info_request`. It sends only to the claim owner: `existing.accountId`, at `admin-claims.ts:558`, not the admin. That account must be a `customer` and must not be `pending_verification`. Every outcome is recorded in a `finally` block through `appendNoticeDelivery`. That function is an `arrayFilters`-scoped `$push` on `deliveries` only (`repositories/claims.ts:551-562`). Dispatch runs only after the compare-and-set commit, through `notifyInBackground`, which catches any rejection, so a delivery failure cannot affect the decision. The email template HTML-escapes both `claimId` and `renderedText` (`domain-email-templates.ts:595,599`), so admin free text cannot inject markup. The subject carries no notice text. `deliveries[]` holds only channel, timestamp and outcome, so showing it to the customer is acceptable. |
+| **SR-018-11 / CR-018-10** (placeholder config) | **Closed in code, both ways.** | (a) `requireConfigValue` now rejects any value that, after trimming, starts with `CLAIM_NOTICE_PLACEHOLDER_PREFIX` (`claim-decision-notice.ts:159-171`). That goes through the existing `CLAIM_NOTICE_CONFIG_INCOMPLETE` path, which runs before the Trail B write and before the mutation (`admin-claims.ts:439-445`). (b) `loadEnv()` refuses to boot when `isProduction && claimsApiEnabled` and any `claimsNotice` field is still a placeholder (`env.ts:522-535`). Tests: `admin-claims.test.ts:1201` (500, status unchanged, `stateChanges` length 0), `claim-decision-notice.test.ts:172-185`, `env.test.ts:77-78`. Both mechanisms compare against the same literal, so (b) cannot be defeated by a leading space, because `envOrPlaceholder` produces the string itself, and (a) trims anyway. |
+| **CR-018-11** (`OTHER` minimum) | **NOT closed. The code does not meet the ruling.** | `OTHER_GROUND_MIN_REASON_LENGTH = 20` (`admin-claims.ts:65`). §16.5 CR-018-11 requires **at least 100 characters after trimming**. The mechanism is right: a `superRefine` on the union, applied after the trim, returning 400 `VALIDATION_ERROR` before any write (`:125-136`), with tests at `admin-claims.test.ts:1250-1300`. The threshold is one-fifth of the ruled value. A 20-character reason is about four words, and that is the "OTHER explains nothing" case the ruling exists to prevent. The ruling's second half was not done either: the comments at `claim-decision-notice.ts:53-55` ("compliance didn't give an exact list") and `:73-74` are unchanged. I cannot accept a lower number than compliance ruled. Only `compliance-specialist` can change it, in a new section. |
+| **CR-018-12** (mobile notice display) | **Content is met. Placement goes to compliance for a ruling. I do not block on it.** | `ClaimDetailScreen.tsx:135-155` renders every `decisionNotices[]` entry, newest first, with `renderedText` in full, split into paragraphs. `quantumReason` (with claimed and approved amounts) and `closeReason` are shown (`:111-133`). `mobile/src/api/claims.ts:40-76` types the fields. Tests exist (`__tests__/ClaimDetailScreen.test.tsx:130-230`), but no run is recorded. **The gap:** N-7 asked for the notice to be the main content of the screen. As built, the notice card comes after the details card, the incident description, the evidence description, and a separate "Rejection reason" card that repeats the notice's own `Reason:` slot. A customer scrolling the screen meets the admin's one-line reason first, and the 90-day, Ombud and licence text only further down. From a security-architecture view the customer does receive the full legal text in the app, so I do not hold the flip on this. Whether the placement satisfies N-7 is for `compliance-specialist` to rule. My recommendation: for `rejected`, `closed` and partial-approval claims, put the notice card directly under the status badge, and drop the separate `rejectionReason` card when a rejection notice is present. |
+
+### 20.2 New non-blocking condition
+
+- **C-018-23 (`backend-engineer`): two doc comments in `claim-decision-notice.ts` are now wrong.**
+  `:117-121` says "nothing in this backend appends to [`deliveries`] yet", which SR-018-10 made
+  false. `:188-198` says that in every real environment the resolver "never throws", which
+  SR-018-11 made false. Neither affects behaviour. Both mislead the next reviewer, the same way the
+  `:53-54` comment misled §16.2. Fix them in the same commit as CR-018-11.
+
+### 20.3 What closes CR-018-11
+
+Set `OTHER_GROUND_MIN_REASON_LENGTH` to `100`. The passing test at `admin-claims.test.ts:1270`
+uses an 83-character reason. It will fail at 100 and needs a longer string. Add a boundary test at
+99 and 100 characters. Correct the comments at `claim-decision-notice.ts:53-55,73-74` and fix
+C-018-23. Then run `tsc` and `npm test` and record the commit and pass count, and run
+`cd mobile && npm test` and record it for CR-018-12. `security-engineer` re-verifies SR-018-11 on
+that diff, as §17 committed to. When that lands I will re-read the diff. I will not need another
+full pass.
+
+### 20.4 Verdict
+
+**Still BLOCKED. One code item remains: CR-018-11.** SR-018-10/CR-018-7 (engineering half) and
+SR-018-11/CR-018-10 are closed in code. CR-018-12's content is met, and its placement is referred
+to compliance. Once CR-018-11 lands at the ruled threshold and the §20.3 re-runs are recorded, this
+row becomes **"BLOCKED — pending non-engineering items only"**:
+
+- the Resend owner action;
+- tracker items 1 to 5 and the payout decision;
+- the production `claims_one_open_claim_per_asset` index read-back;
+- the SR-018-8(f) live-`mongod` run;
+- compliance's re-read of CR-018-10 to -12 (§16.5), including the CR-018-12 placement ruling.
+
+`CLAIMS_API_ENABLED` stays unset. The mobile `FEATURE_CLAIMS` waiver and the absence of
+`flagEnableApproved` are unchanged.
+
+| Role | Decision | Date |
+|---|---|---|
+| `cybersecurity-architect` (chair, A) | **BLOCKED (one code item: CR-018-11).** SR-018-10/CR-018-7 engineering half CLOSED. SR-018-11/CR-018-10 CLOSED (composer guard and production boot guard). CR-018-11 NOT closed: the threshold is 20 characters against the ruled 100, and the comment fix was not made. CR-018-12 content met, placement referred to compliance (N-7), not held by the chair. New non-blocking C-018-23 (stale comments). Based on reading the working tree. The commit range was not inspected, tests were not reproduced, and this section is not committed by me (no shell). | 2026-10-29 |
