@@ -211,6 +211,16 @@ Column key:
    SR-INC002B-S3 (pool-wide `lastLocation` exposure) is a live open risk, and directed,
    time-limited, logged hand-off is how it gets resolved properly. OB-04 (case history) should be
    designed alongside it, because both need the same new case-history data.
+
+   **Correction, 2026-10-29 (`cybersecurity-architect`, manifest owner for SR-INC002B-S3):** the
+   sentence above is stale. SR-INC002B-S3 is **not** a live open risk. The text stays above for the
+   audit trail. No partner path fetches `lastLocation` at any tier
+   (`backend/src/repositories/recovery-cases.ts:252-273`, re-verified in code). The item is recorded
+   CLOSED (discharged by construction) in `gates/stage8-manifest.json` (`backend-security-cases`) and in
+   ADR-0017's `cybersecurity-architect` sign-off section. The ADR-0017 work is still needed. It now
+   retires the de-identified pool (D1) and adds consented, time-limited partner location (D3). It is
+   no longer the fix for S3. SR-INC002B-S1/S2 stay BLOCKING. `technical-writer` may fold this into
+   §E's wording.
 3. **OB-02**, once C-010-4 caller verification is designed. **OB-06** (Feature 016), once CT-1
    closes and the `03d` defects are fixed. **OB-12**, after its compliance ruling.
 4. **Vendor-gated entries** (OB-01 full, OB-07, OB-08, OB-09 discounts, OB-10 media, OB-13, OB-14,

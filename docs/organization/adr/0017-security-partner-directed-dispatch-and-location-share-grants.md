@@ -355,3 +355,142 @@ Reopen this ADR in any of these cases:
 - Measured admin dispatch latency regularly exceeds the internal target.
 - A second partner org with an overlapping service area is onboarded.
 - Any proposal would put location into a partner serialiser or into OB-04 history.
+
+---
+
+## `cybersecurity-architect` sign-off (2026-10-29)
+
+**Verdict: D1 to D4 APPROVED WITH CONDITIONS (CS-1 to CS-9 below). D2 recorded: SR-INC002B-S3 is
+CLOSED.** This satisfies ratification trigger item 1. It does not stand in for the compliance-specialist,
+backend-architect or database-architect items, or for any Stage 8 of the build that comes later. It does
+not authorise turning on `PARTNER_LOCATION_SHARING_ENABLED`.
+
+### 1. D2: SR-INC002B-S3 disposition, recorded
+
+I re-verified C-2 in code today. I did not rely on the review I wrote earlier.
+- `OFFER_TIER_FIELD_EXCLUSION_PROJECTION` excludes `lastLocation` and `lastLocationAt`.
+  `CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION` excludes `lastLocation` (`recovery-cases.ts:252-273`).
+- Every partner `find`/`findOneAndUpdate` uses one of those two projections: list, detail, claim, status,
+  release and reassign (`recovery-cases.ts:663, 675, 743, 766, 779, 886, 918, 963`).
+- The only reader of `lastLocation` is `getLocationForCase` (`:973`), and it is customer-scoped.
+- The partner routes serialise only through the two tier serialisers (`security-cases.ts:84-85, 303, 392,
+  463, 567`).
+
+The concrete exposure named in S3 does not exist. **Disposition: CLOSED, discharged by construction. This
+is not a risk acceptance.** I accept the ADR's argument that the de-identified pool property is tracked
+under S2 and PDM-6, not under S3, and that D1 retires it.
+
+`gates/stage8-manifest.json` (`backend-security-cases`) has been edited. The S3 condition now reads CLOSED
+and gives the evidence and the keeps-closed rule. The old BLOCKING text is kept inline, marked void.
+Roadmap §E item 2 has an appended correction. D2(a) is adopted as written, with one widening: a
+**derived or coarsened** coordinate also reopens S3. That includes a suburb, a geohash, "distance from
+X", or a reverse-geocoded string in any partner field, push body or message template. Rounding a
+coordinate does not make it safe to show partners.
+
+Unchanged on the same entry: SR-INC002B-S1 and S2 stay **BLOCKING**,
+`EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR` stays `"false"`, and R-INC002B-1 stands.
+
+### 2. D1: does directed dispatch close what it claims to close?
+
+Mostly, yes. Directed dispatch reduces the set of orgs that can see a case from "every active org" to
+"one org that an admin chose and that has an executed agreement". It removes partner-chosen recipients
+(C-4). It also makes SG-3 consent specific. I agree with the reasons in D1 and with the rejection of the
+pool fallback. A fallback that turns on under urgency is the worst version of the pool.
+
+**My ruling on the step-up question: dispatch and re-dispatch REQUIRE ADR-0012 step-up.** The same goes
+for any registry transition to `executed`. Each of these discloses a customer's case to a third party,
+and that matches ADR-0012's privileged-action criteria. Accepting the latency cost (Consequences) does
+not change this. A step-up window that covers a run of dispatches in one session is acceptable.
+Skipping step-up per action is not.
+
+What the ADR does **not** close, in order of severity:
+
+- **G-1. Insider-plus-partner path through pre-authorisation. This is the main gap.** With Path A in
+  place, one admin dispatch plus one partner accept gives that partner live location with **no customer
+  interaction at that moment**. A malicious or compromised admin working with a partner operator (the
+  role spec assumes this) can route any pre-authorised case to an org of their choice. The registry check
+  limits the choice to executed orgs, but not to the right one. The audit trail catches this after the
+  fact. Nothing stops it beforehand. → CS-1, CS-2.
+- **G-2. A thief holding the stolen phone can cancel recovery.** The stolen device is often the
+  customer's own phone (D3.1 says this). The thief then holds a live customer session. "One-tap revoke"
+  (SG-3) and withdrawing Feature 008 consent (D3.4) both end the grant. A thief can therefore turn off
+  partner location from the device being tracked. Once the stolen device is known, it should not count as
+  the customer's channel. → CS-3. This conflicts with POPIA's rule that withdrawal must be easy. That
+  trade-off is `compliance-specialist`'s to rule on. I am not asking for revocation to be blocked, only
+  for it to need fresh authentication from a session that is not on the reported device.
+- **G-3. The migration at flag-on carries holders over without checks.** D5 turns every currently held
+  case into `accepted`. Those claims were made under the pool, and the pool never checked for an
+  agreement (C-4). Carrying them over unchecked skips D1's eligibility check for exactly the cases that
+  existed before it. → CS-4.
+- **G-4. Live tracking by polling.** D3.3 checks each request, but it does not limit how often a partner
+  can read. A partner able to poll the location route continuously is doing live surveillance. That may
+  be the purpose during an active recovery, but it should be limited, attributed to one operator, and
+  watched for anomalies. → CS-5.
+- **G-5. Any operator in the org can read.** Grants are org-scoped (SG-1). Every operator in org X can
+  read location. This is acceptable for v1 with SG-7 rows keyed to each operator. Assigning cases to
+  named operators within an org is a revisit item, not a blocker. → CS-5(c).
+- **G-6. Free-text side channels.** Tier 1 `notes` (written by the customer) and any partner message
+  template can carry place text that bypasses the grant route. This was already present under PDM-2 and
+  does not reopen S3, which is about the platform's coordinates. It should still be covered by the CS-6
+  template rule.
+
+### 3. Conditions
+
+- **CS-1 (dispatch integrity).** Dispatch requires step-up (above). Each dispatch writes its Trail B row
+  before the mutation, and the row names the admin and the target org. `backend-architect` designs
+  **a second-admin approval for any re-dispatch to a different org** of a case that has an active or
+  consumed pre-authorisation. A first dispatch needs one admin. A change of recipient needs two.
+- **CS-2 (detective control on Path A).** Activating a grant from a pre-authorisation must always produce
+  an ops alert and a customer notification attempt. **On OQ-1, my security input to
+  `compliance-specialist`:** I agree that activation should not be held back, because recovery
+  availability matters more here. Three conditions apply: (i) a permanent failure of both channels
+  raises an ops alert and writes an audit row, (ii) the grant appears on every customer surface at next
+  sign-in, and (iii) a weekly report lists admin/org pairs whose dispatches consumed pre-authorisations.
+  This is the only way to detect G-1. If compliance rules that activation must be held back, that is
+  stricter and acceptable to me.
+- **CS-3 (stolen-device session).** When a theft is reported, sessions on the reported device are handled
+  in one of two ways, and `authentication-engineer` designs which. Either they are revoked, or they are
+  marked untrusted, meaning they cannot revoke a grant, withdraw location consent or change account
+  recovery details without fresh step-up from another device or channel. In both cases the customer can
+  still revoke from any trusted session. Compliance rules on the POPIA withdrawal tension before
+  Stage 8 of the location build.
+- **CS-4 (no grandfathering).** When `DIRECTED_DISPATCH_ENABLED` turns on, every currently held case has
+  its holder re-checked against the PDM-6 registry (or the documented single-org equivalent). Any holder
+  that is not eligible goes back to the dispatch queue and does not become `accepted`. Each carry-over or
+  return writes a Trail B row with `actor.type: 'system'`.
+- **CS-5 (read discipline).** On the location route: (a) a rate limit per operator and per case (value
+  set by `security-engineer`), (b) an anomaly alert on read volume, and on reads after the case status
+  changes but before the end record is written, and (c) the SG-7 row records the individual operator
+  `accountId`, not only the org.
+- **CS-6 (no location outside D3).** Partner push bodies (PDM-5/SG-10), the decline/hand-back reason
+  vocabulary, message templates and OB-04 `metadata` carry no coordinate, place name or derived
+  location. This is enforced with exact-key-set tests in the same style as C-2. A breach reopens S3
+  (§1 above).
+- **CS-7 (flags fail closed).** Both flags turn on only for the literal `'true'`. If
+  `PARTNER_LOCATION_SHARING_ENABLED` is on without `DIRECTED_DISPATCH_ENABLED`, the server refuses to
+  start. It does not quietly degrade. While `DIRECTED_DISPATCH_ENABLED` is off, the location route is not
+  mounted. Returning a 404 is not enough.
+- **CS-8 (oracle uniformity).** For an org other than the holder, the location route, `accept`,
+  `decline` and detail return the same not-found response whether the case is undispatched, dispatched
+  elsewhere or does not exist. Contract tests cover all three states (`qa-architect`).
+- **CS-9 (manifest coverage).** Each new admin route (queue, dispatch, re-dispatch, registry), each
+  customer grant route and the partner location route gets its own `stage8-manifest.json` entry under
+  the SR-012-5 precedent before it is merged. The partner location route is a **mandated threat-model
+  workshop** item before its Stage 8 (authority: role spec, "GPS/security-company data sharing").
+
+### 4. Checklist
+
+- [x] Threat model: the partner location share surface has been added (G-1 to G-6). The STRIDE write-up
+  goes in the location-build Stage 8.
+- [x] Trust boundaries are zero-trust: per-request four-part check, no session caching, fail closed (D3.3).
+- [x] Data classification: location is the highest class. The SG register (compliance) covers it.
+- [ ] Encryption at rest: the two new collections inherit the Atlas baseline. `database-architect`
+  confirms this in Stage 6.
+- [x] Third-party least privilege and audit: one org, executed agreement, Trail B for every read, plus
+  CS-1 and CS-5.
+- [x] Account takeover considered: G-2/CS-3 (stolen-device session). A takeover from another device can
+  grant or revoke location for the vetted partner only and gains the attacker no coordinates.
+- [x] No silent risk acceptance: S3 is closed on evidence. Residual G-5 is accepted for v1 by
+  `cybersecurity-architect`, with review at the second-partner revisit trigger.
+- [ ] Joint gate: `security-engineer` and `compliance-specialist` concurrences are still outstanding for
+  the build's Stage 8. This sign-off covers ADR ratification item 1 only.
