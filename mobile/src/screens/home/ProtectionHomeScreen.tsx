@@ -5,7 +5,6 @@ import { useRouter, type Href } from 'expo-router';
 import { AlertTriangleIcon } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Linking,
   Pressable,
   RefreshControl,
@@ -34,10 +33,10 @@ import { HomeMapPreview } from './HomeMapPreview';
 import { ProfileCompletionCard } from './ProfileCompletionCard';
 import { useProtectionDashboard } from '../../tracking/useProtectionDashboard';
 import type { DashboardAlert } from '../../tracking/types';
-import { Alert, Button, Screen } from '../../theme/primitives';
+import { Alert, Button, Screen, Skeleton } from '../../theme/primitives';
 import { useColors } from '../../theme/ThemeProvider';
 import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
-import { minTouchTarget, spacing, typography } from '../../theme/tokens';
+import { minTouchTarget, radius, spacing, typography } from '../../theme/tokens';
 import { useHomeStyles } from './homeStyles';
 
 function initialsFromName(name: string, email?: string): string {
@@ -142,6 +141,21 @@ export function ProtectionHomeScreen() {
           fontSize: typography.sizes.sm,
           color: colors.textSecondary,
         },
+        skeletonBody: {
+          paddingHorizontal: spacing.xl,
+          paddingTop: spacing.xl,
+          gap: spacing.lg,
+        },
+        skeletonSpacing: {
+          marginTop: spacing.sm,
+        },
+        skeletonRow: {
+          flexDirection: 'row',
+          gap: spacing.md,
+        },
+        skeletonFlex: {
+          flex: 1,
+        },
         errorTitle: {
           fontSize: typography.sizes['2xl'],
           fontWeight: '700',
@@ -174,7 +188,8 @@ export function ProtectionHomeScreen() {
           textAlign: 'center',
         },
         supportLink: {
-          color: colors.accentBlueDeep,
+          // OB-17: migrated onto the single --glass-accent* token.
+          color: colors.glassAccentDeep,
           fontWeight: '600',
         },
       }),
@@ -197,11 +212,16 @@ export function ProtectionHomeScreen() {
   }
 
   if (isLoading && !data) {
+    // OB-17: skeleton shapes matching the hero + quick-action card geometry
+    // (screens doc §2.1) replace the spinner, so layout doesn't jump on resolve.
     return (
-      <Screen scroll={false} safeAreaEdges={['top']}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading your protection centre…</Text>
+      <Screen scroll={false} safeAreaEdges={['top']} contentContainerStyle={styles.skeletonBody}>
+        <Skeleton width="55%" height={22} />
+        <Skeleton height={140} radius={radius.glassCardLg} style={styles.skeletonSpacing} />
+        <View style={styles.skeletonRow}>
+          <Skeleton height={88} radius={radius.glassCard} style={styles.skeletonFlex} />
+          <Skeleton height={88} radius={radius.glassCard} style={styles.skeletonFlex} />
+          <Skeleton height={88} radius={radius.glassCard} style={styles.skeletonFlex} />
         </View>
       </Screen>
     );

@@ -23,8 +23,11 @@ export function Badge({ tone = 'neutral', children }: BadgeProps) {
     () => ({
       neutral: { background: colors.slate[100], text: colors.slate[700] },
       gold: { background: colors.accentBlueTint, text: colors.accentBlueDeep },
-      accent: { background: colors.accentBlueTint, text: colors.accentBlueDeep },
-      emerald: { background: colors.tones.success.background, text: colors.tones.success.text },
+      // OB-17: migrated onto the single --glass-accent* token (tokens doc §2.1/§7.4).
+      accent: { background: colors.glassAccentTint, text: colors.glassAccentDeep },
+      // OB-17: status/semantic positive states use --glass-status-positive
+      // (tokens doc §7a bonus item), distinct from the brand accent.
+      emerald: { background: colors.tones.success.background, text: colors.glassStatusPositive },
       warning: { background: colors.tones.warning.background, text: colors.tones.warning.text },
       danger: { background: colors.tones.danger.background, text: colors.tones.danger.text },
     }),

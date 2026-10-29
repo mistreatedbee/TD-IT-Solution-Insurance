@@ -15,6 +15,7 @@ export * from './Badge';
 export * from './FormField';
 export * from './SelectChip';
 export * from './Toggle';
+export * from './Skeleton';
 export {
   canvasColor,
   defaultDividerInset,

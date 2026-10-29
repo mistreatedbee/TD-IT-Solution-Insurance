@@ -4,13 +4,13 @@
 import { useRouter, type Href } from 'expo-router';
 import { BellIcon, Settings2Icon } from 'lucide-react-native';
 import React, { useMemo } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useAlertsWithFallback, useDismissAlertMutation } from '../../api/hooks/useAlerts';
 import { InlineStatBar, InsetDivider, SurfaceGroup } from '../../components/SurfaceGroup';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { useProtectionDashboard } from '../../tracking/useProtectionDashboard';
 import type { AlertSeverity, DashboardAlert } from '../../tracking/types';
-import { Alert, Badge, Button, Screen } from '../../theme/primitives';
+import { Alert, Badge, Button, Screen, SkeletonRow } from '../../theme/primitives';
 import { useColors } from '../../theme/ThemeProvider';
 import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
 import { minTouchTarget, spacing, typography } from '../../theme/tokens';
@@ -115,7 +115,7 @@ function AlertRow({
           marginTop: spacing.sm,
           fontSize: typography.sizes.sm,
           fontWeight: '600',
-          color: colors.accentBlueDeep,
+          color: colors.glassAccentDeep,
         },
         dismiss: {
           marginTop: spacing.sm,
@@ -278,8 +278,11 @@ export function AlertsScreen() {
 
       <View style={alertsStyles.body}>
         {isLoading && alerts.length === 0 ? (
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={colors.primary} />
+          // OB-17: row-shaped shimmer blocks (screens doc §7.1) replace the spinner.
+          <View>
+            <SkeletonRow />
+            <SkeletonRow />
+            <SkeletonRow />
           </View>
         ) : null}
 

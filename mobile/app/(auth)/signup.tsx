@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   consentLink: {
-    color: colors.accentGoldDeep,
+    color: colors.glassAccentDeep,
     fontWeight: '600',
     textDecorationLine: 'underline',
   },
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   },
   footerLink: {
     fontSize: typography.sizes.sm,
-    color: colors.accentGoldDeep,
+    color: colors.glassAccentDeep,
     fontWeight: '600',
   },
 });

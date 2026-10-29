@@ -37,6 +37,16 @@ export const radius = {
   card: 16,
   cardLg: 20,
   full: 9999,
+  /**
+   * OB-17 glass-redesign radius scale (ob-17-glass-redesign-tokens.md §5.1).
+   * `glassCard`/`glassCardLg` raise the pre-OB-17 `card`/`cardLg` values into
+   * the brief's required 20-28px range; `glassChip`/`glassInput` are new.
+   * Additive — old `card`/`cardLg` stay for any call site not yet migrated.
+   */
+  glassCard: 24,
+  glassCardLg: 28,
+  glassChip: 20,
+  glassInput: 16,
 } as const;
 
 export const spacing = {
@@ -47,6 +57,60 @@ export const spacing = {
   xl: 24,
   '2xl': 32,
   '3xl': 48,
+} as const;
+
+/**
+ * OB-17 glass-redesign semantic spacing alias (tokens doc §4). Values
+ * mirror the existing `spacing` scale exactly (no new unit system) —
+ * `glassCardPadding` is the one genuinely new semantic alias: the default
+ * "generous" interior padding for glass/flat content cards, replacing
+ * ad hoc per-card `sm`/`md`/`lg` padding choices.
+ */
+export const glassSpacing = {
+  xs: spacing.xs,
+  sm: spacing.sm,
+  md: spacing.md,
+  lg: spacing.lg,
+  xl: spacing.xl,
+  '2xl': spacing['2xl'],
+  cardPadding: spacing.xl,
+} as const;
+
+/**
+ * OB-17 glass-redesign motion tokens (tokens doc §5.3) — the brief's
+ * "soft spring on button presses" and skeleton shimmer duration. No
+ * equivalent existed anywhere in the mobile token system before OB-17.
+ */
+export const glassMotion = {
+  springPress: { damping: 15, stiffness: 180, mass: 1 } as const,
+  skeletonShimmerDurationMs: 1200,
+} as const;
+
+/**
+ * OB-17 glass-redesign type scale (tokens doc §3) — additive `glass-text-*`
+ * namespace so screens can migrate off the pre-OB-17 `typography.sizes`
+ * scale one at a time. Font family stays OS-default per tokens doc §3's
+ * note that Inter loading is a separate `mobile-engineer` follow-up not
+ * done in this visuals pass (no `expo-font`/`@expo-google-fonts/inter`
+ * wiring added here).
+ */
+export const glassTypography = {
+  fontFamily: undefined,
+  sizes: {
+    xs: 12,
+    sm: 14,
+    base: 16,
+    lg: 18,
+    xl: 22,
+    '2xl': 28,
+    '3xl': 34,
+  },
+  weights: {
+    regular: '400',
+    medium: '500',
+    semibold: '600',
+    bold: '700',
+  },
 } as const;
 
 /**

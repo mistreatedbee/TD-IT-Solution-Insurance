@@ -476,7 +476,7 @@ function useMapScreenStyles(
           color: colors.textSecondary,
         },
         filterTextActive: {
-          color: colors.accentBlueDeep,
+          color: colors.glassAccentDeep,
         },
         locationWarning: {
           position: 'absolute',
@@ -509,7 +509,7 @@ function useMapScreenStyles(
         fitAllText: {
           fontSize: typography.sizes.xs,
           fontWeight: '700',
-          color: colors.accentBlueDeep,
+          color: colors.glassAccentDeep,
         },
         sheetWrap: {
           position: 'absolute',

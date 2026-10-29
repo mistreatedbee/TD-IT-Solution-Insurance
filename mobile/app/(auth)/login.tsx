@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
   },
   link: {
     fontSize: typography.sizes.sm,
-    color: colors.accentGoldDeep,
+    color: colors.glassAccentDeep,
     fontWeight: '600',
   },
   footerRow: {
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   },
   footerLink: {
     fontSize: typography.sizes.sm,
-    color: colors.accentGoldDeep,
+    color: colors.glassAccentDeep,
     fontWeight: '600',
   },
 });

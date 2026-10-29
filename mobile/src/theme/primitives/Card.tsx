@@ -24,15 +24,16 @@ export function Card({ children, padding = 'md', style, bordered = false }: Card
   const styles = useMemo(
     () =>
       StyleSheet.create({
+        // OB-17: radius raised into the 20-28px glass range (tokens doc §5.1).
         elevated: {
           backgroundColor: colors.background,
-          borderRadius: radius.cardLg,
+          borderRadius: radius.glassCard,
           overflow: 'hidden',
           ...elevation,
         },
         bordered: {
           backgroundColor: colors.background,
-          borderRadius: radius.card,
+          borderRadius: radius.glassCard,
           borderWidth: 1,
           borderColor: colors.border,
         },

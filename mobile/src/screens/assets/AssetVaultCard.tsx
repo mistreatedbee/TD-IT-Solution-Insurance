@@ -32,7 +32,7 @@ export function AssetVaultCard({
           alignItems: 'center',
           gap: spacing.md,
           backgroundColor: colors.background,
-          borderRadius: radius.cardLg,
+          borderRadius: radius.glassCard,
           padding: spacing.md,
           ...elevation,
         },

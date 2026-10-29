@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.lg,
     backgroundColor: colors.background,
-    borderRadius: radius.cardLg,
+    borderRadius: radius.glassCardLg,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.lg,
@@ -698,7 +698,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.slate[300],
   },
   stepDotDone: {
-    backgroundColor: colors.accentGold,
+    backgroundColor: colors.glassAccent,
   },
   stepLine: {
     position: 'absolute',
@@ -709,7 +709,7 @@ const styles = StyleSheet.create({
     top: 4,
   },
   stepLineDone: {
-    backgroundColor: colors.accentGold,
+    backgroundColor: colors.glassAccent,
   },
   stepLabel: {
     fontSize: 10,
@@ -721,7 +721,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   mapWrap: {
-    borderRadius: radius.card,
+    borderRadius: radius.glassCard,
     overflow: 'hidden',
     marginBottom: spacing.sm,
   },

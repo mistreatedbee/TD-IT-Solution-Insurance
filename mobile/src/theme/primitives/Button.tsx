@@ -1,9 +1,10 @@
 /**
  * TEMPORARY BRIDGE component — see mobile/src/theme/tokens.ts header.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   StyleSheet,
   Text,
@@ -13,7 +14,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { useColors } from '../ThemeProvider';
-import { minTouchTarget, radius, spacing, typography } from '../tokens';
+import { glassMotion, minTouchTarget, radius, spacing, typography } from '../tokens';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'tertiary';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -50,6 +51,14 @@ export function Button({
   const colors = useColors();
   const isDisabled = disabled || loading;
   const sizeStyle = sizeStyles[size];
+  // OB-17: soft spring on button presses (tokens doc §5.3 `--glass-spring-press`).
+  const scale = useRef(new Animated.Value(1)).current;
+  const onPressIn = () => {
+    Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, ...glassMotion.springPress }).start();
+  };
+  const onPressOut = () => {
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, ...glassMotion.springPress }).start();
+  };
 
   const styles = useMemo(
     () =>
@@ -74,11 +83,15 @@ export function Button({
           gap: spacing.sm,
         },
         label: { fontWeight: '600' },
-        primary: { backgroundColor: colors.primary },
+        // OB-17: single accent colour for the primary CTA (tokens doc §2.1,
+        // screens doc §9 "one accent colour, one primary button per
+        // screen") — never `--glass-action-secondary` (black), which is
+        // reserved for secondary/inline actions only (tokens doc §7a item 6).
+        primary: { backgroundColor: colors.glassAccent },
         secondary: {
           backgroundColor: 'transparent',
           borderWidth: 1,
-          borderColor: colors.primary,
+          borderColor: colors.glassAccent,
           borderRadius: radius.input,
         },
         ghost: {
@@ -92,7 +105,7 @@ export function Button({
           borderRadius: 0,
         },
         primaryText: { color: colors.textInverse },
-        secondaryText: { color: colors.primary },
+        secondaryText: { color: colors.glassAccentDeep },
         ghostText: { color: colors.textInverse },
         tertiaryText: { color: colors.accentBlueDeep, textDecorationLine: 'underline' },
       }),
@@ -114,34 +127,37 @@ export function Button({
   };
 
   return (
-    <Pressable
-      onPress={isDisabled ? undefined : onPress}
-      disabled={isDisabled}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: isDisabled, busy: loading }}
-      accessibilityLabel={accessibilityLabel ?? children}
-      style={({ pressed }) => [
-        styles.base,
-        { paddingVertical: sizeStyle.paddingVertical },
-        variantViewStyle[variant],
-        fullWidth ? styles.fullWidth : undefined,
-        variant === 'tertiary' ? styles.tertiaryPadding : undefined,
-        isDisabled ? styles.disabled : undefined,
-        pressed && !isDisabled ? styles.pressed : undefined,
-        style,
-      ]}
-    >
-      <View style={styles.content}>
-        {loading ? (
-          <ActivityIndicator
-            size="small"
-            color={variant === 'secondary' || variant === 'tertiary' ? colors.primary : colors.textInverse}
-          />
-        ) : null}
-        <Text style={[styles.label, { fontSize: sizeStyle.fontSize }, variantTextStyle[variant]]}>
-          {children}
-        </Text>
-      </View>
-    </Pressable>
+    <Animated.View style={[fullWidth ? styles.fullWidth : undefined, { transform: [{ scale }] }]}>
+      <Pressable
+        onPress={isDisabled ? undefined : onPress}
+        onPressIn={isDisabled ? undefined : onPressIn}
+        onPressOut={isDisabled ? undefined : onPressOut}
+        disabled={isDisabled}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: isDisabled, busy: loading }}
+        accessibilityLabel={accessibilityLabel ?? children}
+        style={[
+          styles.base,
+          { paddingVertical: sizeStyle.paddingVertical },
+          variantViewStyle[variant],
+          fullWidth ? styles.fullWidth : undefined,
+          variant === 'tertiary' ? styles.tertiaryPadding : undefined,
+          isDisabled ? styles.disabled : undefined,
+          style,
+        ]}
+      >
+        <View style={styles.content}>
+          {loading ? (
+            <ActivityIndicator
+              size="small"
+              color={variant === 'secondary' || variant === 'tertiary' ? colors.primary : colors.textInverse}
+            />
+          ) : null}
+          <Text style={[styles.label, { fontSize: sizeStyle.fontSize }, variantTextStyle[variant]]}>
+            {children}
+          </Text>
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }

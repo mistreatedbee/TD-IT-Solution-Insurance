@@ -23,7 +23,7 @@ import { AssetTypeImage } from '../home/assetVisuals';
 import { InlineStatBar } from '../../components/SurfaceGroup';
 import { PlanUsageSummary } from '../policy/PlanUsageSummary';
 import { useAssetVault, type VaultFilter } from '../../tracking/useAssetVault';
-import { Alert, Button, Screen } from '../../theme/primitives';
+import { Alert, Button, Screen, SkeletonRow } from '../../theme/primitives';
 import { useColors, useTheme } from '../../theme/ThemeProvider';
 import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
 import { minTouchTarget, spacing, typography } from '../../theme/tokens';
@@ -58,7 +58,7 @@ export function AssetListScreen() {
           width: minTouchTarget,
           height: minTouchTarget,
           borderRadius: minTouchTarget / 2,
-          backgroundColor: colors.accentBlue,
+          backgroundColor: colors.glassAccent,
           alignItems: 'center',
           justifyContent: 'center',
         },
@@ -117,7 +117,7 @@ export function AssetListScreen() {
         },
         emptyCta: {
           alignSelf: 'flex-start',
-          backgroundColor: isDark ? colors.card : colors.accentBlueTint,
+          backgroundColor: isDark ? colors.card : colors.glassAccentTint,
           borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
           borderColor: colors.hairline,
           borderRadius: 999,
@@ -127,7 +127,7 @@ export function AssetListScreen() {
         emptyCtaText: {
           fontSize: typography.sizes.sm,
           fontWeight: '700',
-          color: isDark ? colors.accentBlue : colors.accentBlueDeep,
+          color: isDark ? colors.glassAccent : colors.glassAccentDeep,
         },
         centered: {
           flex: 1,
@@ -138,7 +138,7 @@ export function AssetListScreen() {
           marginTop: spacing.md,
         },
         retryText: {
-          color: colors.accentBlueDeep,
+          color: colors.glassAccentDeep,
           fontWeight: '600',
         },
         listWrap: {
@@ -282,8 +282,13 @@ export function AssetListScreen() {
       ) : null}
 
       {isLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+        // OB-17: row-shaped shimmer blocks matching the list geometry
+        // (screens doc §3.1) replace the spinner.
+        <View style={styles.padded}>
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
         </View>
       ) : isError && items.length === 0 ? (
         <View style={styles.padded}>

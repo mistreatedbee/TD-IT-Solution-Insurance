@@ -15,9 +15,13 @@ export function createSurfaceStyles(
     canvas: {
       backgroundColor: colors.canvas,
     },
+    // OB-17: flat-white-with-shadow treatment for ordinary content/list rows
+    // (screens doc §14 Resolution 1) — radius raised into the 20-28px glass
+    // range (tokens doc §5.1); background/elevation stay flat/opaque by
+    // design, this is not a translucent GlassSurface.
     group: {
       backgroundColor: colors.background,
-      borderRadius: radius.cardLg,
+      borderRadius: radius.glassCard,
       overflow: 'hidden',
       ...elevation,
     },
@@ -58,7 +62,8 @@ export function createSurfaceStyles(
     sectionAction: {
       fontSize: 14,
       fontWeight: '600',
-      color: colors.accentBlueDeep,
+      // OB-17: migrated onto the single --glass-accent* token (tokens doc §2.1/§7.4).
+      color: colors.glassAccentDeep,
     },
     screenBody: {
       paddingHorizontal: spacing.xl,

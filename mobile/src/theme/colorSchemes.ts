@@ -36,6 +36,29 @@ export type AppColors = {
   hairline: string;
   fieldError: string;
   fieldErrorText: string;
+  /**
+   * OB-17 glass-redesign tokens (ob-17-glass-redesign-tokens.md §2, §7a).
+   * Additive `glass*` namespace — does not replace `accentBlue*`/
+   * `accentGold*`, which stay for anything not yet migrated screen-by-
+   * screen per the tokens doc's incremental-rollout rule (§2.1, §9.4).
+   */
+  glassAccent: string;
+  glassAccentDeep: string;
+  glassAccentTint: string;
+  glassActionSecondary: string;
+  glassActionSecondaryText: string;
+  glassStatusPositive: string;
+  glassSurface: string;
+  glassSurfaceStrong: string;
+  glassSurfaceBorder: string;
+  /** Opaque fallback fill for reduced-transparency / low-end-Android (§2.5/§5.2). */
+  glassSurfaceOpaque: string;
+  glassBgGradientStart: string;
+  glassBgGradientMid: string;
+  glassBgGradientEnd: string;
+  glassTextPrimary: string;
+  glassTextSecondary: string;
+  glassTextOnAccent: string;
   tones: {
     info: TonePalette;
     success: TonePalette;
@@ -81,6 +104,23 @@ export const lightColors: AppColors = {
   hairline: 'rgba(44,62,80,0.08)',
   fieldError: '#EF4444',
   fieldErrorText: '#DC2626',
+  // OB-17 glass tokens, light mode — ratified values, see colorSchemes.ts header note.
+  glassAccent: '#2DBDB6',
+  glassAccentDeep: '#1E8F89',
+  glassAccentTint: '#E3F6F4',
+  glassActionSecondary: '#181F1F',
+  glassActionSecondaryText: '#FFFFFF',
+  glassStatusPositive: '#2E9E53',
+  glassSurface: 'rgba(255,255,255,0.55)',
+  glassSurfaceStrong: 'rgba(255,255,255,0.72)',
+  glassSurfaceBorder: 'rgba(255,255,255,0.45)',
+  glassSurfaceOpaque: '#FFFFFF',
+  glassBgGradientStart: '#FCFCFC',
+  glassBgGradientMid: '#F7F8F8',
+  glassBgGradientEnd: '#FFFFFF',
+  glassTextPrimary: '#0F1420',
+  glassTextSecondary: '#4A5168',
+  glassTextOnAccent: '#FFFFFF',
   tones: {
     info: {
       background: '#EFF6FF',
@@ -146,6 +186,25 @@ export const darkColors: AppColors = {
   hairline: 'rgba(255,255,255,0.12)',
   fieldError: '#F87171',
   fieldErrorText: '#FCA5A5',
+  // OB-17 glass tokens, dark mode — the gradient pair is an unreferenced
+  // extrapolation (tokens doc §2.2 honesty note); accent/status/surface
+  // tokens otherwise mirror the ratified values.
+  glassAccent: '#2DBDB6',
+  glassAccentDeep: '#1E8F89',
+  glassAccentTint: '#163432',
+  glassActionSecondary: '#E8EDED',
+  glassActionSecondaryText: '#181F1F',
+  glassStatusPositive: '#4ADE80',
+  glassSurface: 'rgba(18,22,32,0.55)',
+  glassSurfaceStrong: 'rgba(18,22,32,0.72)',
+  glassSurfaceBorder: 'rgba(255,255,255,0.10)',
+  glassSurfaceOpaque: '#151923',
+  glassBgGradientStart: '#0B0F1A',
+  glassBgGradientMid: '#121A2E',
+  glassBgGradientEnd: '#070A12',
+  glassTextPrimary: '#F3F5FA',
+  glassTextSecondary: '#AEB4C4',
+  glassTextOnAccent: '#FFFFFF',
   tones: {
     info: {
       background: '#1E3A5F',
