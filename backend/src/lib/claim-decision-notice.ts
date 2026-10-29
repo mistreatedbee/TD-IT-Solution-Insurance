@@ -51,9 +51,11 @@ export const CLAIM_DECISION_NOTICE_TEMPLATE_VERSION = 1;
 
 /**
  * §12.3 N-2 item 2 — v1 ground codes. Compliance's ruling did not supply an
- * exact list ("compliance didn't give an exact list" per the dispatch);
- * these are reasonable short-term-insurance rejection grounds chosen to
- * cover this product's claim surface:
+ * exact list of ground codes themselves; these are reasonable
+ * short-term-insurance rejection grounds chosen to cover this product's
+ * claim surface. (Compliance *did* set an exact minimum reason length for
+ * the catch-all 'OTHER' ground — see `OTHER_GROUND_MIN_REASON_LENGTH` in
+ * `admin-claims.ts`, currently 100 trimmed characters, per CR-018-11.)
  *   - LOSS_OUTSIDE_PERIOD_OF_COVER: incident predates policy inception,
  *     asset registration, or falls inside the 30-day waiting period
  *     (§12.2's eligibility-hold ground).

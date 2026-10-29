@@ -1280,7 +1280,7 @@ describe('security-review.md §12.3 — claim decision notices (SR-018-6)', () =
         body: JSON.stringify({
           action: 'rejected',
           rejectionReason:
-            'The claimed asset serial number does not match any registered asset on this policy, and no supporting documentation was supplied to reconcile the discrepancy.',
+            'The claimant withdrew this claim verbally during a phone call with the review team and asked for the file to be closed without a formal assessment, but did not submit a written withdrawal as required to close the claim without issuing a decision.',
           groundCode: 'OTHER',
         }),
       });
@@ -1325,6 +1325,30 @@ describe('security-review.md §12.3 — claim decision notices (SR-018-6)', () =
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.decisionNotices[0].groundCode).toBe('OTHER');
+    });
+
+    it('rejects with groundCode OTHER when a <100-char reason is padded with whitespace to 100+ raw characters — 400 VALIDATION_ERROR, no mutation (length is counted after trimming)', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+      // 60 real characters (well under the 100-char minimum) padded with
+      // leading/trailing whitespace to 110 raw characters. If the length
+      // check counted raw length instead of trimmed length, this would
+      // incorrectly pass.
+      const paddedReason = `${' '.repeat(25)}${'x'.repeat(60)}${' '.repeat(25)}`;
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'rejected', rejectionReason: paddedReason, groundCode: 'OTHER' }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error.code).toBe('VALIDATION_ERROR');
+      expect(harness.getClaim().status).toBe('under_review');
+      expect(harness.stateChanges).toHaveLength(0);
     });
 
     it('a short rejectionReason is still fine for a non-OTHER ground code', async () => {
