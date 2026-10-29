@@ -282,7 +282,7 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
               disabled={!closeReason}
               onPress={confirmTerminalStatus}
             >
-              Confirm {formatStatus(pendingTerminalStatus)}
+              {`Confirm ${formatStatus(pendingTerminalStatus)}`}
             </Button>
             <Button
               variant="secondary"
