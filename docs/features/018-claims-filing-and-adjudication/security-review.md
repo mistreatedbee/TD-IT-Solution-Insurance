@@ -1307,3 +1307,37 @@ I checked the claims test files for each item. I found no new tests for (a), (c)
 | Role | Decision | Date |
 |---|---|---|
 | `cybersecurity-architect` (chair, A) | **BLOCKED (narrowed further).** SR-018-9 CLOSED in code (`0dc7ff9`, `root-mount-order.test.ts`), verified by reading code only, with test run evidence owed (§13.3 item 2). SR-018-8(g) closed. Remaining: SR-018-8 (a)/(c)/(d)/(e)/(h), production recovery confirmation, index read-back, CR-018-1 … CR-018-9 in code, and security-engineer re-concurrence. | 2026-10-28 |
+
+## 14. SR-018-9 production recovery confirmed (`site-reliability-engineer`, 2026-10-29)
+
+Closes the §13.1 item 4 / §13.3 item 1 open item: "a push to main isn't evidence of recovery."
+
+Filed **`docs/organization/incidents/INC-005-claims-killswitch-route-shadowing.md`**, which records
+the outage window, root cause, fix commit, and the following production verification performed
+directly against the live backend (`https://td-it-solution-insurance.onrender.com`, base path
+`/api/v1`):
+
+| Request | Response | Interpretation |
+|---|---|---|
+| `GET /api/v1/support-cases` | `401 UNAUTHORIZED` | Reachable — past the former shadow, into its own auth gate. |
+| `GET /api/v1/support/customer-lookup` | `401 UNAUTHORIZED` | Reachable. |
+| `POST /api/v1/analytics/events` | `401 UNAUTHORIZED` | Reachable. |
+| `GET /api/v1/admin/analytics/dau` | `401 UNAUTHORIZED` | Reachable. |
+| `GET /api/v1/claims` | `404 NOT_FOUND` | Still correctly gated — `CLAIMS_API_ENABLED` untouched, confirmed unset. |
+| `GET /api/v1/admin/claims` | `404 NOT_FOUND` | Still correctly gated. |
+
+All four previously-shadowed route families answer `401` (reached their own auth) rather than `404`
+(shadowed); claims and admin-claims remain correctly `404`. `CLAIMS_API_ENABLED` was never set to
+`true` during this verification, as a diagnostic step or otherwise.
+
+**Production recovery is confirmed.** One item from INC-005 is still open and not closed by this
+section: exact Render deploy-start/deploy-live timestamps for `c2ff720`/`0dc7ff9` could not be
+pulled in this session (no Render API/CLI access available) — the incident record uses git commit
+timestamps as a labeled approximation and assigns follow-up (INC-005-1) to whoever holds Render
+dashboard access. This does not affect the recovery finding above, which is based on a live request
+made after the fact, not on the timestamp bound.
+
+This section closes the production-recovery half of SR-018-9 only. It does not change the §13.3
+BLOCKED verdict for Stage 8 as a whole — the remaining items there (SR-018-8 test remainder, index
+read-back, CR-018-1…9, security-engineer re-concurrence) are outside SRE's remit and are unaffected
+by this entry.
