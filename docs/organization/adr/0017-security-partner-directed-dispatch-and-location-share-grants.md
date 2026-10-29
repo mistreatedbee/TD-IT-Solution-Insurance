@@ -1,6 +1,11 @@
 # ADR-0017: Security-Partner Dispatch Model (Directed Dispatch) and Location Share-Grant Attachment (OB-03)
 
-Status: **Proposed.** Not Accepted. Paper only. This ADR authorises no code (`08-roadmap.md` §F item 6).
+Status: **Accepted** — ratified by `cto` 2026-10-29, with conditions (see "`cto` ratification" at end).
+Authorises Stage 6/7 design and flagged build only; **both D5 flags stay OFF**, and
+`PARTNER_LOCATION_SHARING_ENABLED` may not turn on until CR-3 and OB-spec §6 P-1 to P-7 are met. Client G-7
+/ OQ-3 still open.
+~~Status: **Proposed.** Not Accepted. Paper only. This ADR authorises no code (`08-roadmap.md` §F item 6).~~
+*(Superseded 2026-10-29 by `cto` ratification; original text retained for audit.)*
 Date: 2026-10-29
 Author: `solution-architect`
 Deciders: `solution-architect` (author). Ratification by `cto`, with sign-off from `cybersecurity-architect`
@@ -978,3 +983,121 @@ withdrawal channel (web, plus the support runbook) is not live.
   device after it was reported stolen, that is a s19 incident for the INC runbook. Counsel may
   sharpen this at P-6.
 - [ ] Consent copy: CR-9 line still owed.
+
+---
+
+## `cto` ratification (2026-10-29)
+
+**Decision: RATIFIED. Status moves from Proposed to Accepted, with conditions R-1 to R-6 below.** This is
+trigger item 4. I checked the other three items against the record, not against the summaries:
+
+| Trigger item | Evidence | Met? |
+|---|---|---|
+| 1. `cybersecurity-architect` signs off D1 to D4 and records D2 in the manifest | Sign-off section above (CS-1 to CS-9). `docs/organization/gates/stage8-manifest.json` line 228 now reads `S3 (CLOSED ...`, with the old `S3 (BLOCKING ...` text kept inline as void. I grepped for both | Yes |
+| 2. `compliance-specialist` confirms SG-1 to SG-14 and answers OQ-1 and OQ-2 | Ruling section above: §6 "Ratification trigger item 2: SATISFIED". OQ-1 = do not hold back activation. OQ-2 = add `case_unassigned` | Yes |
+| 3. `backend-architect` and `database-architect` review D3.5 and D4 | Both sections above. Both approve with conditions (BA-1 to BA-6, DB-1 to DB-6). Neither blocks | Yes |
+
+I found nothing that should block ratification. No reviewer asked for any of D1 to D4 to be reopened. Every
+open item is either a Stage 6/7 input or a gate on a flag. ADR ratification is the wrong place to gate
+those, and the ADR does not try to.
+
+### 1. What ratification authorises
+
+- Stage 6 (design) and Stage 7 (build) for D1 to D4, **behind both D5 flags, OFF by default** and failing
+  closed per CS-7.
+- The conditions in this file become binding design inputs: CS-1 to CS-9, DB-1 to DB-6, BA-1 to BA-6 and
+  CR-1 to CR-9. They are not optional.
+- Compliance's amendments to this ADR's text take effect now. I am not waiting for an editorial revision:
+  - **OQ-2:** `case_unassigned` is added to the `endReason` vocabulary. The D3.4 row "Hand-back, or admin
+    re-dispatch to a different org → `case_reassigned`" is **superseded** by the compliance §5 split.
+    `solution-architect` should append the corrected table. Until then, the compliance section governs.
+  - **OQ-1:** activation is not held back, under conditions (a) to (e) in compliance §4.
+  - **CR-8** changes how SG-3 is applied (no push to tokens on the reported device, and "one-tap revoke"
+    means one tap after authentication on a trusted channel).
+- D2 / SR-INC002B-S3 closure is already in effect (D2(c)) and does not depend on this ratification.
+
+### 2. What ratification does NOT authorise
+
+- **Turning on `PARTNER_LOCATION_SHARING_ENABLED` in any environment.** It stays OFF until:
+  - **CR-3 is built and live.** CR-3 requires three ways to withdraw that do not need the stolen device:
+    (1) web customer controls to revoke a grant, withdraw a pre-authorisation and withdraw Feature 008
+    consent, (2) the same controls on any other trusted mobile session, and (3) a support withdrawal
+    runbook. **None of these exist today.** I checked: there are no grant, pre-authorisation or
+    location-consent controls anywhere in `src/`. The grant routes they would call (D4 customer routes)
+    are not built, so the mobile controls have nothing to call either. No CR-3.3 runbook exists under
+    `docs/organization/runbooks/`. Compliance has said it will block the location build's Stage 8
+    without these.
+  - CS-3 / CR-1 to CR-7 (marking stolen-device sessions untrusted) are designed by
+    `authentication-engineer` and built. CR-7 (no collateral lock-out) is the condition most likely to
+    fail if device-to-session binding turns out to be unreliable.
+  - Every OB-spec §6 precondition P-1 to P-7 is met. That includes SG-12 / P-4 and SG-13 / P-6 (counsel
+    on s57), which are still open.
+  - Location ingestion is back on (INC-001 `LOCATION_INGESTION_ENABLED`). Without it, the route serves
+    nothing.
+  - The build has its own Stage 8 (including the threat-model workshop CS-9 requires) and its own
+    Stage 10.
+- **Turning on `DIRECTED_DISPATCH_ENABLED` in production.** That needs its own Stage 8 and Stage 10 (D5),
+  the PDM-6 registry or its documented single-org equivalent, the DB-1 / CS-4 / BA-1 migration script, and
+  the Client's answer on OQ-3 (below).
+- **Any real partner data flow.** SR-INC002B-S1 and S2 stay BLOCKING. `EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR`
+  stays `"false"`. R-INC002B-1 stands. This ratification changes none of them.
+- **A GPS vendor decision.** None is made or implied. The location route serves whatever Feature 008
+  self-device data exists (D3.3 last sentence).
+
+### 3. OQ-3 is open and is not mine to rule on
+
+The dispatch model is a **Client instruction** under G-7 (doc 11, including the §11 extension). I am
+ratifying directed dispatch as the architecture we **recommend** and will build behind a flag. I am not
+ruling on what the Client wants. `product-manager` (the named sponsor) must get the Client's own answer
+on both G-7 questions: (a) pool or directed dispatch, and (b) whether *any* partner location disclosure is
+allowed. Neither flag turns on in production until that answer is recorded in
+`11-documented-client-instructions.md`. If the Client chooses the pool, or forbids location disclosure,
+the revisit trigger applies and this ADR is reopened. It is not adapted quietly. Build effort spent before
+the answer is at risk, and I accept that. Most of D1 (admin dispatch, the eligibility check, removing
+partner-to-partner `reassign`) is worth building under either answer, because it closes C-4.
+`product-manager` should still put OQ-3 to the Client **before** Stage 7 starts on D3 (the grant and
+location work). D3 is the part that becomes wasted effort if the answer is "no location".
+
+### 4. Conditions of ratification
+
+- **R-1 (BA-2 decided).** `claim`, `release`-to-pool and `reassign` are **removed in lockstep**
+  (backend-architect's option (a)). There is no real partner traffic (`EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR="false"`),
+  so a 410 deprecation window would protect nobody. The condition is that the operator app and web
+  security dashboard builds are gated on the same flag and released alongside the backend change.
+  `backend-architect` confirms this in the Stage 6 contract. If real partner traffic exists before this
+  ships, the decision flips to option (b).
+- **R-2 (domain reviews not yet done).** The header lists `frontend-architect` and `mobile-architect` as
+  reviewers before ratification. Trigger item 3 does not require them, and nothing they own changes D1
+  to D4. I am therefore not blocking on them. Their reviews become a **Stage 6 entry condition** for
+  their surfaces: the CR-3.1 web controls, CR-3.2 / CR-5 / CR-8 mobile behaviour, and accept/decline in
+  the operator app.
+- **R-3 (one sweeper).** BA-3 is adopted. One shared sweeper handles grant expiry recording, queue age
+  and acceptance-window lapse. `backend-architect` owns it, and `notification-engineer` designs the admin
+  alert transport before Stage 6.
+- **R-4 (direct database access).** `cybersecurity-architect` / `security-engineer` answer the question
+  database-architect deferred in §3: which roles and service accounts can read
+  `partner_location_share_grants` directly, outside the D3.3 check. This must be answered before the
+  location route's Stage 8.
+- **R-5 (capacity).** `cloud-infrastructure-architect` gives the short Atlas capacity confirmation
+  database-architect asked for before Stage 6. This is not expected to be a concern.
+- **R-6 (owed documents).** Before the location build's Stage 8:
+  - `compliance-specialist`: the §4 / PDM-9 copy including CR-9, and the L-6 correction.
+  - `customer-support-lead` + `technical-writer`: the CR-3.3 runbook.
+  - `cybersecurity-architect` / `technical-writer`: the roadmap §E refresh from D2(b), if not already done.
+
+### 5. What still blocks building and shipping
+
+1. **The Client's G-7 / OQ-3 answer.** This blocks any flag going on in production, and should come
+   before D3 build starts.
+2. **CR-3.** None of the three withdrawal channels that avoid the stolen device exist. This blocks
+   `PARTNER_LOCATION_SHARING_ENABLED`.
+3. **CS-3 / CR-1 to CR-7** (untrusted stolen-device sessions). Not designed yet. This blocks
+   `PARTNER_LOCATION_SHARING_ENABLED`.
+4. **OB-spec P-1 to P-7**, including SG-12 / P-4 and SG-13 / P-6 (counsel). This blocks
+   `PARTNER_LOCATION_SHARING_ENABLED`.
+5. **The PDM-6 registry** or its documented single-org equivalent, plus **SR-INC002B-S2** (an executed
+   partner agreement). These block `DIRECTED_DISPATCH_ENABLED` and any real partner data.
+6. **INC-001 location ingestion kill switch.** While it is on, the location route has nothing to serve.
+7. **Separate Stage 8 and Stage 10 for each flag.** These are hard gates and are not skipped.
+
+Revisit triggers are unchanged. The OQ-3 answer is now the trigger most likely to fire first.
