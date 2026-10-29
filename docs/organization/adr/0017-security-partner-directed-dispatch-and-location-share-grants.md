@@ -494,3 +494,334 @@ What the ADR does **not** close, in order of severity:
   `cybersecurity-architect`, with review at the second-partner revisit trigger.
 - [ ] Joint gate: `security-engineer` and `compliance-specialist` concurrences are still outstanding for
   the build's Stage 8. This sign-off covers ADR ratification item 1 only.
+
+---
+
+## `database-architect` review (2026-10-29)
+
+**Verdict: D3.5 and D4 are workable. APPROVED WITH CONDITIONS (DB-1 to DB-6).** This satisfies
+ratification trigger item 3 (database-architect half; `backend-architect` still owes their half). I
+reviewed this against the real schema, not the ADR's description of it: `RecoveryCaseDocument` and
+`RecoveryCaseDbRow` in `backend/src/repositories/recovery-cases.ts:95-137`, and
+`PartnerOrganizationDocument`/`Row` in `backend/src/repositories/partner-organizations.ts:28-45`. Neither
+file defines a `createIndex`/`IndexDescription` array today — unlike the newer collections
+(`backend/src/db/location-events-collections.ts`, `claims-collections.ts`,
+`retention-job-runs-collections.ts`), which do follow that pattern. So this is genuinely new index design,
+not a retrofit of something already indexed.
+
+### 1. Does `recovery_cases` need new fields, or is this a new collection?
+
+**Both, and they split cleanly.**
+
+- **`recovery_cases` needs new fields for dispatch state**, not a new collection, because dispatch state
+  is a property of the case itself — one case has at most one current dispatch, and every existing
+  partner-visibility query (`buildPartnerOrgQuery`, `claimedCaseVisiblePredicate`,
+  `unclaimedCaseVisiblePredicate`, `recovery-cases.ts:457-494`) already filters on
+  `partnerOrganizationId` + `status`. D1's model needs one more axis on top of those two:
+  `dispatchStatus: 'pending' | 'accepted'` (distinguishing "dispatched, not yet accepted" from
+  "accepted" — D1's table). I recommend:
+  - `partnerOrganizationId: string | null` (unchanged — now means "current dispatch target or holder",
+    not "claimant")
+  - `dispatchStatus: 'pending' | 'accepted' | null` (null when `partnerOrganizationId` is null)
+  - `dispatchedAt: Date | null`, `dispatchedBy: string | null` (admin accountId — audits who dispatched,
+    cheap denormalization alongside the Trail B row CS-1 requires elsewhere)
+  - `acceptedAt: Date | null`
+  - `dispatchHistory` is **not** embedded on the case document. D1 already requires an append-only trail
+    of dispatch/accept/decline/hand-back events, and OB-04 (`recovery_case_events`) is the designated home
+    for that per D3.6. Embedding a growing array on the hot case document fights the same unbounded-growth
+    problem GPS pings have, for no read benefit — nothing in the partner or admin surfaces queries "all
+    past dispatches of this case" from the case document itself.
+  - This is a **breaking schema addition in spirit** even though it's additive in shape: the meaning of
+    `partnerOrganizationId` non-null changes from "claimed" to "dispatched (pending-or-accepted)". CS-4's
+    migration (re-check every current holder against the registry) is also the natural point to backfill
+    `dispatchStatus: 'accepted', acceptedAt: <migration timestamp>` on every case that passes the
+    eligibility re-check, and to null out `partnerOrganizationId` on every case that fails it. Write this
+    migration as a single idempotent script keyed off the `DIRECTED_DISPATCH_ENABLED` flag flip, not a
+    lazy on-read migration — a dispatch-queue list query needs the field populated correctly for every row
+    on day one, not eventually.
+
+- **Grants and pre-authorizations are two new collections**, per D3.5, and I agree with that placement —
+  not fields on `recovery_cases`. Reasons:
+  1. **Cardinality and lifecycle mismatch.** A case has zero-or-one *current* dispatch but can accumulate
+     multiple grants over its life (hand-back → re-dispatch → fresh grant, D3.4's `case_reassigned`
+     path). SG-1 requires grants to be append-only with write-once end fields. Modeling that as an
+     embedded array on the case document means every grant-lifecycle write (revoke, expiry record,
+     consent-withdrawal cascade) becomes a positional/array-filtered update on a document that is also
+     being read and written by unrelated status-transition and messaging code — higher contention, and a
+     document that grows for the life of the case.
+  2. **Access pattern mismatch.** D3.3's four-part check reads `(caseId, assetId, partnerOrgId)` on
+     **every** partner location request — a narrow, hot, latency-sensitive lookup. A separate
+     `location_share_grants` collection with a tight compound index serves that directly. Folding it into
+     `recovery_cases` means every one of those hot reads also pulls (or at least touches, if projected)
+     an unrelated case document, and any index supporting the grant check would have to be defined
+     on fields nested inside an array on that document — materially worse for selectivity.
+  3. **Different retention mechanics.** D3.5 says grants follow the case's retention, but they are
+     still separately queried for SG-8 customer access history ("list active/past grants") independent
+     of case detail. A dedicated collection serves that list without a `$unwind` / array-projection
+     against every case the customer ever had.
+
+  **Suggested shapes** (field-naming is `backend-architect`'s call per D4, this is the data-model
+  minimum):
+  - `partner_location_preauthorizations`: `_id`, `caseId`, `assetId`, `accountId`, `noticeVersion`,
+    `grantChannel`, `createdAt`, `consumedAt: Date | null`, `withdrawnAt: Date | null`. Write-once on
+    `consumedAt`/`withdrawnAt` — whichever is set first wins, enforced at the application layer with a
+    conditional update (`$set` guarded by both fields being currently null), the same compare-and-set
+    idiom already used for `claim`/`release` in `recovery-cases.ts:878-917`.
+  - `partner_location_share_grants`: `_id`, `caseId`, `assetId`, `partnerOrganizationId`, `accountId`,
+    `grantedBy`, `preauthorizationId: ObjectId | null`, `activatedAt`, `expiresAt`, `requestedDurationHours`,
+    `endedAt: Date | null`, `endReason: enum | null`, `endedBy`. Append-only: a renewal (D3.2) is a new
+    document, never an update to `expiresAt` on an existing one — this is what SG-1's "append-only" and
+    D3.4's "write-once end fields" actually require at the document level, and it's also what makes SG-8
+    access-history reconstruction a plain time-ordered query instead of a diff against mutated rows.
+
+### 2. Indexes for the "checked on every read, not a background job" pattern
+
+This is the ADR's most latency-sensitive requirement (D3.3: four conditions evaluated per request, no
+caching). Each condition needs its own cheap index; none should be speculative beyond what D3.3 actually
+checks.
+
+- **`partner_location_share_grants`**: compound index
+  `{ caseId: 1, partnerOrganizationId: 1, endedAt: 1, expiresAt: 1 }`. This lets the handler do a single
+  indexed point lookup for "active grant for this case + this org" (`endedAt: null` is the selective
+  prefix after the equality fields; `expiresAt > now` is a cheap range check mongo can still use off the
+  same index as the trailing field once `endedAt` is pinned to `null`). Add a **partial index** with
+  filter `{ endedAt: null }` — the "still active" grants are the only ones the hot path ever reads by
+  this shape, and partializing keeps the index small as the collection grows (it is append-only and will
+  outlive most individual grants being active). A second index, `{ accountId: 1, activatedAt: -1 }`,
+  serves SG-8's "list my grants" without touching the partial index.
+- **`partner_location_preauthorizations`**: `{ caseId: 1, consumedAt: 1, withdrawnAt: 1 }`, also with a
+  partial filter (`{ consumedAt: null, withdrawnAt: null }`) for the "is there a live pre-auth to consume
+  on accept" check, which is the only read this collection needs to serve under latency pressure (it is
+  read once, on accept, not per-poll).
+- **`recovery_cases`**: the dispatch-queue list ("admin: show me undispatched cases") needs
+  `{ partnerOrganizationId: 1, status: 1, createdAt: 1 }` or equivalent — check whether an index on this
+  shape already exists before adding one; I did not find a `recovery-cases` index-definition file, so
+  this is net-new and should be added in the same PR that adds the dispatch fields, not left to whoever
+  notices the query is slow. The existing `buildPartnerOrgQuery` compound-OR shape (claimed branch +
+  unclaimed branch) will become a dispatched-to-caller-pending branch + accepted-by-caller branch under
+  D1 — same index needs, re-point rather than redesign.
+- **Registry check** (`partner_organizations`/PDM-6 extension, condition 3 of D3.3): index on `_id`
+  (already the natural lookup) plus `{ agreementStatus: 1 }` if the dispatch-queue eligibility filter
+  ("show only `executed`, not-terminated orgs") is ever queried directly rather than checked one-row-at-a-
+  time; low priority, add only if `backend-architect`'s dispatch-queue query needs it.
+- **Explicitly do not add**: a TTL index on `location_share_grants` to auto-expire documents at
+  `expiresAt`. D3.3/D3.4 are explicit that expiry is a server-time check at read, not a background job,
+  and TTL indexes in MongoDB delete the document outright on a best-effort background sweep (not
+  immediate, and typically lagged by up to 60 seconds) — using one here would both violate "no background
+  job dependency" in spirit (if the sweep lags, the document is still present and must still be correctly
+  evaluated as expired by condition 2, which it will be — `expiresAt > now` works fine without TTL) and
+  risk silently destroying SG-1's append-only audit record the moment it expires, which breaches SG-8
+  access-history requirements outright. Do not delete grant documents on expiry. Let them age out under
+  the case's SG-11 retention schedule instead, deleted (or archived) only alongside the case record.
+
+### 3. Encryption-at-rest (the item the cybersecurity-architect checklist deferred to Stage 6, now)
+
+Confirming the checklist item flagged "pending — database-architect confirms in Stage 6" above:
+
+- **Cluster-level encryption at rest is already the Atlas baseline per ADR-0001/ADR-0002** — both new
+  collections inherit it automatically, no action needed to get that floor.
+- **Field-level consideration specific to these two collections:** neither collection stores a raw
+  coordinate, government ID, or payment reference, so this role's own "never store raw payment data /
+  encrypt ID documents" checklist item does not independently trigger here. `grantedBy`/`accountId`/
+  `partnerOrganizationId` are identifiers, not location values. The location **value itself** (per D3.3)
+  is never persisted in these two collections at all — it is read live off the Feature 008 location
+  store at request time and returned, not stored alongside the grant. So the sensitive payload these
+  collections hold is "who may see location, when, and why," not location itself. That is still PII
+  (accountId↔case↔org linkage) and worth access-control discipline but not a field-level-encryption
+  case under the usual bar (payment/ID-document grade secrets).
+- **One genuine open item I am flagging, not resolving unilaterally:** `grantChannel` and `noticeVersion`
+  on the pre-authorization record, plus the full grant history, together reconstruct a sensitive fact
+  pattern ("this customer's phone was stolen and TD IT Solution shared its location with partner X at
+  time Y"). That is exactly the kind of inference cybersecurity-architect's G-1/G-5 concerns are about at
+  the application layer, not the storage layer — Atlas-baseline encryption at rest plus the existing
+  MongoDB Atlas network/access controls (already the baseline for every other domain collection) are
+  sufficient for storage; what matters more here is the DB-level access-control scope (which service
+  accounts/roles can read `partner_location_share_grants` directly, bypassing the application's D3.3
+  check) — that is a `cybersecurity-architect`/`security-engineer` access-control-model question, not an
+  encryption one, and I defer it to them rather than resolving it here.
+- **Conclusion for the checklist box:** encryption at rest — **confirmed, no gap**. Both new collections
+  sit on the same Atlas cluster and inherit the same encryption-at-rest baseline as every other domain
+  collection (ADR-0002). No additional field-level encryption is required for the fields these two
+  collections actually hold.
+
+### 4. Conditions
+
+- **DB-1 (migration is a script, not lazy).** The `DIRECTED_DISPATCH_ENABLED` flag flip must ship with an
+  idempotent, flag-gated backfill script that sets `dispatchStatus`/`acceptedAt` on every currently-held
+  case per CS-4's eligibility re-check, run before the flag is flipped to `true` in any environment. No
+  on-read lazy migration for this field.
+- **DB-2 (append-only enforced at the repository layer).** `partner_location_share_grants` and
+  `partner_location_preauthorizations` get no `update`-by-`_id`-with-arbitrary-`$set` method in their
+  repositories — only narrowly-scoped conditional updates for the specific write-once transitions D3.4
+  lists (end record, consumed, withdrawn), mirroring the compare-and-set pattern already used for
+  `claim`/`release` (`recovery-cases.ts:878-917`). This is a repository-API-shape condition, not just a
+  convention, because an accidental generic update method is the easiest way to silently violate SG-1's
+  append-only requirement.
+- **DB-3 (partial indexes, not full).** The grant/pre-auth hot-path indexes above are built as partial
+  indexes scoped to the "still live" predicate, re-verified against actual query shape once
+  `backend-architect` finalizes the route's exact filter, before the location route's Stage 8.
+  Reviewed against real data-volume after the pilot partner, since the "second partner org" revisit
+  trigger is also the point this role should re-check index selectivity.
+- **DB-4 (no TTL index on grants).** Per §2 above — explicit, since it is the kind of index a well-
+  intentioned implementer adds by default for anything with an `expiresAt` field.
+- **DB-5 (dispatch-queue index ships with the fields, not after).** The `recovery_cases` index
+  supporting the admin dispatch-queue list ships in the same PR as the new dispatch fields, not added
+  reactively after the query is observed to be slow in staging.
+- **DB-6 (OB-04 and this schema stay in sync).** `recovery_case_events`'s new enum values (D3.6) reference
+  `grantId` by the `_id` of `partner_location_share_grants` — confirmed as an `ObjectId` reference, not a
+  denormalized copy of grant fields, so a grant's audit trail has exactly one source of truth.
+
+### 5. Checklist (this role's items from the shared pre-approval list)
+
+- [x] Embed-vs-reference reviewed: dispatch state embeds on `recovery_cases` (1:1 current-state fact);
+  grants/pre-auths are referenced via a separate collection (1:many, append-only, different access
+  pattern). Dispatch history itself is neither embedded nor duplicated — it lives once, in OB-04.
+- [x] Indexing validated against the actual D3.3 hot-read shape, not speculative (§2).
+- [x] Sensitive-field review completed and handed to `cybersecurity-architect`/`security-engineer` for
+  the one open access-control question noted in §3.
+- [x] Claim/grant history stays auditable: append-only collections, write-once end fields, no update path
+  that can overwrite history (DB-2).
+- [ ] Retention alignment with `compliance-specialist`: D3.5 states grants follow case retention (SG-11);
+  I have not independently verified the SG-11 retention window against the compliance ruling — that
+  confirmation is compliance-specialist's per the ratification trigger, not mine to close.
+- [ ] Capacity impact on the Atlas cluster: two new, low-volume (per-case, not per-ping) collections are
+  not expected to be a capacity concern, but I have not run this past `cloud-infrastructure-architect`
+  formally — recommend a short confirmation before Stage 6, not a blocker to ratification.
+
+---
+
+## `backend-architect` review (2026-10-29)
+
+**Verdict: D1–D4 route/contract shape APPROVED, with new conditions BA-1 to BA-6 below.** This satisfies
+ratification trigger item 3 for the backend half (database-architect's half is separate). I re-read
+`backend/src/routes/security-cases.ts` and `recovery.ts` before writing this, not the ADR's C-table alone.
+
+### 1. Does the proposed shape fit the existing route structure?
+
+Yes, cleanly. The current partner surface is one router mounted at `/v1/security/cases*`
+(`security-cases.ts`), each handler composed from the same four-piece middleware chain
+(`authenticate` → `requireUserType('security_company_operator')` → `requirePartnerOrg` →
+per-route `createRateLimiter`), the same §18.8 C-B sequence (pre-read → precondition check with no audit
+row on failure → write Trail B row before mutation → compare-and-set mutation → tier-scoped serialiser),
+and two fixed serialisers (`serializeOfferTierRecoveryCase`/`serializeClaimedTierRecoveryCase`) that are
+the sole output path for partner data. Swapping `claim`→`accept`, adding `decline`, and dropping
+`reassign` is a same-shape change: each new handler is a drop-in replacement following the identical
+five-step pattern already used by `release` and `reassign` (lines 404-572 today). No new middleware
+primitive, repository pattern, or serialisation path is required. `accept`/`decline` can reuse
+`findByIdForPartnerOrg`'s "does this org hold it, in what tier" precondition shape, just gated on
+`assignment === 'pending'` instead of `tier === 'claimed'`.
+
+The admin side (dispatch queue, `dispatch`, `re-dispatch`) is new territory — there is currently no
+`/admin/security-cases*` or equivalent router — but it should be a sibling router under the existing
+`admin-*.ts` convention (cf. `admin-partner-organizations.ts` already in the tree), not bolted onto
+`security-cases.ts`. The customer-side grant/pre-authorisation routes are also new and belong next to
+`recovery.ts` (customer-scoped, same auth model as `getLocationForCase`'s caller).
+
+### 2. Gaps the security/compliance focus didn't surface
+
+**BA-1 — Migration path for pool-claimed cases is underspecified at the data-shape level.** D5 says held
+cases "become `accepted`" and CS-4 adds the eligibility re-check, but neither states what happens to a
+case's `partnerOrganizationId`/`status` tuple during the flag flip for cases that are NOT re-eligible.
+"Goes back to the dispatch queue" needs a concrete state: does it clear `partnerOrganizationId` and set
+`status: 'open'` with no holder (today's pool-unclaimed shape), or introduce a new `assignment: null`
+distinct from "never dispatched"? The distinction matters for the OB-04 event written by CS-4's migration
+('`case_unassigned`' vs reusing `case_reassigned`) and for `qa-architect`'s CS-8 oracle-uniformity tests,
+which need one canonical "not held" state to assert against for every one of the undispatched / dispatched-
+elsewhere / nonexistent trio. This is a one-time backfill script against `recovery_cases`, run once at
+flag-on, not a code path that persists — `backend-architect` should own writing that script's spec
+alongside `database-architect`, cited as a Stage 6 deliverable, not left implicit in "D5 turns every
+currently held case into `accepted`."
+
+**BA-2 — Versioning/back-compat for `claim`/`release`/`reassign` callers.** The ADR says these routes are
+"removed," but gives no transition story for the mobile security-operator app and any web security
+dashboard that call them today. Per this project's API-versioning norm (never break a shipped contract
+silently, `/v1/...`), two options exist and the ADR should pick one explicitly before Stage 6: (a) ship
+`accept`/`decline`/dispatch under the same `/v1` path (acceptable only if the mobile/web clients are
+deployed in lockstep with the backend flag flip — i.e., the old routes return 410/404 the same release the
+new ones appear, with client builds gated on the same flag), or (b) keep `claim`/`reassign` mounted but
+have them 410 with a structured error body naming the replacement endpoint, for one release window, so
+any stale client build fails loud instead of silently 404ing. Given `EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR`
+is already `"false"` (no real partner traffic yet per the cybersecurity sign-off), option (a) is almost
+certainly fine in practice — but the ADR should say so, because "removed" read literally implies a breaking
+change the house rules otherwise forbid without discussion.
+
+**BA-3 — Queue/alerting mechanism for admin-availability dependency is not yet a real design, just a
+named cost.** The Consequences section accepts "admin availability becomes a recovery-latency dependency"
+and the failure-modes table says "queue-age alerts go to admins" / "admins are alerted" with no mechanism
+named. This repo has no existing job-queue or scheduled-alert infrastructure for backend (`backend/src/`
+has no queue/cron primitive I can find beyond the retention-job pattern from `retention_job_runs`
+mentioned in recent commits). Feasibility concern: "queue-age alert" and "acceptance-window lapse alert"
+both require either (i) a polling sweeper job (same shape as the `expired` grant sweeper D3.4 already
+needs) checking `dispatchedAt`/`acceptanceWindowExpiresAt` against now, or (ii) a push-based scheduler.
+Given this project already needs a sweeper for grant `expired` events, the cheapest correct design is one
+shared periodic sweeper service that evaluates both: grant timeouts (D3.4) and dispatch/acceptance-window
+timeouts (D1/failure-modes), rather than two independent polling mechanisms. I recommend the ADR (or the
+Stage 6 design that follows) name this explicitly as one sweeper, owned by `backend-architect`, so it
+isn't built twice by different engineers. This is a feasibility note, not a blocker to ratification — the
+mechanism doesn't need to exist yet, but the ADR currently reads as if "alerts go to admins" is a solved
+problem when no alerting transport (push/email/in-app badge to an admin) is named at all. `notification-
+engineer` should be pulled in before Stage 6, not just `business-analyst` for the latency target.
+
+**BA-4 — Oracle-uniformity (CS-8) interacts with route count, not just response body.** CS-8 requires the
+same not-found response across undispatched/dispatched-elsewhere/nonexistent for detail, `accept`,
+`decline`, and location. That's right for response *body*, but the existing `security-cases.ts` list/count
+pair (lines 101-192) already has a documented route-ordering hazard (`/count` must be registered before
+`/:caseId` — see the comment at line 145). The new admin dispatch-queue routes and the retained partner
+list/count will add more path segments under the same `/security/cases` prefix; whoever implements D4
+needs to re-verify route-registration order for every new literal-segment route (`/security/cases/count`,
+any `/security/cases/:caseId/accept`, `/decline`) against Express's order-dependent matching, the same
+class of bug the existing comment already warns about. Flagging this now so it's an explicit Stage 6/7
+checklist item, not rediscovered by regression.
+
+**BA-5 — Rate limiting on the location route (CS-5a) needs a repository-level counter, not just the
+existing `createRateLimiter`.** The existing `createRateLimiter(ctx.kv, ...)` keys are per-account on a
+sliding window via KV (see every route above). CS-5 asks for "per-operator and per-case" limiting plus
+anomaly alerting on read volume. Per-operator-per-case is a compound key (`operatorAccountId:caseId`),
+which the existing `createRateLimiter` factory already supports mechanically (just a different key
+function), so no new rate-limit primitive is needed — but the anomaly-alert half (CS-5b: "reads after
+status changes but before end record written") is a correctness check on data, not a rate limit, and
+belongs in the handler logic itself (compare read timestamp against the case's `status`-transition
+timestamp), not in the KV limiter. Worth stating so `security-engineer`'s CS-5 value-setting and
+`backend-architect`'s handler design don't talk past each other at Stage 6.
+
+**BA-6 — D3.5's "two new collections" need a stated relationship to `recovery_cases`, not just
+"domain data → MongoDB."** Grants and pre-authorisations reference `caseId`/`assetId`/`accountId` by value
+(no foreign keys in Mongo). The location route's D3.3 check #2 reads the grant by `(caseId, assetId, org)`
+on every request — this is a hot, per-request read in the money/safety-critical path (location access),
+so it needs an index recommendation handed to `database-architect` now rather than discovered under load:
+a compound index on `(caseId, partnerOrganizationId, expiresAt)` at minimum, scoped so the "no end record
+and expiresAt > now" check in D3.3 can be satisfied by an index scan, not a collection scan. This is
+`database-architect`'s call per role boundaries, but I'm flagging it because D3.3's "per-request, not
+cached" design is explicitly load-bearing for the security model (D3.3's zero-trust requirement), which
+means this read path's latency directly gates how expensive every dispatch-urgency failure mode (BA-3) is.
+
+### 3. Summary verdict
+
+The route/contract shape in D4 is sound and consistent with the existing `security-cases.ts`/`recovery.ts`
+conventions — no architectural rework needed, this is additive and subtractive within the established
+middleware/serialiser/§18.8 pattern. I am not blocking ratification on BA-1–BA-6; none require reopening
+D1–D4's decisions. They are Stage 6/7 design inputs that should be tracked (BA-1, BA-4 as checklist items;
+BA-2 as an explicit decision to record, not infer; BA-3 and BA-6 as cross-role flags to `notification-
+engineer`/`database-architect` before build starts).
+
+**Conditions added:**
+- **BA-1.** The flag-flip migration (D5/CS-4) must specify the concrete post-migration state (cleared
+  holder vs. new `assignment: null` state) and the OB-04 event it writes, as a Stage 6 deliverable
+  (`backend-architect` + `database-architect`), not left to implementation-time inference.
+- **BA-2.** The ADR or its Stage 6 follow-up must state explicitly whether `claim`/`release`/`reassign`
+  are deleted outright (acceptable given `EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR="false"`, no real traffic)
+  or deprecated with a 410 transition window, so the "remove" language doesn't read as a silent breaking
+  change against this project's versioning norm.
+- **BA-3.** The failure-mode table's "admins are alerted" / "queue-age alerts" must be backed by one named
+  sweeper mechanism (shared with the D3.4 grant-expiry sweeper, not a second parallel one), designed with
+  `notification-engineer` before Stage 6, before this is treated as a solved operational dependency.
+- **BA-4.** Route-registration order for every new literal-segment path under `/security/cases*` and the
+  new admin router must be re-verified against Express's order-dependent matching (same class of issue as
+  the existing `/count`-before-`/:caseId` comment) as an explicit Stage 7 checklist item.
+- **BA-5.** CS-5(a)'s per-operator-per-case rate limit is a `createRateLimiter` key-function variant (no
+  new primitive needed); CS-5(b)'s anomaly/sequencing check is handler-level logic, not a rate limit — note
+  this split so `security-engineer`'s CS-5 spec and the handler design agree on where each lives.
+- **BA-6.** `database-architect` should confirm a compound index covering the D3.3 per-request grant
+  lookup (`caseId`, `partnerOrganizationId`, `expiresAt` at minimum) before the location route is built,
+  given D3.3's explicit no-caching requirement makes this read's latency load-bearing for the security
+  model itself.
