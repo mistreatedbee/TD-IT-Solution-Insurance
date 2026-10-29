@@ -283,6 +283,17 @@
       }
     },
     {
+      "id": "backend-admin-partner-organization-scorecard",
+      "kind": "backend_route",
+      "pattern": "/admin/partner-organizations/:id/scorecard",
+      "feature": "roadmap-08f-4",
+      "stage8": {
+        "waived": true,
+        "reason": "Distinct entry — NOT absorbed into the backend-admin group (SR-012-5 precedent): the Feature 004 admin-surface security review predates this route and never examined a partner-org recovery-performance aggregate. Read-only reporting endpoint (backend/src/routes/admin-partner-organization-scorecard.ts), gated requireUserType('admin') + rate limit, no step-up MFA, following the backend-admin-analytics-dau precedent for admin-only aggregate reads. No dedicated Stage 8 review has been performed on this route; this entry records that fact for CI-1 coverage, it does not clear it.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
       "id": "backend-admin-verification-requests-count",
       "kind": "backend_route",
       "pattern": "/admin/verification-requests/count",
