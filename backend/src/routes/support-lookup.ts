@@ -135,6 +135,7 @@ function serializeRecoveryCaseForCallCentre(doc: {
   referenceNumber: string;
   reportedAt: Date;
   closedAt: Date | null;
+  closeReason: string | null;
   notes: string | null;
   lastLocationAt: Date | null;
   callCentreNotes: { agentAccountId: string; text: string; createdAt: Date }[];
@@ -147,6 +148,10 @@ function serializeRecoveryCaseForCallCentre(doc: {
     referenceNumber: doc.referenceNumber,
     reportedAt: doc.reportedAt.toISOString(),
     closedAt: doc.closedAt?.toISOString() ?? null,
+    // Product-differentiation research, "structured close reasons" — internal/
+    // admin-facing only, same posture as the security-company dashboard's
+    // `serializeClaimedTierRecoveryCase`.
+    closeReason: doc.closeReason,
     notes: doc.notes,
     lastLocationAt: doc.lastLocationAt?.toISOString() ?? null,
     callCentreNotes: serializeCallCentreNotes(doc.callCentreNotes),

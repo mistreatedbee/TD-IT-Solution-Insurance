@@ -80,6 +80,7 @@ function sampleCase(
     lastLocation: null,
     legalHold: false,
     closedAt: null,
+    closeReason: null,
     sapsCaseNumber: null,
     reportingStation: null,
     reportedToPoliceAt: null,
@@ -102,7 +103,18 @@ const WRAP_UP_WINDOW_DAYS = 90;
  * chair's security review (§1 item 4, SR-009S-2) called out as the weak point of the
  * pre-existing tests.
  */
-const OFFER_TIER_RESPONSE_KEYS = ['id', 'status', 'referenceNumber', 'reportedAt', 'partnerOrganizationId', 'updatedAt'].sort();
+const OFFER_TIER_RESPONSE_KEYS = [
+  'id',
+  'status',
+  'referenceNumber',
+  'reportedAt',
+  'partnerOrganizationId',
+  'updatedAt',
+  // Product-differentiation research, "pool triage signals" — derived annotations
+  // computed by `serializeOfferTierRecoveryCase`, not new DB-fetched fields.
+  'ageInPoolSeconds',
+  'poolUrgencyTier',
+].sort();
 const CLAIMED_TIER_RESPONSE_KEYS = [
   'id',
   'assetId',
@@ -113,6 +125,8 @@ const CLAIMED_TIER_RESPONSE_KEYS = [
   'lastLocationAt',
   'partnerOrganizationId',
   'updatedAt',
+  // Product-differentiation research, "structured close reasons".
+  'closeReason',
 ].sort();
 
 function expectExactKeys(obj: Record<string, unknown>, expectedKeys: string[]) {
@@ -148,6 +162,7 @@ function toResult(c: RecoveryCaseDocument, tier: 'claimed' | 'offer') {
           notes: c.notes,
           lastLocationAt: c.lastLocationAt,
           updatedAt: c.updatedAt,
+          closeReason: c.closeReason,
         }
       : {
           id: c.id,
@@ -259,6 +274,7 @@ function createHarness(opts: {
         caseId: string,
         status: RecoveryCaseStatus,
         expectedStatus: RecoveryCaseStatus,
+        closeReason: RecoveryCaseDocument['closeReason'] | null = null,
       ) {
         mutationCalls.updateStatus += 1;
         if (opts.simulateRaceOnFirstUpdate) {
@@ -279,6 +295,9 @@ function createHarness(opts: {
           ...cases[idx]!,
           status,
           updatedAt: new Date(),
+          // Mirrors the real repository: written on every terminal transition, not just
+          // the first (see `recovery-cases.ts`'s `closeReason` doc comment).
+          closeReason: status === 'recovered' || status === 'closed' ? closeReason : cases[idx]!.closeReason,
         };
         return cases[idx]!;
       },
@@ -551,7 +570,7 @@ describe('routes/security-cases', () => {
         authorization: `Bearer ${harness.token}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ status: 'recovered' }),
+      body: JSON.stringify({ status: 'recovered', closeReason: 'recovered-intact' }),
     });
     expect(res.status).toBe(404);
 
@@ -1066,7 +1085,7 @@ describe('routes/security-cases', () => {
           authorization: `Bearer ${harness.token}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ status: 'recovered' }),
+        body: JSON.stringify({ status: 'recovered', closeReason: 'recovered-intact' }),
       });
 
       // The handler's pre-read observed 'investigating' and audited that as
@@ -1399,11 +1418,12 @@ describe('routes/security-cases', () => {
           authorization: `Bearer ${harness.token}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ status: 'closed' }),
+        body: JSON.stringify({ status: 'closed', closeReason: 'handed-to-police' }),
       });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { status: string };
+      const body = (await res.json()) as { status: string; closeReason: string };
       expect(body.status).toBe('closed');
+      expect(body.closeReason).toBe('handed-to-police');
     });
 
     it('still allows skipping directly from investigating to recovered (forward, not sequential)', async () => {
@@ -1428,9 +1448,127 @@ describe('routes/security-cases', () => {
           authorization: `Bearer ${harness.token}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ status: 'recovered' }),
+        body: JSON.stringify({ status: 'recovered', closeReason: 'recovered-intact' }),
       });
       expect(res.status).toBe(200);
+    });
+  });
+
+  // Product-differentiation research, "structured close reasons".
+  describe('PATCH closeReason — required on terminal transitions, forbidden otherwise', () => {
+    function harnessWithInvestigatingCase(caseId: string) {
+      return createHarness({
+        partnerOrgId: 'org-123',
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: 'org-123',
+            status: 'investigating',
+          }),
+        ],
+      });
+    }
+
+    it('400s a transition to "recovered" with no closeReason', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = harnessWithInvestigatingCase(caseId);
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'recovered' }),
+      });
+      expect(res.status).toBe(400);
+      expect(harness.mutationCalls.updateStatus).toBe(0);
+      expect(harness.accessLogCalls).toHaveLength(0);
+    });
+
+    it('400s a transition to "closed" with no closeReason', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = harnessWithInvestigatingCase(caseId);
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'closed' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('400s a transition to "recovered" with an out-of-vocabulary closeReason', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = harnessWithInvestigatingCase(caseId);
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'recovered', closeReason: 'lost-forever' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('400s a non-terminal transition that (incorrectly) supplies a closeReason', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = harnessWithInvestigatingCase(caseId);
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'tracking', closeReason: 'not-located' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('accepts a terminal transition with a valid closeReason and stores/returns it', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = harnessWithInvestigatingCase(caseId);
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'recovered', closeReason: 'recovered-damaged' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { status: string; closeReason: string };
+      expect(body.status).toBe('recovered');
+      expect(body.closeReason).toBe('recovered-damaged');
+
+      const stored = harness.cases.find((c) => c.id === caseId);
+      expect(stored?.closeReason).toBe('recovered-damaged');
+    });
+
+    it('each of the five documented close reasons is individually accepted', async () => {
+      const reasons = [
+        'recovered-intact',
+        'recovered-damaged',
+        'not-located',
+        'handed-to-police',
+        'customer-withdrew',
+      ] as const;
+
+      for (const closeReason of reasons) {
+        const caseId = '507f1f77bcf86cd799439011';
+        harness = harnessWithInvestigatingCase(caseId);
+        await harness.start();
+
+        const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+          method: 'PATCH',
+          headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ status: 'closed', closeReason }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { closeReason: string };
+        expect(body.closeReason).toBe(closeReason);
+
+        await harness.stop();
+      }
     });
   });
 

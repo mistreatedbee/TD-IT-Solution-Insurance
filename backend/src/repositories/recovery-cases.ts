@@ -29,6 +29,32 @@ export type RecoveryCaseStatus =
   | 'recovered'
   | 'closed';
 
+/** Product-differentiation research, "structured close reasons" — a required,
+ * fixed-vocabulary reason an operator records when moving a claimed case into a
+ * terminal status (`'recovered'` or `'closed'`). Replaces the previous "just flips
+ * status with no reason taxonomy" behaviour. Internal/admin-facing only (see
+ * `serializeClaimedTierRecoveryCase` and `support-lookup.ts`'s
+ * `serializeRecoveryCaseForCallCentre`) — NOT surfaced to the customer-facing
+ * serializers in `lib/police-report-serializers.ts`/`serializeRecoveryCase`, pending a
+ * product decision on whether customers should see this level of operational detail. */
+export const RECOVERY_CASE_CLOSE_REASONS = [
+  'recovered-intact',
+  'recovered-damaged',
+  'not-located',
+  'handed-to-police',
+  'customer-withdrew',
+] as const;
+
+export type RecoveryCaseCloseReason = (typeof RECOVERY_CASE_CLOSE_REASONS)[number];
+
+/** `RecoveryCaseStatus`es that require a `RecoveryCaseCloseReason` on the transition
+ * that enters them — the same set `isForwardStatusTransition`'s forward-only map
+ * treats as having no outgoing edges other than `recovered -> closed`. */
+export const TERMINAL_RECOVERY_CASE_STATUSES: ReadonlySet<RecoveryCaseStatus> = new Set([
+  'recovered',
+  'closed',
+]);
+
 export interface LastKnownLocation {
   latitude: number;
   longitude: number;
@@ -83,6 +109,13 @@ export interface RecoveryCaseDocument {
    * (see `updateStatusForPartnerOrg`). Drives the police-report retention clock
    * (database-design.md §5.2) — do NOT substitute `updatedAt` for this field. */
   closedAt: Date | null;
+  /** Product-differentiation research, "structured close reasons" — set once, on the
+   * same terminal transition that first sets `closedAt`-equivalent semantics apply: set
+   * on EVERY terminal transition (unlike `closedAt`, which is "first entry only" for
+   * retention-clock reasons that don't apply here) — a case that goes
+   * `recovered` (`recovered-intact`) -> `closed` (`handed-to-police`) should reflect the
+   * most recent, most specific reason an operator recorded. */
+  closeReason: RecoveryCaseCloseReason | null;
   /** Feature 011 (SAPS case-number capture) — customer-only fields. NEVER add these to
    * `serializeOfferTierRecoveryCase`, `serializeClaimedTierRecoveryCase`, or any
    * security-company/support-agent surface without a fresh compliance + security
@@ -110,6 +143,7 @@ interface RecoveryCaseDbRow {
   lastLocation: LastKnownLocation | null;
   legalHold: boolean;
   closedAt?: Date | null;
+  closeReason?: RecoveryCaseCloseReason | null;
   // Optional because the partner-scoped read paths deliberately project these fields
   // OUT of the query (SR-011-1a) — on those rows, these keys are simply absent, not null.
   sapsCaseNumber?: string | null;
@@ -149,6 +183,7 @@ function toCase(row: RecoveryCaseDbRow): RecoveryCaseDocument {
     lastLocation: row.lastLocation,
     legalHold: row.legalHold,
     closedAt: row.closedAt ?? null,
+    closeReason: row.closeReason ?? null,
     sapsCaseNumber: row.sapsCaseNumber ?? null,
     reportingStation: row.reportingStation ?? null,
     reportedToPoliceAt: row.reportedToPoliceAt ?? null,
@@ -277,6 +312,7 @@ export interface ClaimedTierRecoveryCase {
   notes: string | null;
   lastLocationAt: Date | null;
   updatedAt: Date;
+  closeReason: RecoveryCaseCloseReason | null;
 }
 
 function toOfferTierCase(row: OfferTierCaseDbRow): OfferTierRecoveryCase {
@@ -301,6 +337,7 @@ function toClaimedTierCase(row: ClaimedTierCaseDbRow): ClaimedTierRecoveryCase {
     notes: row.notes,
     lastLocationAt: row.lastLocationAt,
     updatedAt: row.updatedAt,
+    closeReason: row.closeReason ?? null,
   };
 }
 
@@ -319,6 +356,7 @@ export function toClaimedTierView(doc: RecoveryCaseDocument): ClaimedTierRecover
     notes: doc.notes,
     lastLocationAt: doc.lastLocationAt,
     updatedAt: doc.updatedAt,
+    closeReason: doc.closeReason,
   };
 }
 
@@ -337,7 +375,37 @@ export function toOfferTierView(doc: RecoveryCaseDocument): OfferTierRecoveryCas
   };
 }
 
-export function serializeOfferTierRecoveryCase(doc: OfferTierRecoveryCase) {
+/** Product-differentiation research, "pool triage signals" — age-in-pool buckets for
+ * an unclaimed ("offer" tier) case, computed from fields already present on
+ * `OfferTierRecoveryCase` (`reportedAt`/`updatedAt`) — NOT a new field read off the
+ * document and NOT a change to `OFFER_TIER_FIELD_EXCLUSION_PROJECTION`. `updatedAt`
+ * doubles as "time since entering/re-entering the pool": it's set to `reportedAt` on
+ * creation (`createForAccount`) and reset to "now" on `releaseForPartnerOrg`, so
+ * `now - updatedAt` is exactly "time since reported, or since last released back to
+ * the pool" per the product ask, without adding a dedicated `poolEnteredAt` field. */
+export const POOL_URGENCY_TIERS = ['fresh', 'recent', 'ageing', 'stale'] as const;
+export type PoolUrgencyTier = (typeof POOL_URGENCY_TIERS)[number];
+
+/** Thresholds (hours since entering the pool). Freshly-reported/-released cases are
+ * flagged `'fresh'` because recovery odds drop the longer an asset sits unclaimed —
+ * the more operationally useful read of "urgency" for a pool an operator is deciding
+ * whether to pick up, versus flagging old cases as more urgent. */
+const POOL_URGENCY_THRESHOLDS_HOURS: Record<Exclude<PoolUrgencyTier, 'stale'>, number> = {
+  fresh: 2,
+  recent: 24,
+  ageing: 72,
+};
+
+export function computePoolUrgencyTier(ageInPoolHours: number): PoolUrgencyTier {
+  if (ageInPoolHours < POOL_URGENCY_THRESHOLDS_HOURS.fresh) return 'fresh';
+  if (ageInPoolHours < POOL_URGENCY_THRESHOLDS_HOURS.recent) return 'recent';
+  if (ageInPoolHours < POOL_URGENCY_THRESHOLDS_HOURS.ageing) return 'ageing';
+  return 'stale';
+}
+
+export function serializeOfferTierRecoveryCase(doc: OfferTierRecoveryCase, now: Date = new Date()) {
+  const ageInPoolMs = Math.max(0, now.getTime() - doc.updatedAt.getTime());
+  const ageInPoolHours = ageInPoolMs / (1000 * 60 * 60);
   return {
     id: doc.id,
     status: doc.status,
@@ -345,6 +413,8 @@ export function serializeOfferTierRecoveryCase(doc: OfferTierRecoveryCase) {
     reportedAt: doc.reportedAt.toISOString(),
     partnerOrganizationId: doc.partnerOrganizationId,
     updatedAt: doc.updatedAt.toISOString(),
+    ageInPoolSeconds: Math.round(ageInPoolMs / 1000),
+    poolUrgencyTier: computePoolUrgencyTier(ageInPoolHours),
   };
 }
 
@@ -359,6 +429,7 @@ export function serializeClaimedTierRecoveryCase(doc: ClaimedTierRecoveryCase) {
     lastLocationAt: doc.lastLocationAt?.toISOString() ?? null,
     partnerOrganizationId: doc.partnerOrganizationId,
     updatedAt: doc.updatedAt.toISOString(),
+    closeReason: doc.closeReason,
   };
 }
 
@@ -470,6 +541,12 @@ export function isForwardStatusTransition(from: RecoveryCaseStatus, to: Recovery
   return RECOVERY_CASE_FORWARD_TRANSITIONS[from].includes(to);
 }
 
+/** True iff `status` is a terminal status (`'recovered'`/`'closed'`) — the route layer
+ * uses this to decide whether `closeReason` is required on a PATCH request body. */
+export function isTerminalRecoveryCaseStatus(status: RecoveryCaseStatus): boolean {
+  return TERMINAL_RECOVERY_CASE_STATUSES.has(status);
+}
+
 /**
  * Safely ANDs together filter fragments that may each independently carry a
  * top-level `$or` key (`claimedCaseVisiblePredicate()`/`unclaimedCaseVisiblePredicate()`
@@ -511,6 +588,7 @@ export function createRecoveryCasesRepo(db: Db) {
         lastLocation: null,
         legalHold: false,
         closedAt: null,
+        closeReason: null,
         sapsCaseNumber: null,
         reportingStation: null,
         reportedToPoliceAt: null,
@@ -725,6 +803,12 @@ export function createRecoveryCasesRepo(db: Db) {
       caseId: string,
       status: RecoveryCaseStatus,
       expectedStatus: RecoveryCaseStatus,
+      // Product-differentiation research, "structured close reasons" — required by the
+      // route layer when `status` is terminal (`isTerminalRecoveryCaseStatus(status)`),
+      // `null` otherwise. Unlike `closedAt`, this is written on EVERY terminal
+      // transition, not just the first (see the `closeReason` doc comment on
+      // `RecoveryCaseDocument`).
+      closeReason: RecoveryCaseCloseReason | null = null,
     ): Promise<RecoveryCaseDocument | null> {
       if (!ObjectId.isValid(caseId)) return null;
       // SR-009S-6 — defense-in-depth: reject a backward/sideways transition even if the
@@ -757,10 +841,21 @@ export function createRecoveryCasesRepo(db: Db) {
       // database-design.md §5.2 already ruled out resetting the retention clock on
       // edit, and clobbering `closedAt` here would silently extend retention past what
       // the ruling intends. So this only sets `closedAt` when it isn't already set.
-      const setFields: { status: RecoveryCaseStatus; updatedAt: Date; closedAt?: Date } = {
+      const setFields: {
+        status: RecoveryCaseStatus;
+        updatedAt: Date;
+        closedAt?: Date;
+        closeReason?: RecoveryCaseCloseReason | null;
+      } = {
         status,
         updatedAt: new Date(),
       };
+      if (status === 'closed' || status === 'recovered') {
+        // Written on every terminal transition (see the field's doc comment) —
+        // deliberately NOT gated behind the same "first entry only" check as
+        // `closedAt` below.
+        setFields.closeReason = closeReason;
+      }
       if (status === 'closed' || status === 'recovered') {
         // SR-009S-3: narrowed to `{ closedAt: 1 }` — this internal read is used only
         // to decide whether to set `closedAt`, never returned or serialised, so it
@@ -1017,6 +1112,122 @@ export function createRecoveryCasesRepo(db: Db) {
       if (!result) return { ok: false, reason: 'not_found' };
       return { ok: true, case: toCase(result) };
     },
+
+    /** See `PartnerOrgScorecard`'s doc comment for the two documented
+     * limitations of what this can and cannot represent given today's schema. */
+    async getScorecardForPartnerOrg(
+      partnerOrganizationId: string,
+      range: { from?: Date; to?: Date },
+    ): Promise<PartnerOrgScorecard> {
+      return getScorecardForPartnerOrgImpl(collection, partnerOrganizationId, range);
+    },
+  };
+}
+
+/** Partner-organization recovery-performance scorecard (admin-visible). Every
+ * field here is derived from fields that already exist on `recovery_cases` —
+ * no new write path, no schema change. Two honest limitations, documented
+ * rather than hidden:
+ *
+ * 1. `totalCasesClaimed` reflects the CURRENT value of `partnerOrganizationId`
+ *    only. There is no history array tracking every org a case has ever been
+ *    assigned to (claim/release/reassign overwrite the field in place), so a
+ *    case this org claimed and later released or had reassigned away no
+ *    longer counts toward its total here. That churn is instead captured by
+ *    `releasedCount`/`reassignedAwayCount` (computed separately, from
+ *    `admin_access_log`) — this is a deliberate scope limit, not a bug: adding
+ *    a full per-case assignment-history array would be a schema change
+ *    (database-architect sign-off), not a read-only aggregation.
+ * 2. `averageTimeToTerminalStatusHours` measures `createdAt` -> `closedAt`,
+ *    not "time from claim to terminal status" literally — there is no
+ *    `claimedAt` timestamp anywhere on this collection (claiming only sets
+ *    `partnerOrganizationId`/`status`, not a dedicated timestamp). For a case
+ *    claimed straight out of the open pool shortly after creation this is a
+ *    close proxy; for one that sat unclaimed for a while it overstates the
+ *    claim-to-resolution duration. Documented here and surfaced via the field
+ *    name in the route's response, not silently relabelled as exact.
+ */
+export interface PartnerOrgScorecard {
+  totalCasesClaimed: number;
+  activeCases: number;
+  recoveredCount: number;
+  closedOtherCount: number;
+  /** % of terminal (`recovered` + `closed`) cases that ended `recovered`. `null` when
+   * no case assigned to this org (in range) has reached a terminal status yet. */
+  recoveryRatePercent: number | null;
+  /** `null` when no case in range has both `createdAt` and `closedAt` set. */
+  averageTimeToTerminalStatusHours: number | null;
+}
+
+async function getScorecardForPartnerOrgImpl(
+  collection: () => Collection<RecoveryCaseDbRow>,
+  partnerOrganizationId: string,
+  range: { from?: Date; to?: Date },
+): Promise<PartnerOrgScorecard> {
+  const createdAtFilter: Document = {};
+  if (range.from) createdAtFilter.$gte = range.from;
+  if (range.to) createdAtFilter.$lte = range.to;
+
+  const match: Document = { partnerOrganizationId };
+  if (range.from || range.to) match.createdAt = createdAtFilter;
+
+  const rows = await collection()
+    .aggregate<{
+      _id: null;
+      total: number;
+      active: number;
+      recovered: number;
+      closedOther: number;
+      terminalDurationsMs: number[];
+    }>([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          active: {
+            $sum: { $cond: [{ $in: ['$status', ['investigating', 'tracking']] }, 1, 0] },
+          },
+          recovered: { $sum: { $cond: [{ $eq: ['$status', 'recovered'] }, 1, 0] } },
+          closedOther: { $sum: { $cond: [{ $eq: ['$status', 'closed'] }, 1, 0] } },
+          terminalDurationsMs: {
+            $push: {
+              $cond: [
+                { $and: [{ $ne: ['$closedAt', null] }, { $ne: ['$createdAt', null] }] },
+                { $subtract: ['$closedAt', '$createdAt'] },
+                '$$REMOVE',
+              ],
+            },
+          },
+        },
+      },
+    ])
+    .toArray();
+
+  const agg = rows[0] ?? {
+    _id: null,
+    total: 0,
+    active: 0,
+    recovered: 0,
+    closedOther: 0,
+    terminalDurationsMs: [] as number[],
+  };
+
+  const terminalCount = agg.recovered + agg.closedOther;
+  const recoveryRatePercent = terminalCount > 0 ? (agg.recovered / terminalCount) * 100 : null;
+  const durations = agg.terminalDurationsMs ?? [];
+  const averageTimeToTerminalStatusHours =
+    durations.length > 0
+      ? durations.reduce((sum, ms) => sum + ms, 0) / durations.length / (1000 * 60 * 60)
+      : null;
+
+  return {
+    totalCasesClaimed: agg.total,
+    activeCases: agg.active,
+    recoveredCount: agg.recovered,
+    closedOtherCount: agg.closedOther,
+    recoveryRatePercent,
+    averageTimeToTerminalStatusHours,
   };
 }
 

@@ -324,6 +324,49 @@ export function createAdminAccessLogRepo(db: Db) {
       assertInvariants(row);
       await collection().insertOne(row);
     },
+    /**
+     * Partner-organization scorecard support — counts `privileged_state_change`
+     * rows for the `/security/cases/:caseId/release` and `/reassign` endpoints
+     * whose ACTOR belongs to one of `actorAccountIds` (the calling org's own
+     * operator accounts, resolved by the route layer via
+     * `ctx.accounts.listForAdmin({ partnerOrganizationId })` — this repo has no
+     * notion of partner-org membership itself, same separation `recovery-cases.ts`
+     * keeps from `partner-organizations.ts`). Returns one count per endpoint so the
+     * route can label "released" vs "reassigned away" distinctly rather than
+     * collapsing them into one undifferentiated "lost case" number. `endpoint`
+     * is matched exactly (release/reassign are the only two endpoints that
+     * record a `recovery_case` state change initiated by giving a case away —
+     * `/claim` and status PATCH are not counted here).
+     */
+    async countStateChangesByEndpointForActors(
+      actorAccountIds: readonly string[],
+      endpoints: readonly string[],
+      range: { from?: Date; to?: Date },
+    ): Promise<Record<string, number>> {
+      const result: Record<string, number> = {};
+      for (const endpoint of endpoints) result[endpoint] = 0;
+      if (actorAccountIds.length === 0 || endpoints.length === 0) return result;
+
+      const createdAtFilter: Record<string, Date> = {};
+      if (range.from) createdAtFilter.$gte = range.from;
+      if (range.to) createdAtFilter.$lte = range.to;
+
+      const match: Record<string, unknown> = {
+        eventType: 'privileged_state_change',
+        actorAccountId: { $in: [...actorAccountIds] },
+        endpoint: { $in: [...endpoints] },
+      };
+      if (range.from || range.to) match.createdAt = createdAtFilter;
+
+      const rows = await collection()
+        .aggregate<{ _id: string; count: number }>([
+          { $match: match },
+          { $group: { _id: '$endpoint', count: { $sum: 1 } } },
+        ])
+        .toArray();
+      for (const row of rows) result[row._id] = row.count;
+      return result;
+    },
   };
 }
 

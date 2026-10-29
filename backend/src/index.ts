@@ -42,6 +42,7 @@ import { createAdminPoliciesRouter } from './routes/admin-policies.js';
 import { createAdminAssetsRouter } from './routes/admin-assets.js';
 import { createAdminPlansRouter } from './routes/admin-plans.js';
 import { createAdminPartnerOrganizationsRouter } from './routes/admin-partner-organizations.js';
+import { createAdminPartnerOrganizationScorecardRouter } from './routes/admin-partner-organization-scorecard.js';
 import { createAdminAuditLogRouter } from './routes/admin-audit-log.js';
 import { createPlansRouter } from './routes/plans.js';
 import { createPoliciesRouter } from './routes/policies.js';
@@ -166,6 +167,7 @@ async function main(): Promise<void> {
   v1.use(createAdminAssetsRouter(ctx));
   v1.use(createAdminPlansRouter(ctx));
   v1.use(createAdminPartnerOrganizationsRouter(ctx));
+  v1.use(createAdminPartnerOrganizationScorecardRouter(ctx));
   v1.use(createAdminAuditLogRouter(ctx));
   v1.use(createPlansRouter(ctx));
   v1.use(createPoliciesRouter(ctx));

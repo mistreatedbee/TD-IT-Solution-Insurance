@@ -22,6 +22,8 @@ import { ObjectId, type Db } from 'mongodb';
 import {
   createRecoveryCasesRepo,
   MAX_POLICE_REPORT_HISTORY_ITEMS,
+  computePoolUrgencyTier,
+  serializeOfferTierRecoveryCase,
   type RecoveryCaseDocument,
 } from './recovery-cases.js';
 
@@ -206,6 +208,7 @@ const CLAIMED_TIER_CASE_KEYS = [
   'notes',
   'lastLocationAt',
   'updatedAt',
+  'closeReason',
 ].sort();
 
 function expectExactKeys(obj: object, expectedKeys: string[]) {
@@ -602,6 +605,95 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
 
       await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'recovered', 'closed');
       expect(docs[0]!.closedAt).toEqual(closedAt);
+    });
+  });
+
+  describe('Product-differentiation research — structured close reasons (closeReason)', () => {
+    it('stores the provided closeReason on the transition into "recovered"', async () => {
+      const id = new ObjectId();
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'tracking', closeReason: null }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const recovered = await repo.updateStatusForPartnerOrg(
+        'org-1',
+        id.toHexString(),
+        'recovered',
+        'tracking',
+        'recovered-intact',
+      );
+      expect(recovered!.closeReason).toBe('recovered-intact');
+      expect(docs[0]!.closeReason).toBe('recovered-intact');
+    });
+
+    it('stores the provided closeReason on the transition into "closed"', async () => {
+      const id = new ObjectId();
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'investigating', closeReason: null }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const closed = await repo.updateStatusForPartnerOrg(
+        'org-1',
+        id.toHexString(),
+        'closed',
+        'investigating',
+        'not-located',
+      );
+      expect(closed!.closeReason).toBe('not-located');
+      expect(docs[0]!.closeReason).toBe('not-located');
+    });
+
+    it('is NOT set on a non-terminal transition, even if a value were (incorrectly) passed through', async () => {
+      const id = new ObjectId();
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'investigating', closeReason: null }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const tracking = await repo.updateStatusForPartnerOrg(
+        'org-1',
+        id.toHexString(),
+        'tracking',
+        'investigating',
+        'not-located',
+      );
+      expect(tracking!.closeReason).toBeNull();
+      expect(docs[0]!.closeReason).toBeNull();
+    });
+
+    it('is overwritten (not preserved) on a second, later terminal transition (recovered -> closed)', async () => {
+      // Deliberately the OPPOSITE of closedAt's "first entry only" rule — see the
+      // `closeReason` doc comment on `RecoveryCaseDocument`: the most recent, most
+      // specific operator-recorded reason should win.
+      const id = new ObjectId();
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'recovered', closeReason: 'recovered-intact' }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const closed = await repo.updateStatusForPartnerOrg(
+        'org-1',
+        id.toHexString(),
+        'closed',
+        'recovered',
+        'handed-to-police',
+      );
+      expect(closed!.closeReason).toBe('handed-to-police');
+      expect(docs[0]!.closeReason).toBe('handed-to-police');
+    });
+
+    it('defaults to null when no closeReason argument is passed (backward-compatible call sites)', async () => {
+      const id = new ObjectId();
+      const { db, docs } = createFakeDb([
+        baseDoc({ _id: id, partnerOrganizationId: 'org-1', status: 'tracking', closeReason: null }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const recovered = await repo.updateStatusForPartnerOrg('org-1', id.toHexString(), 'recovered', 'tracking');
+      expect(recovered!.closeReason).toBeNull();
+      expect(docs[0]!.closeReason).toBeNull();
     });
   });
 
@@ -1125,5 +1217,83 @@ describe('recovery-cases repository — Feature 011 (SAPS case-number capture)',
       // The document must be left exactly as it was — no partial/incorrect mutation.
       expect(docs[0]!.status).toBe('tracking');
     });
+  });
+});
+
+describe('Product-differentiation research — pool triage signals (age-in-pool/urgency)', () => {
+  it('computePoolUrgencyTier buckets by hours since entering the pool', async () => {
+        expect(computePoolUrgencyTier(0)).toBe('fresh');
+    expect(computePoolUrgencyTier(1.9)).toBe('fresh');
+    expect(computePoolUrgencyTier(2)).toBe('recent');
+    expect(computePoolUrgencyTier(23.9)).toBe('recent');
+    expect(computePoolUrgencyTier(24)).toBe('ageing');
+    expect(computePoolUrgencyTier(71.9)).toBe('ageing');
+    expect(computePoolUrgencyTier(72)).toBe('stale');
+    expect(computePoolUrgencyTier(1000)).toBe('stale');
+  });
+
+  it('serializeOfferTierRecoveryCase derives ageInPoolSeconds/poolUrgencyTier from updatedAt, without adding a new DB-fetched field', async () => {
+        const updatedAt = new Date('2026-08-01T00:00:00.000Z');
+    const now = new Date('2026-08-01T01:00:00.000Z'); // 1 hour later
+    const serialized = serializeOfferTierRecoveryCase(
+      {
+        id: 'case-1',
+        partnerOrganizationId: null,
+        status: 'open',
+        referenceNumber: 'RC-20260801-ABCD',
+        reportedAt: updatedAt,
+        updatedAt,
+      },
+      now,
+    );
+    expect(serialized.ageInPoolSeconds).toBe(3600);
+    expect(serialized.poolUrgencyTier).toBe('fresh');
+  });
+
+  it('reflects time since last RELEASE back to the pool, not original reportedAt, once a case has been released', async () => {
+    // `updatedAt` is reset on `releaseForPartnerOrg` — this is what lets the same
+    // derivation cover both "time since reportedAt" (never-claimed case) and "time
+    // since last released back to the pool" (previously-claimed-then-released case)
+    // without a dedicated `poolEnteredAt` field.
+        const reportedAt = new Date('2026-08-01T00:00:00.000Z'); // reported 10 days ago
+    const releasedAt = new Date('2026-08-10T23:00:00.000Z'); // released back to the pool 1 hour ago
+    const now = new Date('2026-08-11T00:00:00.000Z');
+    const serialized = serializeOfferTierRecoveryCase(
+      {
+        id: 'case-1',
+        partnerOrganizationId: null,
+        status: 'open',
+        referenceNumber: 'RC-20260801-ABCD',
+        reportedAt,
+        updatedAt: releasedAt,
+      },
+      now,
+    );
+    expect(serialized.ageInPoolSeconds).toBe(3600);
+    expect(serialized.poolUrgencyTier).toBe('fresh');
+  });
+
+  it('does not add assetId, accountId, notes, or any other new field to the offer-tier response shape', async () => {
+        const now = new Date();
+    const serialized = serializeOfferTierRecoveryCase({
+      id: 'case-1',
+      partnerOrganizationId: null,
+      status: 'open',
+      referenceNumber: 'RC-20260801-ABCD',
+      reportedAt: now,
+      updatedAt: now,
+    });
+    expect(Object.keys(serialized).sort()).toEqual(
+      [
+        'id',
+        'status',
+        'referenceNumber',
+        'reportedAt',
+        'partnerOrganizationId',
+        'updatedAt',
+        'ageInPoolSeconds',
+        'poolUrgencyTier',
+      ].sort(),
+    );
   });
 });

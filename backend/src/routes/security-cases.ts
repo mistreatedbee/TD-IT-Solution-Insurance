@@ -24,6 +24,8 @@ import {
   toClaimedTierView,
   toOfferTierView,
   isForwardStatusTransition,
+  isTerminalRecoveryCaseStatus,
+  RECOVERY_CASE_CLOSE_REASONS,
   type PartnerVisibleCaseResult,
 } from '../repositories/recovery-cases.js';
 import {
@@ -42,9 +44,22 @@ const caseIdParamsSchema = z.object({
   caseId: z.string().regex(/^[0-9a-f]{24}$/i),
 });
 
-const updateStatusSchema = z.object({
-  status: z.enum(['investigating', 'tracking', 'recovered', 'closed']),
-});
+// Product-differentiation research, "structured close reasons" — `closeReason` is
+// required exactly when `status` is terminal (`'recovered'`/`'closed'`), and must be
+// absent/undefined otherwise (a non-terminal transition has no "reason it closed").
+const updateStatusSchema = z
+  .object({
+    status: z.enum(['investigating', 'tracking', 'recovered', 'closed']),
+    closeReason: z.enum(RECOVERY_CASE_CLOSE_REASONS).optional(),
+  })
+  .refine(
+    (v) => !isTerminalRecoveryCaseStatus(v.status) || v.closeReason !== undefined,
+    { message: 'closeReason is required when transitioning to a terminal status (recovered/closed)', path: ['closeReason'] },
+  )
+  .refine(
+    (v) => isTerminalRecoveryCaseStatus(v.status) || v.closeReason === undefined,
+    { message: 'closeReason may only be provided when transitioning to a terminal status (recovered/closed)', path: ['closeReason'] },
+  );
 
 const contactCustomerSchema = z.object({
   message: z.string().trim().min(1).max(500),
@@ -359,6 +374,7 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
           caseId,
           bodyParsed.data.status,
           expectedStatus,
+          bodyParsed.data.closeReason ?? null,
         );
         if (!updated) {
           // A concurrent status change between the pre-read and this call (the race
