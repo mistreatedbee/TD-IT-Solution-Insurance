@@ -822,3 +822,35 @@ different grounds. **This gate is not discharged.**
 **Does not discharge:** Stage 8 (SR-011-5 is now recorded but withheld on both the `compliance-specialist`
 and `security-engineer` limbs) · Stage 10 QA · C-011-1 through C-011-12 · CT-1/CT-3/CT-4 · INC-001-C-10 ·
 C-008-1/-5/-6/-8/-12 · D-011-01, which this section releases nothing on.
+
+## 11. `cto` ruling on RR-011-3, and a status note (2026-10-29)
+
+Appended by `cto`. Sections 0 to 10 are unchanged.
+
+**Status note. This is a code read, not a verification.** On 2026-10-29 the two items §10.6 lists
+appear to be in the tree:
+
+- `police-report-retention.test.ts:127` asserts the filter `status: { $in: ['closed', 'recovered'] }`,
+  and line 201 has a `recovered`-matched test (C-011-11).
+- `stage8-manifest.json` has the entry `mobile-live-tracking-police-report` for
+  `(app)/live-tracking/[caseId]` (SR-011-6, mobile limb).
+
+`security-engineer` re-confirms both on the diff, as §10.6 proposed. This note does not do that
+for them.
+
+**RR-011-3 ruling: not accepted. Stdout-only retention evidencing is rejected.** Build a durable
+`retention_job_runs` collection before the first purge run. Each run records:
+
+- job id
+- start and end time
+- dry-run flag
+- matched and cleared counts
+- the ids it skipped because of a legal hold
+- the outcome
+
+C-010-8 (`support_cases` purge) inherits the same caveat, so the collection is built once as a
+shared mechanism and both jobs use it.
+
+- Owners: `database-architect` (schema), `backend-engineer` (build).
+- This is the one remaining engineering item on Feature 011's `security-engineer` limb.
+- `compliance-specialist`'s B-1/B-2 limb is separate and is not affected by this ruling.

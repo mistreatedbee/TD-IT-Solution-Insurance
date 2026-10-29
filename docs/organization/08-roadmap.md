@@ -231,3 +231,60 @@ The owner also supplied background research on FICA/Home-Affairs identity verifi
 to OB-07 — the owner's own note flags part of it (the quote→identity→documents→payment→policy
 sequence) as "from memory, not checked against a specific SA insurer's process"; treat that part
 as unverified input for `integration-architect`'s OB-07 scoping, not as fact.
+
+### F. Owner directive "build the other features", and the go/no-go list (`cto`, 2026-10-29)
+
+Appended by `cto`. §A to §E are unchanged.
+
+**What changed.** The owner has told us to start building OB-01 to OB-16. This replaces §A.1's
+rule that work starts only after Gate A closes. It does not replace anything else. Gate A's open
+items are blocked on the owner (§1.1, §1.2) or come last in order (§1.3 device QA), so starting
+this work does not pull engineers off the gate's critical path.
+
+These conditions apply to every GO below:
+
+- No OB work goes into a client build until its own Stage 8 and Stage 10 are signed. New surfaces
+  sit behind a kill switch or flag that is OFF by default.
+- No real customer data is used.
+- Vendor and compliance decisions in §D stay open.
+- Gate A work takes priority over OB work for any role it needs.
+- Do not edit the OB-17 screens while they are being built: onboarding/identity, home, asset list,
+  asset detail, map, report theft/loss, alerts, account.
+
+**GO now, in this order:**
+
+1. Feature 018: the chair's confirmation pass (`cybersecurity-architect`), plus `compliance-specialist`
+   concurrence on CR-018-11 and CR-018-12.
+2. Feature 011 closure:
+   - `retention_job_runs` (security-review §11): `database-architect`, then `backend-engineer`.
+   - `security-engineer` re-confirms on the diff.
+3. DEFECT-001: the code has landed in `repositories/customer-profiles.ts`, but no Stage 8 or Stage 10
+   record exists. `security-engineer` reviews (Stage 8), then `qa-engineer` tests (Stage 10).
+4. OB-15: `backend-engineer` adds a separate manifest entry for the scorecard route. Under the
+   SR-012-5 precedent, `/admin/*` does not count as coverage. Then `security-engineer` does a scoped
+   Stage 8.
+5. OB-04: Stages 1 to 7 for the case-history schema.
+   - `business-analyst` sets *internal* response-time targets only. Contractual targets stay blocked.
+   - `database-architect` and `backend-architect` design the history as append-only events, with no
+     location fields, so that OB-03 events can be added later.
+   - `backend-engineer` builds after Stage 8.
+6. OB-03: paper only. `solution-architect` writes the dispatch-model ADR, with `compliance-specialist`
+   on the consent model. The ADR must settle SR-INC002B-S3. No code before `cto` ratifies the ADR.
+7. OB-02: paper only. `cybersecurity-architect` designs C-010-4, Tier 2 caller verification.
+8. Rulings from `compliance-specialist` on OB-05, OB-12 and OB-09, then OB-09 Stage 1
+   (`business-analyst`). No build.
+
+**NO-GO, with the reason for each:**
+
+| Item | Reason |
+|---|---|
+| OB-01 | Blocked on INC-001, ADR-0009 and the purpose-limitation ruling |
+| OB-06 build | Blocked on CT-1 |
+| OB-07, OB-08 | Blocked on the KYC vendor (and MP-5 for OB-08) |
+| OB-09 discounts | Blocked on the payment gateway |
+| OB-10 media | Blocked on MP-5 |
+| OB-13 | Blocked on the GPS vendor |
+| OB-14 WhatsApp | Blocked on the WhatsApp provider decision |
+| OB-14 i18n string extraction | Waits for OB-17 to merge |
+| OB-16 | Phase 4. Blocked on the Feature 014 clarification and the payment gateway |
+| OB-05, OB-11 and OB-12 form/UI wiring | Each waits for its own ruling and for the matching OB-17 screen to merge |
