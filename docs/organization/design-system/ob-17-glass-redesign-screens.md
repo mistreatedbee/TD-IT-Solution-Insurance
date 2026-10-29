@@ -443,3 +443,133 @@ matrix, since this is the other place a non-accent, non-neutral colour sits on g
    clear-cut defects during this pass beyond the two confirm-with-engineering items above (#3,
    #4) — if `mobile-engineer`/`frontend-engineer` surfaces others while building, route them to
    `ux-researcher`/`product-manager` as a separate backlog item, not back into this doc.
+
+---
+
+## 11. Attempted Figma-sourced detail pass (PAAQ file) — 2026-10-29, not completed, no content added
+
+`cto` asked this role to pull concrete visual/layout detail from the owner-supplied PAAQ Figma
+file (`https://www.figma.com/design/Crcdvg7h55ihIcy6clT3Nq/PAAQ-App?node-id=68525-72714&m=dev`)
+into §§1-8 above — specifically the home-screen search/tab-pill header, the account/profile
+pattern, list-card spacing on PAAQ's browse screens, the onboarding carousel idiom, and
+confirmation/contradiction of the tokens doc §7 item 6 black-CTA question — citing a Figma node
+ID per pattern ported, visuals-only, no PAAQ content/copy/functionality carried over.
+
+**Honesty note, logged rather than acted around:** no Figma MCP tool
+(`mcp__claude_ai_Figma__create_session`/`get_metadata`/`get_design_context`/`get_screenshot`) was
+present in this run's available tool set, despite the task brief and the session's MCP-server
+instructions describing one as already authenticated and loaded. Without that tool this role has
+no way to open the file, enumerate its ~25+ child screens/node IDs, or read any pixel value,
+spacing, or component structure off it. Rather than fabricate node IDs or visual descriptions of
+screens never actually seen — which would be a direct violation of the "never claim a system or
+detail exists if it hasn't been verified" house rule, and worse here because it would masquerade
+as a cited primary source — **no new Figma-sourced content has been added to §§1-8 of this
+doc.** All eight screen specs above stand exactly as previously written (2026-10-29, informed by
+the ratified tokens doc only), with their existing PROVISIONAL flags unchanged.
+
+This also means the tokens doc §7 item 6 open question (black secondary accent for primary
+CTA/bottom-nav active state vs. teal for identity/category elements) is **neither confirmed nor
+contradicted** by this pass — it remains exactly as `design-system-manager` left it, pending
+either a working Figma session or a direct screenshot export the owner can hand over another way.
+
+**Recommendation back to `cto`/`product-manager`:** either (a) re-run this task in a session where
+the Figma MCP tool is actually present and confirmed callable before work starts, or (b) have the
+owner export flat PNG screenshots of the specific PAAQ frames named in the brief (home top bar,
+profile screen, "Frame 2147261332" list-card family, onboarding carousel) so this role can read
+them via the image-reading path instead of the Figma API. Either path is preferable to a second
+attempt that might again reach for tools not actually available and risk a fabricated citation.
+
+No screen in §§1-8 required a PAAQ analog that doesn't exist (map, report-theft) — that honesty
+note from the original brief was already correctly placed in §0/§5/§6 before this task began and
+is unchanged.
+
+## 12. Figma-sourced detail — PAAQ home/onboarding node, 2026-10-29 (supersedes §11's blocked state)
+
+§11's blocker was specific to the subagent role invoked for that task — it did not have the
+Figma MCP tool in its own tool set. `cto`, who does have it in this session, pulled real data
+directly from Figma node `68525:62934` (fileKey `Crcdvg7h55ihIcy6clT3Nq`, PAAQ Figma file,
+"Frame 2147261332" — the home/explore screen plus its "Why install PAAQ" onboarding overlay) via
+`get_design_context` and a rendered screenshot. This is a genuine primary-source read, with node
+IDs cited below — not a reconstruction from memory. Still PAAQ content (an experts-booking app),
+used strictly as visual/layout reference per §0's visuals-only rule — no PAAQ copy, categories,
+or functionality carries over into our screens.
+
+### 12.1 Accent colour — contradicts the tokens doc's exact hex, confirms the hue family
+
+PAAQ's actual accent as rendered in this node is **`#00b5b4`** (teal), used on: the active
+"Experts" tab pill (`68525:62962`), the search-adjacent "PAAQ AI" sparkle button fill/border
+(`68525:62958`, `bg-[#d9fafa] border-[#00b5b4]`), card "View all" pill borders/text
+(`68525:62997`), and the primary CTA button in the onboarding overlay (`68525:63132`,
+`bg-[#00b5b4]`, "Explore PAAQ").
+
+This **confirms the hue family** `design-system-manager` picked in the tokens doc's §2.1
+(`--glass-accent`) but the **exact hex differs**: tokens doc has `#2DBDB6`, PAAQ's real value is
+`#00b5b4`. Flag back to `design-system-manager`: recommend updating `--glass-accent` to `#00b5b4`
+now that a verified source value exists, superseding the earlier estimate (which was itself
+reading off a lower-fidelity screenshot, not a live Figma value) — this role is not making that
+token-doc edit directly per the ownership split in CLAUDE.md (design-system-manager owns tokens,
+this role owns screens); flagging only.
+
+### 12.2 Primary CTA colour — CONTRADICTS the open "black secondary accent" question (tokens §7 item 6)
+
+Both onboarding-overlay CTA buttons in this node are **brand-coloured, not black**: "Explore PAAQ"
+is `#00b5b4` (teal, `68525:63132`) and "Scan to Join an Event" is `#cd6312` (orange, matching that
+card's own warm accent, `68525:63165`/`68525:63198`). No black button appears anywhere in this
+node. This contradicts the hypothesis raised in the tokens doc that PAAQ uses black as a universal
+secondary CTA accent — in this screen, CTA colour instead matches each card's own semantic accent
+(teal for the "experts" card, orange for the "events" card). The black button/pill seen in the
+earlier owner screenshots (the "Book Olusegun" button, bottom-nav active state) may be a
+system-level/profile-specific treatment distinct from this in-content CTA pattern, or may belong
+to a different screen not captured in this node. **Recommendation to `product-manager`/`cto`:
+treat tokens §7 item 6 as still open**, not resolved by this pass either way — the two sources
+(this node vs. the earlier screenshots) show different CTA-colour conventions in different
+contexts, which itself is worth a direct answer from the owner rather than inferring one.
+
+### 12.3 Card, radius, and shadow pattern — confirms flat-white-card hypothesis from tokens §7 item 5
+
+Every content card in this node (`68525:62985`, `68525:63000`, `68525:63019`, etc.) is: solid
+white (`bg-white`), `rounded-[24px]`, with a very subtle shadow
+(`drop-shadow-[0px_4px_5px_rgba(0,0,0,0.02)]`) — effectively flat, not frosted glass. The *only*
+blur/translucency in this entire node is the onboarding overlay's full-screen scrim
+(`68525:63083`, `backdrop-blur-[20px] bg-[rgba(0,0,0,0.5)]`) and the modal sheet sitting on top of
+it (`68525:63091`, `backdrop-blur-[10px] bg-[rgba(255,255,255,0.74)]`) — i.e. glass is used for a
+modal/overlay moment, not for ordinary content cards. **This directly confirms** the
+recommendation `design-system-manager` already flagged as open item 5 in the tokens doc: reserve
+heavy `GlassCard`/`GlassSurface` blur for hero/header/modal moments, keep ordinary content cards
+(home feed, asset list, etc.) flat-white-with-shadow. Recommend `product-manager`/`cto` treat
+item 5 as resolved in favour of that recommendation based on this primary-source confirmation.
+
+The `24px` card radius also exactly matches `--glass-radius-card: 24` already set in the tokens
+doc §5.1 — no change needed there.
+
+### 12.4 Other concrete patterns observed (for `ui-designer`'s future screen-build pass, not yet applied to §§1-8)
+
+- **Search bar**: full pill (`rounded-[100px]`), white fill, thin `#e7e7e7` border, 18px search
+  icon + placeholder text, paired with a separate small square "AI" action button
+  (`rounded-[12px]`, accent-tinted fill) to its right — relevant to our home screen's header.
+- **Segmented tab row**: three equal-width pill buttons in a row (`rounded-[50px]`, 40px tall),
+  active = solid accent fill + white text, inactive = white fill + grey text — a pattern our
+  asset-list screen's category/status filter could reuse instead of `SelectChipGroup` if a
+  tab-style filter reads better than a chip row (`ui-designer`'s call, not decided here).
+- **Avatar stack + "View all" pill**: overlapping circular avatars (60px, -7px overlap) ending in
+  a "View all" chip styled as a miniature card (`73×60px`, `rounded-[20px]` outer /
+  `rounded-[14px]` inner) — not directly applicable to our screens (no analogous avatar-stack
+  need identified in §§1-8) but noted in case `ui-designer` finds a use on the account screen's
+  "linked family members" or similar.
+- **Fonts used in this node**: `Sofia Pro` (the "9:41" status-bar time only) and `Circular Std`
+  (everything else — headings, body, buttons). **Neither matches** `design-system-manager`'s
+  Inter recommendation in tokens doc §3. Flag back to `design-system-manager`: Circular Std is a
+  commercial font (Lineto/Circular Std requires a license, unlike Inter's open license) — this
+  role does **not** recommend switching the already-ratified Inter decision over a PAAQ-sourced
+  observation alone, since font *licensing*, not just visual match, was tokens doc §3's stated
+  reason for picking Inter, and that reasoning still holds regardless of what PAAQ itself uses.
+  Noting the mismatch for the record, not proposing a change.
+
+### 12.5 Net effect on §§1-8 screen specs
+
+No edits made to §§1-8 in this pass — the confirmations above (§12.3 in particular) support
+`ui-designer`'s *existing* flat-card-with-hero-blur approach already implied in those sections
+rather than requiring a rewrite of them. §12.4's segmented-tab-row pattern is logged as a
+candidate detail for the home/asset-list sections' next revision, not applied here, to keep this
+pass to confirmed findings plus flagged recommendations rather than mixing in a silent spec
+change.
