@@ -792,3 +792,21 @@ already-cleared scope — it protects against a *future* engineer accidentally b
 endpoint without noticing it's unauthorized, which the manifest omission and the 404 test already guard
 against today, just not as robustly as a dedicated CI rule would. Recommend it as queued work, not a
 blocker on current operation.
+
+---
+
+## 13. C-010-4 Tier 2 design filed (OB-02): `cybersecurity-architect`, 2026-10-29
+
+§6 said C-010-4 was my deliverable and that this document did not produce it. It is now filed **as a proposed
+design**, in [`05-c-010-4-tier2-caller-verification-design.md`](./05-c-010-4-tier2-caller-verification-design.md).
+It is scoped to report-on-behalf (OB-02, FR-9/FR-18–21) only.
+
+- **Mechanism:** the account holder approves the agent's request inside their own authenticated session
+  (ADR-0012 step-up if TOTP is enrolled, password re-authentication otherwise). When the account holder is on
+  the call, number matching ties the call to the approving session. No verification secret ever passes through
+  the agent. There is no break-glass path.
+- **SR-010-1 for this write:** a new `agent_on_behalf_report` Trail A event, which is structurally impossible to
+  write without a reference to an `approved` verification record. It sits alongside the `caller_verification`
+  event type that SC-API-04 (§5) ruled must be distinct, now given its fields and invariants.
+- **This section clears nothing.** FR-18–21 stay blocked at Stage 1. Build, including both audit events, is
+  **NO-GO** until `compliance-specialist` concurs on sufficiency and `cto` ratifies. SR-010-5 stays in force.
