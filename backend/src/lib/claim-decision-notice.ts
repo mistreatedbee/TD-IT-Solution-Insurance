@@ -71,7 +71,8 @@ export const CLAIM_DECISION_NOTICE_TEMPLATE_VERSION = 1;
  *     claimed amount — used both for a full rejection on quantum grounds
  *     and, per §12.3 N-3, for the shortfall on a partial approval.
  *   - OTHER: anything else; needs a longer minimum admin-supplied reason
- *     (enforced in the route layer, not here).
+ *     (100 characters trimmed, per security-review.md §16.5; enforced in the
+ *     route layer via `OTHER_GROUND_MIN_REASON_LENGTH`, not here).
  */
 export const CLAIM_REJECTION_GROUND_CODES = [
   'LOSS_OUTSIDE_PERIOD_OF_COVER',
@@ -115,10 +116,12 @@ export type ClaimDecisionNoticeKind =
   | 'more_info_request';
 
 /**
- * §12.3 N-6 — delivery is a SEPARATE, not-yet-built concern (blocked on the
- * production email readiness item). This array exists so a future delivery
- * mechanism has somewhere to record attempts against an immutable notice
- * record; nothing in this backend appends to it yet.
+ * §12.3 N-6 — delivery attempts against an immutable notice record. This
+ * array is seeded empty on issuance (below), but is not append-only in
+ * practice from that point: `lib/claims-notification-service.ts` later
+ * records `{channel, attemptedAt, succeeded}` outcomes onto it via
+ * `repositories/claims.ts`'s `$push` on `decisionNotices.$[n].deliveries`.
+ * Don't assume this stays empty for an issued notice.
  */
 export interface ClaimDecisionNoticeDelivery {
   channel: 'email' | 'in_app';
@@ -190,9 +193,13 @@ interface ResolvedNoticeConfig {
  * pre-existing hand-built test `Env` fixture across the backend (there are
  * dozens, per file, predating this feature) keeps compiling without being
  * touched. `loadEnv()` always populates it in a real process, with
- * TODO_OWNER_MUST_CONFIGURE placeholders standing in for real values — so in
- * every real environment this resolves successfully to placeholder-but-
- * non-blank text, never throws. It throws only when a caller (production
+ * TODO_OWNER_MUST_CONFIGURE placeholders standing in for real values.
+ * SR-018-11 / CR-018-10: that placeholder prefix is no longer treated as
+ * acceptable, non-blank text — `requireConfigValue` above (via
+ * `isClaimNoticePlaceholderValue`) now throws `ClaimDecisionNoticeConfigError`
+ * on it, not just on genuinely blank/whitespace-only values. So this
+ * resolution DOES throw in an unconfigured real environment (every field
+ * still carrying its placeholder), and also throws when a caller (production
  * misconfiguration, or a test deliberately simulating one) supplies a
  * blank/whitespace-only value for a required field, or omits the whole
  * `claimsNotice` block entirely.

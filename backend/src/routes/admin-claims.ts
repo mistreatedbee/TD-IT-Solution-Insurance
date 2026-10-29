@@ -62,7 +62,7 @@ const requiredReasonSchema = z.string().trim().min(1).max(2000);
 // via `.superRefine` on the full union below, not a `.refine` on the
 // individual `rejected` member — zod's `discriminatedUnion` requires each
 // member to be a plain `ZodObject`, not a `ZodEffects`.
-const OTHER_GROUND_MIN_REASON_LENGTH = 20;
+const OTHER_GROUND_MIN_REASON_LENGTH = 100;
 
 const patchBodySchemaUnion = z.discriminatedUnion('action', [
   z.object({ action: z.literal('start_review') }),

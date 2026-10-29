@@ -1267,7 +1267,7 @@ describe('security-review.md §12.3 — claim decision notices (SR-018-6)', () =
       expect(harness.stateChanges).toHaveLength(0);
     });
 
-    it('rejects with groundCode OTHER and a substantive rejectionReason (20+ chars) — succeeds', async () => {
+    it('rejects with groundCode OTHER and a substantive rejectionReason (100+ chars) — succeeds', async () => {
       const acctId = randomUUID();
       const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
       const listened = await listen(harness.app);
@@ -1279,9 +1279,48 @@ describe('security-review.md §12.3 — claim decision notices (SR-018-6)', () =
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({
           action: 'rejected',
-          rejectionReason: 'The claimed asset serial number does not match any registered asset on this policy.',
+          rejectionReason:
+            'The claimed asset serial number does not match any registered asset on this policy, and no supporting documentation was supplied to reconcile the discrepancy.',
           groundCode: 'OTHER',
         }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.decisionNotices[0].groundCode).toBe('OTHER');
+    });
+
+    it('rejects with groundCode OTHER and a 99-character (trimmed) rejectionReason — 400 VALIDATION_ERROR, no mutation', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+      const reason99 = 'x'.repeat(99);
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'rejected', rejectionReason: reason99, groundCode: 'OTHER' }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error.code).toBe('VALIDATION_ERROR');
+      expect(harness.getClaim().status).toBe('under_review');
+      expect(harness.stateChanges).toHaveLength(0);
+    });
+
+    it('rejects with groundCode OTHER and exactly a 100-character (trimmed) rejectionReason — succeeds', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+      const reason100 = 'x'.repeat(100);
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'rejected', rejectionReason: reason100, groundCode: 'OTHER' }),
       });
       expect(res.status).toBe(200);
       const body = await res.json();
