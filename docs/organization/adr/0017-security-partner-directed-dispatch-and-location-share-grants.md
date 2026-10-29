@@ -825,3 +825,156 @@ engineer`/`database-architect` before build starts).
   lookup (`caseId`, `partnerOrganizationId`, `expiresAt` at minimum) before the location route is built,
   given D3.3's explicit no-caching requirement makes this read's latency load-bearing for the security
   model itself.
+
+---
+
+## `compliance-specialist` ruling: G-2 / CS-3, OQ-1, OQ-2 (2026-10-29)
+
+**Verdict: CS-3 is LAWFUL and REQUIRED, in its "mark untrusted" form, with conditions CR-1 to CR-9.
+OQ-1: do not hold back activation (conditions below). OQ-2: add `case_unassigned`.** This answers the
+OQ-1/OQ-2 half of ratification trigger item 2. Regime basis: POPIA (confirmed for SA data subjects).
+GDPR is still unconfirmed, so I apply its stricter Art 7(3) bar as the design floor.
+
+I checked code before writing this. `POST /assets/:assetId/location-report` (`assets.ts:106`), the
+location-consent routes (`:190`) and `DELETE /assets/:assetId/location` (`:244`) all authenticate with
+the ordinary customer session. The phone's location reaches us only through that session. No
+location-withdrawal or grant control exists on the web customer surface (`src/`) today.
+
+### 1. The legal question, stated precisely
+
+A correction to G-2's framing first. POPIA s11(2)(b) says the **data subject** may withdraw consent
+"at any time". The rule that withdrawal must be "as easy as giving consent" is GDPR Art 7(3), not POPIA
+text. I hold us to it anyway, as the design floor.
+
+Both rules belong to the **data subject**. A thief holding the customer's unlocked phone is not the data
+subject. A revoke tap from that phone after a theft report is not a withdrawal of consent. It is an
+unauthorised person acting on the customer's account. POPIA s19 requires us to take reasonable measures
+against unauthorised access to and modification of personal information. Once the customer has told us
+the device is stolen, treating that device's session as the customer is a s19 failure. Blocking it does
+not breach s11.
+
+So the two duties do not conflict. Easy withdrawal is measured by what the **data subject** can actually
+reach, and at that moment the customer by definition does not hold the device. The test is: **can the
+customer withdraw promptly, at any time, without disproportionate effort, through a channel they
+actually hold?** CS-3 passes if, and only if, CR-3 is in place. Without CR-3 it fails, and I would block.
+
+### 2. Revoke or mark untrusted: ruling
+
+**Mark untrusted. Full revocation is not acceptable as the default.** Today the stolen phone is the only
+location source for a phone asset (no GPS vendor, ADR-0009 self-device), and it reports through the
+customer session. Revoking that session stops the reporting and defeats the recovery the customer
+consented to. That would be a purpose failure, not a privacy win. `authentication-engineer` still owns
+the mechanism. This ruling binds the outcome.
+
+### 3. Conditions
+
+- **CR-1 (scope of an untrusted session).** After a theft or loss report names device X, sessions bound
+  to device X become a **reporting-only credential**. They may (a) keep calling the location-report
+  route under the customer's existing Feature 008 consent, and (b) nothing else. **No reads of customer
+  personal information** (profile, policies, other assets, location history, cases, grants, partner
+  names, access history). Serving the customer's data to a known-stolen device would itself be a s19
+  failure. Requests outside (a) get one fixed response (CR-5).
+- **CR-2 (actions blocked from the untrusted session).** These are all data-subject rights or
+  safeguards, so all of them are blocked there: grant revoke, grant create or renew, pre-authorisation
+  create or withdraw, Feature 008 consent withdrawal (`DELETE /assets/:assetId/location`), asset delete,
+  account erasure or s24 request, contact, password, MFA and account-recovery changes, and
+  **notification-preference changes** (otherwise a thief can mute the SG-3 notice). A thief also cannot
+  *give* consent. A grant from that session would not be the customer's consent under SG-2.
+- **CR-3 (easy withdrawal elsewhere: precondition for CS-3 and for the flag).** Before
+  `PARTNER_LOCATION_SHARING_ENABLED` can be on, the customer must be able to do each of the following
+  without the reported device:
+  1. **Web:** sign in on the web customer surface and, in no more than one confirmation after sign-in,
+     revoke any grant, withdraw a pre-authorisation and withdraw Feature 008 location consent. **This
+     does not exist today. It is new build** (`frontend-engineer`, on the D4 customer routes plus the
+     existing withdrawal route).
+  2. **Any other trusted mobile session:** the same controls.
+  3. **Support:** a customer who has lost their only device can ask support to withdraw. After
+     identity verification, support ends the grant or withdraws consent. This is **restriction-direction
+     only**, so SG-2's ban on agent-created grants does not apply and it does not wait on OB-02 /
+     C-010-4. It is recorded as `revoked_by_customer` / `location_consent_withdrawn`, with `endedBy` =
+     the agent's `accountId` and the support reference on the Trail B row. Target: actioned within the
+     same working day. Until tooling exists, this is a documented manual runbook (`customer-support-lead`
+     + `technical-writer`). A runbook is acceptable for v1. No path at all is not.
+- **CR-4 (step-up must not live on the stolen device).** CS-3's "fresh step-up from another device or
+  channel" must not be satisfiable by a factor that lives on the reported device. That excludes a
+  passkey or authenticator bound to it, SMS to its SIM, and an email magic link opened on it.
+  `authentication-engineer` designs this. If the customer has no other factor, the route is CR-3.3
+  (support), not a weaker factor.
+- **CR-5 (honest response to the untrusted session, never a fake success).** A blocked action gets one
+  fixed message: "This device was reported stolen. To change sharing or your account, sign in on another
+  device or contact support." **Do not pretend the action worked.** A fake success could deceive the real
+  customer if the report was mistaken or the phone is back. The message must not show the partner's name,
+  case details or whether a grant exists. Each blocked attempt writes a Trail B row, and the customer is
+  told by email (and push to trusted devices only) that an attempt was made from the reported device.
+- **CR-6 (getting trust back).** A device is trusted again only when (a) the case reaches `recovered` or
+  `closed` through a trusted channel, or (b) the customer re-trusts it from a trusted session or after a
+  CR-4-compliant step-up. Signing in again on the device alone is not enough, because saved passwords
+  travel with the phone.
+- **CR-7 (no collateral lock-out).** CS-3 must never demote the session that filed the report, any web
+  session, or any session not positively bound to device X. If the device cannot be reliably bound to a
+  session, `authentication-engineer` must say so at Stage 6. A guess is not acceptable, and a wrong guess
+  that locks the customer out of their own withdrawal is the failure that would make this unlawful.
+- **CR-8 (notification routing: amends how SG-3 is applied).** Customer push about a case, a grant
+  activation or an access history **must not be sent to push tokens bound to the reported device**. It
+  would tell the thief the partner's name (a safety risk to partner operators) and hand them a revoke
+  control. My SG-3 phrase "one-tap revoke" means **one tap after authentication on a trusted channel**.
+  It does not mean an unauthenticated revoke link in email. An email link opened on the stolen phone
+  would bring G-2 straight back. Email links deep-link to sign-in.
+- **CR-9 (notice).** The §4 / PDM-9 copy gains one plain-language line, which I will supply with the
+  copy adjustment already owed under Consequences: "If you report this phone stolen, it can't be used
+  to change your sharing or account settings. Use another device, the website or support." That line
+  turns CR-2 from a surprise into a disclosed term.
+
+### 4. OQ-1: activation when push and email both fail
+
+**Ruling: do not hold back activation.** The s18 notice and the consent were given at pre-authorisation
+(SG-3, §4 notice, `noticeVersion` stamped). The activation notice is a specificity and transparency
+safeguard (it names the org). It is not the lawful basis, and failing to deliver it does not void the
+consent. Holding activation back would defeat the purpose the customer chose Path A for: being
+unreachable. Conditions:
+- (a) CS-2 (i) to (iii) are adopted as compliance conditions, not just security ones.
+- (b) Delivery failure never extends anything. The 24-hour SG-4 default and no-auto-renew stand.
+- (c) Email retries continue for the grant's lifetime. "Push failed" includes the case where the only
+  token is on the reported device and was correctly suppressed under CR-8. That counts as "no push channel
+  available", not as a breach of SG-3.
+- (d) The active grant, partner name and revoke control show first on every trusted customer surface
+  (web and mobile) at next sign-in, before any other content.
+- (e) The pre-authorisation's `noticeVersion` is copied onto the activated grant, so SG-9 holds for the
+  grant record itself.
+
+### 5. OQ-2: `endReason` for a hand-back to the queue
+
+**Ruling: add `case_unassigned`. `case_reassigned` does not cover it.** The SG-8 access history and the
+s23 answer must be accurate (s16). "Reassigned" tells the customer someone else now holds their case,
+which is false when nobody does. Use:
+- `case_reassigned`: the case moves to a different org (admin re-dispatch to another org).
+- `case_unassigned`: the case returns to the queue with no new holder. That covers a partner hand-back,
+  an admin recall and a CS-4/BA-1 migration return. `endedBy` tells them apart.
+
+**This amends SG-1's vocabulary** (`compliance-review-ob-03-partner-location-sharing.md` §3). The D3.4
+table row "Hand-back, or admin re-dispatch to a different org" should be split to match when
+`solution-architect` next revises D3.4. BA-1's migration event uses `case_unassigned`. Customer-facing
+wording: "Sharing ended: [Partner] handed your case back. You'll be asked again before anyone new sees
+your location."
+
+### 6. D3 against SG-1 to SG-14 (rest of ratification trigger item 2)
+
+D3 satisfies SG-1 to SG-14 **as designed**, subject to §3 to §5 above. SG-12 (P-4) and SG-13 (P-6,
+counsel on s57) are still open. They are correctly gated before the flag, not before ratification.
+Owed by me before the location build's Stage 8, but not blocking ratification: the adjusted §4 / PDM-9
+copy (including CR-9) and the append-only L-6 correction to the OB-03 spec.
+
+**Ratification trigger item 2: SATISFIED** for ADR ratification. **CR-3 is a hard precondition for
+`PARTNER_LOCATION_SHARING_ENABLED`.** I will block the location build's Stage 8 if a non-device
+withdrawal channel (web, plus the support runbook) is not live.
+
+- [x] Regime confirmed: POPIA s11(2)(b), s16, s18, s19, s23. GDPR Art 7(3) applied as floor, not confirmed.
+- [x] Lawful basis: unchanged (consent at pre-authorisation or grant). CS-3 does not touch it.
+- [x] Classification: highest class for location. CR-1 also covers the account PII left on a stolen device.
+- [x] Audit: blocked attempts and support-actioned withdrawals write Trail B rows (CR-3.3, CR-5).
+- [n/a] PCI-DSS: no payment data.
+- [ ] Third-party: SG-12 / P-4 still open (gated).
+- [ ] Breach procedure: a theft report alone is not a s22 notification event. If data is served to a
+  device after it was reported stolen, that is a s19 incident for the INC runbook. Counsel may
+  sharpen this at P-6.
+- [ ] Consent copy: CR-9 line still owed.
