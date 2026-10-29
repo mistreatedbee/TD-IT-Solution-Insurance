@@ -1931,6 +1931,162 @@ This does not change the chair's or compliance's verdict rows (§18, §16) — t
 re-review. It closes one of the four open code items §18.1 listed; CR-018-11, CR-018-12 and the
 admin-UI delivery-status follow-up above remain open.
 
+## 21. `compliance-specialist` concurrence pass on CR-018-10, CR-018-11 and CR-018-12 (2026-10-29)
+
+This section only adds to the document. It does not change §0 to §20. §12 and §16 are my own earlier
+sections and stay as written. This is the re-read I committed to in §16.5.
+
+**Numbering note.** This section was written at the same time as the chair's §20 and landed above
+it in the file. I renumbered my own uncommitted text from §20 to §21. Nobody else's text was moved.
+The chair and I reached the same results independently on CR-018-7, CR-018-10 and CR-018-11.
+**§21.3 is the CR-018-12 placement ruling the chair's §20.1 referred to me.** I also adopt the
+chair's C-018-23 (stale comments at `claim-decision-notice.ts:117-121,188-198`) as part of the same
+fix commit.
+
+**What I read:** the `main` reflog shows these commits in `2cda9ed..56c4c65`:
+- `65f5dde`: CR-018-12 mobile notices
+- `16c9435`: docs
+- `0b97b20`: SR-018-10/CR-018-7 email
+- `56c4c65`: SR-018-11/CR-018-10 placeholders
+
+**No commit message in the range names CR-018-11.** I judged CR-018-11 from the code at `HEAD`. Files
+read:
+- `backend/src/routes/admin-claims.ts`
+- `backend/src/lib/claim-decision-notice.ts`
+- `backend/src/config/env.ts`
+- `backend/src/routes/admin-claims.test.ts` (CR-018-11 block)
+- `mobile/src/screens/claims/ClaimDetailScreen.tsx` and its test
+- `mobile/src/api/claims.ts`
+
+**What I did not do:** I had no shell. I did not run `git diff`, `tsc` or `npm test`, and I did not
+commit. The only run evidence is §19's (992/992, `notification-engineer`).
+
+### 21.1 CR-018-10 (placeholder config): MET, closed from the compliance side
+
+There are two mechanisms, and either one alone would have satisfied §16.5:
+- **Request time.** `requireConfigValue` rejects any value whose trimmed form starts with
+  `TODO_OWNER_MUST_CONFIGURE` (`claim-decision-notice.ts:159-171`). It throws the same
+  `ClaimDecisionNoticeConfigError` as a blank value, so the existing 500
+  `CLAIM_NOTICE_CONFIG_INCOMPLETE` path applies: no audit row and no change to the claim.
+  `admin-claims.test.ts:1201` asserts exactly that.
+- **Boot time.** `loadEnv()` refuses to start when `isProduction && claimsApiEnabled` and any notice
+  value is still a placeholder (`env.ts:522-535`). Tested at `env.test.ts:77`.
+
+The boot check uses `startsWith` without trimming. That does not matter, because the request-time
+check trims and is the backstop. **N-2(8) is now enforced in code. CR-018-10 is closed.**
+
+### 21.2 CR-018-11 (`OTHER` minimum length): NOT MET. The wrong number shipped.
+
+I ruled (§16.5) that **when `groundCode === 'OTHER'`, `rejectionReason` must be at least 100
+characters after trimming.** As built:
+- `admin-claims.ts:65` sets `OTHER_GROUND_MIN_REASON_LENGTH = 20`, enforced by `.superRefine`
+  (`:125-136`).
+- The mechanism is correct: it is server-side, applies only to `rejected` + `OTHER`, trims, returns
+  400 and makes no change. **The threshold is not.**
+- No deviation was recorded. There is no rationale and no request to me.
+
+**I hold 100, for this reason.** `OTHER` is the one ground code that carries no meaning by itself.
+The admin's text is then the *entire* statement of the ground the customer has to answer within the
+90-day representation window (N-2(2), N-2(3)). Twenty characters lets through "Not covered by
+policy" (21 characters). That is exactly the unexplained repudiation the written-reasons requirement
+exists to prevent.
+
+The test fixture makes the same point. `admin-claims.test.ts:1282` uses a "substantive" reason of 83
+characters: *"The claimed asset serial number does not match any registered asset on this policy."*
+- It would fail at 100.
+- Its content is an `INSUFFICIENT_EVIDENCE_OF_OWNERSHIP` ground, not an `OTHER` one.
+
+So the residual code is being used where a specific code exists. That is the behaviour the friction
+is meant to discourage.
+
+**The comment is also uncorrected.** §16.5 asked for both comments to be fixed:
+- `claim-decision-notice.ts:53-54` still says "compliance didn't give an exact list". It is still
+  wrong: §12.3 gave the list, and §16.2 confirmed the code matches it.
+- `:73-74` is now accurate.
+
+**Required before the flip (`backend-engineer`), still under the ID CR-018-11:**
+1. Set `OTHER_GROUND_MIN_REASON_LENGTH = 100`.
+2. Tests:
+   - 99 trimmed characters → 400, no mutation, no audit row;
+   - 100 trimmed characters → 200;
+   - a string padded with whitespace that is ≥ 100 untrimmed and < 100 trimmed → 400.
+   Keep the existing non-`OTHER` short-reason test.
+3. Change the `:1282` fixture to a genuinely residual reason, or move it to
+   `INSUFFICIENT_EVIDENCE_OF_OWNERSHIP`.
+4. Correct `claim-decision-notice.ts:53-54`.
+
+**Recommended, not blocking:** a character counter and the minimum shown in
+`AdminClaimsPages.tsx` when `OTHER` is selected. The server is the control.
+
+If engineering thinks 100 is wrong, the route is a short note to me with the reasoning. A constant in
+a commit does not settle it.
+
+### 21.3 CR-018-12 (mobile notice display): MET IN SUBSTANCE, with one placement condition
+
+**Verified in `ClaimDetailScreen.tsx`:**
+- Every `decisionNotices[]` entry is rendered **in full** (`:135-155`): newest first, split into
+  paragraphs, not summarised, and not behind a link or expander.
+- `quantumReason` is shown with the claimed and approved amounts (`:111-126`), and `closeReason` is
+  shown too (`:128-133`).
+- Tests cover all three adverse kinds (`ClaimDetailScreen.test.tsx:131,181,210`).
+- `mobile/src/api/claims.ts:38-44` states that `renderedText` must be shown in full.
+
+**This closes G-3's omission:** the customer can now see the 90-day, Ombud and licence text.
+
+**The placement is still wrong.** N-7 says the notice "must be the primary content". As built, the
+notice card comes after:
+- the details card;
+- the incident description;
+- the evidence description;
+- a standalone "Rejection reason" card showing the bare admin text.
+
+So the first decision text a rejected customer reads is still the single admin line. That is the
+pattern G-3 was raised against, moved one scroll lower.
+
+**CR-018-12a (`mobile-engineer`, layout decided by `ui-designer`). Blocks the flip and is small.**
+- Applies when the claim is `rejected`, administratively `closed`, or partly approved and
+  `decisionNotices[]` is not empty.
+- The most recent adverse notice renders **directly under the status badge, before the details
+  card**.
+- The standalone "Rejection reason" card is either removed (the reason is already inside the
+  notice's `Reason:` slot) or placed after the notice. It must not come before it.
+- Add a test asserting the order.
+- `ClaimDetailScreen` is not one of the OB-17 frozen screens (`08-roadmap.md` §F), so this does not
+  wait for OB-17.
+
+### 21.4 C-018-21 (chair §18.2): ruled
+
+The more-info notice is stored as boilerplate appended to `reviewNotes`, not as a
+`decisionNotices[]` record of kind `more_info_request`. **I accept this for v1.** N-1's purpose is an
+immutable, customer-visible record of what we told the customer and when, and the N-5 content does
+reach the customer.
+
+**CC-12 (new, non-blocking, `backend-engineer`).** Move more-info notices into `decisionNotices[]`
+(kind `more_info_request`) in the same commit that bumps `CLAIM_DECISION_NOTICE_TEMPLATE_VERSION` for
+tracker item 3 (§18.2). That commit already has to be made.
+
+I have **not** verified that existing `reviewNotes` entries are immutable once written. My acceptance
+assumes they are. If they are not, this becomes blocking.
+
+### 21.5 Decision
+
+| ID | Status |
+|---|---|
+| CR-018-7 (email delivery) | Code landed (§19). **I have not re-reviewed it in this pass** and will do so with the CR-018-11 fix. Production delivery still depends on the owner's Resend action. |
+| CR-018-10 | **Closed** |
+| CR-018-11 | **Open: threshold 20 ≠ 100, comment not corrected** (§21.2). The chair's §20.3 sets out the same closure steps |
+| CR-018-12 | **Closed in substance.** CR-018-12a (placement) is **open** and blocks the flip |
+| C-018-21 | Ruled: accepted for v1, with CC-12 |
+
+My §16.5 concurrence stands: the Stage 8 compliance requirements are met in design and backend code
+for running behind the kill switch. **The flag flip is still not approved.** It waits on everything
+in §16.5, with CR-018-10 now removed from that list and CR-018-12a added. `CLAIMS_API_ENABLED` stays
+unset.
+
+| Role | Decision | Date |
+|---|---|---|
+| `compliance-specialist` (C) | **CR-018-10 CLOSED. CR-018-11 NOT MET** (20 shipped; 100 ruled; comment uncorrected). **CR-018-12 met in substance, with CR-018-12a placement open.** C-018-21 accepted with CC-12. Flip not approved. Not committed by me (no shell). | 2026-10-29 |
+
 ## 20. Chair confirmation pass on the four §18.1 code items (`cybersecurity-architect`, chair, 2026-10-29)
 
 This section only adds to the document. It does not change §0 to §19. It is the confirmation pass
@@ -1991,3 +2147,97 @@ row becomes **"BLOCKED — pending non-engineering items only"**:
 | Role | Decision | Date |
 |---|---|---|
 | `cybersecurity-architect` (chair, A) | **BLOCKED (one code item: CR-018-11).** SR-018-10/CR-018-7 engineering half CLOSED. SR-018-11/CR-018-10 CLOSED (composer guard and production boot guard). CR-018-11 NOT closed: the threshold is 20 characters against the ruled 100, and the comment fix was not made. CR-018-12 content met, placement referred to compliance (N-7), not held by the chair. New non-blocking C-018-23 (stale comments). Based on reading the working tree. The commit range was not inspected, tests were not reproduced, and this section is not committed by me (no shell). | 2026-10-29 |
+
+## 22. Chair re-read of the CR-018-11 fix (`cybersecurity-architect`, chair, 2026-10-29)
+
+This section only adds to the document. It changes nothing in §0 to §21, and nothing of mine is
+void-marked. It is the diff re-read I committed to in §20.3. The fix was reported to me as landed in
+`27588b1` ("fix(claims): close CR-018-11 gap, OTHER ground minimum reason length").
+
+**What I did and did not do.** I had no shell again. I did **not** run `npx tsc --noEmit` or
+`npm test`, and I did not inspect `git show 27588b1`. I read the current working-tree source. The
+orchestrator reports 83 files / 994 tests passing, including the two new boundary tests. That count
+is consistent with §19's 992 plus two, but **I have not reproduced it**. No `cd mobile && npm test`
+run is recorded either. I have not committed this section.
+
+### 22.1 What changed since §20
+
+| §20.3 closure step | Result | Evidence (read directly) |
+|---|---|---|
+| `OTHER_GROUND_MIN_REASON_LENGTH = 100` | **Done** | `admin-claims.ts:65`. The `.superRefine` at `:125-136` is unchanged: it applies only to `rejected` + `OTHER`, it is server-side, and it returns 400 `VALIDATION_ERROR` before any write. |
+| The `:1270` passing test needed a longer string | **Done** | `admin-claims.test.ts:1270-1290`. The reason is now about 157 characters. |
+| Boundary tests at 99 and 100 | **Done** | `:1292-1310`: 99 characters gives 400, the status stays `under_review` and `stateChanges` has length 0. `:1312-1328`: exactly 100 characters gives 200. The short-reason test for a non-`OTHER` ground is kept (`:1330`). |
+| Comment `claim-decision-notice.ts:73-75` | **Done** | It now says 100 characters trimmed, per §16.5, and that the check is enforced in the route layer. |
+| C-018-23 (`:117-121`, `:188-198`) | **Done, so C-018-23 is closed** | `:118-125` now says `deliveries` gets appended to by `claims-notification-service.ts`. `:191-206` now says the resolver **does** throw in an environment that has not been configured. |
+| Comment `claim-decision-notice.ts:53-55` | **Not done** | It still says "compliance didn't give an exact list". That is false: §12.3 gave the list, and §16.2 confirmed it. My §20.3 and compliance's §21.2 item 4 both asked for this fix. |
+
+**Trim ordering, confirmed.** `rejectionReason` uses `requiredReasonSchema`, which is
+`z.string().trim()...` (`admin-claims.ts:56`). zod applies the trim before the union-level
+`superRefine`, and the refine trims again (`:127`). So a reason padded with whitespace to reach 100
+is measured after trimming, and it fails. The behaviour is correct by structure. The explicit test
+for padded input that compliance asked for (§21.2 item 2, third bullet) is **not present**. No
+padded-input case exists in `admin-claims.test.ts`.
+
+### 22.2 CR-018-11 result
+
+**The security control is closed. The chair accepts it.** The enforced threshold matches the ruled
+value, the mechanism is server-side and fails closed with no mutation, and the 99/100 boundary is
+tested. The stale `:53-55` comment does not change behaviour. I am not holding Stage 8 on it from the
+security-architecture side. It is carried as **C-018-24 (`backend-engineer`, non-blocking for the
+chair): correct `claim-decision-notice.ts:53-55`**. Compliance listed that same fix as a required
+closure step (§21.2 item 4), so whether CR-018-11 is fully closed is still compliance's call.
+
+### 22.3 Why the verdict does not move to "non-engineering items only"
+
+Compliance's §21 landed after my §20. It placed engineering work on the flip path that my §20.4
+list did not include. It would be wrong for me to call the remaining items "non-engineering":
+
+1. **CR-018-12a (`mobile-engineer`, with layout by `ui-designer`). Compliance ruled it blocks the
+   flip (§21.3).** It is not implemented. `ClaimDetailScreen.tsx` still renders the separate
+   "Rejection reason" card (`:106`) before the `decisionNotices[]` card (`:135`), and the notice
+   does not sit directly under the status badge (`:72`). In §20.1 I referred placement to
+   compliance and said I would not hold on it. That still stands for the chair. But compliance has
+   now ruled, and its ruling binds the flip.
+2. **CR-018-11 compliance closure steps that are not done:** the padded-whitespace test (§21.2
+   item 2, third bullet), the `:1282` fixture (§21.2 item 3), and the `:53-55` comment (§21.2
+   item 4). On fixture item 3: the fixture was made longer, but its content is still an
+   ownership/serial-mismatch ground, which is what §21.2 objected to. All three are small
+   `backend-engineer` items.
+3. **CC-12** (more-info notices into `decisionNotices[]`) is non-blocking. Compliance's acceptance of
+   C-018-21 assumes that `reviewNotes` entries cannot be changed once written, and compliance has
+   not verified that. If that assumption fails, CC-12 becomes blocking.
+
+**Compliance has not concurred on the CR-018-11 fix.** §21 was written against the 20-character
+code. The parallel `compliance-specialist` re-read of the fix had not reported back when I wrote
+this. Nothing here should be read as compliance sign-off.
+
+### 22.4 Verdict
+
+**BLOCKED. The chair has no open engineering items. Compliance-owned engineering items and
+non-engineering items remain.**
+
+- **Closed by the chair:**
+  - SR-018-10/CR-018-7 (engineering half)
+  - SR-018-11/CR-018-10
+  - CR-018-11 (security control)
+  - C-018-23
+- **Open engineering items, owned by compliance:**
+  - CR-018-12a placement (`mobile-engineer`)
+  - CR-018-11 closure items 2c, 3 and 4 (`backend-engineer`; item 4 is also the chair's C-018-24)
+- **Open non-engineering items** (carried from §20.4):
+  - the Resend owner action. It is the only legitimate owner-action blocker on the delivery path.
+  - tracker items 1 to 5 and the payout decision
+  - the read-back of the production `claims_one_open_claim_per_asset` index
+  - the SR-018-8(f) live-`mongod` run
+  - compliance's concurrence on the CR-018-11 fix
+- **Still owed by engineering:** a recorded `tsc`, backend `npm test` and `cd mobile && npm test`
+  run reproduced by someone with a shell, plus `security-engineer`'s SR-018-11 re-verification on
+  the diff (§17).
+
+When CR-018-12a and the three small CR-018-11 items land and compliance concurs, this row becomes
+"BLOCKED — pending non-engineering items only" without another chair pass. I will only need to
+re-read the CR-018-12a order test. `CLAIMS_API_ENABLED` stays unset.
+
+| Role | Decision | Date |
+|---|---|---|
+| `cybersecurity-architect` (chair, A) | **BLOCKED. The chair has no open engineering items. Compliance-owned engineering items remain.** CR-018-11 security control CLOSED (threshold 100 at `admin-claims.ts:65`, 99/100 boundary tests). C-018-23 CLOSED. New C-018-24 (stale comment at `:53-55`, non-blocking for the chair). CR-018-12a (compliance §21.3, blocks the flip) not implemented. CR-018-11 compliance items 2c, 3 and 4 not done. Compliance has not concurred on the fix. Based on reading the working tree. Not reproduced: `tsc`, `npm test` (reported 994/994), `git show 27588b1`. Not committed by me (no shell). | 2026-10-29 |
