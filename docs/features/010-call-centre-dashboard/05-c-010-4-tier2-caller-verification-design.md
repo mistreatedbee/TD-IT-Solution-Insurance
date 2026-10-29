@@ -351,3 +351,180 @@ The following must be queryable from the Trail A events in §6. Alerting routes 
 above. Disagreement goes in a new section that cites them.)*
 
 **Filed by:** `cybersecurity-architect`, 2026-10-29.
+
+---
+
+## 12. Compliance sufficiency rulings on §10 Q-1 to Q-4 (`compliance-specialist`, 2026-10-29)
+
+Append-only. §1 to §11 are `cybersecurity-architect`'s and I have not changed them. These rulings measure the
+design against `compliance-review-agent-attributed-actions.md` §3 Tier 2 (my requirements, cited as "req N").
+**Regime:** POPIA only (confirmed, same basis as that review §1). GDPR is not triggered. PCI-DSS is not engaged:
+this flow carries no payment data, and §5.2/§7 already exclude free-text collection. **Not legal advice.** See
+§12.6.
+
+**Overall position:** I concur that the §3 mechanism is **sufficient in principle** against req 1 to req 8, on
+the conditions below. This is a sufficiency concurrence for `cto` ratification. It does **not** clear Stage 2
+by itself, and it does not discharge Stage 8. The NO-GO banner at the top of this document stays in force until
+`cto` ratifies.
+
+### 12.1 Q-1: in-session approval and req 6. **Sufficient. Build is not blocked on INC-001-C-8 for this flow, with conditions.**
+
+I wrote req 6 against a design in which the **agent** creates the case and the account holder hears about it
+afterwards. In that design an after-the-fact notice through a channel the agent does not control is the only
+thing that catches a successful impersonation of the caller. §3 changes that: the account holder is the person
+who acts, not someone told afterwards, and the case exists only because their own credentialed session approved
+it. The attack req 6 targets (an agent acting on a plausible caller) cannot produce a case under this design. So
+req 6's purpose is met for case creation.
+
+What is left is the case where the attacker holds the customer's session and factor: account takeover, or an
+intimate partner with the unlocked phone. Here an in-session notice reaches the attacker, so it is no safeguard.
+An email notice would partly cover this. It is the residual risk, and the conditions below are set against it:
+
+| ID | Condition | Owner |
+|---|---|---|
+| **C-010-4-Q1a** | After approval, the customer's case history must keep a **persistent record that cannot be dismissed** (the req 5 attribution line in §6.3, "Opened by TD IT call centre on your behalf, you approved this on [date]"). A one-time toast does not meet this | `backend-architect`, `ui-designer` |
+| **C-010-4-Q1b** | The out-of-band confirmation through a channel the agent does not control changes from **recommended** (§10 Q-1) to **mandatory once INC-001-C-8 clears**. It is tracked as a go-live condition of this flow, not a Stage 2–9 blocker. Content limits follow C-R-3(a): asset display name and case reference only, no location, no reporter relationship | `backend-engineer`, after INC-001-C-8 |
+| **C-010-4-Q1c** | §8 item 4 (approval from a session created shortly before the request, on a new device or IP) must be **built as an alert at Stage 8**. Being queryable is not enough. It is the compensating control for the takeover case until Q1b exists | `security-engineer` |
+| **C-010-4-Q1d** | §8 item 3 (security notice to an account with a `declined` outcome) must be delivered **in-app at minimum** at launch, without waiting for email | `backend-engineer` |
+
+**On the dependency:** INC-001-C-8 is the open incident-response gap from
+`docs/organization/incidents/INC-001-location-ingestion-popia-assessment.md` (register row C-8). The platform
+cannot reliably reach its own data subjects because production email delivery is still owner-blocked. It is
+**still open**: `INC-001-location-events-inventory.md` line 299 keeps it as a standing go-live blocker, and
+CT-4a (email-dispatch instruction) is also unanswered. With this ruling, INC-001-C-8 **stops being a specific
+blocker on this flow's design and build** (it is no longer the "second independent blocker" at `api-design.md`
+§7 step 6 and §11's last row). **It is still a platform-wide go-live blocker** ("before any real customer data on
+any surface"). In practice this flow cannot carry real PII until C-8 closes either way, and by then Q1b applies.
+`backend-architect` should mark `api-design.md` §7 step 6 as superseded by this ruling in an appended note, not
+by deleting it.
+
+### 12.2 Q-2: password re-authentication for customers without TOTP. **Accepted. TOTP-only is not required, with conditions.**
+
+1. **It meets req 1.** Req 1 already accepted **in-app push confirmation**, which proves only that the customer
+   holds a device with a registered session. §3.1 step 5 requires a credentialed session **plus** a fresh
+   password entry. That is at least as strong as an option I already accepted.
+2. **TOTP-only would protect nothing and cost access.** A customer without TOTP enrolled can already open a
+   theft case directly with their password through `POST /v1/recovery/cases`. An attacker who has that password
+   does not need the call centre. Limiting the on-behalf path to TOTP-enrolled customers leaves that
+   self-service exposure as it is. It would only exclude real customers, often the M-A customer whose phone has
+   just been stolen, from the assisted path. Under s10 (minimality and proportionality) and the fair-treatment
+   expectations on an insurer, that is the wrong way round.
+
+Conditions:
+
+| ID | Condition | Owner |
+|---|---|---|
+| **C-010-4-Q2a** | **No downgrade.** If TOTP is enrolled, ADR-0012 step-up is mandatory. The customer cannot choose password re-auth instead. A lost authenticator goes through the existing MFA recovery path, not a weaker approval | `backend-architect` |
+| **C-010-4-Q2b** | Re-auth is a **server-side credential verification bound to this one `on_behalf_request`**. It must not open a general "recently re-authenticated" window that a later request can reuse (the T-4 confused-deputy rule applies to the factor as well as to the request) | `backend-architect` |
+| **C-010-4-Q2c** | Failed re-auth or step-up attempts on an approval **count towards the §5.3 limits and are audited** as `caller_verification` rows. They must never record the attempted value | `security-engineer` |
+| **C-010-4-Q2d** | A new session on a new device **must not be blocked** when the method is password re-auth. That is exactly what a genuine M-A customer looks like when logging in from a friend's computer. It is **flagged** through C-010-4-Q1c, not refused | `security-engineer` |
+| **C-010-4-Q2e** | `verification_method` stays in reporting (as §5.1/§6.1 already do), so we can measure what share of approvals use the weaker method. If that evidence shows password-method approvals being abused, I will revisit this ruling | `security-engineer` (data), me (review) |
+
+There is still no SMS or email OTP route. Either one needs its own vendor and operator review (the original
+compliance review §2) and would also need CT-4c.
+
+### 12.3 Q-3: retention for declined requests, and the third-party reporter.
+
+**Retention. Ruling: no longer floor. 24 months from resolution, the same as the support-case rule.**
+
+- `declined`, `expired`, `superseded`, `rate_limited` and `locked_out` requests that produced no recovery case,
+  and their `caller_verification` Trail A rows, are kept **24 months from `resolvedAt`**. They are purged by the
+  same automated and evidenced job as C-010-8, not by a separate manual process.
+- **Why not longer:** s14(1) allows retention only as long as the purpose needs it. The §8 detection windows are
+  24 hours and 7 days. Twenty-four months covers pattern analysis across agents and accounts several times over.
+  A blanket multi-year floor "in case it is fraud evidence" would be speculative retention of records about
+  customers **who did nothing wrong** (a decline usually means the customer was the target), and about
+  reporters who may have been honest.
+- **The exception is a hold, not a floor.** A declined request attached to an open fraud, insider-threat or SAPS
+  matter is held for as long as that matter runs, through the legal-hold mechanism. A hold over Client data
+  still needs the Client's confirmation (Register B **G-10**). Until G-10 is answered, any hold placed is
+  recorded and notified under CT-6.
+- **Approved requests** follow the resulting recovery case (§5.4, Feature 011 five-year floor). No change.
+- **Accuracy (s16): the decline record must be neutral.** It records "declined by account holder". It records no
+  fraud finding against the agent or the reporter. A decline is a detection signal (§8), not a determination.
+  Any later finding goes in the investigation record, not into this one.
+- All of these periods are my recommendation as Operator. **Retention is the Responsible Party's to set**
+  (Register B **G-3**). They go into the CT-4b instruction schedule for the Client to ratify.
+
+**Third-party reporter (M-B). The reporter is a data subject. Rulings:**
+
+1. **Collection stays as designed: only the relationship enum.** Taken with the customer's account,
+   "spouse/partner of account X" can identify a person, so I treat it as the reporter's personal information. It
+   gets the same 24-month handling as the request it belongs to.
+2. **No callback number. Not a structured field, and not in case free text.** No purpose needs one. On approval
+   the account holder is the contact. On decline or expiry, contacting the reporter would reveal the outcome and
+   so whether the account exists (T-5, and the negative requirement). If the reporter wants an update, they call
+   back and are told the uniform script line. C-011-1 is extended to cover this: agents must not type the
+   reporter's name, phone number or ID number into support-case notes. If telephony captures caller ID, that is
+   a separate processing operation needing its own review when a telephony vendor exists. None exists today.
+3. **Notice to the reporter (s18) is given at the point of collection, in the agent script, and it is the same
+   whether or not an account exists.** Required content, with final wording by `technical-writer` and
+   `ux-researcher` under C-010-1:
+   - who is processing (TD IT Solution, the Responsible Party), and that the call is about a possible theft or
+     loss report;
+   - that we record **only** their stated relationship and the time of the call, not their name or number;
+   - that **if** the person they are reporting for has an account, that person will be asked to confirm, and
+     **will be shown the relationship the caller gave**. The approval screen in §3.1 step 4 discloses this to the
+     account holder, so the reporter must be told beforehand;
+   - that we cannot tell them the outcome or anything about any account;
+   - that the record is kept for up to 24 months for security and fraud-prevention purposes;
+   - where the privacy notice is, and how to contact us about their own information.
+4. **A declined reporter is not notified of the decline.** The uniform `not_confirmed` result (§3.3) applies on
+   the phone as well. This is not a s18 failure: notice was given at collection, and no new processing purpose
+   arises from a decline.
+5. **Requests from a reporter about their own data (s23 and s24).** The reporter may ask what we hold about them.
+   The answer is the relationship enum and timestamps tied to the call. It must not disclose the account
+   holder's identity, account details, or the outcome. Those are another data subject's information, and the
+   PAIA third-party privacy refusal ground applies. These requests go through the G-8 path once one exists. How
+   to verify an unidentified reporter's identity in that situation is a question for counsel (§12.6).
+6. **The §7 "account holder unreachable" position is confirmed.** There is no Tier 2 path. The case is Tier 1
+   `callerVerified: false`, the reporter is referred to SAPS, and nothing is dispatched. Trusted contacts (§9)
+   would need a separate consent design for the nominee, which is the same concern R12-2 raises in
+   `compliance-rulings-ob-items-2026-10.md`.
+
+### 12.4 Q-4: C-010-6 / CT-4 and Stage 2. **Runs in parallel. It does not gate Stage 2.**
+
+- **§19(a) governs processing, and Stages 2 to 7 process no personal information.** They produce design
+  artefacts only. Blocking design on a Client instruction gains no protection and only delays it. C-010-6's
+  gate was set at "first real customer PII on this surface". That gate is **unchanged**, and it is now the same
+  for this flow as for the rest of Feature 010.
+- **The CT-4 artefact exists** (`docs/organization/11-documented-client-instructions.md`, filed 2026-09-14).
+  The missing piece is the substance: a Client instruction covering agent-initiated case creation. So "must the
+  artefact exist first" is already answered. The question is when the instruction must exist.
+- **Stage 8 (CT-4d hook):** at Stage 8 my sign-off will cite **Register A I-1** (Schedule A names the Call Centre
+  Dashboard as a module the Client instructed us to build and operate) as the base authority. I-1 does not
+  itemise this purpose. The data subject's own in-session approval makes this the customer's own request
+  carried out by Operator staff, which is much less of a stretch than an agent acting alone. That is why I can
+  cite I-1 at Stage 8 rather than block. **A specific instruction is still needed before first real PII.** I am
+  raising it as proposed Register B row **G-18** ("call-centre staff initiating on-behalf recovery requests
+  that the customer approves; reporter-relationship disclosure to the account holder; the §12.3 retention
+  periods"). It belongs in the CT-4b instruction schedule
+  (`correspondence/DRAFT-2026-10-23-ct-4b-instruction-schedule-escalation.md`, still **not sent**). I will
+  append G-18 to `11-documented-client-instructions.md` §11 separately.
+- **Separately, a recovery case reaching a security partner remains under G-7** (now G-7 extended for
+  location, OB-03), just as for customer self-reports. This flow adds no new partner disclosure. §3.2 and §6.3
+  keep location and `origin` away from the agent and the partner.
+
+### 12.5 Conditions added by this section
+
+C-010-4-Q1a to Q1d and C-010-4-Q2a to Q2e (tables above), plus:
+
+| ID | Condition | Owner | Blocks |
+|---|---|---|---|
+| **C-010-4-Q3a** | 24-month retention from resolution for requests that produced no case, and their Trail A rows. Automated purge alongside C-010-8. Hold only through G-10 or CT-6. Neutral decline wording (s16) | `database-architect`, `backend-engineer`; verified `security-engineer` | Stage 6/8 exit |
+| **C-010-4-Q3b** | Reporter s18 notice in the agent script (§12.3 item 3). No callback number. C-011-1 extended to reporter identity | `technical-writer`, `ux-researcher` (C-010-1 owners) | Stage 8 exit |
+| **C-010-4-Q4a** | Proposed **G-18** instruction obtained from the Client | `cto` and owner (obtain), me (draft) | First real customer PII on this flow (same gate as C-010-6) |
+
+### 12.6 Standing statement
+
+This is a compliance determination made from POPIA, the contract as summarised in this repository, and the
+documents cited. **It is not legal advice.** Two points belong with admitted counsel: (a) whether the PAIA
+third-party refusal ground fully covers a reporter's access request in §12.3 item 5, and how to verify the
+identity of an unidentified reporter; (b) the s22 position already referred in the original compliance review
+§8, which this design narrows but does not remove.
+
+**Concurrence:** `compliance-specialist` **concurs on sufficiency** with §3 to §8, subject to §12.1 to §12.5.
+**Next:** `cto` ratification (§11). **Does not discharge:** Stage 8 · INC-001-C-8 (platform go-live) · CT-4b ·
+G-3 · G-7 · G-10 · C-010-1 · C-010-8.
+
+**Filed by:** `compliance-specialist`, 2026-10-29.
