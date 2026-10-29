@@ -29,6 +29,7 @@ jest.mock('../../../api/security-cases', () => ({
   getSecurityCase: (...args: unknown[]) => mockGetSecurityCase(...args),
   claimSecurityCase: (...args: unknown[]) => mockClaimSecurityCase(...args),
   updateSecurityCaseStatus: (...args: unknown[]) => mockUpdateSecurityCaseStatus(...args),
+  TERMINAL_SECURITY_CASE_STATUSES: ['recovered', 'closed'],
 }));
 
 jest.mock('../../../network/NetworkProvider', () => ({
@@ -152,5 +153,66 @@ describe('SecurityCaseDetailScreen — offline-tolerance policy', () => {
     });
 
     await waitFor(() => expect(screen.getByText('This case could not be found. It may have been closed or reassigned.')).toBeTruthy());
+  });
+});
+
+describe('SecurityCaseDetailScreen — terminal status requires a close reason', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockIsOnline.mockReturnValue(true);
+    mockGetSecurityCase.mockResolvedValue({ ...openCase(), status: 'tracking' });
+  });
+
+  it('does not call updateSecurityCaseStatus until a reason is picked for a terminal status', async () => {
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('Mark recovered');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Mark recovered'));
+    });
+
+    expect(mockUpdateSecurityCaseStatus).not.toHaveBeenCalled();
+    expect(await screen.findByText('Recovered intact')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Recovered intact'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Confirm recovered'));
+    });
+
+    expect(mockUpdateSecurityCaseStatus).toHaveBeenCalledWith(
+      'case-1',
+      'recovered',
+      'recovered-intact',
+    );
+  });
+
+  it('does not show a reason picker for non-terminal status changes', async () => {
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('Start investigating');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Start investigating'));
+    });
+
+    expect(mockUpdateSecurityCaseStatus).toHaveBeenCalledWith(
+      'case-1',
+      'investigating',
+      undefined,
+    );
+    expect(screen.queryByText('Recovered intact')).toBeNull();
+  });
+
+  it('renders the stored close reason once the case is closed', async () => {
+    mockGetSecurityCase.mockResolvedValue({
+      ...openCase(),
+      status: 'closed',
+      closeReason: 'handed-to-police',
+    });
+
+    await render(<SecurityCaseDetailScreen />);
+
+    expect(await screen.findByText('Handed to police')).toBeTruthy();
   });
 });

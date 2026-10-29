@@ -93,4 +93,18 @@ describe('api/security-cases', () => {
     expect(init?.method).toBe('PATCH');
     expect(JSON.parse(init?.body as string)).toEqual({ status: 'tracking' });
   });
+
+  it('PATCH /security/cases/:id includes closeReason only when provided (terminal status)', async () => {
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(200, { ...sampleCase, status: 'recovered', closeReason: 'recovered-intact' }),
+    );
+
+    await updateSecurityCaseStatus(sampleCase.id, 'recovered', 'recovered-intact');
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(JSON.parse(init?.body as string)).toEqual({
+      status: 'recovered',
+      closeReason: 'recovered-intact',
+    });
+  });
 });

@@ -7,7 +7,9 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
   claimSecurityCase,
   getSecurityCase,
+  TERMINAL_SECURITY_CASE_STATUSES,
   updateSecurityCaseStatus,
+  type SecurityCaseCloseReason,
   type SecurityCaseStatus,
   type SecurityRecoveryCase,
 } from '../../api/security-cases';
@@ -16,6 +18,7 @@ import { useIsOnline } from '../../network/NetworkProvider';
 import { MapPlaceholder } from '../recovery/MapPlaceholder';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { Alert, Badge, Button, Card, Screen } from '../../theme/primitives';
+import { SelectChipGroup, type SelectChipOption } from '../../theme/primitives/SelectChip';
 import type { BadgeTone } from '../../theme/primitives/Badge';
 import { colors, spacing, typography } from '../../theme/tokens';
 
@@ -25,6 +28,19 @@ const STATUS_ACTIONS: { label: string; status: SecurityCaseStatus }[] = [
   { label: 'Mark recovered', status: 'recovered' },
   { label: 'Close case', status: 'closed' },
 ];
+
+const CLOSE_REASON_OPTIONS: SelectChipOption<SecurityCaseCloseReason>[] = [
+  { value: 'recovered-intact', label: 'Recovered intact' },
+  { value: 'recovered-damaged', label: 'Recovered damaged' },
+  { value: 'not-located', label: 'Not located' },
+  { value: 'handed-to-police', label: 'Handed to police' },
+  { value: 'customer-withdrew', label: 'Customer withdrew' },
+];
+
+function formatCloseReason(reason: string): string {
+  const match = CLOSE_REASON_OPTIONS.find((o) => o.value === reason);
+  return match ? match.label : reason.replace(/-/g, ' ');
+}
 
 function caseStatusTone(status: string): BadgeTone {
   if (status === 'recovered' || status === 'closed') return 'emerald';
@@ -65,6 +81,10 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [pendingTerminalStatus, setPendingTerminalStatus] = useState<SecurityCaseStatus | null>(
+    null,
+  );
+  const [closeReason, setCloseReason] = useState<SecurityCaseCloseReason | null>(null);
   const isOnline = useIsOnline();
 
   useEffect(() => {
@@ -97,7 +117,17 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
   // get NOT_FOUND even if the original attempt actually succeeded — (d)'s
   // "treat as already-succeeded" handling applies here too.
 
-  async function setStatus(status: SecurityCaseStatus) {
+  function requestStatusChange(status: SecurityCaseStatus) {
+    if (TERMINAL_SECURITY_CASE_STATUSES.includes(status)) {
+      setError(null);
+      setPendingTerminalStatus(status);
+      setCloseReason(null);
+      return;
+    }
+    void setStatus(status);
+  }
+
+  async function setStatus(status: SecurityCaseStatus, reason?: SecurityCaseCloseReason) {
     if (!caseId) return;
     if (!isOnline) {
       setError("You're offline. This status change has not been saved — reconnect and try again.");
@@ -106,8 +136,10 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
     setUpdating(true);
     setError(null);
     try {
-      const updated = await updateSecurityCaseStatus(caseId, status);
+      const updated = await updateSecurityCaseStatus(caseId, status, reason);
       setRecoveryCase(updated);
+      setPendingTerminalStatus(null);
+      setCloseReason(null);
     } catch (err) {
       if (err instanceof NetworkUnavailableError) {
         setError("We couldn't confirm this status change was saved. Check your connection and try again.");
@@ -117,6 +149,11 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
     } finally {
       setUpdating(false);
     }
+  }
+
+  function confirmTerminalStatus() {
+    if (!pendingTerminalStatus || !closeReason) return;
+    void setStatus(pendingTerminalStatus, closeReason);
   }
 
   async function handleClaim() {
@@ -211,6 +248,9 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
           label="Partner org"
           value={recoveryCase.partnerOrganizationId ?? 'Unassigned'}
         />
+        {recoveryCase.closeReason ? (
+          <DetailRow label="Close reason" value={formatCloseReason(recoveryCase.closeReason)} />
+        ) : null}
       </Card>
 
       {recoveryCase.status === 'tracking' ? (
@@ -224,6 +264,39 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
         </>
       ) : null}
 
+      {pendingTerminalStatus ? (
+        <Card style={styles.section}>
+          <Text style={styles.detailLabel}>
+            Reason for marking this case &quot;{formatStatus(pendingTerminalStatus)}&quot;
+          </Text>
+          <SelectChipGroup
+            options={CLOSE_REASON_OPTIONS}
+            value={closeReason ?? ('' as SecurityCaseCloseReason)}
+            onChange={setCloseReason}
+            style={styles.reasonPicker}
+          />
+          <View style={styles.actions}>
+            <Button
+              variant="primary"
+              loading={updating}
+              disabled={!closeReason}
+              onPress={confirmTerminalStatus}
+            >
+              Confirm {formatStatus(pendingTerminalStatus)}
+            </Button>
+            <Button
+              variant="secondary"
+              onPress={() => {
+                setPendingTerminalStatus(null);
+                setCloseReason(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </View>
+        </Card>
+      ) : null}
+
       <View style={styles.actions}>
         {canClaim ? (
           <Button variant="primary" loading={updating} onPress={() => void handleClaim()}>
@@ -235,7 +308,7 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
             key={action.status}
             variant="secondary"
             loading={updating}
-            onPress={() => void setStatus(action.status)}
+            onPress={() => requestStatusChange(action.status)}
           >
             {action.label}
           </Button>
@@ -279,6 +352,9 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing.sm,
     marginTop: spacing.md,
+  },
+  reasonPicker: {
+    marginTop: spacing.sm,
   },
   centered: {
     flex: 1,

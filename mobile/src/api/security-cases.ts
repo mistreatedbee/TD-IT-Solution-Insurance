@@ -6,6 +6,20 @@ import { apiFetch } from './client';
 
 export type SecurityCaseStatus = 'open' | 'investigating' | 'tracking' | 'recovered' | 'closed';
 
+// Mirrors backend/src/repositories/recovery-cases.ts RECOVERY_CASE_CLOSE_REASONS —
+// required whenever status transitions to a terminal value ('recovered' | 'closed').
+export type SecurityCaseCloseReason =
+  | 'recovered-intact'
+  | 'recovered-damaged'
+  | 'not-located'
+  | 'handed-to-police'
+  | 'customer-withdrew';
+
+export const TERMINAL_SECURITY_CASE_STATUSES: readonly SecurityCaseStatus[] = [
+  'recovered',
+  'closed',
+];
+
 export interface SecurityRecoveryCase {
   id: string;
   assetId: string;
@@ -15,6 +29,7 @@ export interface SecurityRecoveryCase {
   notes?: string | null;
   partnerOrganizationId?: string | null;
   updatedAt?: string;
+  closeReason?: SecurityCaseCloseReason | null;
 }
 
 export interface CursorPage<T> {
@@ -34,10 +49,14 @@ export function getSecurityCase(caseId: string) {
   return apiFetch<SecurityRecoveryCase>(`/security/cases/${encodeURIComponent(caseId)}`);
 }
 
-export function updateSecurityCaseStatus(caseId: string, status: SecurityCaseStatus) {
+export function updateSecurityCaseStatus(
+  caseId: string,
+  status: SecurityCaseStatus,
+  closeReason?: SecurityCaseCloseReason,
+) {
   return apiFetch<SecurityRecoveryCase>(`/security/cases/${encodeURIComponent(caseId)}`, {
     method: 'PATCH',
-    body: { status },
+    body: closeReason !== undefined ? { status, closeReason } : { status },
   });
 }
 
