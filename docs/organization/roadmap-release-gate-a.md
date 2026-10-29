@@ -359,3 +359,24 @@ compliance conditions, (c) SR-007-11, (d) C-007-11, (e) FU-A14 wiring"):
 7. §1.10 (GPS/Feature 008) stays off the sprint board entirely until 1.6 and 1.9 close and
    ADR-0009 is ratified — do not let it drift onto a sprint by momentum.
 
+---
+
+## 5. Cross-reference note — owner feature brief, 2026-10-29 (`cto`, appended)
+
+Appended by `cto`. §1 to §4 above are unchanged.
+
+- The owner's 2026-10-29 feature brief (17 items, OB-01 to OB-17) is recorded in
+  [`08-roadmap.md`](08-roadmap.md) under "Addendum 2026-10-29". **None of those items is part of
+  Release Gate A, and the gate is not widened.** All 17 are sequenced after the gate closes. Do not
+  put them on a Gate A sprint.
+- **Factual update to §1.4 and §2 (no change to any decision).** Text written 2026-08-24 says
+  "confirmed no `/claims/*` route exists" and "Claims backend … deferred". That is out of date.
+  Feature 018 now has backend routes:
+  - `backend/src/routes/claims.ts`
+  - `backend/src/routes/admin-claims.ts`
+
+  Its Stage 8 review (`docs/features/018-claims-filing-and-adjudication/security-review.md`) is
+  **not discharged**. Release is held by the server kill switch `CLAIMS_API_ENABLED` and the
+  mobile flag `EXPO_PUBLIC_FEATURE_CLAIMS`. §1.4's requirement still stands: no client build may
+  reach a claims screen until Stage 8 is signed. §2's "Claims not sayable" line still stands.
+
