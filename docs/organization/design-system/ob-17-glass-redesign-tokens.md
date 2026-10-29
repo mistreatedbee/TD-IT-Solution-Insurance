@@ -1,8 +1,11 @@
 # OB-17 — Frosted-Glass Redesign: Design Tokens + Component List
 
 Owner: `design-system-manager` (A). Hand-off: `ui-designer` (R, screens).
-Status: tokens + component list ratified 2026-10-29. Screens not started (see
-`docs/organization/08-roadmap.md` OB-17 entry).
+Status: tokens + component list ratified 2026-10-29. Owner's reference image received 2026-10-29;
+§2.1/§2.2 accent and background provisional values now confirmed against it (see those sections
+and §7 item 1). Two new open questions raised by the reference (glass-usage scope, black
+secondary accent) — see §7 items 5-6. Screens not started (see `docs/organization/08-roadmap.md`
+OB-17 entry).
 
 ## 0. Scope and honesty check
 
@@ -52,36 +55,69 @@ code path. Both existing token systems (`src/index.css` + `tailwind.config.js` f
 
 ## 2. Colour tokens
 
-### 2.1 Accent colour — PROVISIONAL pending owner's reference image
+### 2.1 Accent colour — confirmed against owner's reference image, 2026-10-29
+
+> **VOID (superseded 2026-10-29)**: the indigo-blue pick below this notice (`--glass-accent:
+> #4F7CFF` / `--glass-accent-deep: #3659D6` / `--glass-accent-tint: #EAF0FF`) was the
+> PROVISIONAL placeholder used before the owner's reference image arrived. It is retained here,
+> struck, for audit trail only — do not implement it. See the confirmed values immediately below.
+>
+> ~~`--glass-accent`: `#4F7CFF` / `--glass-accent-deep`: `#3659D6` / `--glass-accent-tint`:
+> `#EAF0FF`~~
 
 The brief calls for **one** accent colour, used consistently (replacing the current two-accent
 gold/blue split visible in `--accent-gold*` and `accentBlue*`/`accentGold*` mobile tokens, which
 predates OB-17 and was never meant as the "calm, modern, trustworthy, different-from-typical-
 insurance" identity the brief now asks for).
 
-Provisional pick, to be confirmed or replaced once the reference image lands:
+The owner's reference image (the "PAAQ" experts-booking app, supplied 2026-10-29, used purely as
+a visual style reference — not this product) shows a consistent teal/turquoise accent used on
+the primary pill tab ("Experts"), header elements, buttons, and the teal gradient logo mark.
+Confirmed final values, read directly off the screenshots:
 
-- `--glass-accent`: `#4F7CFF` (a cool, desaturated indigo-blue — reads as calm/trustworthy,
-  distinct from typical insurance red/orange, distinct from the current gold accent which skews
-  "premium/luxury" rather than "calm/modern")
-- `--glass-accent-deep`: `#3659D6` (hover/active/pressed state, also the Android flat-fallback
-  fill tint source — see §5)
-- `--glass-accent-tint`: `#EAF0FF` (light-mode accent-wash background, e.g. selected chip)
+- `--glass-accent`: `#2DBDB6` (teal/turquoise — matches the reference's primary accent as it
+  appears on the active pill tab and logo mark; sits in the brief-compatible "calm, modern,
+  trustworthy, distinct from typical insurance red/orange/gold" territory, now with a concrete
+  reference source instead of a guess)
+- `--glass-accent-deep`: `#1E8F89` (a deeper, more saturated teal for hover/active/pressed state
+  and the Android flat-fallback fill tint source — see §5; chosen as a ~25% darkening of
+  `--glass-accent` consistent with how the reference's accent reads slightly deeper in pressed-
+  looking UI elements)
+- `--glass-accent-tint`: `#E3F6F4` (pale teal wash for light-mode accent backgrounds, e.g.
+  selected chip — a light desaturated tint of `--glass-accent`, replacing the old blue-tinted
+  `#EAF0FF`)
 
 This supersedes neither `--accent-gold*` nor mobile `accentGold*`/`accentBlue*` yet — those stay
 in place for anything OB-17 hasn't touched, per the visuals-only/incremental-rollout rule. New
 `--glass-*` tokens are additive until `ui-designer`'s screens migrate consumers over screen by
 screen.
 
-### 2.2 Background gradient — PROVISIONAL pending owner's reference image
+### 2.2 Background gradient — confirmed against owner's reference image, 2026-10-29
 
-One soft gradient behind the glass, per surface mode:
+> **VOID (superseded 2026-10-29)**: the stronger blue-tinted gradient stops below this notice
+> (`#F3F6FF`/`#E8EEFF`/`#FFFFFF` light) were the PROVISIONAL placeholder used before the owner's
+> reference image arrived. Retained struck for audit trail; do not implement.
+>
+> ~~`--glass-bg-gradient-start: #F3F6FF` / `--glass-bg-gradient-mid: #E8EEFF` /
+> `--glass-bg-gradient-end: #FFFFFF` (light)~~
 
-| Token | Light | Dark |
+The reference screenshots show a mostly **flat white / very-light-grey background** — not a
+visible, saturated gradient. Cards read as solid white with soft drop shadows, not sitting on a
+strong colour wash; only a faint, barely-perceptible vignette/warmth is detectable in a couple of
+screens. The light-mode stops below are revised to be much more subdued than the original
+placeholder guess:
+
+| Token | Light (confirmed vs. reference) | Dark (still unreferenced) |
 |---|---|---|
-| `--glass-bg-gradient-start` | `#F3F6FF` | `#0B0F1A` |
-| `--glass-bg-gradient-mid` | `#E8EEFF` | `#121A2E` |
+| `--glass-bg-gradient-start` | `#FCFCFC` | `#0B0F1A` |
+| `--glass-bg-gradient-mid` | `#F7F8F8` | `#121A2E` |
 | `--glass-bg-gradient-end` | `#FFFFFF` | `#070A12` |
+
+**Honesty note on dark mode**: all reference screenshots are light mode only — nothing in the
+supplied image confirms or contradicts the dark-mode gradient. The dark-mode pair above is
+unchanged from the original PROVISIONAL pick and remains a **reasoned extrapolation, not a
+reference-confirmed value**. It should not be read as "confirmed" the way the light-mode stops
+now are; revisit if/when a dark-mode reference ever surfaces.
 
 Dark mode is a **separately designed** near-black navy-to-indigo gradient, not `invert()`/
 `filter: invert(1)` on the light one — consistent with how both existing token systems already
@@ -263,9 +299,15 @@ through this role for the same reuse-first review before being added.
 
 ## 7. Open items carried forward
 
-1. **Owner's reference image is still outstanding.** Everything marked PROVISIONAL in §2.1/§2.2
-   is a placeholder, not a ratified brand decision, and should not be treated as final once
-   `ui-designer` starts screens — flag back to `product-manager`/`cto` to request it.
+1. **Owner's reference image has been received (2026-10-29) and is no longer outstanding.** It
+   showed the "PAAQ" experts-booking app as a pure visual style reference (not this product).
+   §2.1 (accent colour) and §2.2 (light-mode background gradient) are now confirmed against it
+   and are no longer provisional placeholders — see those sections for the resolved hex values
+   and void-marked superseded guesses. The dark-mode gradient pair in §2.2 remains an
+   unreferenced extrapolation (no dark-mode screenshots were supplied) and should still be
+   treated as lower-confidence than the now-confirmed light-mode values. Two new open questions
+   the reference raised are carried forward as items 5 and 6 below — they do not block the
+   colour tokens themselves, which are resolved.
 2. Font licensing/loading mechanics for Inter on mobile (`expo-font`/`@expo-google-fonts/inter`)
    are `mobile-engineer`'s implementation task, not blocked on anything here.
 3. Stage 10 (hard gate, per roadmap) must include: contrast re-check over real rendered gradients
@@ -276,3 +318,31 @@ through this role for the same reuse-first review before being added.
    new single `--glass-accent*` token happens screen-by-screen as `ui-designer` builds each of
    the 8 screens, not as a single repo-wide sweep — avoids a big-bang visual regression risk
    across unrelated screens this task isn't scoped to touch.
+5. **Open question for `product-manager`/`cto`/`ui-designer` — glass-blur scope vs. the
+   reference.** The owner's reference image shows mostly **flat white cards with soft shadows**,
+   not heavy frosted-glass blur, for ordinary content (contacts list, profile cards). The one
+   place real blur/translucency appears is a single hero/header banner treatment (the "Tech &
+   Startups" category header: a blurred photographic background with a translucent dark overlay
+   behind a profile). This is a real tension with the brief's literal instruction to use
+   "frosted glass cards" throughout. This role is **not** resolving it unilaterally — raising it
+   back for sign-off: should the 8 screens (a) apply heavy `GlassCard`/`GlassSurface` blur to
+   most content cards, per the brief's literal text, or (b) reserve `GlassCard`/`GlassSurface`
+   for hero/header moments only (matching what the reference actually shows), with most content
+   cards rendered flat-white-with-shadow instead? **Recommendation: (b)**, since it's closer to
+   the actual visual reference supplied, but this is a recommendation pending `product-manager`/
+   `cto`/`ui-designer` sign-off, not a change already made to the brief's scope. Nothing in §5-6
+   (radius/blur tokens) has been altered to pre-empt this answer — `--glass-blur-*` tokens stay
+   as specified either way; this question is about *where* they get applied by `ui-designer`'s
+   screens, not their values.
+6. **Open question for `product-manager`/`cto`/`ui-designer` — black secondary accent.** The
+   reference uses **black pill-shaped buttons/bottom-nav active-state highlights** as a second,
+   near-black accent alongside the teal — e.g. the primary "Book [name]" CTA and the active
+   bottom-tab pill both render black, not teal, while teal is reserved for category/identity
+   elements (header, logo mark, the "Experts" tab). The original written OB-17 brief never
+   specified a second accent colour. Flagging whether OB-17 should formally adopt a black/
+   near-black secondary accent token (e.g. a `--glass-accent-secondary`/`--glass-ink` pairing)
+   for primary CTA buttons and nav-active states, reserving `--glass-accent` (teal, §2.1) for
+   identity/category use — matching the reference's actual split — rather than applying the teal
+   accent to every interactive element. No token has been added for this yet; it needs
+   `product-manager`/`cto` sign-off on brand-identity scope before `design-system-manager` adds
+   it.
