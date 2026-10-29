@@ -316,6 +316,7 @@ function createHarness() {
           referenceNumber: 'RC-20260828-AB12',
           reportedAt: new Date('2026-08-28T10:00:00.000Z'),
           closedAt: null,
+          closeReason: null,
           notes: 'Customer reported theft from vehicle.',
           callCentreNotes: [
             { agentAccountId: supportAgentId, text: 'Called back, no update.', createdAt: new Date('2026-08-29T09:00:00.000Z') },
@@ -902,6 +903,9 @@ describe('GET /support/recovery-cases/:idOrReference', () => {
       expect(body.data.status).toBe('investigating');
       expect(body.data.notes).toBe('Customer reported theft from vehicle.');
       expect((body.data.callCentreNotes as unknown[]).length).toBe(1);
+      // Product-differentiation research, "structured close reasons" — surfaced on
+      // this internal/support-agent-facing route too (admin-facing, not customer-facing).
+      expect(body.data.closeReason).toBeNull();
 
       const FORBIDDEN_KEYS = [
         'lastLocation',

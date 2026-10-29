@@ -828,6 +828,87 @@ describe('routes/security-cases', () => {
     });
   });
 
+  // Product-differentiation research, "pool triage signals".
+  describe('GET /security/cases — pool triage annotations on unclaimed (offer-tier) rows', () => {
+    it('a freshly-opened unclaimed case is annotated "fresh" with a small ageInPoolSeconds', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const now = new Date();
+      harness = createHarness({
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: null,
+            status: 'open',
+            updatedAt: now,
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      const body = (await res.json()) as { data: Array<Record<string, unknown>> };
+      expect(res.status).toBe(200);
+      expect(body.data[0]!.poolUrgencyTier).toBe('fresh');
+      expect(body.data[0]!.ageInPoolSeconds as number).toBeLessThan(5);
+    });
+
+    it('an unclaimed case that has sat in the pool for days is annotated "stale"', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
+      harness = createHarness({
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: null,
+            status: 'open',
+            reportedAt: fourDaysAgo,
+            updatedAt: fourDaysAgo,
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      const body = (await res.json()) as { data: Array<Record<string, unknown>> };
+      expect(body.data[0]!.poolUrgencyTier).toBe('stale');
+    });
+
+    it('does not add any new personal-data field to the offer-tier list response (asset category NOT included — not available without a schema change)', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: null,
+            status: 'open',
+            notes: 'sensitive address details',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url('/security/cases'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      const body = (await res.json()) as { data: Array<Record<string, unknown>> };
+      expectExactKeys(body.data[0]!, OFFER_TIER_RESPONSE_KEYS);
+      expect(body.data[0]).not.toHaveProperty('assetId');
+      expect(body.data[0]).not.toHaveProperty('accountId');
+      expect(body.data[0]).not.toHaveProperty('assetType');
+      expect(body.data[0]).not.toHaveProperty('assetCategory');
+    });
+  });
+
   // PDM-8 / ADR-0006 §18.3/§18.4/§18.8 — audit trail on admin_access_log (Trail B).
   describe('PDM-8 — partner case-access audit trail', () => {
     it('GET /security/cases writes exactly one recordCaseBulkDisclosure call, one entry per disclosed case', async () => {
@@ -1553,11 +1634,23 @@ describe('routes/security-cases', () => {
         'customer-withdrew',
       ] as const;
 
-      for (const closeReason of reasons) {
-        const caseId = '507f1f77bcf86cd799439011';
-        harness = harnessWithInvestigatingCase(caseId);
-        await harness.start();
+      harness = createHarness({
+        partnerOrgId: 'org-123',
+        cases: reasons.map((_, i) =>
+          sampleCase({
+            id: `507f1f77bcf86cd79943901${i}`,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: 'org-123',
+            status: 'investigating',
+          }),
+        ),
+      });
+      await harness.start();
 
+      for (let i = 0; i < reasons.length; i += 1) {
+        const caseId = `507f1f77bcf86cd79943901${i}`;
+        const closeReason = reasons[i]!;
         const res = await fetch(harness.url(`/security/cases/${caseId}`), {
           method: 'PATCH',
           headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
@@ -1566,8 +1659,6 @@ describe('routes/security-cases', () => {
         expect(res.status).toBe(200);
         const body = (await res.json()) as { closeReason: string };
         expect(body.closeReason).toBe(closeReason);
-
-        await harness.stop();
       }
     });
   });
