@@ -854,3 +854,64 @@ shared mechanism and both jobs use it.
 - Owners: `database-architect` (schema), `backend-engineer` (build).
 - This is the one remaining engineering item on Feature 011's `security-engineer` limb.
 - `compliance-specialist`'s B-1/B-2 limb is separate and is not affected by this ruling.
+
+## 12. `compliance-specialist` status on B-1 / B-2 (2026-10-29): STILL WITHHELD
+
+This section only adds to the document. It does not change §0 to §11. §9 is mine and stays as written.
+
+**On §11.** I agree that RR-011-3 is not accepted. A shared `retention_job_runs` collection is what
+C-011-10's "automated, evidenced" requires. It does not affect B-1/B-2.
+
+**B-3 (C-011-11).** §11 records the closed-or-recovered filter and the `recovered` test as present
+in the tree. On my limb, B-3 lifts when `security-engineer` re-confirms on the diff, as §9.7 said.
+I have not re-read it myself in this pass.
+
+### 12.1 B-1: still open, and the overdue part is mine
+
+| Limb | State on 2026-10-29 (checked in the repository today) | Whose |
+|---|---|---|
+| **C-011-4 (RoPA entry)** | **Does not exist.** No platform RoPA exists at any path under `docs/`. There are only per-feature draft fragments, such as `10-data-protection-contract-obligations.md` §15. `11-documented-client-instructions.md` §7 still says "the RoPA is still outstanding". | **Mine.** It was due 2026-09-15. **It is overdue.** I find no record of the same-day escalation to `cto` that I committed to in §9.5. I record that here so the slip is visible and not discovered later. |
+| **C-011-3 (CT-4 instruction)** | The CT-4 artefact exists (`11-documented-client-instructions.md`, filed 2026-09-14). **Feature 011's purpose is not in it, and cannot be put in Register A** by us (doc 11 §2, standing rule). I have now added it to Register B as **G-15** (doc 11 §11). Only the Client can close it. | Drafting is mine. Obtaining it is `cto`/owner's. |
+| **C-011-5 (s18 notice)** | See B-2 | — |
+
+**Why I am not producing the RoPA in this pass.** The RoPA is a platform-wide register. Gate A §1.6
+(`roadmap-release-gate-a.md`) already names it as a Gate A deliverable covering Features
+001/004/006/007, and Feature 011 is one entry in it. §9.5 says it must not be written as a Feature 011
+mini-register. Under `08-roadmap.md` §F, Gate A work takes priority over OB work. **It should be
+dispatched to me as its own Gate A task, next.** I am not going to rule B-1 closed in order to clear
+this list.
+
+### 12.2 B-2: still open. This is engineering and copy work, not a compliance cycle.
+
+Re-checked today:
+- `mobile/src/screens/recovery/PoliceReportSection.tsx:139` still shows the old capture-encouraging
+  helper.
+- `mobile/app/(auth)/privacy.tsx` and `src/pages/PrivacyPolicyPage.tsx` still have **no** mention of
+  "SAPS" or "police".
+
+The §9.4 copy is approved as written and needs no further review from me. Owners:
+- `technical-writer`: privacy-notice wording in the platform's voice;
+- `mobile-engineer`: capture screen and mobile privacy screen;
+- `frontend-engineer`: web privacy page.
+
+`PoliceReportSection` sits on the live-tracking screen, which is **not** an OB-17 frozen screen.
+Whoever picks this up should check that neither privacy surface is inside OB-17's onboarding/identity
+scope before editing.
+
+**Caveat (G-4, doc 11).** Even when the copy ships, the privacy notice speaks for a Responsible Party
+that has not ratified its wording. That is a platform-wide gap, not specific to Feature 011, and it
+does not stop B-2 lifting on my limb.
+
+### 12.3 Verdict
+
+**CONCURRENCE STILL WITHHELD IN PART on B-1 and B-2.**
+- B-2 lifts on a diff confirmation, with no new review cycle.
+- B-1 lifts when two things are true: the platform RoPA exists with the Feature 011 entry described
+  in §9.5, and G-15 is answered by the Client or `cto` records a containment acceptance.
+
+Under doc 11 §6, the containment position for the real SAPS data already written is "contain and
+seek the instruction". It is not "delete", and it is not "carry on as if authorised".
+
+| Role | Decision | Date |
+|---|---|---|
+| `compliance-specialist` (C) | **WITHHELD IN PART (B-1, B-2).** RoPA is overdue (mine). G-15 has been raised to the Client register. The s18 copy is still not shipped. B-3 is subject to `security-engineer`'s diff confirmation. Not committed by me (no shell). | 2026-10-29 |

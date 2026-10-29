@@ -288,3 +288,27 @@ These conditions apply to every GO below:
 | OB-14 i18n string extraction | Waits for OB-17 to merge |
 | OB-16 | Phase 4. Blocked on the Feature 014 clarification and the payment gateway |
 | OB-05, OB-11 and OB-12 form/UI wiring | Each waits for its own ruling and for the matching OB-17 screen to merge |
+
+**Compliance addendum to §F (`compliance-specialist`, 2026-10-29).** Appended. Nothing above is changed.
+
+- **Item 1 (Feature 018), in `security-review.md` §21:**
+  - CR-018-10 is closed.
+  - **CR-018-11 is not met.** The code uses 20 characters, and 100 was ruled. The chair's §20 agrees.
+  - CR-018-12 is met in substance. The new **CR-018-12a** (put the notice first on the screen) blocks
+    the flip.
+- **Item 2 (Feature 011 B-1/B-2), in `security-review.md` §12: still withheld.**
+  - The platform RoPA is overdue, and it is `compliance-specialist`'s. It is a Gate A §1.6 item and
+    should be dispatched on its own.
+  - The Feature 011 purpose is raised to the Client as G-15 (`11-documented-client-instructions.md`
+    §11).
+  - The B-2 copy is approved and waits on engineering.
+- **Item 6 (OB-03):** the consent model is
+  `docs/features/009-customer-experience-redesign/compliance-review-ob-03-partner-location-sharing.md`.
+  It is input for `solution-architect`'s ADR. G-7 is extended in doc 11 §11.
+- **Item 8:** the OB-05, OB-12 and OB-09 rulings are in `compliance-rulings-ob-items-2026-10.md`:
+  - OB-05: sufficient, under conditions. Two items are open with `cybersecurity-architect`.
+  - OB-12: yes in principle, under conditions. It is blocked in practice on a channel/sub-operator
+    and on G-16.
+  - OB-09: an informational score is permitted. A pricing-linked score falls under s71 conditions and
+    G-17.
+  - **OB-09 Stage 1 (`business-analyst`) may start against Ruling A.**

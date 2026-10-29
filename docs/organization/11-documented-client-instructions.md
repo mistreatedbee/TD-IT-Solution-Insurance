@@ -259,3 +259,20 @@ to the Client should be reviewed by admitted counsel** alongside the CT-1b conse
 day early).
 **Does not discharge:** CT-1 · CT-1a/b/c · CT-5 · CT-9 · CT-10 · CT-11 · INC-001-C-10 (RoPA) ·
 C-R-1 · C-R-3(a) · C-R-8 · OI-R-8 · OI-R-10 · OI-R-11 · legal sign-off.
+
+---
+
+## 11. Register B additions, 2026-10-29 (`compliance-specialist`)
+
+Append-only. §1 to §10 are unchanged. These rows come from the `08-roadmap.md` §F triage. Like
+G-1…G-14, each one is a **request to the Client, not an instruction**.
+
+| ID | Topic | Current state: what we are doing, or plan to do, without instruction | What the Client needs to instruct |
+|---|---|---|---|
+| **G-15** | **SAPS case-number capture (Feature 011)** | **Live.** `PATCH /v1/recovery/cases/:caseId/police-report` stores the SAPS case number, station and date. Real customer data has been written (Feature 011 `security-review.md` §9.3 D-1). No instruction covers this category or purpose (C-011-3) | Whether the Client instructs capture of police-report details, for claim substantiation and recovery coordination. Confirm internal-only access (never security partners) and ratify the 5-year post-closure retention floor (subject to C-011-6 licence status) |
+| **G-7 (extended)** | **Location shared with security partners (OB-03)** | **Not built.** Partners receive no coordinates today (`lastLocation` is excluded from both partner projections in `repositories/recovery-cases.ts`). OB-03 proposes consent-based, time-limited, logged sharing. Spec: `docs/features/009-customer-experience-redesign/compliance-review-ob-03-partner-location-sharing.md` | Beyond G-7's original ask: whether the Client permits **any** location disclosure to a partner; the dispatch model (admin-assigned vs pool); and who contracts with the partner. **No location reaches a partner until this is answered** |
+| **G-16** | **Notifying a customer's emergency contact (OB-12 lost mode)** | **Not built.** The emergency-contact name, relationship and phone are collected (`customer-profile-validation.ts:36-42`) with no stated purpose. Nothing sends to them | Whether the Client instructs using the emergency contact for lost-mode alerts, which channel and sub-operator (SMS/WhatsApp are Client-paid, I-8, and need CT-4c), and the content limits in `compliance-rulings-ob-items-2026-10.md` §2 |
+| **G-17** | **A protection score as a pricing or discount factor (OB-09)** | **Not built.** `lib/profile-completion.ts` is an informational checklist only | Whether the insurer (the licensed entity, C-011-6) approves any score factor as a rating factor. Rating factors are the insurer's decision, not ours. See `compliance-rulings-ob-items-2026-10.md` §3 |
+
+G-15 is producing live processing without authority **now**. It joins G-2, G-3, G-6 and G-8 in the
+§8 item 2 instruction schedule. G-16 and G-17 are prospective and go in the §8 item 5 second schedule.
