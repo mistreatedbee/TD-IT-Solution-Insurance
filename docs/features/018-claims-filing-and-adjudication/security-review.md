@@ -504,6 +504,7 @@ I am not editing the table row above, because the chair wrote it. This subsectio
 | Role | Decision | Date |
 |---|---|---|
 | `compliance-specialist` (C) | **Concur with BLOCKED.** The rulings that were pending on me are now made: SR-018-7 in §12.2, SR-018-6 in §12.3, and SR-018-2(2) in §12.1. The ceiling and currency check is in §12.4. I will concur with discharge only when CR-018-1 … CR-018-9 (§12.6) are closed and I have re-read the running code. | 2026-10-28 |
+| `compliance-specialist` (C) | **Re-verified (§16): CONCUR that Stage 8 compliance requirements are met in code.** Flag flip still NOT approved: pending CR-018-4/7/8, the CR-018-9 value, the payout decision, and new CR-018-10/11/12. | 2026-10-29 |
 
 (Section numbering: §10 is `security-engineer`'s, and the chair's row above reserves §11 for the re-review, so my rulings are in §12.)
 
@@ -1375,3 +1376,464 @@ read-back, CR-018-1…9 in code, security-engineer re-concurrence) are unchanged
 | Role | Decision | Date |
 |---|---|---|
 | `backend-engineer` | Landed SR-018-8 (a)/(c)/(d)/(e) tests; verified (h) already complete; fixed C-018-19 comment. Stage 8 verdict is unchanged — still the chair's call, now against this evidence. | 2026-10-29 |
+
+## 16. `security-engineer` re-confirmation of concurrence (2026-10-29)
+
+Discharges §13.3 item 5 ("`security-engineer` re-confirms concurrence after SR-018-9, since the §10
+concurrence predates it"). This is a fresh hands-on pass against running code at `HEAD = acaebe2`,
+not a re-read of §10's prose. §10's concurrence is superseded by this section for anything it
+conflicts with; nothing in §10 is struck, since all four of its findings (SR-018-1/2/3/5) are
+re-confirmed below on the current tree.
+
+**What I ran myself, this session, in `backend/`:**
+- `npx tsc --noEmit`: clean, zero errors.
+- `npm test`: **964/964 passing, 82 test files**, run twice back to back, both clean. I did not
+  reproduce §15's reported one-off `closeGround FILED_IN_ERROR_CONFIRMED_BY_CUSTOMER` transient
+  failure on either run; consistent with §15's own characterization of it as non-reproducing, not
+  evidence it can't recur. Not treated as a blocker.
+- `npx vitest run src/routes/root-mount-order.test.ts`: 5/5 passing in isolation.
+
+**1. SR-018-9 kill-switch scoping — still correctly in place, no regression.** Read
+`src/routes/claims.ts:87` and `src/routes/admin-claims.ts:130` directly: both gates are
+`router.use('/claims', ...)` / `router.use('/admin/claims', ...)`, not path-less, still registered
+ahead of every route on their router and still fail closed on `ctx.env.claimsApiEnabled !== true`.
+Cross-checked `src/index.ts:160-191` for the real mount order: `createClaimsRouter`/
+`createAdminClaimsRouter` sit at lines 184-185, with `'/analytics'`, `'/admin/analytics'`,
+`'/support'`, and `createSupportCasesRouter` all mounted after them at lines 186-191 — unchanged
+from §13.1's reading, and the two new routers added since (`createAdminPartnerOrganizationScorecardRouter`
+at line 170, `createAdminVerificationRouter` at line 183) are both mounted *before* the claims
+routers, so neither is at risk of the SR-018-9 shadowing pattern. `root-mount-order.test.ts` passes
+against this exact order (5/5, confirmed above). No bypass, no regression.
+
+**2. Financial guardrails in `claim-rules.ts`/`admin-claims.ts` — no bypass found, same rigor as
+the original SR-018-3 check in §10.** Read `claim-rules.ts:60-114` and the full approval branch in
+`admin-claims.ts:290-354`.
+- The old combined `MAX_CLAIM_APPROVED_AMOUNT` is gone; it is now two constants with two different
+  jobs, exactly as §12.4 required: `MAX_CLAIMED_AMOUNT_SANITY_BOUND = 10_000_000` (filing-time input
+  sanity only, never a coverage ground) and `MAX_CLAIM_APPROVED_AMOUNT_ZAR = 1_000_000` (the
+  operational approval ceiling, explicitly ZAR-scoped via `MAX_APPROVED_AMOUNT_CEILING_CURRENCY`).
+- `requiresApprovalEscalation(approvedAmount, approvedCurrency)` returns `true` (i.e. blocks
+  self-service approval) both when the amount exceeds the ZAR ceiling **and** whenever the claim's
+  currency is not `'ZAR'` — a non-ZAR claim cannot silently skip the check by virtue of not matching
+  the ceiling's currency; it fails toward escalation instead. I could not find a currency value that
+  both bypasses the `!== MAX_APPROVED_AMOUNT_CEILING_CURRENCY` branch and clears the ceiling check,
+  since the first branch returns unconditionally before the numeric comparison runs.
+- Order of checks in the PATCH handler (`admin-claims.ts:292-354`), all before the Trail B audit
+  write at line 474 and the mutation at line 489: (1) `approvedAmount > claimedAmount` → 422
+  `APPROVED_AMOUNT_EXCEEDS_CLAIMED`; (2) policy lookup fails → 409 `CLAIM_POLICY_NOT_FOUND`; (3)
+  `exceedsCoverageLimit` → 422 `APPROVED_AMOUNT_EXCEEDS_COVERAGE_LIMIT`; (4)
+  `requiresApprovalEscalation` → 422 `APPROVAL_REQUIRES_ESCALATION`; (5) the §12.2 eligibility hold
+  (`FLAG_INCIDENT_BEFORE_ELIGIBILITY` present and no `eligibilityDetermination`) → 422
+  `ELIGIBILITY_DETERMINATION_REQUIRED`; (6) a partial approval with no `quantumReason` → 422
+  `QUANTUM_REASON_REQUIRED`. Each `return`s before any write. I did not find a code path that
+  reaches `ctx.claims.approveAndAdvance` while skipping any of the six, and no action other than
+  `'approved'` executes this block at all (the `if (body.action === 'approved')` guard at line 292
+  wraps all six).
+- Confirmed the ceiling is never used as a coverage ground: `requiresApprovalEscalation` returning
+  `true` produces `APPROVAL_REQUIRES_ESCALATION`, a distinct error code from
+  `APPROVED_AMOUNT_EXCEEDS_COVERAGE_LIMIT` — the two checks (coverage limit vs. operational ceiling)
+  cannot be confused for one another by a client reading the response, and neither silently reduces
+  `approvedAmount`; both refuse the request outright.
+- **No bypass found.** The split guardrail is at least as strict as the single constant it replaced,
+  and closes the §12.4 "undisclosed ceiling could function as a coverage ground" concern by making
+  the ceiling an outright refusal rather than a silent cap.
+
+**3. `claim-decision-notice.ts`'s `ClaimDecisionNoticeConfigError` — confirmed fail-closed, no
+bypass.** Read `claim-decision-notice.ts:140-199` and the call site in `admin-claims.ts:377-422`.
+- `requireConfigValue` trims the input and throws `ClaimDecisionNoticeConfigError` on `undefined`,
+  empty string, or whitespace-only — called for all twelve required notice-config fields
+  (`internalComplaintsContact`, the four NFO fields, the four FAIS Ombud fields, and the three
+  insurer-identity fields). There is no field in `ResolvedNoticeConfig` built without going through
+  `requireConfigValue`.
+- The three notice builders (`buildRejectionNotice`, `buildPartialApprovalShortfallNotice`,
+  `buildAdministrativeCloseNotice`) are called inside a `try { ... } catch (err) { if (err
+  instanceof ClaimDecisionNoticeConfigError) { next(apiError('CLAIM_NOTICE_CONFIG_INCOMPLETE'));
+  return; } throw err; }` block, and this block runs **before** the Trail B
+  `recordStateChange` write (line 474) and before the claim mutation (line 489-509) — both of
+  which are unreachable if the catch block returns.
+- Verified directly against the test at `admin-claims.test.ts:1140-1181`: a harness with one blank
+  required field (`faisOmbudContactName: ''`) on an otherwise-complete `claimsNotice` config
+  produces `500` / `CLAIM_NOTICE_CONFIG_INCOMPLETE`, the claim status is confirmed unchanged
+  (`under_review`), and `harness.stateChanges` is asserted to have length `0` — i.e. no audit row.
+  I re-ran this specific test in isolation (`npx vitest run -t "CLAIM_NOTICE_CONFIG_INCOMPLETE"`,
+  not shown above but part of the full 964/964 pass) and it passes.
+- Confirmed `loadEnv()` in `config/env.ts:490-542` always populates `claimsNotice` with non-blank
+  `TODO_OWNER_MUST_CONFIGURE: ...` placeholder strings when the corresponding env var is unset, so
+  this path cannot throw in a real deployed process merely for lack of owner configuration — it
+  only throws on a genuinely blank/whitespace value, which per the doc comment at
+  `claim-decision-notice.ts:173-183` is deliberate ("throws only when a caller ... supplies a
+  blank/whitespace-only value ... or omits the whole `claimsNotice` block entirely"). This is the
+  correct fail-closed shape: a misconfiguration that could plausibly happen (a field left truly
+  blank by whoever edits the config) fails the request; a merely-unconfigured-but-present
+  placeholder does not break the feature pre-launch.
+- **No bypass found.** The notice-composition failure path matches the standard required: 500, no
+  mutation, no audit row.
+
+**Items not independently re-verified in this pass, same scope exclusions as §10:** SR-018-4's live
+Atlas read-back and the `claims_one_open_claim_per_asset` production index read-back (owner-run,
+no production DB access from this role); the real-`mongod` index test's non-skipped run (needs a
+local `mongod`, not available this session); CR-018-4/7/8/9's non-engineering (product/legal/owner)
+halves; SR-018-9's production-recovery evidence (already independently confirmed by
+`site-reliability-engineer` in §14, not re-attempted here).
+
+**Concurrence — re-confirmed.** I concur with the chair's BLOCKED verdict (§13.3) and with
+`compliance-specialist`'s CONCUR-with-BLOCKED (§12.6). On the code-level questions this role owns:
+SR-018-1, SR-018-2 (as scoped, post-SR-018-9), SR-018-3, SR-018-5, and SR-018-9 itself are
+hands-on verified closed in the current tree, with `964/964` tests passing and `tsc --noEmit`
+clean, reproduced by me this session. The new CR-018-9 ceiling split and the CR-018-5 notice
+infrastructure (`claim-decision-notice.ts`) are hands-on verified to have no bypass and to fail
+closed on missing configuration, per the same rigor as the original SR-018-3/§10 review. This
+does not by itself discharge Stage 8: the remaining items in §13.3 (production index read-back,
+CR-018-4/7/8/9's non-engineering halves, and the chair's own re-review of the CR-018-1…9 code
+against §12) are outside this role's remit and are unaffected by this section.
+
+| Role | Decision | Date |
+|---|---|---|
+| `security-engineer` (R) | **CONCUR** with chair's BLOCKED verdict (§13.3) and compliance's CONCUR-with-BLOCKED (§12.6). SR-018-9 scoping fix re-verified with no regression; CR-018-9 approval-ceiling split and CR-018-5 notice-config fail-closed path hands-on verified with no bypass found. `964/964` tests passing, `tsc --noEmit` clean, reproduced independently this session (`HEAD = acaebe2`). Remaining Stage 8 items outside this role's remit per §13.3. | 2026-10-29 |
+
+## 16. Final chair re-review (`cybersecurity-architect`, chair, 2026-10-29)
+
+This section is append-only. It does not change §0 to §15. It re-reviews the committed state of `main`
+at `acaebe2`, which includes `1101977` (SR-018-6 notice template), `0f820c6` (ceiling split and
+claim-recovery linkage) and `7d80644` (SR-018-8 tests).
+
+**Not done by me in this pass. Stated plainly so nobody cites it as done:** this session had no
+shell, as in §11 and §13. I did **not** run `npx tsc --noEmit` or `npm test`, and I did **not**
+commit this section. So the only test evidence on record is still `backend-engineer`'s §15 run
+(964/964, 82 files, `tsc` clean, one transient failure). I have not reproduced it. I did get one
+piece of independent **production** evidence this time (§16.3).
+
+### 16.1 Verdict
+
+**Still BLOCKED, and not yet on non-engineering items only.** All the code that §12's rulings asked
+for now exists, with two exceptions, and both need code:
+
+- **SR-018-10.** Adverse notices are never emailed (CR-018-7 is not built).
+- **SR-018-11.** The notice composer accepts the `TODO_OWNER_MUST_CONFIGURE` placeholders as real
+  values.
+
+The 5-item `pre-launch-blockers.md` tracker leaves both of them out. Once both close, and the
+§16.5 items are done, I will move my row to "BLOCKED — pending non-engineering items only".
+
+### 16.2 SR-018-6 notice template against compliance §12.3 (code read of `lib/claim-decision-notice.ts`, `routes/admin-claims.ts`, `repositories/claims.ts`, `lib/claim-serializers.ts`, `config/env.ts`)
+
+| §12.3 requirement | Result | Evidence |
+|---|---|---|
+| N-1: the server composes the notice, it has a version, it is stored as issued, the list is append-only, and the customer can see it | **Met** for rejection, partial approval and close | `CLAIM_DECISION_NOTICE_TEMPLATE_VERSION = 1`. `renderedText` is stored and never re-rendered. The notice is `$push`ed into `decisionNotices[]` in the same CAS write as the status change (`repositories/claims.ts:396-397`, `:459-460`). `claim-serializers.ts:39` exposes it to the customer. |
+| N-1: the more-info request is also stored as a `decisionNotices[]` entry | **Deviation, not blocking** | The more-info notice is stored as fixed boilerplate appended to the admin's `reviewNotes` text. It is not a `decisionNotices[]` record (`appendMoreInfoBoilerplate`). The `'more_info_request'` kind is declared but never used. The customer still receives the N-5 content, so this is not a security issue. `compliance-specialist` should decide whether it is acceptable (C-018-21). |
+| N-2 (1)(2): the decision and its date, a structured ground plus the admin's reason in **one slot**, and the clause if one is given | **Met** | `groundCode` is a required `z.enum` on `rejected`. The admin text fills only the `Reason:` line. Fraud-flag names never reach the template. |
+| N-2 (3)–(7): representations within 90 days, internal complaints, NFO, FAIS Ombud, time-bar left out when absent, re-filing | **Met structurally** | All of these are in `renderAdverseBoilerplate`, and the contacts come from config. Note that the route never passes `legalActionTimeLimit`, so the time-bar line is always left out. That matches "leave it out rather than invent one" while the policy has no time-bar clause. When the policy wording gains one, it needs wiring. |
+| N-2 (8): "A rejection notice with blank licence details must not be issued" | **Not met in effect. See SR-018-11.** | The guard rejects only empty or whitespace values. When a variable is unset, `loadEnv()` substitutes `TODO_OWNER_MUST_CONFIGURE: …` (`env.ts:488-492`). The composer accepts that string as valid. So today a production rejection would go out reading "licence number TODO_OWNER_MUST_CONFIGURE: …", which is blank licence details in all but form. |
+| N-3: a partial approval needs `quantumReason` and a shortfall notice | **Met** | `QUANTUM_REASON_REQUIRED` (`admin-claims.ts:350`). The shortfall notice has `groundCode: 'QUANTUM_DISPUTED'` and is written in the same write as the approval. |
+| N-4: close only on non-merits grounds; `DUPLICATE_CLAIM` must point to a claim on the same account; the notice says "not a decision on cover" and gives contacts | **Met** | The `closeGround` enum has three values. The duplicate reference is checked with `findByIdForAccount(existing.accountId, …)` (`:365`). The close notice includes the not-a-decision line, how to re-file, internal complaints and NFO. |
+| N-5: what is needed, how to respond in the app, that the claim stays open, and no rejection without further notice | **Mostly met** | The "stays open" and "will NOT be rejected … without a further written notice" text is fixed. The "how to respond in the app" line is missing. That is a copy item for tracker item 3, not a code blocker. |
+| N-6: written delivery by email, with `deliveries[]` recorded | **Not built. See SR-018-10.** | Nothing writes to `deliveries[]`, as the file's own comment at `:118-122` says. No claim email template exists in `domain-email-templates.ts`, and no claim notification is sent anywhere. |
+| Ordering and fail-closed | **Met** | The notice is built **before** the Trail B write and before the mutation. A config error returns `CLAIM_NOTICE_CONFIG_INCOMPLETE` with no audit row and no mutation (`admin-claims.ts:377-422`). |
+
+Other §12 code items, re-read in code:
+
+- **CR-018-1 met.** The intake refusal on incident date before effective date is gone (`claims.ts:141-147`).
+- **CR-018-2 met.** The flag condition is `incidentDate < waitingPeriodClearsAt(...)` (`claim-rules.ts:251`). This closes the Scenario B gap I raised in §11.1.
+- **CR-018-3 met.** `ELIGIBILITY_DETERMINATION_REQUIRED` (`admin-claims.ts:339-345`). The determination goes into the Trail B `reason` and is never sent to the customer.
+- **CR-018-9 met in code.** `MAX_CLAIMED_AMOUNT_SANITY_BOUND = 10_000_000` (customer input only). `MAX_CLAIM_APPROVED_AMOUNT_ZAR = 1_000_000` is an operational control: above it the request is refused with `APPROVAL_REQUIRES_ESCALATION` and the amount is never reduced. It also fails closed on non-ZAR, which satisfies CC-3 for approval. The final number is tracker item 1.
+
+On SR-018-3 I accept the new escalation path. The admin must escalate rather than approve less, which is the operational-control behaviour §12.4 requires. A free-text `eligibilityDetermination` or `quantumReason` is concatenated into the audit `reason` string. That is admin-only text in an admin-only log, so it is acceptable. Same AUD-8 note as §10 item 3.
+
+### 16.3 SR-018-9: production recovery independently reproduced
+
+The §14 reasoning holds. The claims routers are mounted ahead of `/support-cases`, `/support`,
+`/analytics` and `/admin/analytics`. Their gate runs before `authenticate` and returns 404 when the
+switch is off. So a **401** from one of the later routers means the request got past the claims
+gate and reached that router's own auth. That is the opposite of the pre-fix 404. The two claims
+404s alongside show the switch is still off, which rules out "fixed by enabling claims".
+
+I repeated a subset of the checks myself on 2026-10-29. These were unauthenticated, read-only GETs
+against `https://td-it-solution-insurance.onrender.com`. I sent no credentials and did not change
+`CLAIMS_API_ENABLED`.
+
+| Request | Response |
+|---|---|
+| `GET /api/v1/support-cases` | 401 |
+| `GET /api/v1/admin/analytics/dau` | 401 |
+| `GET /api/v1/claims` | 404 |
+| `GET /api/v1/admin/claims` | 404 |
+
+**SR-018-9 is CLOSED**, both in code (§13.1) and in production (§14, reproduced here). INC-005-1
+(Render deploy timestamps) is an incident-record item. It does not affect this gate.
+
+### 16.4 New findings
+
+**SR-018-10 (Medium, compliance-critical, code fix plus owner action). Adverse decision notices are never delivered by email.**
+§12.3 N-6 and CR-018-7 say: "The flag cannot flip until an adverse-decision notice can actually be
+emailed." Today a notice is only stored and shown in the app. The 90-day representation clock runs
+from *receipt*, and the platform cannot show any receipt. This is engineering work, not only the
+Resend owner action:
+
+1. `notification-engineer` adds a claims adverse-decision email: rejection, partial-approval
+   shortfall and administrative close. It sends the stored `renderedText` verbatim. It must not
+   re-render the template.
+2. Each delivery attempt appends `{channel, attemptedAt, succeeded}` to that notice's
+   `deliveries[]`. Use a targeted `$push` on the array element, and never touch `renderedText`.
+3. The send happens after the decision commits. A failed send must not roll back the decision. It
+   must stay retryable and visible to admins as "notice not yet delivered".
+4. Send only to the customer's **verified** email. Include the claim reference and decision only;
+   do not repeat the full notice in the subject line.
+5. Add tests for each of the three adverse kinds, a recorded failure, and the rule that
+   `renderedText` is never re-rendered.
+
+The production Resend confirmation remains the owner's separate dependency. **This item is missing
+from `pre-launch-blockers.md`.** `product-manager` should add it there as well, so the tracker is
+not read as the complete list.
+
+**SR-018-11 (Medium, code fix, small). Placeholder notice config is accepted as real.**
+Make the guard structural, so that issuing a notice with placeholder licence or Ombud details is
+impossible, not just prevented by procedure:
+
+1. `requireConfigValue` treats any value starting with `TODO_OWNER_MUST_CONFIGURE` the same as a
+   blank value. The request then returns `CLAIM_NOTICE_CONFIG_INCOMPLETE`, with no audit row and no
+   mutation, which the existing ordering already guarantees.
+2. When `isProduction` is true, the app refuses to start, or forces `claimsApiEnabled` to false and
+   logs loudly, if `CLAIMS_API_ENABLED=true` while any `claimsNotice` value is a placeholder.
+3. Add a test showing that a placeholder value blocks a rejection.
+
+Keep the placeholder defaults for development and tests. They are a good signal in a dev
+environment.
+
+**Tracked conditions (non-blocking):**
+
+- **C-018-21 (`compliance-specialist`).** Decide whether storing the more-info notice in
+  `reviewNotes` instead of `decisionNotices[]` satisfies N-1 (§16.2).
+- **C-018-22 (`automation-qa-engineer`).** The transient 404 on the `FILED_IN_ERROR_CONFIRMED_BY_CUSTOMER`
+  close test reported in §15. It may be the shared `activeServer` / ephemeral listener harness. It
+  is the second cross-file timing flake on record, after the §10 `admin-accounts.test.ts` flake.
+  Look into it before it hides a real regression.
+- **Engineering tails on two tracker items.**
+  - Item 1: the final ceiling is a constant change in `claim-rules.ts`.
+  - Item 3: removing the `[PLACEHOLDER COPY …]` marker and adopting the legal-approved copy is a
+    template edit. It **must** bump `CLAIM_DECISION_NOTICE_TEMPLATE_VERSION`. It must also add
+    N-5's "how to respond in the app" line, and decide whether the raw `groundCode` enum should be
+    replaced with plain-language text for customers.
+
+  Neither is a design question, but each needs a reviewed commit. Neither can be done by changing
+  configuration alone.
+
+### 16.5 Is the rest non-engineering?
+
+Reviewing the five tracker items:
+
+| Item | Non-engineering? |
+|---|---|
+| 1. Real approval ceiling | Yes, it is a decision. Then a one-constant code change (§16.4). |
+| 2. Ombud and licence config values | Yes. These are owner and legal values set as Render env vars, and no code is needed **once SR-018-11 lands**. |
+| 3. Legal copy review | Yes, it is a review. Then a versioned template commit (§16.4). |
+| 4. Policy-wording disclosure | Yes. Product and legal work. |
+| 5. Payout-path decision | Yes, it is a decision. Option A creates a new customer notice, which falls under item 3. Any later in-platform payout is a separate feature that needs its own Stage 8 (C-018-4 / RR-018-1). |
+
+Items outside the tracker that still stand before the flag flips:
+
+- **SR-018-10 and SR-018-11**: code.
+- **Production `db.claims.getIndexes()` read-back** showing `claims_one_open_claim_per_asset`
+  (§11.5 item 3): owner-run and non-engineering. Still not recorded.
+- **SR-018-8(f)**: one non-skipped run of `db/claims-collections.test.ts` against a real `mongod`.
+  This is a test execution, not new code. Still not done.
+- **An independent `tsc --noEmit` and `npm test` run** by me or `security-engineer` against the
+  commit that closes SR-018-10 and SR-018-11. It must include `root-mount-order.test.ts` and the
+  §15 tests.
+- **`security-engineer` re-concurrence** after SR-018-9 (§11.5 item 5), and **`compliance-specialist`
+  re-reading the CR-018-1 … CR-018-9 code** for their discharge concurrence (§12.6).
+
+`CLAIMS_API_ENABLED` stays unset. The mobile `FEATURE_CLAIMS` waiver and the absence of
+`flagEnableApproved` are unchanged.
+
+| Role | Decision | Date |
+|---|---|---|
+| `cybersecurity-architect` (chair, A) | **BLOCKED (code items remain).** SR-018-1 … SR-018-9 are CLOSED. SR-018-9's production recovery was independently reproduced (§16.3). SR-018-8 code is complete, but the (f) live-`mongod` run is still owed. The CR-018-1/2/3/5/6/9 code is verified. Still code-blocked on **SR-018-10** (no email delivery of adverse notices, CR-018-7) and **SR-018-11** (placeholder notice config is accepted as real). Once both land and are re-run, this row moves to "BLOCKED — pending non-engineering items only" (tracker items 1–5, index read-back, co-signer concurrences). Test run and commit for this pass are not done by me (no shell). | 2026-10-29 |
+
+## 16. `compliance-specialist` re-verification of §12 rulings in code, and concurrence (2026-10-29)
+
+This section only adds to the document. It does not change §0 to §15. §12 is my own earlier section, and it
+stays as written. This section records whether the code now does what §12 ruled.
+
+**What I read (running code at `HEAD` = `acaebe2`):** `backend/src/lib/claim-rules.ts`,
+`lib/claim-decision-notice.ts`, `lib/claim-serializers.ts` (customer shape), `routes/claims.ts` (create
+handler), `routes/admin-claims.ts` (all of it), `repositories/claims.ts` (`transitionForAdmin`,
+`approveAndAdvance`), `config/env.ts` (`claimsNotice`, `envOrPlaceholder`), and the test names in
+`claim-rules.test.ts`, `claim-decision-notice.test.ts`, `claims.test.ts` and `admin-claims.test.ts`. I also
+checked whether `mobile/src/screens/claims/ClaimDetailScreen.tsx` and `src/admin/pages/AdminClaimsPages.tsx`
+use the new fields. I also read `pre-launch-blockers.md`.
+
+**What I did not do:** I had no shell in this session. I did **not** run `npm test` or `tsc --noEmit`, and I
+did **not** commit this section. The only run evidence is `backend-engineer`'s in §15 (964/964 at
+`7d80644`). I have not reproduced it.
+
+### 16.1 SR-018-7 / §12.2: met in code
+
+| Ruling | Result | Evidence |
+|---|---|---|
+| R7-1: no intake refusal based on incident date | **Met** | The old `incidentDate < policy.effectiveDate` refusal is gone. `claims.ts:141-147` now has a comment where it used to be, and there is no other refusal tied to the effective date. The only incident-date refusal left is "not a valid date / not in the future" (`:113`). That is input validation, not an eligibility decision, and I accept it. The filing-date `WAITING_PERIOD_NOT_MET` gate is unchanged and still returns `waitingPeriodClearsAt`, as §12.2 allowed. The test at `claims.test.ts:518` ("accepts and flags a claim whose incidentDate predates the policy effectiveDate") proves the old hard-block bug is gone: the claim files with 201 and is flagged. |
+| R7-2: flag on `incidentDate < waitingPeriodClearsAt` | **Met, and it matches what both the chair and I asked for** | `claim-rules.ts:221,251` compares the incident date with `clearsAt` (the **end** of the waiting period), not with the anchor. This covers all three cases with one comparison: before inception, before registration, and inside the waiting period. It is what my R7-2 said and what the chair recommended in §11.1. Scenario B is tested (`claim-rules.test.ts:179`). The admin-only field recording which boundary was crossed was only a recommendation and was not built. That stays a recommendation. |
+| R7-3: approval hold | **Met** | `admin-claims.ts:339-345` refuses `approved` with `ELIGIBILITY_DETERMINATION_REQUIRED` when the claim carries `FLAG_INCIDENT_BEFORE_ELIGIBILITY` and no determination is given. The field is trimmed and 1–2000 characters (`:80`). The determination is written to `statusHistory` (`repositories/claims.ts:444-446`) and to the Trail B `reason` (`:454-458`). It is **not** in `serializeClaimForCustomer`, and `admin-claims.test.ts:537` asserts it is absent from the customer response. Reject, close, more-info and start-review are not held, which matches the ruling. |
+| CC-6: flags stay advisory under POPIA s71 | **Holds** | No flag causes an automatic reject, reduction or close. The hold needs a person to record a determination and refuses nothing. |
+
+**SR-018-7 is closed from the compliance side. CR-018-1, CR-018-2 and CR-018-3 are closed.** RR-018-3's
+disposition (§12.6) is therefore met.
+
+### 16.2 SR-018-6 / §12.3: met in structure, with three gaps
+
+**Required content of a rejection notice (N-2), checked against `claim-decision-notice.ts`:**
+
+| # | Required | Present? | Where |
+|---|---|---|---|
+| 1 | Decision and date (plus reference, asset, filing date, full or partial) | Yes | `buildRejectionNotice` header `:275-279`; partial-approval header `:329-336` |
+| 2 | Structured ground code, the admin's reason, and the policy clause where given | Yes | `:281-284`, `:338-341`. `groundCode` is required by the schema for every rejection (`admin-claims.ts:94`) |
+| 3 | Representations within at least 90 days | Yes | `renderAdverseBoilerplate` `:211-215` |
+| 4 | Internal complaints contact | Yes | `:214`, taken from config |
+| 5 | NFO and FAIS Ombud contacts | Yes | `:217-226`, taken from config, not hard-coded, as N-2(5) required |
+| 6 | Legal-action time limit, and that the 90 days do not count against it | Yes, conditionally | `:228-233`. The line is left out when no limit is supplied, as I ruled. **Note:** the route never passes `legalActionTimeLimit`, so the line never appears today. That is correct while the policy wording has no time-bar clause. It must be wired up if CR-018-4 adds one (§16.5 CC-9). |
+| 7 | Right to file again | Yes | `:235-238` |
+| 8 | Insurer name, licence number and FSP number | Present, but see gap G-1 | `:240-243` |
+
+**Other notice rulings:**
+- **N-1:** `decisionNotices[]` is pushed in the same compare-and-set write as the status change
+  (`repositories/claims.ts:396-398`, `:459-461`), and nothing re-renders it later. It carries
+  `templateVersion`. The customer serializer exposes it, but leaves out `deliveries` (`claim-serializers.ts:39-45`),
+  which is fine. **Met.**
+- **N-3:** a partial approval requires `quantumReason` (`admin-claims.ts:350-353`) and issues a
+  `QUANTUM_DISPUTED` notice that states the amount claimed, the amount approved and the shortfall. **Met.
+  CR-018-6 is closed.**
+- **N-4:** `closeGround` is an enum of exactly the three non-merits grounds. `DUPLICATE_CLAIM` is checked
+  against a claim on the same account (`:359-370`). The close notice says "this is NOT a decision on whether
+  your claim is covered" and includes the complaints and NFO contacts. **Met.** Minor: it does not stop
+  `duplicateOfClaimId` from pointing at the claim being closed (CC-10).
+- **N-5:** the fixed "remains open / will NOT be rejected … without a further written notice" text is added to
+  what the customer sees (`appendMoreInfoBoilerplate`), and the audit `reason` keeps the admin's text
+  unchanged. **Met.** The required "how to respond in the app" line is missing. That is a copy item for
+  CR-018-8.
+- **Fraud-flag names never appear in a notice:** checked. No `FLAG_*` value reaches any builder.
+- **Notices are refused when config is missing:** an explicitly blank value throws, which becomes 500
+  `CLAIM_NOTICE_CONFIG_INCOMPLETE` before the audit write or any change to the claim (`admin-claims.ts:416-422`,
+  tested at `:1138`). **Met for blank values.** See G-1 for placeholder values.
+
+**On the ground codes and close grounds the engineer chose:** these were not left to the engineer. My §12.3
+N-2(2) and N-4 listed them. All 8 rejection codes (`LOSS_OUTSIDE_PERIOD_OF_COVER`, `EXCLUDED_EVENT_OR_CAUSE`,
+`INSUFFICIENT_EVIDENCE_OF_LOSS`, `INSUFFICIENT_EVIDENCE_OF_OWNERSHIP`, `MISREPRESENTATION_OR_NON_DISCLOSURE`,
+`POLICY_NOT_IN_FORCE_AT_INCIDENT`, `QUANTUM_DISPUTED`, `OTHER`) and all 3 close grounds (`DUPLICATE_CLAIM`,
+`FILED_IN_ERROR_CONFIRMED_BY_CUSTOMER`, `WITHDRAWN_AT_CUSTOMER_REQUEST`) match my list exactly. The
+`claim-decision-notice.ts:53-54` comment says "compliance didn't give an exact list". That is wrong, but it
+affects nothing, and I have not edited the code. I confirm the list is right for v1. Fraud is deliberately
+not a ground: a rejection for suspected fraud must name the factual ground (misrepresentation, or not enough
+evidence of the loss or of ownership), never "fraud flag".
+
+**Gaps (§16.4 says which ones block the flip):**
+- **G-1: placeholder values get past the blank-value check.** When a `CLAIMS_NOTICE_*` variable is not set,
+  `envOrPlaceholder` (`env.ts:488-492`) fills in `TODO_OWNER_MUST_CONFIGURE: …`. `requireConfigValue` only
+  rejects blank values, so in any real environment where nobody has set the variables, which is production
+  today, a rejection notice **would be issued** with a placeholder in place of the licence number, FSP number
+  and Ombud contacts. N-2(8) said "a rejection notice with blank licence details must not be issued". A
+  placeholder is blank in substance. The kill switch is off, so nothing has gone out. But this check belongs
+  in the code, not only on a launch checklist.
+- **G-2: `OTHER` has no longer minimum length.** N-2(2) said `OTHER` "needs a longer minimum text". The
+  comment at `claim-decision-notice.ts:73-74` says this is "enforced in the route layer". It is not:
+  `rejectionReason` uses the same `min(1)` for every code (`admin-claims.ts:55,89`).
+- **G-3: the customer app does not show the notice.** `ClaimDetailScreen.tsx` renders only `rejectionReason`
+  and `reviewNotes`. It does not read `decisionNotices`, `closeReason` or `quantumReason`, and nothing under
+  `mobile/src` references those fields. N-7 requires the notice to be the main content of the screen. As
+  built, a customer with a rejected, closed or partly approved claim sees the admin's one-line reason
+  without the 90-day, Ombud or licence text. That is the same omission the enforcement precedent in §12.3
+  was about. (The admin web UI has been updated: `AdminClaimsPages.tsx` sends `groundCode`, `closeGround`,
+  `eligibilityDetermination` and `quantumReason`.)
+
+**CR-018-5 (structured codes, versioned server-composed notices, `decisionNotices[]` on the customer shape)
+is closed in the backend.** G-1 to G-3 are new items, listed below.
+
+### 16.3 CR-018-9 / §12.4 approval ceiling: the split is met, the number is not final
+
+- **Two constants: met.** `MAX_CLAIMED_AMOUNT_SANITY_BOUND = 10_000_000` checks only that input is sane
+  (`claimedAmount` at filing, and as a schema bound on `approvedAmount`). `MAX_CLAIM_APPROVED_AMOUNT_ZAR =
+  1_000_000` is the operational ceiling, with `MAX_APPROVED_AMOUNT_CEILING_CURRENCY = 'ZAR'`
+  (`claim-rules.ts:78-114`). The sanity bound is not named `_ZAR` and is not tied to a currency. I accept
+  that, because the claim's currency is always set by the server from the policy, and the bound says
+  nothing about cover.
+- **Escalates rather than caps: met.** Above the ceiling, `APPROVAL_REQUIRES_ESCALATION` (`admin-claims.ts:329-332`)
+  refuses the approval and changes nothing: the amount is not capped or reduced, the claim is not rejected,
+  and it stays in its current status. A non-ZAR currency also requires escalation, which meets CC-3 on the
+  approval side. Both are tested (`admin-claims.test.ts:668,711`).
+- **The R1,000,000 figure is still interim.** It is my recommendation, built in as code, and
+  `product-manager` has not confirmed it against the plan catalogue. That is tracker item 1. **CR-018-9 is
+  closed in code. Its value stays open until item 1 closes.**
+- **New condition CC-11: there is no escalation path for a claim above the ceiling.** No route or role can
+  approve above R1,000,000, and a refused attempt writes no Trail B row, because the refusal happens before
+  the audit write. Such a claim would stay in `under_review` with no record that it was escalated, which runs
+  against the PPR expectation of a decision within a reasonable time (CC-2). It does not block the flip,
+  because no realistic consumer claim is near the ceiling. It must close **before the first claim above the
+  ceiling is filed**. That needs a runbook for escalating to `cto` and the insurer, a recorded escalation
+  event, and the aging view CC-2 asks for.
+- The sanity-bound error is still a generic `VALIDATION_ERROR` with a technical message. My §12.4 asked for
+  plain language for the customer. That is mobile copy, tracked as CC-7's companion item and not blocking.
+
+### 16.4 Pre-launch tracker: accurate in part, with two omissions and one wrong statement
+
+`pre-launch-blockers.md` items 1 to 4 correctly match CR-018-9 (value), CR-018-8 (licence and Ombud
+values), CR-018-8 (legal review of the copy) and CR-018-4 (policy wording and disclosure). The payout
+decision (Option A or B) is correctly recorded. I add one requirement: **Option A needs a payment-expectation
+notice for full approvals, which N-8 already covers, and that notice must be compliance-reviewed before it
+is used.** The tracker's link to item 3 covers this.
+
+**It leaves out:**
+- **CR-018-7, written delivery (N-6).** I made this flip-blocking: "the flag cannot flip until an
+  adverse-decision notice can actually be emailed", with each attempt recorded in `deliveries[]`. The code
+  says plainly that nothing writes to `deliveries[]` (`claim-decision-notice.ts:117-121`). This depends on the
+  owner's Resend action and on `notification-engineer` work. It is not in the tracker.
+- **G-3, the mobile notice display.** This is engineering work, not business work.
+
+**It says something wrong:** the opening line describes Feature 018 as "engineering-complete per Stage 8".
+From the compliance side it is not. CR-018-7, G-1, G-2 and G-3 all still need code. I have added rows 5 and 6
+and a dated note to the tracker rather than rewriting `product-manager`'s text.
+
+### 16.5 Decision
+
+**CR-018 status:**
+
+| ID | Status |
+|---|---|
+| CR-018-1, -2, -3 (eligibility hold) | **Closed in code** |
+| CR-018-4 (policy wording and disclosure) | Open: tracker item 4 |
+| CR-018-5 (structured, versioned notices) | **Closed in backend code**, subject to CR-018-10 to -12 below |
+| CR-018-6 (partial approval) | **Closed in code** |
+| CR-018-7 (email delivery recorded) | Open: tracker item 5 (added) |
+| CR-018-8 (copy, legal review, licence and Ombud values) | Open: tracker items 2 and 3 |
+| CR-018-9 (ceiling split) | **Closed in code.** The number is open: tracker item 1 |
+
+**New requirements that block the flip** (`backend-engineer` unless stated otherwise):
+- **CR-018-10 (G-1):** no decision notice may be issued while any required `claimsNotice` value is still a
+  `TODO_OWNER_MUST_CONFIGURE` placeholder. The response must be the same 500 `CLAIM_NOTICE_CONFIG_INCOMPLETE`,
+  with no audit row and no change to the claim. Acceptable ways to do this: `requireConfigValue` rejects the
+  placeholder prefix, or startup refuses `CLAIMS_API_ENABLED=true` while any placeholder remains. The engineer
+  chooses the mechanism. Add a test.
+- **CR-018-11 (G-2):** when `groundCode === 'OTHER'`, `rejectionReason` must be at least 100 characters after
+  trimming, otherwise return 400 or 422. Correct the comment at `claim-decision-notice.ts:53-54,73-74`.
+- **CR-018-12 (G-3, `mobile-engineer` / `ui-designer`):** `ClaimDetailScreen` shows `decisionNotices[]`
+  `renderedText` as the main content for rejected, closed and partly approved claims, and also shows
+  `closeReason` and `quantumReason`.
+
+**New conditions (do not block the flip):** CC-9: pass `legalActionTimeLimit` into the notice builders once
+the CR-018-4 policy wording has a time-bar clause. CC-10: refuse a `duplicateOfClaimId` equal to the claim
+being closed. CC-11: the escalation runbook, a recorded escalation event, and aging for claims above the
+ceiling (§16.3). Copy items for CR-018-8: show the ground code in plain language rather than the enum token,
+add "how to respond in the app" (N-5), and add "how to file again" (N-4).
+
+**Stage 8 concurrence.** The engineering items in §12, the eligibility hold, the notice structure and the
+ceiling split, are now built as ruled. I **concur that the compliance requirements in Stage 8 are met in
+design and backend code**, and that Feature 018 may continue to sit behind the kill switch. I **do not
+concur with switching it on.** `CLAIMS_API_ENABLED` must stay unset, and `EXPO_PUBLIC_FEATURE_CLAIMS` keeps
+its waiver with no `flagEnableApproved`, until all of these are closed:
+- CR-018-4, CR-018-7, CR-018-8 and the CR-018-9 value (tracker items 1 to 5);
+- the payout decision;
+- CR-018-10, CR-018-11 and CR-018-12.
+
+I will re-read the code for CR-018-10 to CR-018-12, and the configured notice output, before I agree to the
+switch.
+
+| Role | Decision | Date |
+|---|---|---|
+| `compliance-specialist` (C) | **CONCUR: Stage 8 compliance requirements met in code** (CR-018-1/2/3/5/6 closed; CR-018-9 split closed). **Flag flip NOT approved.** It waits on CR-018-4/7/8, the CR-018-9 value, the payout decision, and the new CR-018-10/11/12 (§16.5). | 2026-10-29 |
