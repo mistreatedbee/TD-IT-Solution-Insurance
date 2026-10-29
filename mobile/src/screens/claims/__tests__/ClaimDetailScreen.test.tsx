@@ -176,6 +176,15 @@ describe('ClaimDetailScreen', () => {
     expect(serialized.indexOf('Claim rejection notice')).toBeLessThan(serialized.indexOf('Information request'));
     expect(rejectionHeading).toBeTruthy();
     expect(infoHeading).toBeTruthy();
+
+    // CR-018-12a: the decision-notice content is the primary content of the screen — it must
+    // appear before the details card, and the standalone "Rejection reason" summary must not
+    // appear at all once a decision notice is present (its text is already in the notice).
+    const serializedTree = JSON.stringify(screen.toJSON());
+    expect(serializedTree.indexOf('Claim rejection notice')).toBeLessThan(
+      serializedTree.indexOf('Asset type'),
+    );
+    expect(screen.queryByText('Rejection reason')).toBeNull();
   });
 
   it('shows quantumReason alongside claimed vs approved amount for a partial approval', async () => {

@@ -66,10 +66,42 @@ export function ClaimDetailScreen() {
     }
   }
 
+  // CR-018-12a (security-review.md §21.3/§22): when decision notices exist, the most recent
+  // notice must be the primary content of the screen — directly under the status badge, before
+  // the details card — not a separate "Rejection reason" summary buried further down.
+  const hasDecisionNotices = claim.decisionNotices.length > 0;
+  const sortedNotices = hasDecisionNotices
+    ? [...claim.decisionNotices].sort(
+        (a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime(),
+      )
+    : [];
+
+  const decisionNoticesCard = hasDecisionNotices ? (
+    <Card style={styles.section}>
+      <Text style={styles.sectionTitle}>Important notices about this claim</Text>
+      {sortedNotices.map((notice, idx) => (
+        <View key={idx} style={styles.noticeBlock} testID={`decision-notice-${idx}`}>
+          <Text style={styles.noticeHeading}>{decisionNoticeHeading(notice.kind)}</Text>
+          <Text style={styles.noticeMeta}>{new Date(notice.issuedAt).toLocaleString()}</Text>
+          {notice.renderedText
+            .split(/\n\n+/)
+            .filter((p) => p.trim().length > 0)
+            .map((paragraph, pIdx) => (
+              <Text key={pIdx} style={styles.noticeParagraph}>
+                {paragraph}
+              </Text>
+            ))}
+        </View>
+      ))}
+    </Card>
+  ) : null;
+
   return (
     <Screen>
       <Text style={styles.title}>{claim.assetDisplayName}</Text>
       <Badge tone={claimStatusBadgeTone(claim.status)}>{formatClaimStatus(claim.status)}</Badge>
+
+      {decisionNoticesCard}
 
       <Card style={styles.section}>
         <DetailRow label="Asset type" value={formatAssetType(claim.assetType as AssetType)} />
@@ -101,7 +133,7 @@ export function ClaimDetailScreen() {
         </Card>
       ) : null}
 
-      {claim.rejectionReason ? (
+      {!hasDecisionNotices && claim.rejectionReason ? (
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>Rejection reason</Text>
           <Text style={styles.body}>{claim.rejectionReason}</Text>
@@ -129,28 +161,6 @@ export function ClaimDetailScreen() {
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>Reason this claim was closed</Text>
           <Text style={styles.body}>{claim.closeReason}</Text>
-        </Card>
-      ) : null}
-
-      {claim.decisionNotices.length > 0 ? (
-        <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Important notices about this claim</Text>
-          {[...claim.decisionNotices]
-            .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
-            .map((notice, idx) => (
-              <View key={idx} style={styles.noticeBlock} testID={`decision-notice-${idx}`}>
-                <Text style={styles.noticeHeading}>{decisionNoticeHeading(notice.kind)}</Text>
-                <Text style={styles.noticeMeta}>{new Date(notice.issuedAt).toLocaleString()}</Text>
-                {notice.renderedText
-                  .split(/\n\n+/)
-                  .filter((p) => p.trim().length > 0)
-                  .map((paragraph, pIdx) => (
-                    <Text key={pIdx} style={styles.noticeParagraph}>
-                      {paragraph}
-                    </Text>
-                  ))}
-              </View>
-            ))}
         </Card>
       ) : null}
 
