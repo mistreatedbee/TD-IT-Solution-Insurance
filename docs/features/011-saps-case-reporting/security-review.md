@@ -915,3 +915,104 @@ seek the instruction". It is not "delete", and it is not "carry on as if authori
 | Role | Decision | Date |
 |---|---|---|
 | `compliance-specialist` (C) | **WITHHELD IN PART (B-1, B-2).** RoPA is overdue (mine). G-15 has been raised to the Client register. The s18 copy is still not shipped. B-3 is subject to `security-engineer`'s diff confirmation. Not committed by me (no shell). | 2026-10-29 |
+
+## 13. `security-engineer` diff re-confirmation of C-011-11 / SR-011-4 and RR-011-3 (2026-10-29)
+
+**Scope:** per §10.6's own proposal ("I will re-confirm on a diff"), and per §11/§12's references to
+that outstanding re-confirmation. Code read, not design read: `backend/src/lib/police-report-retention.ts`
+(full file, current), `backend/src/lib/police-report-retention.test.ts` (relevant cases),
+`backend/src/db/retention-job-runs-collections.ts` (full file), `backend/src/db/mongo-bootstrap.ts`
+(wiring), `backend/src/db/retention-job-runs-collections.test.ts`, and a full-repo grep for any route or
+export that reads `retention_job_runs` or imports `retention-job-runs-collections.ts` outside
+`backend/src/db/` and `backend/src/lib/police-report-retention.ts` itself. Commands run: `cd backend &&
+npx tsc --noEmit` (clean, no errors) and `cd backend && npm test` (**84 test files, 1004 tests, all
+passing**).
+
+### 13.1 C-011-11 (closed-or-recovered retention clock) — **CONFIRMED FIXED, my §10.6 condition 1 is satisfied**
+
+All three sub-conditions I set in §10.6 are met in the current tree, verified line-by-line rather than
+taken from §11's status note:
+
+1. `buildRetentionPurgeFilter` (`police-report-retention.ts:64-82`) now reads `status: { $in: ['closed',
+   'recovered'] }`, not a `'closed'`-only literal.
+2. The new `buildRetentionPurgeBaseFilter` (`:93-103`) mirrors the same `$in`, used to compute the full
+   candidate set before the in-memory legal-hold split — additive, does not change the `updateMany`
+   clear filter's own behaviour (confirmed: `clearFilter` passed to `updateMany` at `:253` is still
+   `buildRetentionPurgeFilter`, unchanged contract).
+3. The locking test I named at `police-report-retention.test.ts:197-207` is no longer present in that
+   form. The suite now exercises a `recovered`-and-past-cutoff case as a **positive** match (cleared),
+   consistent with §11's note that line 201 has a "recovered-matched test." I did not find any
+   surviving assertion anywhere in the file that a `recovered` case is excluded from the filter.
+4. `updateStatusForPartnerOrg` still sets `closedAt` on transition into `'closed'` (carried over,
+   unchanged) — I re-confirmed this is still the only write path to `status` on `recovery_cases` by
+   grepping for writes to that field; no second path has appeared since September.
+
+I independently re-ran the full suite (not reading `npm test`'s last recorded output) and it is green:
+**84/84 files, 1004/1004 tests.** This satisfies the fourth sub-condition in §10.6 ("the full backend
+suite is re-run green after the change — I will re-verify this by execution, not by reading the diff").
+
+**C-011-11 / SR-011-4: CONFIRMED CLOSED on my limb.**
+
+### 13.2 RR-011-3 (durable retention evidencing) — **CONFIRMED BUILT, matches the `cto` ruling and the database-architect design**
+
+Reviewed `retention-job-runs-collections.ts` against §11's ruling (job id, start/end time, dry-run flag,
+matched/cleared counts, legal-hold-skipped ids, outcome) and against `database-design.md` §9 — all six
+required fields are present in the `$jsonSchema` validator and populated by `police-report-retention.ts`'s
+two-phase write (`insertRunLogStart` / `updateRunLogCompletion`). Specifically checked:
+
+- **No secrets/PII in the collection.** The schema deliberately excludes raw SAPS case numbers,
+  reporting stations, and full candidate-id lists — only `legalHoldSkippedIds` (case-id references, not
+  content) and counts. I confirm this holds in the write path: `runPoliceReportRetentionPurge`
+  (`:224-292`) never passes `sapsCaseNumber`/`reportingStation`/`reportedToPoliceAt` values into either
+  `insertRunLogStart` or `updateRunLogCompletion` — only ids and counts. No PII leak into this new
+  collection.
+- **Fail-open posture is deliberate and correctly scoped.** A run-log write failure (`startLogError` /
+  `completionLogError`) is captured into `runLogError` on the returned summary but never throws and
+  never blocks the actual purge/clear operation. This is the right call *for this specific job*: the
+  retention control (clearing expired fields) must not become unenforceable because an audit-logging
+  write failed — that would be the inverse of "fail closed" applied to the wrong operation. The
+  evidencing itself failing is visible (`runLogError` surfaces to the CLI's stdout JSON), not silent.
+- **No injection surface.** `jobId` is a hardcoded literal (`RETENTION_JOB_ID = 'police_report_retention_purge'
+  as const`), not derived from any request or CLI input. `legalHoldSkippedIds` is built by mapping
+  `ObjectId`s already fetched from a controlled, schema-validated `_id`/`legalHold` projection
+  (`:245`) to strings — no free-text or user-controlled value reaches a Mongo operator position in this
+  module. The `$jsonSchema` validator additionally enforces `validationAction: 'error'` at the
+  collection level (`retention-job-runs-collections.ts:166-170`), so even a future bad write from another
+  caller is rejected by Mongo itself, not just by this module's own discipline.
+- **Access control — confirmed not internet-exposed, confirmed no route reads it.** Grepped the full
+  `backend/src/routes/` tree and the full repo for `retention_job_runs` / `RETENTION_JOB_RUNS_COLLECTION`
+  / `retention-job-runs-collections`: the only importers are `backend/src/db/mongo-bootstrap.ts`
+  (bootstrap wiring, line 100), `backend/src/lib/police-report-retention.ts` (the writer), and its own
+  test file. **No API route, admin or otherwise, reads or exposes this collection today.** There is
+  therefore no authZ/IDOR surface to review yet on this collection specifically — the standing risk is
+  that when a dashboard/CLI "show me recent runs" surface is eventually built against it (§9.1 of the
+  design doc anticipates this), it will need the same admin-only authZ treatment as `admin_access_log`
+  gets today, not a new, weaker pattern. I record this as a forward condition rather than a finding,
+  since nothing exists yet to be wrong.
+- **Indexes match the design and support the anticipated read patterns** (`jobId+startedAt`,
+  `outcome+startedAt`, the `completedAt: null` partial index for crash detection) — reviewed for
+  intended use, not misuse, since nothing queries them yet.
+
+**RR-011-3: CONFIRMED BUILT, consistent with the `cto` ruling in §11 and the `database-architect` design
+in `database-design.md` §9. No security defect found in the collection or its writer.**
+
+### 13.3 New forward condition — **SR-011-8 (non-blocking, prospective)**
+
+**SR-011-8:** When a route (admin dashboard, CLI-backed API, or otherwise) is built to read
+`retention_job_runs`, it must (a) be admin/privileged-role-gated equivalent to `admin_access_log`'s own
+access control, (b) be added to the Stage 8 manifest with an entry pointing at the review that approves
+it, and (c) not be assumed covered by this review, which only covers the writer path. Owner: whichever
+role builds that surface; verified `security-engineer` at that time.
+
+### 13.4 Verdict
+
+**Both items `security-engineer` withheld at §10.6 are now CONFIRMED CLOSED on my limb, by code read and
+by execution (`tsc --noEmit` clean; 84/84 test files, 1004/1004 tests green).** I concur with the `cto`
+status note at §11 and add independent verification it only flagged as a code read, not a verification.
+I take no position on `compliance-specialist`'s B-1/B-2 (RoPA, CT-4, s18 notice) — those remain hers per
+§12, unaffected by this section, and I do not represent Stage 8 as discharged while they remain withheld.
+
+**Filed by:** `security-engineer`, 2026-10-29.
+**Does not discharge:** Stage 8 as a whole (compliance's B-1/B-2 remain withheld per §12) · Stage 10 QA ·
+C-011-1 through C-011-12 not otherwise addressed above · CT-1/CT-3/CT-4 · INC-001-C-10 ·
+C-008-1/-5/-6/-8/-12 · D-011-01.
