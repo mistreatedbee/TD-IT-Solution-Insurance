@@ -1377,176 +1377,6 @@ read-back, CR-018-1…9 in code, security-engineer re-concurrence) are unchanged
 |---|---|---|
 | `backend-engineer` | Landed SR-018-8 (a)/(c)/(d)/(e) tests; verified (h) already complete; fixed C-018-19 comment. Stage 8 verdict is unchanged — still the chair's call, now against this evidence. | 2026-10-29 |
 
-## 16. Final chair re-review (`cybersecurity-architect`, chair, 2026-10-29)
-
-**Recovery note (`security-engineer`, 2026-10-29):** this entire section (§16.1–§16.5, including
-the Decision row below) was lost from the working copy of this document during a concurrent edit
-collision — my own subsequent `Edit` call surfaced the gap via a "modified on disk since you last
-read it" warning, and a diff against the committed `HEAD` showed this section had been deleted
-rather than edited. I am restoring it verbatim from the content I read directly off disk earlier
-in this same session, before the collision, with no wording changed. The chair's original section
-number was also "16"; I kept that number since this is the earlier of the two same-numbered
-sections chronologically and renumbered my own section (originally also drafted as "16") to §17
-below it instead, and bumped `compliance-specialist`'s same-day "§16 re-verification" section to
-§18. No content from any of the three original sections is altered — only the section numbers and
-this recovery note are new.
-
-This section is append-only. It does not change §0 to §15. It re-reviews the committed state of `main`
-at `acaebe2`, which includes `1101977` (SR-018-6 notice template), `0f820c6` (ceiling split and
-claim-recovery linkage) and `7d80644` (SR-018-8 tests).
-
-**Not done by me in this pass. Stated plainly so nobody cites it as done:** this session had no
-shell, as in §11 and §13. I did **not** run `npx tsc --noEmit` or `npm test`, and I did **not**
-commit this section. So the only test evidence on record is still `backend-engineer`'s §15 run
-(964/964, 82 files, `tsc` clean, one transient failure). I have not reproduced it. I did get one
-piece of independent **production** evidence this time (§16.3).
-
-### 16.1 Verdict
-
-**Still BLOCKED, and not yet on non-engineering items only.** All the code that §12's rulings asked
-for now exists, with two exceptions, and both need code:
-
-- **SR-018-10.** Adverse notices are never emailed (CR-018-7 is not built).
-- **SR-018-11.** The notice composer accepts the `TODO_OWNER_MUST_CONFIGURE` placeholders as real
-  values.
-
-The 5-item `pre-launch-blockers.md` tracker leaves both of them out. Once both close, and the
-§16.5 items are done, I will move my row to "BLOCKED — pending non-engineering items only".
-
-### 16.2 SR-018-6 notice template against compliance §12.3 (code read of `lib/claim-decision-notice.ts`, `routes/admin-claims.ts`, `repositories/claims.ts`, `lib/claim-serializers.ts`, `config/env.ts`)
-
-| §12.3 requirement | Result | Evidence |
-|---|---|---|
-| N-1: the server composes the notice, it has a version, it is stored as issued, the list is append-only, and the customer can see it | **Met** for rejection, partial approval and close | `CLAIM_DECISION_NOTICE_TEMPLATE_VERSION = 1`. `renderedText` is stored and never re-rendered. The notice is `$push`ed into `decisionNotices[]` in the same CAS write as the status change (`repositories/claims.ts:396-397`, `:459-460`). `claim-serializers.ts:39` exposes it to the customer. |
-| N-1: the more-info request is also stored as a `decisionNotices[]` entry | **Deviation, not blocking** | The more-info notice is stored as fixed boilerplate appended to the admin's `reviewNotes` text. It is not a `decisionNotices[]` record (`appendMoreInfoBoilerplate`). The `'more_info_request'` kind is declared but never used. The customer still receives the N-5 content, so this is not a security issue. `compliance-specialist` should decide whether it is acceptable (C-018-21). |
-| N-2 (1)(2): the decision and its date, a structured ground plus the admin's reason in **one slot**, and the clause if one is given | **Met** | `groundCode` is a required `z.enum` on `rejected`. The admin text fills only the `Reason:` line. Fraud-flag names never reach the template. |
-| N-2 (3)–(7): representations within 90 days, internal complaints, NFO, FAIS Ombud, time-bar left out when absent, re-filing | **Met structurally** | All of these are in `renderAdverseBoilerplate`, and the contacts come from config. Note that the route never passes `legalActionTimeLimit`, so the time-bar line is always left out. That matches "leave it out rather than invent one" while the policy has no time-bar clause. When the policy wording gains one, it needs wiring. |
-| N-2 (8): "A rejection notice with blank licence details must not be issued" | **Not met in effect. See SR-018-11.** | The guard rejects only empty or whitespace values. When a variable is unset, `loadEnv()` substitutes `TODO_OWNER_MUST_CONFIGURE: …` (`env.ts:488-492`). The composer accepts that string as valid. So today a production rejection would go out reading "licence number TODO_OWNER_MUST_CONFIGURE: …", which is blank licence details in all but form. |
-| N-3: a partial approval needs `quantumReason` and a shortfall notice | **Met** | `QUANTUM_REASON_REQUIRED` (`admin-claims.ts:350`). The shortfall notice has `groundCode: 'QUANTUM_DISPUTED'` and is written in the same write as the approval. |
-| N-4: close only on non-merits grounds; `DUPLICATE_CLAIM` must point to a claim on the same account; the notice says "not a decision on cover" and gives contacts | **Met** | The `closeGround` enum has three values. The duplicate reference is checked with `findByIdForAccount(existing.accountId, …)` (`:365`). The close notice includes the not-a-decision line, how to re-file, internal complaints and NFO. |
-| N-5: what is needed, how to respond in the app, that the claim stays open, and no rejection without further notice | **Mostly met** | The "stays open" and "will NOT be rejected … without a further written notice" text is fixed. The "how to respond in the app" line is missing. That is a copy item for tracker item 3, not a code blocker. |
-| N-6: written delivery by email, with `deliveries[]` recorded | **Not built. See SR-018-10.** | Nothing writes to `deliveries[]`, as the file's own comment at `:118-122` says. No claim email template exists in `domain-email-templates.ts`, and no claim notification is sent anywhere. |
-| Ordering and fail-closed | **Met** | The notice is built **before** the Trail B write and before the mutation. A config error returns `CLAIM_NOTICE_CONFIG_INCOMPLETE` with no audit row and no mutation (`admin-claims.ts:377-422`). |
-
-Other §12 code items, re-read in code:
-
-- **CR-018-1 met.** The intake refusal on incident date before effective date is gone (`claims.ts:141-147`).
-- **CR-018-2 met.** The flag condition is `incidentDate < waitingPeriodClearsAt(...)` (`claim-rules.ts:251`). This closes the Scenario B gap I raised in §11.1.
-- **CR-018-3 met.** `ELIGIBILITY_DETERMINATION_REQUIRED` (`admin-claims.ts:339-345`). The determination goes into the Trail B `reason` and is never sent to the customer.
-- **CR-018-9 met in code.** `MAX_CLAIMED_AMOUNT_SANITY_BOUND = 10_000_000` (customer input only). `MAX_CLAIM_APPROVED_AMOUNT_ZAR = 1_000_000` is an operational control: above it the request is refused with `APPROVAL_REQUIRES_ESCALATION` and the amount is never reduced. It also fails closed on non-ZAR, which satisfies CC-3 for approval. The final number is tracker item 1.
-
-On SR-018-3 I accept the new escalation path. The admin must escalate rather than approve less, which is the operational-control behaviour §12.4 requires. A free-text `eligibilityDetermination` or `quantumReason` is concatenated into the audit `reason` string. That is admin-only text in an admin-only log, so it is acceptable. Same AUD-8 note as §10 item 3.
-
-### 16.3 SR-018-9: production recovery independently reproduced
-
-The §14 reasoning holds. The claims routers are mounted ahead of `/support-cases`, `/support`,
-`/analytics` and `/admin/analytics`. Their gate runs before `authenticate` and returns 404 when the
-switch is off. So a **401** from one of the later routers means the request got past the claims
-gate and reached that router's own auth. That is the opposite of the pre-fix 404. The two claims
-404s alongside show the switch is still off, which rules out "fixed by enabling claims".
-
-I repeated a subset of the checks myself on 2026-10-29. These were unauthenticated, read-only GETs
-against `https://td-it-solution-insurance.onrender.com`. I sent no credentials and did not change
-`CLAIMS_API_ENABLED`.
-
-| Request | Response |
-|---|---|
-| `GET /api/v1/support-cases` | 401 |
-| `GET /api/v1/admin/analytics/dau` | 401 |
-| `GET /api/v1/claims` | 404 |
-| `GET /api/v1/admin/claims` | 404 |
-
-**SR-018-9 is CLOSED**, both in code (§13.1) and in production (§14, reproduced here). INC-005-1
-(Render deploy timestamps) is an incident-record item. It does not affect this gate.
-
-### 16.4 New findings
-
-**SR-018-10 (Medium, compliance-critical, code fix plus owner action). Adverse decision notices are never delivered by email.**
-§12.3 N-6 and CR-018-7 say: "The flag cannot flip until an adverse-decision notice can actually be
-emailed." Today a notice is only stored and shown in the app. The 90-day representation clock runs
-from *receipt*, and the platform cannot show any receipt. This is engineering work, not only the
-Resend owner action:
-
-1. `notification-engineer` adds a claims adverse-decision email: rejection, partial-approval
-   shortfall and administrative close. It sends the stored `renderedText` verbatim. It must not
-   re-render the template.
-2. Each delivery attempt appends `{channel, attemptedAt, succeeded}` to that notice's
-   `deliveries[]`. Use a targeted `$push` on the array element, and never touch `renderedText`.
-3. The send happens after the decision commits. A failed send must not roll back the decision. It
-   must stay retryable and visible to admins as "notice not yet delivered".
-4. Send only to the customer's **verified** email. Include the claim reference and decision only;
-   do not repeat the full notice in the subject line.
-5. Add tests for each of the three adverse kinds, a recorded failure, and the rule that
-   `renderedText` is never re-rendered.
-
-The production Resend confirmation remains the owner's separate dependency. **This item is missing
-from `pre-launch-blockers.md`.** `product-manager` should add it there as well, so the tracker is
-not read as the complete list.
-
-**SR-018-11 (Medium, code fix, small). Placeholder notice config is accepted as real.**
-Make the guard structural, so that issuing a notice with placeholder licence or Ombud details is
-impossible, not just prevented by procedure:
-
-1. `requireConfigValue` treats any value starting with `TODO_OWNER_MUST_CONFIGURE` the same as a
-   blank value. The request then returns `CLAIM_NOTICE_CONFIG_INCOMPLETE`, with no audit row and no
-   mutation, which the existing ordering already guarantees.
-2. When `isProduction` is true, the app refuses to start, or forces `claimsApiEnabled` to false and
-   logs loudly, if `CLAIMS_API_ENABLED=true` while any `claimsNotice` value is a placeholder.
-3. Add a test showing that a placeholder value blocks a rejection.
-
-Keep the placeholder defaults for development and tests. They are a good signal in a dev
-environment.
-
-**Tracked conditions (non-blocking):**
-
-- **C-018-21 (`compliance-specialist`).** Decide whether storing the more-info notice in
-  `reviewNotes` instead of `decisionNotices[]` satisfies N-1 (§16.2).
-- **C-018-22 (`automation-qa-engineer`).** The transient 404 on the `FILED_IN_ERROR_CONFIRMED_BY_CUSTOMER`
-  close test reported in §15. It may be the shared `activeServer` / ephemeral listener harness. It
-  is the second cross-file timing flake on record, after the §10 `admin-accounts.test.ts` flake.
-  Look into it before it hides a real regression.
-- **Engineering tails on two tracker items.**
-  - Item 1: the final ceiling is a constant change in `claim-rules.ts`.
-  - Item 3: removing the `[PLACEHOLDER COPY …]` marker and adopting the legal-approved copy is a
-    template edit. It **must** bump `CLAIM_DECISION_NOTICE_TEMPLATE_VERSION`. It must also add
-    N-5's "how to respond in the app" line, and decide whether the raw `groundCode` enum should be
-    replaced with plain-language text for customers.
-
-  Neither is a design question, but each needs a reviewed commit. Neither can be done by changing
-  configuration alone.
-
-### 16.5 Is the rest non-engineering?
-
-Reviewing the five tracker items:
-
-| Item | Non-engineering? |
-|---|---|
-| 1. Real approval ceiling | Yes, it is a decision. Then a one-constant code change (§16.4). |
-| 2. Ombud and licence config values | Yes. These are owner and legal values set as Render env vars, and no code is needed **once SR-018-11 lands**. |
-| 3. Legal copy review | Yes, it is a review. Then a versioned template commit (§16.4). |
-| 4. Policy-wording disclosure | Yes. Product and legal work. |
-| 5. Payout-path decision | Yes, it is a decision. Option A creates a new customer notice, which falls under item 3. Any later in-platform payout is a separate feature that needs its own Stage 8 (C-018-4 / RR-018-1). |
-
-Items outside the tracker that still stand before the flag flips:
-
-- **SR-018-10 and SR-018-11**: code.
-- **Production `db.claims.getIndexes()` read-back** showing `claims_one_open_claim_per_asset`
-  (§11.5 item 3): owner-run and non-engineering. Still not recorded.
-- **SR-018-8(f)**: one non-skipped run of `db/claims-collections.test.ts` against a real `mongod`.
-  This is a test execution, not new code. Still not done.
-- **An independent `tsc --noEmit` and `npm test` run** by me or `security-engineer` against the
-  commit that closes SR-018-10 and SR-018-11. It must include `root-mount-order.test.ts` and the
-  §15 tests.
-- **`security-engineer` re-concurrence** after SR-018-9 (§11.5 item 5), and **`compliance-specialist`
-  re-reading the CR-018-1 … CR-018-9 code** for their discharge concurrence (§12.6).
-
-`CLAIMS_API_ENABLED` stays unset. The mobile `FEATURE_CLAIMS` waiver and the absence of
-`flagEnableApproved` are unchanged.
-
-| Role | Decision | Date |
-|---|---|---|
-| `cybersecurity-architect` (chair, A) | **BLOCKED (code items remain).** SR-018-1 … SR-018-9 are CLOSED. SR-018-9's production recovery was independently reproduced (§16.3). SR-018-8 code is complete, but the (f) live-`mongod` run is still owed. The CR-018-1/2/3/5/6/9 code is verified. Still code-blocked on **SR-018-10** (no email delivery of adverse notices, CR-018-7) and **SR-018-11** (placeholder notice config is accepted as real). Once both land and are re-run, this row moves to "BLOCKED — pending non-engineering items only" (tracker items 1–5, index read-back, co-signer concurrences). Test run and commit for this pass are not done by me (no shell). | 2026-10-29 |
-
 ## 17. `security-engineer` re-confirmation of concurrence (2026-10-29)
 
 Discharges §13.3 item 5 ("`security-engineer` re-confirms concurrence after SR-018-9, since the §10
@@ -1556,11 +1386,14 @@ conflicts with; nothing in §10 is struck, since all four of its findings (SR-01
 re-confirmed below on the current tree.
 
 **Numbering note:** I started this section before two other concurrent re-reviews landed, both
-also numbered "§16" (the chair's "Final chair re-review" and `compliance-specialist`'s "§12
-re-verification"). I have renumbered mine to §17, below both, since I read them before finalizing
-this entry and item 3 below is revised to concur with a finding the chair and compliance each
-independently raised (SR-018-11 / G-1 / CR-018-10) that my own first draft of this section had
-missed.
+also numbered "§16" at the time (the chair's "Final chair re-review" and `compliance-specialist`'s
+"§12 re-verification"). I read both before finalizing this entry, and item 3 below is revised to
+concur with a finding the chair and compliance each independently raised (SR-018-11 / G-1 /
+CR-018-10) that my own first draft of this section had missed. The chair subsequently resolved the
+three-way collision themselves, moving their own section to **§18** and leaving
+`compliance-specialist`'s at §16 — see §18's own "Numbering note". This section stays at §17.
+Everywhere below that still says "§16" for the chair's final verdict should be read as **§18**;
+"§16" for compliance's concurrence is unchanged and correct.
 
 **What I ran myself, this session, in `backend/`:**
 - `npx tsc --noEmit`: clean, zero errors.
@@ -1648,7 +1481,7 @@ own first pass missed.** Read `claim-decision-notice.ts:140-199` and the call si
   though no individual field is literally blank. I re-read `claim-decision-notice.ts:173-183`'s
   own doc comment, which frames this as deliberate ("in every real environment this resolves
   successfully to placeholder-but-non-blank text, never throws") — the code does exactly what
-  that comment says, but the comment itself describes the gap the chair (§16, SR-018-11) and
+  that comment says, but the comment itself describes the gap the chair (§18, SR-018-11) and
   `compliance-specialist` (§16, G-1/CR-018-10) both separately flagged as not meeting the
   standard: "a rejection notice with blank licence details must not be issued" (§12.3 N-2(8)) is
   not met in effect, because a placeholder is blank in substance.
@@ -1666,12 +1499,12 @@ Atlas read-back and the `claims_one_open_claim_per_asset` production index read-
 no production DB access from this role); the real-`mongod` index test's non-skipped run (needs a
 local `mongod`, not available this session); CR-018-4/7/8/9's non-engineering (product/legal/owner)
 halves; SR-018-9's production-recovery evidence (already independently confirmed by
-`site-reliability-engineer` in §14 and reproduced again by the chair in §16.3, not re-attempted
+`site-reliability-engineer` in §14 and reproduced again by the chair in §18.3, not re-attempted
 here); SR-018-10 (email delivery) and G-2/G-3/CR-018-11/CR-018-12, which are the chair's and
 compliance's findings on code paths I did not independently re-derive line-by-line this pass.
 
 **Concurrence — re-confirmed, narrower than my own first draft.** I concur with the chair's
-BLOCKED verdict (§16 "Final chair re-review") and with `compliance-specialist`'s concurrence that
+BLOCKED verdict (§18 "Final chair re-review") and with `compliance-specialist`'s concurrence that
 the Stage 8 compliance requirements are met in design/backend code but that the flag flip is not
 approved (§16 "compliance-specialist re-verification"). On the code-level questions this role
 owns: SR-018-1, SR-018-2 (as scoped, post-SR-018-9), SR-018-3, SR-018-5, and SR-018-9 itself are
@@ -1684,11 +1517,11 @@ code before the flag flips, and flag it as an item this role will re-verify once
 I re-verified SR-018-9's scoping fix in item 1 above. This does not by itself discharge Stage 8:
 SR-018-10, SR-018-11/CR-018-10, G-2/CR-018-11, G-3/CR-018-12, the production index read-back, the
 real-`mongod` run, and CR-018-4/7/8/9's non-engineering halves all remain outstanding per the
-chair's and compliance's own §16 entries.
+chair's (§18) and compliance's (§16) own entries.
 
 | Role | Decision | Date |
 |---|---|---|
-| `security-engineer` (R) | **CONCUR** with chair's BLOCKED verdict and compliance's concurrence-without-flip-approval (both §16). SR-018-1/2/3/5/9 hands-on re-verified closed in code with no regression; CR-018-9 approval-ceiling split hands-on verified with no bypass. Concur with SR-018-11/CR-018-10 (placeholder notice-config values pass the blank-value guard) as a required pre-flip fix — my own first-pass read of `claim-decision-notice.ts` missed this gap, caught on cross-check against the chair's and compliance's concurrent §16 entries. `964/964` tests passing, `tsc --noEmit` clean, reproduced independently this session (`HEAD = acaebe2`). `CLAIMS_API_ENABLED` stays unset. | 2026-10-29 |
+| `security-engineer` (R) | **CONCUR** with chair's BLOCKED verdict (§18) and compliance's concurrence-without-flip-approval (§16). SR-018-1/2/3/5/9 hands-on re-verified closed in code with no regression; CR-018-9 approval-ceiling split hands-on verified with no bypass. Concur with SR-018-11/CR-018-10 (placeholder notice-config values pass the blank-value guard) as a required pre-flip fix — my own first-pass read of `claim-decision-notice.ts` missed this gap, caught on cross-check against the chair's and compliance's concurrent findings. `964/964` tests passing, `tsc --noEmit` clean, reproduced independently this session (`HEAD = acaebe2`). `CLAIMS_API_ENABLED` stays unset. | 2026-10-29 |
 
 ## 16. `compliance-specialist` re-verification of §12 rulings in code, and concurrence (2026-10-29)
 
