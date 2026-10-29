@@ -573,3 +573,74 @@ rather than requiring a rewrite of them. §12.4's segmented-tab-row pattern is l
 candidate detail for the home/asset-list sections' next revision, not applied here, to keep this
 pass to confirmed findings plus flagged recommendations rather than mixing in a silent spec
 change.
+
+## 13. Figma-sourced detail — PAAQ "Upgrade Tier Level" form screen, 2026-10-29
+
+Second owner-supplied Figma node, same PAAQ file (`68525:62934`'s sibling), node `61299:92646`,
+fileKey `Crcdvg7h55ihIcy6clT3Nq`, pulled directly via `get_design_context` the same way as §12.
+This is a form screen (an expert-tier upgrade application), used strictly as layout/visual
+reference per §0 — the actual field content (Instagram handle, article links, tier selection) is
+PAAQ-specific and does not carry over to our screens.
+
+### 13.1 Black as a real, recurring secondary-action colour — resolves tokens §7 item 6 further
+
+This screen settles §12.2's open question with a third data point. Two black (`#181f1f`) pill
+buttons appear here: "How it works" (an inline info-expand button on the hero card,
+`61299:92669`) and "Select" (a compact action button embedded inside the tier-level dropdown
+field, `61299:92729`-`61299:92732`). Both are small, secondary/tertiary actions — not the
+screen's primary CTA. The primary CTA ("Apply for upgrade", `61299:92733`-`61299:92736`) is
+rendered in a disabled/greyed state (`bg-[#e8eded]`, text `#b5c4c4]`) in this particular screen
+state, so its *active*-state colour isn't visible in this node — inconclusive on whether an
+active primary CTA here would be teal (per §12's "Explore PAAQ" button) or something else.
+
+**Updated recommendation to `product-manager`/`cto`**: across both nodes pulled so far, black
+consistently appears on *secondary/inline* actions (info toggles, compact dropdown-embedded
+buttons), never confirmed yet on an active *primary* CTA. The pattern looks more like "black =
+secondary action colour, brand accent (teal/orange/etc.) = primary CTA colour" than "black
+replaces teal as the universal CTA colour." This is still a recommendation from two data points,
+not a ratified rule — a `product-manager`/`cto` sign-off call, not decided here. If adopted, it
+would mean OB-17 may want a `--glass-action-secondary` (near-black) token distinct from
+`--glass-accent`, for secondary/inline buttons specifically, not as a CTA replacement.
+
+### 13.2 A third, distinct accent colour: status green
+
+`#4ead66` appears on "1 - 20 working days" (`61299:92668`) as a semantic/status-style text colour
+(processing-time estimate), separate from both the teal brand accent (§12.1) and the black
+secondary-action colour (§13.1). Recommend treating this as a cue that OB-17 may want a semantic
+status-colour token (success/positive, distinct from the brand accent) for things like "in
+progress," "recovered," "approved" states on our screens (asset-detail status, claim-status
+badges on account/alerts) — not a literal colour match requirement, since `#4ead66` is PAAQ's own
+and we're not obligated to reuse their exact green, just the *pattern* of having a dedicated
+status colour separate from the brand accent.
+
+### 13.3 Form input pattern — contradicts the brief's "floating labels" instruction
+
+Every input on this screen uses a **static label above the field**, not a floating label inside
+it: e.g. "What is your Instagram username?" sits as its own text line above a plain bordered input
+with a static (non-floating) placeholder ("@username") that disappears on focus/fill in the
+conventional way, not a label that floats up. Inputs themselves: `rounded-[10px]` (notably
+*smaller* than our already-set `--glass-radius-input: 16` token — this doesn't need to change,
+just flagging the reference doesn't match our already-slightly-larger pick), thin
+`rgba(157,172,172,0.5)` border, 51px height, grey placeholder text.
+
+This is a direct **contradiction of the original written brief's "floating labels" requirement**
+(carried in `ob-17-glass-redesign-tokens.md`'s source brief, not re-litigated here). Flagging
+honestly rather than silently following whichever source is more convenient: the brief's text
+says floating labels; this reference screen shows static labels-above-fields instead. Recommend
+`product-manager`/`cto` give an explicit call on which wins — this role is not picking one
+unilaterally. No change made to `FormField`/`Input` component specs pending that call.
+
+### 13.4 Top app bar and dividers — minor, non-conflicting detail
+
+Simple pattern, no conflicts with existing specs: white top bar, left-aligned back chevron, bold
+centered title, hairline full-width divider lines (`opacity`-light grey) between form sections —
+consistent with a plain, uncluttered form layout. No blur/glass anywhere on this screen at all
+(further supporting §12.3's "glass reserved for hero/modal moments, not routine screens"
+finding).
+
+### 13.5 Net effect on §§1-8 screen specs
+
+No edits made to §§1-8. Two items from this screen need `product-manager`/`cto` sign-off before
+`ui-designer` would apply them to any screen: §13.1's black-as-secondary-action recommendation,
+and §13.3's floating-label-vs-static-label conflict with the brief. Both logged as open items,
+not resolved here.
