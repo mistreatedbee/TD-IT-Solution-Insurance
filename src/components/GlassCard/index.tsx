@@ -1,7 +1,8 @@
 import React from 'react';
 
 export type GlassCardTone = 'light' | 'dark';
-export type GlassCardPadding = 'none' | 'sm' | 'md' | 'lg';
+export type GlassCardPadding = 'none' | 'sm' | 'md' | 'lg' | 'xl';
+export type GlassCardRadius = 'card' | 'card-lg';
 
 export interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Optional icon or visual slot rendered above the heading. */
@@ -16,8 +17,13 @@ export interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
   description?: React.ReactNode;
   /** Surface tint. `light` sits on dark/gradient backgrounds, `dark` on light ones. */
   tone?: GlassCardTone;
-  /** Inner spacing. */
+  /** Inner spacing. `xl` (new, OB-17) maps to `--glass-card-padding` (24px),
+   * the redesign's default "generous" card interior space. */
   padding?: GlassCardPadding;
+  /** Corner radius. OB-17 default is `card` (24px, `--glass-radius-card`);
+   * use `card-lg` (28px, `--glass-radius-card-lg`) for hero/feature cards
+   * and modals per the ratified glass-blur scope (hero/header/modal only). */
+  radius?: GlassCardRadius;
   /** Adds hover lift + brighter border. Use for clickable cards. */
   interactive?: boolean;
   /** Custom body content, rendered after title/description. */
@@ -28,7 +34,14 @@ const paddingClasses: Record<GlassCardPadding, string> = {
   none: '',
   sm: 'p-4',
   md: 'p-6',
-  lg: 'p-8'
+  lg: 'p-8',
+  // OB-17: --glass-card-padding (24px) default "generous" interior space.
+  xl: 'p-6 sm:p-[var(--glass-card-padding)]'
+};
+
+const radiusClasses: Record<GlassCardRadius, string> = {
+  card: 'rounded-glass-card',
+  'card-lg': 'rounded-glass-card-lg'
 };
 
 const toneClasses: Record<GlassCardTone, string> = {
@@ -51,7 +64,8 @@ export function GlassCard({
   heading,
   description,
   tone = 'light',
-  padding = 'md',
+  padding = 'xl',
+  radius = 'card',
   interactive = false,
   className = '',
   children,
@@ -63,8 +77,14 @@ export function GlassCard({
 
   return (
     <div
+      // `glass-surface` + `data-glass-tone` opt this card into the OB-17
+      // `prefers-reduced-transparency` fallback defined in src/index.css,
+      // which swaps the translucent fill for a flat opaque one without
+      // touching layout, border, or shadow.
+      data-glass-tone={tone}
       className={[
-      'relative overflow-hidden rounded-2xl border backdrop-blur-xl backdrop-saturate-150',
+      'glass-surface relative overflow-hidden border backdrop-blur-xl backdrop-saturate-150',
+      radiusClasses[radius],
       toneClasses[tone],
       paddingClasses[padding],
       interactiveClasses,
@@ -73,7 +93,7 @@ export function GlassCard({
       filter(Boolean).
       join(' ')}
       {...rest}>
-      
+
       {icon ?
       <div
         className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl ${iconToneClasses[tone]}`}

@@ -469,8 +469,8 @@ export function CustomerOnboardingPage() {
             start with email and password. Additional profile fields will be collected in a later step.
           </p>
           <form className="space-y-4" onSubmit={handleSignup} noValidate>
-            <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Input
+            <Input floatingLabel label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input floatingLabel
               label="Password"
               type="password"
               value={password}
@@ -478,7 +478,7 @@ export function CustomerOnboardingPage() {
               hint={`At least ${PASSWORD_MIN_LENGTH} characters.`}
               required
             />
-            <Input
+            <Input floatingLabel
               label="Confirm password"
               type="password"
               value={confirmPassword}
@@ -508,7 +508,7 @@ export function CustomerOnboardingPage() {
                 <p className="text-sm text-text-secondary">
                   Enter the 6-digit code from your authenticator app.
                 </p>
-                <Input
+                <Input floatingLabel
                   label="Authentication code"
                   value={mfaCode}
                   onChange={(e) => setMfaCode(e.target.value)}
@@ -530,8 +530,8 @@ export function CustomerOnboardingPage() {
               </form>
             ) : (
               <form className="space-y-3" onSubmit={handleLogin} noValidate>
-                <Input label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
-                <Input
+                <Input floatingLabel label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
+                <Input floatingLabel
                   label="Password"
                   type="password"
                   value={loginPassword}
@@ -582,7 +582,7 @@ export function CustomerOnboardingPage() {
           {mfaChallengeToken && mfaOrigin === 'verify' ? (
             <form className="mt-6 space-y-3" onSubmit={handleMfaSubmit} noValidate>
               <p className="text-sm font-semibold text-text-primary">Enter your authenticator code</p>
-              <Input
+              <Input floatingLabel
                 label="Authentication code"
                 value={mfaCode}
                 onChange={(e) => setMfaCode(e.target.value)}
@@ -605,8 +605,8 @@ export function CustomerOnboardingPage() {
           ) : (
             <form className="mt-6 space-y-3" onSubmit={handleVerifiedSignIn} noValidate>
               <p className="text-sm font-semibold text-text-primary">Verified? Sign in to continue</p>
-              <Input label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
-              <Input
+              <Input floatingLabel label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
+              <Input floatingLabel
                 label="Password"
                 type="password"
                 value={loginPassword}
@@ -700,7 +700,7 @@ export function CustomerOnboardingPage() {
         <>
           <SectionHeading as="h1" align="left" title="Register your asset" size="md" />
           <form className="mt-6 space-y-4" onSubmit={handleRegisterAsset} noValidate>
-            <Input
+            <Input floatingLabel
               label="Asset name"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
@@ -708,7 +708,7 @@ export function CustomerOnboardingPage() {
               required
             />
             {requiredFieldsForType(selectedAssetType).map((key) => (
-              <Input
+              <Input floatingLabel
                 key={key}
                 label={fieldLabel(key)}
                 value={assetFields[key] ?? ''}
@@ -720,7 +720,7 @@ export function CustomerOnboardingPage() {
                 required
               />
             ))}
-            <Input
+            <Input floatingLabel
               label="Estimated value (ZAR, optional)"
               value={estimatedValue}
               onChange={(e) => setEstimatedValue(e.target.value)}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Card, SectionHeading } from '../../components';
-import { InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
+import { Card, SectionHeading, SkeletonGroup } from '../../components';
+import { InlineAlert, StatusBadge } from '../../dashboard/components/ui';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import {
   dismissCustomerAlert,
@@ -59,28 +59,30 @@ export function CustomerAlertsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="font-glass space-y-6">
       <div>
         <SectionHeading as="h1" title="Alerts" size="md" className="mb-2" />
-        <p className="text-sm text-text-secondary">
+        <p className="text-sm text-glass-text-secondary">
           Action items and updates for your protection. Critical security alerts cannot be disabled.
         </p>
       </div>
 
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
       {loading ? (
-        <LoadingState />
+        // OB-17 screen 7: shimmer rows matching the alert-card geometry,
+        // replacing the previous text-only loading state.
+        <SkeletonGroup count={4} shape="rect" height={84} />
       ) : alerts.length === 0 ? (
-        <Card padding="md">
-          <p className="font-semibold text-text-primary">All clear</p>
-          <p className="mt-1 text-sm text-text-secondary">No alerts need your attention right now.</p>
+        <Card padding="md" className="rounded-glass-card">
+          <p className="font-semibold text-glass-text-primary">All clear</p>
+          <p className="mt-1 text-sm text-glass-text-secondary">No alerts need your attention right now.</p>
         </Card>
       ) : (
         <div className="space-y-3">
           {alerts.map((alert) => {
             const href = mapAlertHref(alert.href);
             return (
-              <Card key={alert.id} padding="md">
+              <Card key={alert.id} padding="md" className="rounded-glass-card">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <StatusBadge value={alert.severity} />

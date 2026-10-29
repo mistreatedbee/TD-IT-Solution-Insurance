@@ -1,15 +1,19 @@
 /**
- * Customer account/profile surfaces — warm canvas + grouped white panels.
- * Mirrors the mobile app's Material-style layout using existing web tokens.
+ * Customer account/profile surfaces — OB-17 glass-gradient canvas + grouped
+ * flat-white panels. Mirrors the mobile app's layout using existing web
+ * tokens. Per the ratified OB-17 glass-blur scope (hero/header/modal only),
+ * ordinary grouped rows stay flat-white-with-shadow — only the profile
+ * header (see `customerSurfaceGroupHero` in CustomerSurfaceGroup.tsx) uses
+ * translucent glass.
  */
 
-/** Full-bleed warm canvas behind account/profile content. */
+/** Full-bleed OB-17 glass-gradient canvas behind account/profile content. */
 export const customerCanvas =
-  '-mx-4 min-h-full bg-background-pattern px-4 pb-8 pt-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8';
+  'font-glass -mx-4 min-h-full bg-glass-gradient px-4 pb-8 pt-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8';
 
-/** Elevated white group (borderless, soft shadow). */
+/** Elevated flat-white group (borderless, soft shadow, OB-17 24px radius). */
 export const customerSurfaceGroup =
-  'overflow-hidden rounded-2xl bg-background shadow-resting';
+  'overflow-hidden rounded-glass-card bg-glass-surface-opaque shadow-glass';
 
 /** Standard inner padding for grouped surfaces. */
 export const customerSurfacePadding = 'p-5 sm:p-6';

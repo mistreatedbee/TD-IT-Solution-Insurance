@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { GlassCard } from '../../components/GlassCard';
 import {
   customerHairlineDivider,
   customerSectionLabel,
@@ -10,14 +11,32 @@ export interface CustomerSurfaceGroupProps {
   children: ReactNode;
   className?: string;
   padded?: boolean;
+  /**
+   * OB-17: `hero` renders as a translucent `GlassCard` (radius-card-lg,
+   * strong surface) instead of the default flat-white-with-shadow group.
+   * Reserve for the one profile-header moment per
+   * ob-17-glass-redesign-screens.md §8 — ordinary settings-row groups stay
+   * `flat` (default), per the ratified hero/header/modal-only blur scope.
+   */
+  variant?: 'flat' | 'hero';
 }
 
-/** Elevated white surface for grouped account/profile content. */
+/** Grouped account/profile content surface. `flat` (default) is an
+ * elevated flat-white panel; `hero` is the OB-17 glass header treatment. */
 export function CustomerSurfaceGroup({
   children,
   className = '',
   padded = false,
+  variant = 'flat',
 }: CustomerSurfaceGroupProps) {
+  if (variant === 'hero') {
+    return (
+      <GlassCard tone="dark" radius="card-lg" padding={padded ? 'xl' : 'none'} interactive={false} className={className}>
+        {children}
+      </GlassCard>
+    );
+  }
+
   return (
     <div
       className={[customerSurfaceGroup, padded ? customerSurfacePadding : '', className]

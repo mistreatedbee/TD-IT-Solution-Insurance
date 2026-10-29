@@ -231,35 +231,35 @@ export function CustomerProfilePage() {
                 <p className="text-sm text-text-secondary">ID on file: {profile.idNumberMasked}</p>
               ) : null}
               <div className="grid gap-4 sm:grid-cols-2">
-                <Input
+                <Input floatingLabel
                   label="First name"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                 />
-                <Input
+                <Input floatingLabel
                   label="Middle name"
                   value={middleName}
                   onChange={(e) => setMiddleName(e.target.value)}
                 />
-                <Input
+                <Input floatingLabel
                   label="Last name"
                   className="sm:col-span-2"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                 />
-                <Input
+                <Input floatingLabel
                   label="Date of birth"
                   value={dateOfBirth}
                   onChange={(e) => setDateOfBirth(e.target.value)}
                   placeholder="YYYY-MM-DD"
                 />
-                <Input
+                <Input floatingLabel
                   label="Phone"
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                 />
-                <Input
+                <Input floatingLabel
                   label="South African ID number"
                   className="sm:col-span-2"
                   value={idNumber}
@@ -278,25 +278,25 @@ export function CustomerProfilePage() {
             <div className="space-y-4">
               <SectionHeading as="h3" title="Residential address" size="md" />
               <div className="grid gap-4 sm:grid-cols-2">
-                <Input
+                <Input floatingLabel
                   label="Street address"
                   className="sm:col-span-2"
                   value={line1}
                   onChange={(e) => setLine1(e.target.value)}
                 />
-                <Input
+                <Input floatingLabel
                   label="Apartment / unit"
                   className="sm:col-span-2"
                   value={line2}
                   onChange={(e) => setLine2(e.target.value)}
                 />
-                <Input label="City" value={city} onChange={(e) => setCity(e.target.value)} />
-                <Input
+                <Input floatingLabel label="City" value={city} onChange={(e) => setCity(e.target.value)} />
+                <Input floatingLabel
                   label="Province"
                   value={province}
                   onChange={(e) => setProvince(e.target.value)}
                 />
-                <Input
+                <Input floatingLabel
                   label="Postal code"
                   value={postalCode}
                   onChange={(e) => setPostalCode(e.target.value)}
@@ -309,18 +309,18 @@ export function CustomerProfilePage() {
             <div className="space-y-4">
               <SectionHeading as="h3" title="Emergency contact" size="md" />
               <div className="grid gap-4 sm:grid-cols-2">
-                <Input
+                <Input floatingLabel
                   label="Full name"
                   className="sm:col-span-2"
                   value={emergencyName}
                   onChange={(e) => setEmergencyName(e.target.value)}
                 />
-                <Input
+                <Input floatingLabel
                   label="Relationship"
                   value={emergencyRelationship}
                   onChange={(e) => setEmergencyRelationship(e.target.value)}
                 />
-                <Input
+                <Input floatingLabel
                   label="Phone"
                   type="tel"
                   value={emergencyPhone}

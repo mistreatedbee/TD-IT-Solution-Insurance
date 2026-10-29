@@ -203,7 +203,7 @@ export function CustomerLoginPage() {
           <p className="text-sm text-text-secondary">
             Enter the 6-digit code from your authenticator app.
           </p>
-          <Input
+          <Input floatingLabel
             label="Authentication code"
             value={mfaCode}
             onChange={(e) => setMfaCode(e.target.value)}
@@ -250,7 +250,7 @@ export function CustomerLoginPage() {
         </form>
       ) : (
         <form className="mt-4 space-y-4" onSubmit={onSubmitCredentials}>
-          <Input
+          <Input floatingLabel
             label="Email"
             type="email"
             value={email}
@@ -258,7 +258,7 @@ export function CustomerLoginPage() {
             autoComplete="username"
             required
           />
-          <Input
+          <Input floatingLabel
             label="Password"
             type="password"
             value={password}

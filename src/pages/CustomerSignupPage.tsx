@@ -119,7 +119,7 @@ export function CustomerSignupPage() {
       <SupabaseAuthConfigNotice />
 
       <form className="mt-4 space-y-4" onSubmit={onSubmit} noValidate>
-        <Input
+        <Input floatingLabel
           label="Email"
           type="email"
           value={email}
@@ -128,7 +128,7 @@ export function CustomerSignupPage() {
           autoComplete="email"
           required
         />
-        <Input
+        <Input floatingLabel
           label="Password"
           type="password"
           value={password}
@@ -137,7 +137,7 @@ export function CustomerSignupPage() {
           hint={`At least ${PASSWORD_MIN_LENGTH} characters.`}
           required
         />
-        <Input
+        <Input floatingLabel
           label="Confirm password"
           type="password"
           value={confirmPassword}

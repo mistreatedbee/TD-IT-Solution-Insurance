@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, SectionHeading } from '../../components';
+import { Button, SectionHeading, Skeleton } from '../../components';
 import { ArrowLink } from '../../components/ArrowLink';
-import { LoadingState, StatusBadge } from '../../dashboard/components/ui';
+import { StatusBadge } from '../../dashboard/components/ui';
 import { useCustomerAuth } from '../../customer/auth/CustomerAuthProvider';
 import {
   CustomerInsetDivider,
@@ -61,10 +61,10 @@ export function CustomerAccountSettingsPage() {
           subtitle="Manage your sign-in and profile details."
         />
 
-        <CustomerSurfaceGroup padded>
+        <CustomerSurfaceGroup variant="hero" padded>
           {isLoadingProfile ? (
             <div className="flex min-h-[120px] items-center justify-center">
-              <LoadingState />
+              <Skeleton shape="rect" height={96} />
             </div>
           ) : profileError ? (
             <p className="text-sm text-field-error-text">{profileError}</p>

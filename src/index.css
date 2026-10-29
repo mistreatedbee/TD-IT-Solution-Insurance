@@ -5,6 +5,10 @@
    distinctive editorial serif (Fraunces, variable optical-size axis) against
    a warm, highly-legible grotesque (Public Sans) for body copy. */
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400;1,9..144,500;1,9..144,600&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500&display=swap');
+/* OB-17: Inter, additive, for surfaces migrated to the glass system (see
+   `.font-glass` below). Fraunces/Public Sans above remain the default
+   elsewhere until migrated screen-by-screen per the tokens doc §7 item 4. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 /* --- MANAGED FONT IMPORTS END --- */
 
@@ -134,6 +138,120 @@
   --transform-button-hover-scale: scale(1.02);
   --transition-card-hover: transform 300ms cubic-bezier(0.25, 0.1, 0.25, 1), box-shadow 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
   --transition-accordion: height 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
+
+  /* --- OB-17 frosted-glass redesign tokens (ratified 2026-10-29) ---------
+     Additive `--glass-*` namespace. Does not rename/replace the existing
+     `--glass-background*`/`--glass-border` tokens above, which stay for any
+     consumer not yet migrated. See
+     docs/organization/design-system/ob-17-glass-redesign-tokens.md. */
+  --glass-accent: #2DBDB6;
+  --glass-accent-deep: #1E8F89;
+  --glass-accent-tint: #E3F6F4;
+  --glass-bg-gradient-start: #FCFCFC;
+  --glass-bg-gradient-mid: #F7F8F8;
+  --glass-bg-gradient-end: #FFFFFF;
+  --dark-glass-bg-gradient-start: #0B0F1A;
+  --dark-glass-bg-gradient-mid: #121A2E;
+  --dark-glass-bg-gradient-end: #070A12;
+  --glass-surface: rgba(255,255,255,0.55);
+  --glass-surface-strong: rgba(255,255,255,0.72);
+  --glass-surface-border: rgba(255,255,255,0.45);
+  --glass-shadow: 0 8px 32px -8px rgba(16,24,48,0.18);
+  --dark-glass-surface: rgba(18,22,32,0.55);
+  --dark-glass-surface-strong: rgba(18,22,32,0.72);
+  --dark-glass-surface-border: rgba(255,255,255,0.10);
+  --dark-glass-shadow: 0 8px 32px -8px rgba(0,0,0,0.45);
+  --glass-surface-opaque: #FFFFFF;
+  --dark-glass-surface-opaque: #151923;
+  --glass-text-primary: #0F1420;
+  --glass-text-secondary: #4A5168;
+  --glass-text-on-accent: #FFFFFF;
+  --dark-glass-text-primary: #F3F5FA;
+  --dark-glass-text-secondary: #AEB4C4;
+  --glass-action-secondary: #181f1f;
+  --glass-action-secondary-text: #FFFFFF;
+  --dark-glass-action-secondary: #E8EDED;
+  --dark-glass-action-secondary-text: #181f1f;
+  --glass-status-positive: #2E9E53;
+  --dark-glass-status-positive: #4ADE80;
+  --glass-font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --glass-font-weight-regular: 400;
+  --glass-font-weight-medium: 500;
+  --glass-font-weight-semibold: 600;
+  --glass-font-weight-bold: 700;
+  --glass-text-xs: 12px;
+  --glass-text-sm: 14px;
+  --glass-text-base: 16px;
+  --glass-text-lg: 18px;
+  --glass-text-xl: 22px;
+  --glass-text-2xl: 28px;
+  --glass-text-3xl: 34px;
+  --glass-space-xs: 4px;
+  --glass-space-sm: 8px;
+  --glass-space-md: 12px;
+  --glass-space-lg: 16px;
+  --glass-space-xl: 24px;
+  --glass-space-2xl: 32px;
+  --glass-card-padding: 24px;
+  --glass-radius-card: 24px;
+  --glass-radius-card-lg: 28px;
+  --glass-radius-chip: 20px;
+  --glass-radius-input: 16px;
+  --glass-blur-web: blur(20px);
+  --glass-skeleton-shimmer-duration: 1200ms;
+}
+
+.font-glass,
+.font-glass input,
+.font-glass textarea,
+.font-glass button {
+  font-family: var(--glass-font-family);
+}
+
+@media (prefers-color-scheme: dark) {
+  .dark .font-glass {
+    color: var(--dark-glass-text-primary);
+  }
+}
+
+/* OB-17 skeleton shimmer primitive (Skeleton component, src/components/Skeleton). */
+@keyframes glass-skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.glass-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(15, 20, 32, 0.06) 25%,
+    rgba(15, 20, 32, 0.12) 37%,
+    rgba(15, 20, 32, 0.06) 63%
+  );
+  background-size: 400% 100%;
+  animation: glass-skeleton-shimmer var(--glass-skeleton-shimmer-duration) ease-in-out infinite;
+  border-radius: var(--glass-radius-card);
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-skeleton {
+    animation: none;
+  }
+}
+
+/* OB-17 reduced-transparency accessibility fallback (distinct from the
+   low-end-Android performance fallback, which is mobile-only). Swaps the
+   translucent glass fill for a flat opaque one; border/shadow/radius are
+   unaffected. */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-surface[data-glass-tone='dark'],
+  .glass-surface:not([data-glass-tone]) {
+    background-color: var(--glass-surface-opaque) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .glass-surface[data-glass-tone='light'] {
+    background-color: var(--dark-glass-surface-opaque) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
 }
 /* --- MANAGED TYPOGRAPHY VARS START (do not edit manually) --- */
 html {

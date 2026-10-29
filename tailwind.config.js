@@ -65,21 +65,41 @@ export default {content: [
         'radius-card-lg': 'var(--radius-card-lg)',
         'elevation-card-hover-lift': 'var(--elevation-card-hover-lift)',
         'elevation-card-hover-lift-sm': 'var(--elevation-card-hover-lift-sm)',
-        'transition-card-hover': 'var(--transition-card-hover)'
+        'transition-card-hover': 'var(--transition-card-hover)',
+        /* OB-17 — additive, does not replace any token above */
+        'glass-accent': 'var(--glass-accent)',
+        'glass-accent-deep': 'var(--glass-accent-deep)',
+        'glass-accent-tint': 'var(--glass-accent-tint)',
+        'glass-action-secondary': 'var(--glass-action-secondary)',
+        'glass-action-secondary-text': 'var(--glass-action-secondary-text)',
+        'glass-status-positive': 'var(--glass-status-positive)',
+        'glass-text-primary': 'var(--glass-text-primary)',
+        'glass-text-secondary': 'var(--glass-text-secondary)',
+        'glass-surface-opaque': 'var(--glass-surface-opaque)'
       },
       boxShadow: {
         resting: 'var(--shadow-resting)',
         hover: 'var(--shadow-hover)',
         elevated: 'var(--shadow-elevated)',
-        'glow-gold': 'var(--shadow-glow-gold)'
+        'glow-gold': 'var(--shadow-glow-gold)',
+        glass: 'var(--glass-shadow)'
       },
       backgroundImage: {
         'grain': 'var(--texture-grain)',
-        'divider-brand': 'var(--divider-brand)'
+        'divider-brand': 'var(--divider-brand)',
+        'glass-gradient':
+          'linear-gradient(180deg, var(--glass-bg-gradient-start) 0%, var(--glass-bg-gradient-mid) 55%, var(--glass-bg-gradient-end) 100%)'
+      },
+      borderRadius: {
+        'glass-card': 'var(--glass-radius-card)',
+        'glass-card-lg': 'var(--glass-radius-card-lg)',
+        'glass-chip': 'var(--glass-radius-chip)',
+        'glass-input': 'var(--glass-radius-input)'
       },
       fontFamily: {
         heading: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
-        body: ['Public Sans', 'ui-sans-serif', 'system-ui', 'sans-serif']
+        body: ['Public Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        glass: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif']
       }
     }
   }

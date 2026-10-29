@@ -41,6 +41,8 @@ export * from './Section';
 export { Section } from './Section';
 export * from './SectionHeading';
 export { SectionHeading } from './SectionHeading';
+export * from './Skeleton';
+export { Skeleton, SkeletonGroup } from './Skeleton';
 export * from './StatBlock';
 export { StatBlock } from './StatBlock';
 export * from './StepItem';

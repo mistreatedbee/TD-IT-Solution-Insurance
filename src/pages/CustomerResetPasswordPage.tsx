@@ -309,7 +309,7 @@ export function CustomerResetPasswordPage() {
           </div>
         ) : (
           <form className="mt-4 space-y-4" onSubmit={onSubmitMfa}>
-            <Input
+            <Input floatingLabel
               label="6-digit code"
               type="text"
               inputMode="numeric"
@@ -342,7 +342,7 @@ export function CustomerResetPasswordPage() {
       {passwordError ? <InlineAlert tone="danger">{passwordError}</InlineAlert> : null}
 
       <form className="mt-4 space-y-4" onSubmit={onSubmitPassword}>
-        <Input
+        <Input floatingLabel
           label="New password"
           type="password"
           value={password}
@@ -351,7 +351,7 @@ export function CustomerResetPasswordPage() {
           hint={`At least ${PASSWORD_MIN_LENGTH_HINT} characters.`}
           required
         />
-        <Input
+        <Input floatingLabel
           label="Confirm password"
           type="password"
           value={confirmPassword}

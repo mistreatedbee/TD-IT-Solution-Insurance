@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge, Button, Card, SectionHeading } from '../../components';
+import { Badge, Button, Card, SectionHeading, Skeleton, SkeletonGroup } from '../../components';
+import { GlassCard } from '../../components/GlassCard';
 import { PlanEntitlementsCard } from '../../components/PlanEntitlementsCard';
 import { ArrowLink } from '../../components/ArrowLink';
 import { AssetBadge, type AssetType as BadgeAssetType } from '../../components/AssetBadge';
-import { DataTable, InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
+import { DataTable, InlineAlert, StatusBadge } from '../../dashboard/components/ui';
 import { listAssets, type Asset, type AssetType } from '../../customer/api/assets';
 import { listPolicies, type Policy } from '../../customer/api/policies';
 import { formatPlanPrice, listPlans, type PlanCatalogItem } from '../../customer/api/plans';
@@ -103,13 +104,21 @@ export function CustomerDashboardPage() {
     formatAssetUsage(registeredAssetCount, planCatalogEntry?.maxAssets ?? planSummary?.maxAssets);
 
   if (loading) {
-    return <LoadingState label="Loading your dashboard…" />;
+    // OB-17 screen 2: skeleton shapes matching the StatBlock + quick-action
+    // card geometry, replacing the previous spinner/text loading state.
+    return (
+      <div className="font-glass space-y-8">
+        <Skeleton shape="rect" height={132} />
+        <SkeletonGroup count={3} shape="rect" height={88} gapClassName="grid gap-4 sm:grid-cols-3" />
+        <SkeletonGroup count={4} shape="rect" height={64} />
+      </div>
+    );
   }
 
   const needsSetup = policies.length === 0;
 
   return (
-    <div className="space-y-8">
+    <div className="font-glass space-y-8">
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
 
       {needsSetup ? (
@@ -122,25 +131,31 @@ export function CustomerDashboardPage() {
         </InlineAlert>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card padding="md" interactive={false}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Current plan</p>
-          <p className="mt-2 text-2xl font-bold text-text-primary">{planDisplayName}</p>
-          {planPriceLabel ? (
-            <p className="mt-1 text-sm text-text-secondary">{planPriceLabel}</p>
-          ) : null}
-        </Card>
-        <Card padding="md" interactive={false}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Asset usage</p>
-          <p className="mt-2 text-2xl font-bold text-text-primary">{assetUsageLabel}</p>
-        </Card>
-        <Card padding="md" interactive={false}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Account</p>
-          <p className="mt-2 text-2xl font-bold text-text-primary capitalize">
-            {auth.account?.accountState.replace(/_/g, ' ') ?? '—'}
-          </p>
-        </Card>
-      </div>
+      {/* OB-17 screen 2 hero moment — the one glass card on this screen,
+          strong surface for primary status legibility; everything below
+          (policy/asset cards) stays flat-white-with-shadow per the
+          ratified hero/header/modal-only glass-blur scope. */}
+      <GlassCard tone="dark" radius="card-lg" padding="xl" interactive={false}>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div>
+            <p className="text-[length:var(--glass-text-xs)] font-semibold uppercase tracking-wide text-glass-text-secondary">Current plan</p>
+            <p className="mt-2 text-[length:var(--glass-text-3xl)] font-bold text-glass-text-primary">{planDisplayName}</p>
+            {planPriceLabel ? (
+              <p className="mt-1 text-sm text-glass-text-secondary">{planPriceLabel}</p>
+            ) : null}
+          </div>
+          <div>
+            <p className="text-[length:var(--glass-text-xs)] font-semibold uppercase tracking-wide text-glass-text-secondary">Asset usage</p>
+            <p className="mt-2 text-[length:var(--glass-text-3xl)] font-bold text-glass-text-primary">{assetUsageLabel}</p>
+          </div>
+          <div>
+            <p className="text-[length:var(--glass-text-xs)] font-semibold uppercase tracking-wide text-glass-text-secondary">Account</p>
+            <p className="mt-2 text-[length:var(--glass-text-3xl)] font-bold text-glass-text-primary capitalize">
+              {auth.account?.accountState.replace(/_/g, ' ') ?? '—'}
+            </p>
+          </div>
+        </div>
+      </GlassCard>
 
       {activePolicy && planSummary?.entitlements ? (
         <PlanEntitlementsCard
