@@ -217,3 +217,17 @@ Column key:
    OB-16) wait for their scorecards. `integration-architect` should open the KYC-vendor scorecard
    only after the payment and GPS scorecards, matching `HANDOFF.md` §8's sequencing.
 5. **OB-17** waits for the owner's design brief.
+
+**Update, 2026-10-29 (orchestrator):** the owner has now supplied the actual design brief for
+OB-17 (frosted-glass redesign: design tokens, a required component list, screen-by-screen scope
+in order — onboarding/identity, home, asset list, asset detail, map, report theft/loss, alerts,
+account — plus explicit rules on contrast, a low-end-Android blur fallback, and the same
+visuals-only/reuse-`src/components`-first constraint already recorded above). **The reference
+image the brief itself calls for was still not attached** ("No example image had been shared
+when this was written") — `ui-designer`/`design-system-manager` are proceeding on the written
+spec alone; request the image from the owner before any screen work is treated as final. Dispatch
+to `design-system-manager` (tokens + component list) and `ui-designer` (screens) is in progress.
+The owner also supplied background research on FICA/Home-Affairs identity verification relevant
+to OB-07 — the owner's own note flags part of it (the quote→identity→documents→payment→policy
+sequence) as "from memory, not checked against a specific SA insurer's process"; treat that part
+as unverified input for `integration-architect`'s OB-07 scoping, not as fact.
