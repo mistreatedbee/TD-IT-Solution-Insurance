@@ -1148,3 +1148,140 @@ one don't have to re-derive it from "which collections already coexist." I'll pi
 documentation hygiene; it does not hold up Stage 6 on this ADR.
 
 R-5 is satisfied.
+
+---
+
+## `cybersecurity-architect` answer to R-4: direct database access to the grant collections (2026-10-29)
+
+**Scope.** This answers the question `database-architect` deferred in their §3 and `cto` bound as R-4:
+which database principals may read (and write) `partner_location_share_grants` and
+`partner_location_preauthorizations` directly, outside the D3.3 route check. Neither collection exists
+yet. This section sets the access model they must be built against. It is not an audit of existing
+code. `security-engineer` verifies the result. `database-architect` and
+`cloud-infrastructure-architect` provision it, as with FU-A6.
+
+### 1. What exists today (checked in code, not assumed)
+
+- **The platform has one MongoDB principal.** `backend/src/config/env.ts:320` reads one `MONGODB_URI`.
+  `render.yaml:21` injects that one value. `backend/src/db/mongo-connection.ts` opens one client. No
+  second Mongo credential is configured anywhere in `backend/`. I searched for `MONGODB_*URI`, `PURGE`,
+  and purge-credential strings.
+- **That one principal does everything:** request-path reads and writes, the startup bootstrap
+  (`createCollection`/`createIndex`, ADR-0008), the catalog verify, and every operator script under
+  `backend/scripts/`. Several of those scripts tell the operator to put `MONGODB_URI` in the repo-root
+  `.env`/`.env.local` (`bootstrap-mongo-collections.ts`, `verify-mongo-catalog.ts`,
+  `inc-001-location-inventory.ts`, `police-report-retention-purge.ts`). In practice, then, the
+  runtime credential also lives on operator workstations.
+- **The only Mongo least-privilege design on the platform is ADR-0006 AUD-11** (app user `find`+`insert`
+  on `admin_access_log`, a separate purge user with `remove`). It has **never been provisioned**
+  (FU-A6 open; `database-addendum-001.md` §1.4 says "checked, not enforced"). The comments in
+  `demo-security-dashboard-seed.ts` describe that split as if it were live. That is a design statement,
+  not a grant anyone has verified. ADR-0008's ratification explicitly excludes access control.
+  ADR-0006 C-16(c) (no standing human access to production stores) is still an open `cto` obligation.
+- ADR-0015 covers Postgres only (`td_migration_runner` / `td_backend_app`). Its principle carries over
+  directly: the runtime credential never holds schema-altering privilege, and a privileged credential
+  is never held by an agent. It creates no Mongo roles.
+
+So today the honest answer to "who can read the grant collection outside D3.3" would be "whoever
+holds `MONGODB_URI`, which includes every operator machine that has run a script". On top of that,
+anyone with an Atlas project role that includes data access could read it through Data Explorer.
+
+### 2. The threat is integrity first, confidentiality second
+
+`database-architect` framed this as a read question. For these two collections the bigger risk is
+**write**. D3.3 lets a partner read live location if an active grant document exists. So **anyone who
+can `insert` into `partner_location_share_grants` can give a partner live location access**, with no
+customer consent, no admin action, and no `recovery_case_events` row. The same is true of anyone who can
+`update` an existing grant's `endedAt` back to `null` or push its `expiresAt` later. A direct read of
+the grants reveals the consent and theft pattern `database-architect` described (PII, but not
+coordinates). A forged grant leads straight to the harm in this platform's top attack tree ("attacker
+locates a customer's asset in real time").
+
+A second point: **the grant check only protects location if location cannot be read some other way.**
+Any principal that can `find` the Feature 008 location store (`location_events`) gets around grants
+entirely. So R-4 cannot be answered for the grant collections alone. The rule below covers both.
+
+### 3. Ruling
+
+**(a) Should the grant collections get a scoped read role separate from the general application user?
+No. Not a separate read role inside the API process. Yes to separating the API process from everything
+else.** The API process has to read *and* write grants (activate, revoke, end-record). Splitting that
+into a read credential and a write credential held by the same Render service buys nothing, because
+anyone who compromises the process gets both. The separation that matters is between the **request-path
+API identity** and **every other principal** (bootstrap, scripts, purge, investigation, humans,
+analytics). The API identity's privilege on these collections must also be narrowed.
+
+**(b) Should access be limited to specific backend service identities? Yes.** The permitted principals
+are listed below. Anything not listed gets **no** privilege on `partner_location_share_grants`,
+`partner_location_preauthorizations`, or `location_events`. Every role is a MongoDB/Atlas custom role
+with collection-level `privileges` (resource `{ db, collection }`). None uses a built-in database role
+such as `readWrite`/`readWriteAnyDatabase`, which would grant every collection.
+
+| Principal | Who holds it | Grants on the two grant collections | On `location_events` | Notes |
+|---|---|---|---|---|
+| **P1 `api-runtime`** | The Render web service only (`render.yaml` env). Never on a workstation, never in CI, never with an agent | `find`, `insert`, `update`, `createIndex`, `createCollection`, `listIndexes`, `listCollections`. **No `remove`, `dropCollection`, `dropIndex`, `collMod`** | `find`, `insert` as Feature 008 needs. No `remove` | `createIndex`/`createCollection` are kept so ADR-0008's startup ensure-path still works without a second runtime credential. `collMod` is withheld because it can loosen a validator (ADR-0008 Decision item 4 already forbids startup tightening, and loosening is worse) |
+| **P2 `grant-sweeper`** | Only if R-3's sweeper ships as a separate deployable (Render cron/worker). If it runs inside the API process it uses P1, and no new credential is created | `find`, `update` only. No `insert` | none | Its job is recording expiry and end fields. It must not be able to create a grant |
+| **P3 `retention-purge`** | The SG-11 case-retention job, invoked as a job. Not a standing service credential | `find`, `remove` only | `find`, `remove` (Feature 008 retention) | Same shape as AUD-11's purge user (FU-A6). Grants are deleted only alongside their case (DB-4 / SG-11), never on expiry |
+| **P4 `investigative-read`** | Extends FU-A11. Issued per investigation as an Atlas **temporary database user** (expiry set at creation), approved by the owner, never held by an agent | `find` only on the two grant collections and `recovery_case_events` | **none** by default. Location reads by an investigator are a separate, case-referenced request (AUD-9 / C-16(b)) | Each issuance is recorded with its case reference. It is not a standing credential |
+| **P5 `provisioner`** (optional) | The ADR-0008 CLI path (`bootstrap-mongo-collections.ts`), and `catalog-verify` if run outside the API | `createCollection`, `createIndex`, `collMod` (needed for validator migrations under ADR-0008 condition 2), `listIndexes`, `listCollections`. **No `find`/`insert`/`update`/`remove`** | same, no document actions | Lets an operator provision without holding a credential that can read or forge grants |
+
+**Explicitly excluded, with no privilege at all on these three collections:** operator and ops scripts
+in `backend/scripts/` that do not need them (seed, demo, FT-016, INC-001 inventory), which must get
+their own scoped users and stop using the runtime `MONGODB_URI`. Also excluded: any reporting,
+analytics, or BI connector; the support portal; CI (it has no live DB today, ADR-0015 §Context, and must
+stay that way for Mongo); agents; and any future partner-facing integration. Partners get data **only**
+through the D3.3 route, never through a database principal.
+
+**Humans and the Atlas UI.** Atlas project roles that include data access (Project Owner, Project Data
+Access Admin / Read-Write / Read-Only) can read every collection through Data Explorer. That bypasses
+every custom role above. Standing human access to production must be no higher than a role without data
+access, apart from the owner's break-glass account. This is the Mongo-side delivery of ADR-0006 C-16(c)
+for these collections. It does not replace that `cto` obligation.
+
+### 4. Compensating controls for what Mongo roles cannot express
+
+- **Mongo privileges are per-action, not per-field.** P1's `update` cannot be limited to "set `endedAt`
+  only when it is null." Write-once is therefore enforced by DB-2 (no generic update method in the
+  repository), and **detected** by the next item.
+- **Grant/event reconciliation (detective control).** Every grant document must have exactly one
+  matching `recovery_case_events` activation row by `grantId` (DB-6). The R-3 sweeper checks this on
+  every run and raises an admin security alert on any grant with no activation event, and on any grant
+  whose `endedAt` has gone from set back to null. This catches forged or tampered grants written by any
+  principal, P1 included. It does **not** add a fifth D3.3 condition on the hot path, because the hot
+  path stays as ratified.
+- **Network.** The Atlas IP access list must allow production only from Render's egress for P1/P2, and
+  from no general `0.0.0.0/0` entry. I have not verified the current access list. `cloud-infrastructure-architect`
+  confirms it.
+- **Database auditing.** Atlas database auditing (logging `authCheck` and access by any principal other
+  than P1) depends on the cluster tier. The R-5 section above records that the tier is undocumented. If
+  auditing is unavailable on the current tier, the lack of DB-level access logging on these collections
+  is a **residual risk that `cto` must explicitly accept at the location route's Stage 8**. It is not
+  accepted silently here.
+
+### 5. Conditions (binding on the location route's Stage 8; they do not gate `DIRECTED_DISPATCH_ENABLED`)
+
+- **CSA-R4-1.** P1, plus P3 and P5 as needed, are provisioned as collection-scoped Atlas custom roles
+  before the location route enters Stage 8. The location route may not pass Stage 8 while
+  production runs on a single all-purpose `MONGODB_URI` principal that can read `location_events` and
+  insert grants from an operator workstation. FU-A6 (the `admin_access_log` split) should be provisioned
+  in the same change, because it uses the same mechanism. Owners: `database-architect` (role
+  definitions), `cloud-infrastructure-architect` (Atlas), `devops-engineer` (Render env).
+- **CSA-R4-2.** Operator scripts stop using the production runtime credential. Each script that needs
+  production access gets its own scoped principal per §3. The runtime credential is rotated once the
+  split lands, because it has been on workstations.
+- **CSA-R4-3.** An automated, FU-A10-style deploy-time assertion (`connectionStatus` with
+  `showPrivileges`) confirms P1 holds **no** `remove`/`dropCollection`/`collMod` on the two grant
+  collections or on `location_events`. Until this exists the control is "checked", never "enforced"
+  (ADR-0006 §16.5 condition 3 standard). Owner: `security-engineer` + `devops-engineer`.
+- **CSA-R4-4.** The §4 reconciliation check ships with the R-3 sweeper and is covered by a negative test
+  (a seeded grant with no activation event must raise the alert). `qa-architect` adds it to the Stage 10
+  plan.
+- **CSA-R4-5.** Human Atlas data-access roles are recorded and reduced per §3, and the Atlas tier and
+  audit capability are documented (this merges with the R-5 follow-up). If DB auditing is unavailable,
+  §4's residual risk goes to `cto` for written acceptance at Stage 8.
+
+**R-4 status: answered.** The access model is defined. **None of it is provisioned.** The checks that
+show the model is actually in force are CSA-R4-1 to CSA-R4-5 at the location route's Stage 8.
+
+**Signed:** `cybersecurity-architect`, 2026-10-29. `security-engineer` concurrence is still required, and
+is not given here.
