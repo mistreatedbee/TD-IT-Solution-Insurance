@@ -1341,3 +1341,37 @@ This section closes the production-recovery half of SR-018-9 only. It does not c
 BLOCKED verdict for Stage 8 as a whole — the remaining items there (SR-018-8 test remainder, index
 read-back, CR-018-1…9, security-engineer re-concurrence) are outside SRE's remit and are unaffected
 by this entry.
+
+## 15. SR-018-8 test remainder landed (`backend-engineer`, 2026-10-29)
+
+Closes the engineering half of §13.3 item 2: tests for §11.4/§13.2 items (a), (c), (d), (e). Does
+not itself close Stage 8 — that verdict is the chair's to re-check, per §13.3's own terms, against
+the evidence below.
+
+| Item | What was added |
+|---|---|
+| (a) | `backend/src/routes/admin-claims.test.ts` — `requires step-up — revoked session returns 401 STEP_UP_REQUIRED, claim unchanged`. `createHarness` gained a `sessionRevokedAt` option so the fake `sessions.findById` can return a row with `revokedAt` set on an otherwise-fresh (`mfaVerifiedAt: new Date()`) session, distinct from the pre-existing stale/null-`mfaVerifiedAt` cases. Asserts `401 STEP_UP_REQUIRED`, claim status unchanged, and zero audit rows written. |
+| (c) | `backend/src/routes/claims.test.ts` — extended the existing rate-threshold test (`accepts a claim that crosses the rate threshold instead of blocking it`) to read the claim back from the harness's in-memory `claims` store (not the HTTP response body, which `serializeClaimForCustomer` deliberately strips `fraudFlags` from) and assert `persisted.fraudFlags` contains `FLAG_RATE_THRESHOLD`. |
+| (d) | `backend/src/routes/claims.test.ts` — new `it.each` case under `POST /v1/claims` covering both a missing `Idempotency-Key` header and a non-UUID value, asserting `400 IDEMPOTENCY_KEY_REQUIRED` and `harness.claims` left at length 0 (no side-effect claim creation). |
+| (e) | `backend/src/routes/admin-claims.test.ts` — two new tests: `writes exactly one privileged_state_change claim audit row per admin action` (asserts `stateChanges.length === 1`, `resourceType === 'claim'`, `resourceId` matches) and `fails closed, with no claim mutation, when the audit-log write throws (AUD-10)` (new `auditLogThrows` harness option makes the fake `recordStateChange` throw; asserts a 5xx response and the claim document left completely unmutated — confirms the route's existing audit-before-mutate ordering, already in `admin-claims.ts` before this change, is actually fail-safe and not merely fail-silent). |
+| (h) | Verified, not re-done. Read `backend/src/middleware/idempotency.test.ts` (commit `0b57252`) in full: it covers all three of C-018-16's required cases — concurrent same-key (one 201, one 409 `IDEMPOTENCY_KEY_IN_PROGRESS`), sequential replay after completion (handler not re-executed), and KV-store-throws during the reservation check (5xx, handler never runs), plus a same-key-different-body case beyond what was asked. No gaps found; nothing added. |
+| C-018-19 | `backend/src/routes/root-mount-order.test.ts`'s header comment described the kill-switch as "register[ing] ... as a path-less `router.use(...)`" in the present tense. Added a paragraph noting it is now scoped (`router.use('/claims', ...)` / `router.use('/admin/claims', ...)`) and that this file is the regression guard for that fix, without removing the original problem description (still accurate as history). |
+
+**Evidence, as requested for re-review (not a trust-the-report claim):**
+- Commit: `7d80644` on `main` (`test(claims): close SR-018-8 test gaps (a)/(c)/(d)/(e), update C-018-19 comment`).
+- `cd backend && npx tsc --noEmit`: clean, zero errors.
+- `cd backend && npm test`: **964/964 passing**, 82 test files. (One transient failure —
+  `closing with closeGround FILED_IN_ERROR_CONFIRMED_BY_CUSTOMER ... succeeds` returning 404 instead
+  of 200 — appeared on one full-suite run and did not reproduce on an immediate re-run in isolation
+  or two subsequent full-suite re-runs, both 964/964 clean; flagged here rather than silently
+  discarded, in case `cybersecurity-architect`'s own run surfaces it again as something systemic
+  rather than a one-off.)
+
+(f)'s one remaining sub-item — running the real-`mongod` index test non-skipped — was not attempted
+here; it needs a local `mongod`, which this session did not have, and is not one of the four items
+this task was scoped to. SR-018-8(g) and the §11.5/§13.3 items outside testing (production index
+read-back, CR-018-1…9 in code, security-engineer re-concurrence) are unchanged by this entry.
+
+| Role | Decision | Date |
+|---|---|---|
+| `backend-engineer` | Landed SR-018-8 (a)/(c)/(d)/(e) tests; verified (h) already complete; fixed C-018-19 comment. Stage 8 verdict is unchanged — still the chair's call, now against this evidence. | 2026-10-29 |
