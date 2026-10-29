@@ -276,3 +276,19 @@ G-1…G-14, each one is a **request to the Client, not an instruction**.
 
 G-15 is producing live processing without authority **now**. It joins G-2, G-3, G-6 and G-8 in the
 §8 item 2 instruction schedule. G-16 and G-17 are prospective and go in the §8 item 5 second schedule.
+
+---
+
+## 12. Register B addition, 2026-10-29 (`cto`, recording `compliance-specialist`'s proposed G-18)
+
+Append-only. §1 to §11 are unchanged. `compliance-specialist` proposed G-18 at
+`docs/features/010-call-centre-dashboard/05-c-010-4-tier2-caller-verification-design.md` §12.4 (condition
+C-010-4-Q4a) and said it would be added here. It was not there yet when C-010-4 was ratified (same file, §13), so I
+am recording it with the topic wording taken from §12.4. Like every other G row, it is a **request to the Client,
+not an instruction**. `compliance-specialist` may refine this row in a further appended section.
+
+| ID | Topic | Current state: what we are doing, or plan to do, without instruction | What the Client needs to instruct |
+|---|---|---|---|
+| **G-18** | **Call-centre staff initiating on-behalf recovery requests that the customer approves (OB-02, C-010-4)** | **Not built.** The design is ratified, but implementation is NO-GO until Stage 8. Stage 8 will cite Register A I-1 as base authority (§12.4). No on-behalf route exists | Whether the Client instructs agent-initiated on-behalf recovery requests approved in the customer's own session; disclosing the third-party reporter's stated relationship to the account holder; and the retention periods in §12.3 (24 months from resolution for requests that produced no case, with the case's life for approved ones). **Required before first real customer PII on this flow** |
+
+G-18 is prospective. It goes in the §8 item 5 second schedule and into the CT-4b instruction schedule draft.

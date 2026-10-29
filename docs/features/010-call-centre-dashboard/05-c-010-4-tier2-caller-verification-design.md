@@ -528,3 +528,81 @@ identity of an unidentified reporter; (b) the s22 position already referred in t
 G-3 · G-7 · G-10 · C-010-1 · C-010-8.
 
 **Filed by:** `compliance-specialist`, 2026-10-29.
+
+---
+
+## 13. CTO ratification (`cto`, 2026-10-29)
+
+Append-only. §1 to §12 are unchanged. This section fills the §11 ratification record.
+
+**Decision: RATIFIED, with the binding conditions in §13.2.** The C-010-4 mechanism (§3), the rejected-option
+set (§4), the verification-record requirements (§5), the two new Trail A event types (§6), the M-B data position
+(§7) and the detection set (§8) are approved as the design of record. `compliance-specialist`'s §12 rulings and
+conditions C-010-4-Q1a to Q1d, Q2a to Q2e, Q3a, Q3b and Q4a are adopted in full.
+
+### 13.1 Why I am ratifying
+
+- **The core property is correct and verifiable.** The outcome comes from the account holder's own credentialed
+  session and is checked server-side. No secret goes through the agent. §6.2 makes "a case without an approved
+  request" impossible by structure at the writer. That is the right answer to T-1 and T-2, and it does not rely
+  on agent behaviour.
+- **It adds no attack surface beyond self-service.** Anyone who can approve (customer session plus fresh factor)
+  can already open the same case through `POST /v1/recovery/cases`. §12.2 makes the same point. The residual
+  risk (account takeover or an intimate partner holding the unlocked phone) is the same as the existing
+  self-report path, and Q1c gives it a compensating alert.
+- **It fails closed everywhere I checked.** The design has no bypass and no break-glass (§4). Expiry, decline and
+  lockout all produce "no case", and the agent sees only `not_confirmed` (§3.3). If the account holder cannot be
+  reached, nothing is dispatched (§7, §12.3 item 6).
+- **It reuses what exists.** ADR-0012 step-up (`requireStepUp` in `backend/src/lib/step-up.ts`), the
+  `createForAccount` repository path, the KV rate limiter and the migration-039 invariant pattern. The only new
+  primitive is password re-auth, and it is scoped to Stage 7.
+
+### 13.2 Binding conditions added at ratification
+
+These are gaps in §1 to §12 that I found on review. None of them changes the mechanism, so none of them blocks
+ratification. Each one blocks the stage named.
+
+| ID | Condition | Owner | Blocks |
+|---|---|---|---|
+| **C-010-4-R1** | **Retention conflict with the existing Trail A purge.** `app.account_audit_log` is purged on a single table-wide 12-month cutoff by `app.purge_expired_audit_log()` (migration 034 comment; ADR-0006 §14.2 ruled 12 months as a **ceiling** for privileged-access logs). §12.3 rules **24 months** for `caller_verification` rows from requests with no case. §5.4 ties approved requests to the case's life (Feature 011 five-year floor). As things stand, the purge would delete these rows at 12 months, and nothing in §12 reconciles that. `database-architect` must design event-type-aware retention for the two new types (or a stated alternative: for example, the Mongo `on_behalf_request` is the long-lived record and the Trail A rows keep 12 months). `compliance-specialist` must then rule explicitly against ADR-0006 §14.2 and AUD-7's `min(A, B)` symmetry rule. Do not assume either way | `database-architect`, `compliance-specialist` | Stage 6 exit |
+| **C-010-4-R2** | **Single-use, race-safe approval.** The `pending → approved/declined` transition is an atomic compare-and-set on the request (for example a conditional update on `state = 'pending'` and `expiresAt > now`). A double submit, a replay or two concurrent approvals produce at most one recovery case. Approval is idempotent on `on_behalf_request.id` | `backend-architect` | Stage 7 exit |
+| **C-010-4-R3** | **Cross-store write ordering.** §3.1 step 7 calls the approval "one logical unit", but it spans Mongo (`on_behalf_request`, `recovery_cases`, `support_case`) and Postgres (Trail A). No cross-store transaction exists. `backend-architect` must state the order and the failure handling so that a `recovery_cases` row can never exist without its `agent_on_behalf_report` row. That is the fail-closed rule in FU-A5 / `06-security-standards.md`. If the order cannot guarantee it, use a compensating-delete or outbox design and say which | `backend-architect` | Stage 7 exit |
+| **C-010-4-R4** | **Consistent attribution on `agent_on_behalf_report`.** §6.2 sets `actor_account_id` = agent but takes `actor_session_id` from the approval request, which is the **customer's** session. That pairing breaks the ADR-0006 join key (actor + actor session). The row must carry the **agent's** session in `actor_session_id`. The customer's approving session is reachable through `verification_ref → approverSessionId` and the `approved` `caller_verification` row. §6.2's open choice about the agent's original `audit_request_id` is resolved as **carry it** | `backend-architect`, `database-architect` | Stage 6/7 exit |
+| **C-010-4-R5** | **The TOTP factor is bound to the request too.** Q2b binds password re-auth to one request. The same confused-deputy rule applies to step-up. `requireStepUp(ctx, windowSeconds)` is window-based, so a step-up done for some other action must not satisfy an approval. Either the step-up is performed inside the approval call and bound to the `on_behalf_request.id`, or the window is set to the minimum value ADR-0012 allows and the residual is written down at Stage 7 | `backend-architect`, `authentication-engineer` | Stage 7 exit |
+| **C-010-4-R6** | **The web approval surface ships with the mobile one.** M-A's typical customer has just had their phone stolen. A mobile-only approval surface would make M-A unusable for exactly the people it is for. Approval on the `/dashboard` web customer surface is in MVP scope. It is not a fast-follow | `product-manager` (Stage 2 scope), `frontend-architect` | Stage 2 exit |
+| **C-010-4-R7** | **The CI-2 prohibition rule is built before the route merges.** §11's SR-010-5 row says the CI-2 rule should be extended to forbid writing `callerVerified: true` outside §3.1 step 7. That extension, and the base CI-2 rule that is still unbuilt, are preconditions for the Stage 9 PR. They are not follow-ups | `devops-engineer`, `security-engineer` | Stage 9 PR merge |
+| **C-010-4-R8** | **New UI goes through the design system.** The approval screen, the persistent attribution line (Q1a), the match-code display and the declined-outcome security notice (Q1d) reuse `src/components/*` and the mobile equivalents first. Any new component needs `design-system-manager` sign-off, per the house rule | `ui-designer`, `design-system-manager` | Stage 4 exit |
+
+The §5.3 numeric limits and the §3.1 step 9 expiry values stay starting values for `security-engineer` at Stage 8,
+as §5.3 says. I am not fixing them here.
+
+### 13.3 What this ratification unblocks, and what it does not
+
+**Unblocked now:** FR-18 to FR-21, Phase 1 FR-9 and OB-02 may enter **Stage 2** (`product-manager`). The Stage 3 to
+7 artefacts may then be produced: UX/UI for the approval and agent screens, Stage 5 architecture review, the
+`database-architect` Stage 6 design for `on_behalf_request` and the two Trail A event types, and the
+`backend-architect` Stage 7 contract for the request, approval, re-auth and decline routes.
+
+**Still NO-GO for implementation (Stage 9).** The banner at the top of this document lists three conditions. This
+section clears (1) and (2). Condition (3) still applies: **no production code until the Stage 6 and 7 artefacts
+pass Stage 8.** That includes the `on_behalf_request` collection, the `caller_verification` and
+`agent_on_behalf_report` enum values and migration columns, `CALLER_NOT_VERIFIED` in `errors.ts`, and any approval
+UI wired to a live route. `backend-engineer`, `mobile-engineer` and `frontend-engineer` are dispatched at Stage 9,
+not now.
+
+**Still open and not discharged by this ratification:**
+
+- INC-001-C-8 (platform-wide go-live blocker). Q1b becomes mandatory when it clears.
+- **G-18** (C-010-4-Q4a). Obtaining the instruction is mine, with the owner, before first real customer PII on this
+  flow. I appended it to the register as `11-documented-client-instructions.md` §12, because §12.4 said it would be
+  added and it was not there yet. It also has to go into the CT-4b instruction schedule
+  (`correspondence/DRAFT-2026-10-23-ct-4b-instruction-schedule-escalation.md`), which is still unsent.
+- **Counsel referrals (§12.6), tracked, not blocking:** (a) whether the PAIA third-party refusal ground covers a
+  reporter's access request, and how to verify an unidentified reporter's identity; (b) the s22 position from the
+  original compliance review §8, now narrowed by this design. Both go into the next counsel pack. Neither blocks
+  Stage 2 to 8. **Both must be answered before first real customer PII on this flow.** (b) bears on whether a
+  successful impersonation is a notifiable compromise.
+- CT-4b, G-3, G-7, G-10, C-010-1, C-010-8 (as §12 lists).
+- `api-design.md` §7 step 6: `backend-architect` appends the superseded-by-§12.1 note (§12.1 asks for this).
+
+**Filed by:** `cto`, 2026-10-29.
