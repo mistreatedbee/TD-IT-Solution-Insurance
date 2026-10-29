@@ -50,6 +50,7 @@ export function AdminLayout() {
         { to: '/admin/policies', label: 'Policies' },
         { to: '/admin/assets', label: 'Assets' },
         { to: '/admin/claims', label: 'Claims' },
+        { to: '/admin/partner-organizations', label: 'Partner orgs' },
         { to: '/admin/plans', label: 'Plans' },
         { to: '/admin/analytics', label: 'Analytics' },
         { to: '/admin/audit-log', label: 'Audit log' },

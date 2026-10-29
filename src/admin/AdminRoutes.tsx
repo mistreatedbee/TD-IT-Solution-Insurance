@@ -19,6 +19,7 @@ import { AdminAnalyticsPage } from './pages/AdminAnalyticsPage';
 import { AdminAuditLogPage } from './pages/AdminAuditLogPage';
 import { InviteStaffPage } from './pages/InviteStaffPage';
 import { ClaimDetailPage, ClaimsQueuePage } from './pages/AdminClaimsPages';
+import { PartnerOrganizationScorecardPage, PartnerOrganizationsListPage } from './pages/PartnerOrganizationPages';
 
 function AccountDetailRoute() {
   const { accountId } = useParams();
@@ -42,6 +43,12 @@ function ClaimDetailRoute() {
   const { claimId } = useParams();
   if (!claimId) return <Navigate to="/admin/claims" replace />;
   return <ClaimDetailPage />;
+}
+
+function PartnerOrganizationScorecardRoute() {
+  const { partnerOrganizationId } = useParams();
+  if (!partnerOrganizationId) return <Navigate to="/admin/partner-organizations" replace />;
+  return <PartnerOrganizationScorecardPage partnerOrganizationId={partnerOrganizationId} />;
 }
 
 export default function AdminRoutes() {
@@ -82,6 +89,11 @@ export default function AdminRoutes() {
             <Route path="audit-log" element={<AdminAuditLogPage />} />
             <Route path="claims" element={<ClaimsQueuePage />} />
             <Route path="claims/:claimId" element={<ClaimDetailRoute />} />
+            <Route path="partner-organizations" element={<PartnerOrganizationsListPage />} />
+            <Route
+              path="partner-organizations/:partnerOrganizationId/scorecard"
+              element={<PartnerOrganizationScorecardRoute />}
+            />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="login" replace />} />
