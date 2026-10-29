@@ -19,7 +19,10 @@ import { type Db, type Document, type IndexDescription } from 'mongodb';
 
 export const RETENTION_JOB_RUNS_COLLECTION = 'retention_job_runs';
 
-export type RetentionJobId = 'police_report_retention_purge' | 'support_case_retention_purge';
+export type RetentionJobId =
+  | 'police_report_retention_purge'
+  | 'support_case_retention_purge'
+  | 'admin_access_log_purge';
 
 export type RetentionJobOutcome = 'success' | 'partial_failure' | 'failed';
 
@@ -40,10 +43,11 @@ export const retentionJobRunsJsonSchemaValidator: Document = {
     ],
     properties: {
       jobId: {
-        enum: ['police_report_retention_purge', 'support_case_retention_purge'],
+        enum: ['police_report_retention_purge', 'support_case_retention_purge', 'admin_access_log_purge'],
         description:
           'Discriminator — closed enum, widen deliberately (mirrors the admin_access_log.resourceType ' +
-          'convention in feature004-collections.ts) if a third retention job is added. Not a free-text job name.',
+          'convention in feature004-collections.ts) if a further retention job is added. Not a free-text job name. ' +
+          "'admin_access_log_purge' added per ADR-0006 §19.4 (database-architect, closing F-019-C1).",
       },
       startedAt: { bsonType: 'date' },
       completedAt: {

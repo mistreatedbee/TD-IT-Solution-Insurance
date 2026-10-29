@@ -9,6 +9,16 @@
  */
 import { ObjectId, type Db, type Collection } from 'mongodb';
 
+/**
+ * ADR-0006 §19.3 — the single-source retention constant for `admin_access_log`.
+ * Ratified at 12 months (compliance-specialist, §14.2/§14.9 of that ADR). The purge job
+ * (`backend/src/lib/admin-access-log-retention.ts`) imports this rather than restating the
+ * number; any future sibling job (e.g. `recovery_case_event_actor_purge`, per
+ * `docs/features/019-case-history-timeline/backend-architecture-event-model.md` §11.1 item 2)
+ * must import this same constant too, not a second literal `12`.
+ */
+export const ADMIN_ACCESS_LOG_RETENTION_MONTHS = 12;
+
 // ADR-0006 §18 — widened to add 'recovery_case' for Security Company Dashboard
 // partner-operator reads/decisions (RR-012-2 closure, PDM-8). Per §18.2, this is an
 // additive extension of an existing trail (Trail B), not a new store/correlation
