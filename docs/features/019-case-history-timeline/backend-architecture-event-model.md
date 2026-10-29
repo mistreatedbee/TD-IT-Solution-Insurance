@@ -591,3 +591,246 @@ constraints, which I am setting now so the admin build does not paint itself int
 | `compliance-specialist` | Pending. Rules on SR-019-9 (accept the default or set a different period) and adds the runbook §5 row |
 
 Development may start when the two pending signatures are recorded in new sections below this one.
+
+---
+
+## 11. Stage 8 Compliance Review — `compliance-specialist` (2026-10-29)
+
+**Appended section.** §1–§9 are not modified. **§10 is reserved for `security-engineer`'s
+parallel Stage 8 section.** This section is numbered §11 so the two appends cannot collide,
+whichever one lands first.
+
+**Verdict: APPROVE WITH CONDITIONS (compliance sign-off).** I accept the chair's SR-019-6, SR-019-7
+and SR-019-9 as compliance requirements, not only security ones, and I rule on RR-019-B below.
+Development may start on the compliance signature. **Production enablement may not start on this
+ruling alone** (§11.4).
+
+**Regime note (pre-approval checklist item 1).** This ruling is made under POPIA. TD IT Solution is
+the Operator and the Client is the Responsible Party (`10-data-protection…` §6). Partner-org
+operators are data subjects, with lawful basis s11(1)(c)/(f) (ADR-0006 §14.6 item 2). The
+collection holds no payment data, so PCI-DSS is not engaged. GDPR is not triggered by anything in
+this design. It would only be engaged by a decision to serve EU data subjects, and that decision
+has not been made. The insurance-recordkeeping floor (F-4-OI-3, runbook §5.3) attaches to
+`policies` and to claims, not to recovery-case handler attribution. If the Client's licensing
+confirmation says otherwise, this ruling must be revisited.
+
+### 11.1 Ruling on RR-019-B: operator-identity retention
+
+**Ruling: the 12-month period stands. I adopt SR-019-9's default with four specifications.**
+RR-019-B closes as **ruled**. It does not close as **enforced** until §11.4 is met.
+
+1. **Period: 12 months from `occurredAt`.** It is not longer, because the only purpose that needs
+   *operator-level* attribution is oversight and dispute handling (who on the partner's staff
+   handled this case). That purpose is served authoritatively by `admin_access_log`, which keeps
+   the same fact for 12 months (ADR-0006 line 50, ratified and re-confirmed against FAIS). §9.2
+   rules that this collection is non-authoritative and not tamper-evident. Holding the identity
+   longer in the weaker copy serves no purpose the authoritative record doesn't already serve.
+   That would fail POPIA s14(1), and it would create the AUD-7(a) asymmetry. Response-time metrics
+   (§7) and the scorecard need only org-level attribution, which is kept. It is not shorter,
+   because clearing before the audit trail does would remove attribution from the product-facing
+   view during the window when customer complaints about case handling realistically arrive. The
+   audit record would still hold the same fact, so nothing would be gained.
+2. **Lockstep, not a coincidence.** The purge job's period must come from the **same constant**
+   that defines `admin_access_log` retention. It must not be a second literal `12` that can drift.
+   If the audit retention period is ever changed (it is "asserted by us, not instructed", G-3),
+   this one changes with it, and the change needs a compliance note.
+3. **The clock runs from `occurredAt` even while the parent case is still open.** I considered
+   anchoring on `closedAt` and rejected it. That anchor would keep operator identity on
+   long-running cases beyond the audit trail, which brings back the asymmetry in item 1. The
+   current holder org stays on `recovery_cases.partnerOrganizationId` and on the event's
+   `actor.partnerOrganizationId`, so no operational capability is lost.
+4. **Legal hold must cross into this collection.** The job skips events whose parent case has
+   `legalHold: true`, as SR-019-9 specifies. In addition, the C-13/FU-A7 cross-store hold process
+   must list `recovery_case_events` in its scope. If an operator-misconduct hold is placed on
+   `admin_access_log` rows, the matching event rows must be held as well, so the purge doesn't
+   produce a half-preserved evidence set. The job's `retention_job_runs` record must carry the
+   rows skipped for hold (C-13(g)).
+
+**Erasure interactions (closes the second half of §6's open question):**
+- *Operator erasure request inside the 12 months:* **retain** until the scheduled clear. This is
+  the same reasoning as `admin_access_log` (runbook §5.1). Display already degrades to "deleted
+  user" through read-time resolution (SR-019-6(b)), so no write is needed.
+- *Customer erasure request:* SR-019-6(a) means no customer id is stored. Events follow the parent
+  case, and the parent case is **Retain** (runbook §5.2). An open case is a deferral ground
+  (§5.5(2)). If `recovery_cases` is ever erased or anonymised, the cascade is SR-019-8's.
+- *Pre-existing finding, not this feature's to fix:* `recovery_cases` (and therefore these events,
+  since they link to the customer through `caseId`) has **indefinite** retention, apart from the
+  police-report triple. That is an open retention gap on the parent. I record it here so that
+  nobody reads this ruling as approving it.
+
+### 11.2 Job specification (binding on whoever builds it)
+
+- `jobId: 'recovery_case_event_actor_purge'` is added to `RetentionJobId` **and** to the
+  `retention_job_runs` `$jsonSchema` `jobId` enum (`backend/src/db/retention-job-runs-collections.ts`
+  lines 22 and 43). The enum currently lists only the two existing jobs, so without a validator
+  update (`collMod`) the run record will be rejected.
+- Filter: `occurredAt <= cutoff`, `actor.accountId` of `$type: 'string'`, parent case not on legal
+  hold. Update: `$set: { 'actor.accountId': null }` only. `actor.type`,
+  `actor.partnerOrganizationId` and every other field are untouched. The job is idempotent.
+- Cadence: at least monthly. The maximum overrun past 12 months is therefore about 31 days, and the
+  privacy notice and partner clause (§11.3) must describe the period as "12 months" consistently
+  with this.
+- Tests: the job clears only rows past the cutoff, preserves `type` and `partnerOrganizationId`,
+  skips held cases, writes a `retention_job_runs` record including the skip count, and stays
+  outside the repository module (SR-019-8's export test unchanged).
+- Index support is `database-architect`'s call.
+
+### 11.3 Confirmation of SR-019-6 and SR-019-7 on compliance grounds
+
+- **SR-019-6: confirmed as a compliance requirement.** (a) Storing a null customer id is the
+  minimisation outcome POPIA s10 requires, because the id is fully recoverable from the parent.
+  (b) Opaque operator UUIDs only, with no name, email or role denormalised. Any denormalised
+  identity field would itself need a retention ruling, so adding one later reopens this section.
+- **SR-019-7: confirmed.** The `recordDetail` disclosure row written fail-closed **before** the
+  response, with `targetAccountId` set to the case owner, is what makes the read answerable under a
+  customer's s23 access request. The response tells an admin which partner staff handled that
+  customer's theft case. No purpose field is required, consistent with ADR-0006 §14.7 (admin reads,
+  Phase 1). **This exemption does not carry over to the future partner read path (§9.5).** Partner
+  access requires a mandatory purpose/case reference under §14.7's second bullet. The
+  default-off flag in SR-019-7(f) is accepted.
+- **§9.5 item 2, the PDM question put to me:** for the *future* partner surface, the ruling now is
+  that another org's **identity** (its `partnerOrganizationId`) is also **not disclosed** to a
+  later claimant by default. The partner sees only that "another organisation" held the case.
+  Disclosing it needs a stated purpose in that feature's own Stage 8. This is a default, not a
+  final ruling on that surface.
+- **Operator notification (s18).** ADR-0006 C-15 already requires a partner-agreement clause
+  telling operators that their access is logged. **That clause's scope must be extended to state
+  that case actions are recorded in case history, attributed to the individual operator for 12
+  months and to the organisation for the life of the case.** It is not an additional gate, because
+  C-15 already blocks the first production partner-operator account and no events can be written
+  without one. It must be in the clause text when that clause is drafted.
+
+### 11.4 The production-enablement flag: is it satisfied by this ruling?
+
+**No. The ruling is necessary but not sufficient.** SR-019-9 reads "until the ruling exists *or*
+the default job is built". I am tightening that to **and**: I adopted the default, so the job is
+the enforcement mechanism, and this program does not accept policy-only retention. The existing
+audit trail shows why that matters: `admin_access_log` has a 12-month policy and a purge index
+(`admin_access_log_createdAt_purge_partial`, `feature004-collections.ts:464`), but **no purge job
+exists anywhere** in `backend/src` or `backend/scripts` (checked 2026-10-29). The flag may flip to
+on in production only when all of the following hold:
+
+1. This ruling is recorded. **Done.**
+2. `recovery_case_event_actor_purge` is built to §11.2, tested, and **actually scheduled**, and
+   `security-engineer` verifies it at Stage 10. "Nothing reaches 12 months for a year" is not an
+   acceptable reason to ship without it.
+3. The runbook §5.2 row exists. **Done in this change**
+   (`docs/organization/runbooks/account-deletion-request-runbook.md`).
+4. The C-15 partner clause includes the case-history scope from §11.3. This is coupled to the
+   existing C-15 trigger rather than being a new gate.
+
+**New finding, filed separately from OB-04 so it doesn't block it: F-019-C1.** The
+`admin_access_log` 12-month retention (FU-A8) is ruled but **not enforced**, because no purge job
+exists. Owners are `database-architect` and `backend-engineer`, and it is a go-live blocker under
+the same reasoning as §11.4(2). Until it is built, the "equal periods" relationship in §11.1 holds
+at policy level only. The events purge must not wait for it. When this collection's job is built
+first, it is correct and the audit trail is the one out of compliance.
+
+### 11.5 Gate status (compliance)
+
+| Signatory | Status |
+|---|---|
+| `compliance-specialist` | **Approve with conditions**, 2026-10-29. RR-019-B ruled (12 months, lockstep, `occurredAt` clock, cross-store hold). Production enablement requires §11.4 items 1–4. F-019-C1 filed |
+
+## 10. `security-engineer` second signature under §9.7's joint-gate rule (2026-10-29)
+
+**Appended section. §1–§9 above are unmodified; where I disagree I cite the section rather than
+edit it.** This feature is design-only — no code exists yet under `backend/src/repositories/
+recovery-case-events.ts` or any route (confirmed by grep: no such file, no `/events` route under
+`recovery-cases`). My review is therefore of the chair's conditions for completeness and
+sufficiency against the code they target (`recovery-cases.ts`, `security-cases.ts`, `recovery.ts`,
+`support-lookup.ts`, `mongo-pagination.ts`), not a Stage 10 implementation verification — that
+happens once SR-019-1 through SR-019-8 are built, per §9.7.
+
+### 10.1 Independent spot-checks against the current code
+
+I re-derived, rather than took on trust, the two code-versus-doc discrepancies §9.1 relies on most:
+
+- `mongoCursorFilter` (`backend/src/lib/mongo-pagination.ts:70`) is confirmed hard-wired to
+  `createdAt` descending with an `_id` tiebreak, as §9.1 states. SR-019-7(d)'s recommended fix
+  (reuse the helper as-is, sort `{ createdAt: -1, _id: -1 }`, let the UI reverse for display) is the
+  correct minimal-risk choice — it avoids introducing a second, bespoke cursor encoder for a
+  security-adjacent read path with no existing test coverage to lean on.
+- The five status-mutating `recoveryCasesRepo` methods each call their own `new Date()` internally
+  (`recovery-cases.ts:577,742,851,917,960`, confirmed), none accept an injected timestamp. SR-019-3's
+  fix (derive `occurredAt` from the CAS result's own `updatedAt`, which none of the tier projections
+  exclude) is sound and keeps the repository's compare-and-set surface untouched, consistent with
+  §4's own stated goal of not reopening that logic.
+
+### 10.2 Conditions I confirm are sufficient as written
+
+**SR-019-1 (trusted-source fields only), SR-019-4 (structural location/PII exclusion via strict
+discriminated-union zod schema, no spreading into `insertOne`), SR-019-6 (actor minimisation),
+SR-019-7(a)–(e) (admin-only, rate-limited, disclosure-audited, allowlist-serialized read path), and
+SR-019-8 (append-only held structural by export-set test, cascade deletion handled explicitly) —
+each independently closes the specific risk class it targets (authZ/IDOR, NoSQL
+object-injection/field-creep, PII minimisation, PDM-8 disclosure, orphaned-PII-on-delete) using
+mechanisms already proven elsewhere in this codebase (`OFFER_TIER_FIELD_EXCLUSION_PROJECTION`-style
+structural guarantees, the existing admin rate-limiter class, the existing
+`adminAccessLog.recordDetail` disclosure pattern). I have no changes to propose to any of these five.
+
+**SR-019-2's ruling that §4.1 is wrong is correct, and the replacement is right-sized.** A 5xx for a
+succeeded mutation is a worse outcome than a detectable, alertable gap in a non-authoritative,
+non-tamper-evident collection that §9.2 is explicit is not the audit record. Deferring the
+reconciliation job itself to RR-019-A rather than build-blocking it is the correct call *given* the
+`append_failed` alert exists as an interim detective control and the admin UI is gated from shipping
+while RR-019-A is open (SR-019-2(d), reinforced by SR-019-7(f)'s env-flag gate). I would not accept
+this deferral without both of those two tethers being present — they both are.
+
+**SR-019-9 (retention/erasure) is the right production gate and the default is defensible**,
+mirroring the Feature 011 `police-report-retention.ts` mechanism this role already verified in §13
+of `011-saps-case-reporting/security-review.md` above (same `retention_job_runs` evidencing, same
+`legalHold` override, same field-clear-not-document-delete pattern). Routing the ruling to
+`compliance-specialist` rather than defaulting silently is consistent with this platform's standing
+practice (the same posture Feature 011's RR-011-3 took with `cto`).
+
+### 10.3 Gaps the chair's review did not cover — additions, not corrections
+
+1. **Stage 8 manifest coverage is not mentioned anywhere in §9, and Feature 011's own Stage 8 record
+   (just re-reviewed by this role today, `docs/features/011-saps-case-reporting/security-review.md`
+   §6/§10.3) shows exactly how this gap gets exploited: a new route lands absorbed into an unrelated
+   feature's waiver, and `verify-stage8-manifest.mjs` reports PASS having never looked at it.** When
+   `GET /v1/admin/recovery-cases/:caseId/events` is built, it must get its own
+   `docs/organization/gates/stage8-manifest.json` entry pointing at this document (and, if the SR-019-9
+   purge job gets its own CLI script per the `police-report-retention-purge.ts` pattern, that script
+   should be named in the same entry or a sibling one) — landing in the same commit as the route,
+   per Feature 011's SR-011-6 precedent. I add this as **SR-019-10**, build-blocking at the same point
+   SR-019-7's route is built, owner `backend-engineer`, verified `security-engineer`.
+2. **SR-019-2(c)'s dedup key only protects against the same server-side attempt being replayed
+   (e.g. an internal retry reusing the same `auditRequestId`), not a client-level HTTP retry that
+   generates a fresh request and therefore a fresh `auditRequestId`.** That residual gap is already
+   implicitly covered by RR-019-A's "may be incomplete" framing and does not need a new condition,
+   but §9.3's SR-019-2(c) text reads as if the dedup index closes the retry problem generally. I'd
+   ask that the eventual implementation PR's comment on that index say explicitly what it does and
+   does not dedupe, so a future reader doesn't assume broader protection than exists. Not a
+   build-blocker; a documentation precision for whoever builds it.
+3. **Log-injection on the one new unconditional write path (`case_created`).** SR-019-2(a) already
+   restricts the failure-path log to `caseId`/`eventType`/`auditRequestId`/error class, which is
+   sufficient, but I'd note for the implementer that `caseId` in that log line should be the DB
+   `_id` (per SR-019-1, never `req.params.caseId`) even in the failure-log path — a failed append
+   logging an attacker-influenced raw param would reopen the exact injection-into-logs concern
+   SR-019-1 closes for the data path. Worth a one-line test at Stage 10, not a new condition.
+
+None of the above change the verdict or require a new round of design. They are implementation-time
+precision items for whoever picks this up, consistent with the chair's own framing that
+SR-019-1–8 are verified by `security-engineer` "at Stage 10" against actual code.
+
+### 10.4 Verdict
+
+**CONCUR — Approve with conditions, joint signature under §9.7.** I find the chair's SR-019-1
+through SR-019-9 complete for every realistic exploitation path against this design (IDOR, NoSQL
+object/field injection, PII over-retention, disclosure to the wrong party, location-field creep,
+silent integrity gap), correctly scoped between build-blocking and production-enablement-blocking,
+and grounded in mechanisms this codebase has already proven out on an adjacent, harder problem
+(Feature 011's police-report exclusion/retention discipline). I add one new condition
+(**SR-019-10**, Stage 8 manifest coverage for the eventual route) based on a gap this same review
+pass found live in Feature 011 today, and two non-blocking implementation notes (§10.3.2–3).
+
+| Signatory | Status |
+|---|---|
+| `cybersecurity-architect` | Approve with conditions (SR-019-1 to SR-019-8 build-blocking, SR-019-9 production-enablement-blocking), 2026-10-29 — §9 |
+| `security-engineer` | **Concur — approve with conditions**, adds SR-019-10 (Stage 8 manifest entry, build-blocking at route build time), 2026-10-29 — this section |
+| `compliance-specialist` | Pending. Rules on SR-019-9 and adds the runbook §5 row |
+
+**Does not discharge:** Stage 8 as a whole — `compliance-specialist`'s signature on SR-019-9 is
+still outstanding and is the third required signature. No code exists yet to verify at Stage 10.
