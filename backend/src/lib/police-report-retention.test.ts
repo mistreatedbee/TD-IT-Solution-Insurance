@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { ObjectId, type Db } from 'mongodb';
 import {
   buildRetentionPurgeFilter,
+  buildRetentionPurgeBaseFilter,
   computeRetentionCutoff,
   runPoliceReportRetentionPurge,
 } from './police-report-retention.js';
@@ -52,10 +53,13 @@ function matches(doc: RawDoc, filter: Record<string, unknown>): boolean {
   });
 }
 
-function createFakeDb(seed: RawDoc[]): { db: Db; docs: RawDoc[] } {
+function createFakeDb(
+  seed: RawDoc[],
+): { db: Db; docs: RawDoc[]; runLogRows: Array<Record<string, unknown>> } {
   const docs = seed.map((d) => ({ ...d }));
+  const runLogRows: Array<Record<string, unknown> & { _id: ObjectId }> = [];
 
-  const collection = {
+  const recoveryCasesCollection = {
     find(filter: Record<string, unknown>) {
       const results = docs.filter((d) => matches(d, filter));
       const cursor = {
@@ -80,11 +84,28 @@ function createFakeDb(seed: RawDoc[]): { db: Db; docs: RawDoc[] } {
     },
   };
 
+  // §9.4 two-phase write — a minimal fake of the `retention_job_runs` collection
+  // surface (insertOne + updateOne), kept separate from `recovery_cases` by name so
+  // the two don't collide the way a single shared fake would.
+  const retentionJobRunsCollection = {
+    async insertOne(doc: Record<string, unknown>) {
+      const _id = new ObjectId();
+      runLogRows.push({ ...doc, _id });
+      return { insertedId: _id };
+    },
+    async updateOne(filter: { _id: ObjectId }, update: { $set: Record<string, unknown> }) {
+      const row = runLogRows.find((r) => String(r._id) === String(filter._id));
+      if (row) Object.assign(row, update.$set);
+      return { modifiedCount: row ? 1 : 0 };
+    },
+  };
+
   const db = {
-    collection: () => collection,
+    collection: (name: string) =>
+      name === 'retention_job_runs' ? retentionJobRunsCollection : recoveryCasesCollection,
   } as unknown as Db;
 
-  return { db, docs };
+  return { db, docs, runLogRows };
 }
 
 function baseDoc(overrides: Partial<RawDoc> = {}): RawDoc {
@@ -126,6 +147,21 @@ describe('buildRetentionPurgeFilter — consistency with recovery_cases_closed_a
     // C-011-11: widened from a literal 'closed' to cover both terminal statuses.
     expect(filter.status).toEqual({ $in: ['closed', 'recovered'] });
     expect(filter.legalHold).toEqual({ $ne: true });
+  });
+});
+
+describe('buildRetentionPurgeBaseFilter — §9.6 gap fix (no legalHold exclusion)', () => {
+  it('mirrors buildRetentionPurgeFilter except it omits the legalHold clause entirely', () => {
+    const cutoff = new Date('2021-01-01T00:00:00.000Z');
+    const base = buildRetentionPurgeBaseFilter(cutoff);
+    expect(base.legalHold).toBeUndefined();
+    expect(base.status).toEqual({ $in: ['closed', 'recovered'] });
+    expect(base.closedAt).toEqual({ $lte: cutoff });
+    expect(base.$or).toEqual([
+      { sapsCaseNumber: { $type: 'string' } },
+      { reportingStation: { $type: 'string' } },
+      { reportedToPoliceAt: { $type: 'date' } },
+    ]);
   });
 });
 
@@ -186,16 +222,42 @@ describe('runPoliceReportRetentionPurge', () => {
     expect(docs[0]!.sapsCaseNumber).toBe('CAS-1/1/2020');
   });
 
-  it('does not match a case under legalHold, even if otherwise eligible', async () => {
+  it('does not clear a case under legalHold, even if otherwise eligible, but DOES surface it via legalHoldSkippedIds (§9.6)', async () => {
+    // database-design.md §9.6: the base filter no longer excludes legalHold at the
+    // query level, so a held case still counts in matchedCount/candidatesFound and its
+    // id is surfaced in legalHoldSkippedIds — only clearedCount stays 0 for it. This is
+    // a deliberate behaviour change from the previous "excluded entirely" semantics.
     const id = new ObjectId();
     const longAgo = new Date('2019-01-01T00:00:00.000Z');
     const { db, docs } = createFakeDb([baseDoc({ _id: id, closedAt: longAgo, legalHold: true })]);
 
     const summary = await runPoliceReportRetentionPurge(db, { dryRun: false, now: RUN_AT });
 
-    expect(summary.candidatesFound).toBe(0);
+    expect(summary.candidatesFound).toBe(1);
     expect(summary.cleared).toBe(0);
+    expect(summary.legalHoldSkippedIds).toEqual([String(id)]);
     expect(docs[0]!.sapsCaseNumber).toBe('CAS-1/1/2020');
+  });
+
+  it('§9.6: splits a mixed batch into cleared vs. legal-hold-skipped, both reflected in the summary', async () => {
+    const heldId = new ObjectId();
+    const clearableId = new ObjectId();
+    const longAgo = new Date('2019-01-01T00:00:00.000Z');
+    const { db, docs } = createFakeDb([
+      baseDoc({ _id: heldId, closedAt: longAgo, legalHold: true }),
+      baseDoc({ _id: clearableId, closedAt: longAgo, legalHold: false }),
+    ]);
+
+    const summary = await runPoliceReportRetentionPurge(db, { dryRun: false, now: RUN_AT });
+
+    expect(summary.candidatesFound).toBe(2);
+    expect(summary.cleared).toBe(1);
+    expect(summary.legalHoldSkippedIds).toEqual([String(heldId)]);
+
+    const held = docs.find((d) => String(d._id) === String(heldId))!;
+    const cleared = docs.find((d) => String(d._id) === String(clearableId))!;
+    expect(held.sapsCaseNumber).toBe('CAS-1/1/2020');
+    expect(cleared.sapsCaseNumber).toBeNull();
   });
 
   it('C-011-11: matches and clears a "recovered" case past the retention floor, not just "closed"', async () => {
@@ -294,6 +356,47 @@ describe('runPoliceReportRetentionPurge', () => {
 
     expect(summary.cleared).toBe(1);
     expect(docs[0]!.reportingStation).toBeNull();
+  });
+
+  it('§9.4: writes a two-phase retention_job_runs row — pessimistic insert, then a completion update to success', async () => {
+    const id = new ObjectId();
+    const longAgo = new Date('2019-01-01T00:00:00.000Z');
+    const { db, runLogRows } = createFakeDb([baseDoc({ _id: id, closedAt: longAgo })]);
+
+    const summary = await runPoliceReportRetentionPurge(db, { dryRun: false, now: RUN_AT });
+
+    expect(summary.runLogError).toBeUndefined();
+    expect(runLogRows).toHaveLength(1);
+    const row = runLogRows[0]!;
+    expect(row.jobId).toBe('police_report_retention_purge');
+    expect(row.dryRun).toBe(false);
+    // Completion update overwrote the pessimistic 'failed' default.
+    expect(row.outcome).toBe('success');
+    expect(row.completedAt).not.toBeNull();
+    expect(row.matchedCount).toBe(1);
+    expect(row.clearedCount).toBe(1);
+    expect(row.legalHoldSkippedCount).toBe(0);
+    expect(row.legalHoldSkippedIds).toEqual([]);
+    expect(row.errorMessage).toBeNull();
+  });
+
+  it('§9.4/§9.6: a run with a legal-hold-skipped case logs partial_failure-free success with legalHoldSkippedIds populated', async () => {
+    const heldId = new ObjectId();
+    const longAgo = new Date('2019-01-01T00:00:00.000Z');
+    const { db, runLogRows } = createFakeDb([
+      baseDoc({ _id: heldId, closedAt: longAgo, legalHold: true }),
+    ]);
+
+    await runPoliceReportRetentionPurge(db, { dryRun: false, now: RUN_AT });
+
+    const row = runLogRows[0]!;
+    // matchedCount counts the held case; clearedCount excludes it; the remainder is
+    // fully explained by legalHoldSkippedCount, so this is still a clean "success".
+    expect(row.matchedCount).toBe(1);
+    expect(row.clearedCount).toBe(0);
+    expect(row.legalHoldSkippedCount).toBe(1);
+    expect(row.legalHoldSkippedIds).toEqual([String(heldId)]);
+    expect(row.outcome).toBe('success');
   });
 
   it('processes multiple matching cases in one run', async () => {

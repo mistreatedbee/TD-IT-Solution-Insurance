@@ -17,6 +17,7 @@ import { bootstrapProductEventsCollections } from './product-events-collections.
 import { bootstrapSupportCaseCollections } from './support-case-collections.js';
 import { bootstrapLocationConsentCollections } from './location-consent-collections.js';
 import { bootstrapClaimsCollections } from './claims-collections.js';
+import { bootstrapRetentionJobRunsCollections } from './retention-job-runs-collections.js';
 import { createPlanCatalogRepo } from '../repositories/plan-catalog.js';
 
 export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
@@ -92,6 +93,14 @@ export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
   } catch (err) {
     console.error(
       '[startup] Claims collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+    await bootstrapRetentionJobRunsCollections(db);
+  } catch (err) {
+    console.error(
+      '[startup] Retention job runs collection bootstrap failed:',
       err instanceof Error ? err.message : err,
     );
   }

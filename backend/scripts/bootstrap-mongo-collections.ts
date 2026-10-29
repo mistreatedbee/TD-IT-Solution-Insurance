@@ -25,6 +25,7 @@ import { bootstrapTrackingDeviceCollections } from '../src/db/tracking-device-co
 import { bootstrapLocationEventsCollections } from '../src/db/location-events-collections.js';
 import { bootstrapAlertsCollections } from '../src/db/alerts-collections.js';
 import { bootstrapProductEventsCollections } from '../src/db/product-events-collections.js';
+import { bootstrapRetentionJobRunsCollections } from '../src/db/retention-job-runs-collections.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,6 +123,12 @@ async function main(): Promise<void> {
     await bootstrapProductEventsCollections(db);
     // eslint-disable-next-line no-console
     console.log('[bootstrap-mongo] product_events: indexes ensured');
+
+    const retentionJobRuns = await bootstrapRetentionJobRunsCollections(db);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[bootstrap-mongo] retention_job_runs: ${retentionJobRuns.created ? 'created' : 'already existed'}, indexes ensured`,
+    );
 
     // eslint-disable-next-line no-console
     console.log('[bootstrap-mongo] Done.');

@@ -22,16 +22,23 @@
  * that same `$type`-based `$or` so this job's query is covered by the partial index
  * rather than falling back to a collection scan.
  *
- * Run-log durability: database-design.md §5.3 and security-review.md SR-011-4.4 both
- * name that this repo has no durable, queryable run-log collection for any
- * retention/purge job today, and that stdout-only evidencing is the accepted interim
- * control pending an explicit `devops-engineer`/`security-engineer`/`cto` decision — not
- * silently assumed adequate. This module does not invent a new collection for that;
- * `runPoliceReportRetentionPurge`'s return value is the structured summary the caller
- * (the `backend/scripts/police-report-retention-purge.ts` CLI) prints to stdout as JSON.
+ * Run-log durability: database-design.md §9 (appended by `database-architect`,
+ * 2026-10-29) replaces the stdout-only evidencing this comment used to describe —
+ * discharging `cto`'s RR-011-3 ruling (security-review.md §11) that stdout-only
+ * evidencing is rejected. `runPoliceReportRetentionPurge` now performs the §9.4
+ * two-phase write (pessimistic insert at job start, completion update) against the
+ * `retention_job_runs` collection (`backend/src/db/retention-job-runs-collections.ts`),
+ * in addition to returning the same structured summary the caller (the
+ * `backend/scripts/police-report-retention-purge.ts` CLI) still prints to stdout as
+ * JSON — the durable row is the source of truth; stdout remains a convenience.
  */
-import { type Collection, type Db, type Document } from 'mongodb';
+import { type Collection, type Db, type Document, ObjectId } from 'mongodb';
 import { POLICE_REPORT_RETENTION_YEARS } from '../repositories/recovery-cases.js';
+import {
+  RETENTION_JOB_RUNS_COLLECTION,
+  type RetentionJobOutcome,
+  type RetentionJobTriggeredBy,
+} from '../db/retention-job-runs-collections.js';
 
 export interface PoliceReportRetentionPurgeSummary {
   runAt: string;
@@ -41,7 +48,11 @@ export interface PoliceReportRetentionPurgeSummary {
   candidatesFound: number;
   cleared: number;
   candidateIds: string[];
+  /** §9.6: ids matched by the base filter but excluded from clearing because legalHold was true. */
+  legalHoldSkippedIds: string[];
   error: string | null;
+  /** Set when `retention_job_runs` logging is skipped/fails — never set on a successful log write. */
+  runLogError?: string | null;
 }
 
 /**
@@ -62,6 +73,27 @@ export function buildRetentionPurgeFilter(cutoff: Date): Document {
     status: { $in: ['closed', 'recovered'] },
     closedAt: { $lte: cutoff },
     legalHold: { $ne: true },
+    $or: [
+      { sapsCaseNumber: { $type: 'string' } },
+      { reportingStation: { $type: 'string' } },
+      { reportedToPoliceAt: { $type: 'date' } },
+    ],
+  };
+}
+
+/**
+ * database-design.md §9.6 gap fix: the same filter as `buildRetentionPurgeFilter`
+ * MINUS the `legalHold` exclusion — used to find the full candidate set (held and
+ * clear-eligible together) so the two can be told apart, rather than the previous
+ * behaviour of excluding `legalHold: true` at the query level and never surfacing
+ * which ids those were. `buildRetentionPurgeFilter` itself is left unchanged (still
+ * the exact filter actually used for the `updateMany` clear) so this is additive, not
+ * a breaking change to that function's contract.
+ */
+export function buildRetentionPurgeBaseFilter(cutoff: Date): Document {
+  return {
+    status: { $in: ['closed', 'recovered'] },
+    closedAt: { $lte: cutoff },
     $or: [
       { sapsCaseNumber: { $type: 'string' } },
       { reportingStation: { $type: 'string' } },
@@ -110,6 +142,67 @@ export interface RunPoliceReportRetentionPurgeOptions {
   now?: Date;
   /** Injectable for deterministic tests; defaults to `POLICE_REPORT_RETENTION_YEARS`. */
   retentionYears?: number;
+  /** §9.2 `triggeredBy` — defaults to omitted (not required by the base validator yet). */
+  triggeredBy?: RetentionJobTriggeredBy;
+}
+
+const RETENTION_JOB_ID = 'police_report_retention_purge' as const;
+
+/**
+ * §9.4 two-phase write — insert-at-start. Failure to log is never fatal to the purge
+ * itself (the run-log collection is evidencing, not a gate on the retention control
+ * actually running) — caught and surfaced via `runLogError` on the returned summary.
+ */
+async function insertRunLogStart(
+  db: Db,
+  startedAt: Date,
+  dryRun: boolean,
+): Promise<{ id: ObjectId | null; error: string | null }> {
+  try {
+    const runsCollection: Collection<Document> = db.collection(RETENTION_JOB_RUNS_COLLECTION);
+    const result = await runsCollection.insertOne({
+      jobId: RETENTION_JOB_ID,
+      startedAt,
+      completedAt: null,
+      dryRun,
+      cutoffDate: null,
+      outcome: 'failed' as RetentionJobOutcome, // pessimistic default per §9.4 — overwritten on completion
+      matchedCount: 0,
+      clearedCount: 0,
+      legalHoldSkippedCount: 0,
+      legalHoldSkippedIds: [],
+      errorMessage: null,
+      createdAt: startedAt,
+    });
+    return { id: result.insertedId as ObjectId, error: null };
+  } catch (err) {
+    return { id: null, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** §9.4 two-phase write — completion update. Never fatal; see `insertRunLogStart`. */
+async function updateRunLogCompletion(
+  db: Db,
+  runId: ObjectId | null,
+  fields: {
+    completedAt: Date;
+    cutoffDate: Date;
+    outcome: RetentionJobOutcome;
+    matchedCount: number;
+    clearedCount: number;
+    legalHoldSkippedCount: number;
+    legalHoldSkippedIds: string[];
+    errorMessage: string | null;
+  },
+): Promise<string | null> {
+  if (!runId) return null;
+  try {
+    const runsCollection: Collection<Document> = db.collection(RETENTION_JOB_RUNS_COLLECTION);
+    await runsCollection.updateOne({ _id: runId }, { $set: fields });
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
 }
 
 /**
@@ -121,6 +214,12 @@ export interface RunPoliceReportRetentionPurgeOptions {
  * Not a Mongo transaction — `updateMany` against a single collection with a single
  * filter is already atomic per-document, and this job has no cross-collection
  * invariant to preserve.
+ *
+ * §9.6 gap fix: the candidate set is now computed from `buildRetentionPurgeBaseFilter`
+ * (no `legalHold` exclusion at the query level), then split in-memory into
+ * clear-eligible vs. legal-hold-skipped, so `legalHoldSkippedIds` can be populated —
+ * the actual `updateMany` clear still uses `buildRetentionPurgeFilter` (which does
+ * exclude `legalHold: true`), so write behaviour is unchanged.
  */
 export async function runPoliceReportRetentionPurge(
   db: Db,
@@ -129,27 +228,54 @@ export async function runPoliceReportRetentionPurge(
   const now = options.now ?? new Date();
   const retentionYears = options.retentionYears ?? POLICE_REPORT_RETENTION_YEARS;
   const cutoff = computeRetentionCutoff(now, retentionYears);
-  const filter = buildRetentionPurgeFilter(cutoff);
+  const baseFilter = buildRetentionPurgeBaseFilter(cutoff);
+  const clearFilter = buildRetentionPurgeFilter(cutoff);
   const collection: Collection<Document> = db.collection('recovery_cases');
 
+  const { id: runId, error: startLogError } = await insertRunLogStart(db, now, options.dryRun);
+
   let candidateIds: string[] = [];
+  let legalHoldSkippedIds: string[] = [];
   let cleared = 0;
   let error: string | null = null;
 
   try {
     const candidates = await collection
-      .find(filter)
-      .project({ _id: 1 })
+      .find(baseFilter)
+      .project({ _id: 1, legalHold: 1 })
       .toArray();
     candidateIds = candidates.map((c) => String(c._id));
+    legalHoldSkippedIds = candidates
+      .filter((c) => c.legalHold === true)
+      .map((c) => String(c._id));
 
-    if (!options.dryRun && candidateIds.length > 0) {
-      const result = await collection.updateMany(filter, buildClearUpdate(now));
+    if (!options.dryRun && candidateIds.length - legalHoldSkippedIds.length > 0) {
+      const result = await collection.updateMany(clearFilter, buildClearUpdate(now));
       cleared = result.modifiedCount;
     }
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
   }
+
+  const expectedCleared = candidateIds.length - legalHoldSkippedIds.length;
+  const outcome: RetentionJobOutcome = error
+    ? 'failed'
+    : !options.dryRun && cleared !== expectedCleared
+      ? 'partial_failure'
+      : 'success';
+
+  const completionLogError = await updateRunLogCompletion(db, runId, {
+    completedAt: new Date(),
+    cutoffDate: cutoff,
+    outcome,
+    matchedCount: candidateIds.length,
+    clearedCount: cleared,
+    legalHoldSkippedCount: legalHoldSkippedIds.length,
+    legalHoldSkippedIds,
+    errorMessage: error,
+  });
+
+  const runLogError = startLogError ?? completionLogError ?? null;
 
   return {
     runAt: now.toISOString(),
@@ -159,6 +285,8 @@ export async function runPoliceReportRetentionPurge(
     candidatesFound: candidateIds.length,
     cleared,
     candidateIds,
+    legalHoldSkippedIds,
     error,
+    ...(runLogError ? { runLogError } : {}),
   };
 }
