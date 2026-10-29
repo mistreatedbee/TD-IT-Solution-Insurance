@@ -443,3 +443,132 @@ this directory.
 
 **Filed by:** `database-architect`, 2026-10-23 — confirms §3 for Stage 9; does not substitute
 for Stage 8 (`security-engineer`) or Stage 10 (QA).
+
+---
+
+## 9. `security-engineer` Stage 8 review, 2026-10-29
+
+Reviewed as-landed code against this design: `backend/src/repositories/customer-profiles.ts`
+(full file), `backend/src/routes/admin-verification.ts` (full file), `backend/src/routes/
+customer-profile.ts` (`PATCH /account/profile`, `POST /account/profile/verification/submit`),
+`backend/src/repositories/audit-log.ts` (event-type set, `decision` column plumbing,
+`assertInvariants`), `backend/migrations/038_defect001_verification_decision_audit_event_types.sql`,
+`backend/migrations/039_defect001_verification_decision_column.sql`, `src/admin/api/
+admin-verification.ts` + `src/admin/pages/AdminVerificationPages.tsx` (frontend half of the
+`expectedRevision` round-trip), and the existing test suites (`customer-profiles.test.ts`,
+`admin-verification.test.ts`, `customer-profile.test.ts`). Ran `cd backend && npx vitest run`
+against the three files directly implicated: **28/28 passing.**
+
+### 9.1 Does the CAS (`expectedRevision`) actually prevent the approval race it claims to fix? — Yes, confirmed closed
+
+- `reviewVerification()`'s write is `findOneAndUpdate({ accountId, verificationStatus:
+  'pending_review', verificationRevision: expectedRevision }, ...)` — all three predicates
+  evaluated atomically by MongoDB against the single candidate document; there is no
+  read-then-write gap on the admin side. The earlier pre-check (`profile.verificationRevision
+  !== expectedRevision`) is cosmetic (fast error path) and does not weaken the authoritative
+  filter, as the design states.
+- `verificationRevision` has exactly two writers, both atomic `$inc`: `submitVerification()`
+  (every genuine resubmission) and `identityUpdateForAccount()`'s `verified -> in_progress`
+  reset branch. Neither is a read-modify-write on the counter itself (no `current.revision + 1`
+  computed in application code) — both use `$inc`, so concurrent resubmissions cannot clobber
+  each other's bump.
+- **ABA case verified by code reading, not just by design logic:** `pending_review`(rev 1) ->
+  admin sets `action_required` (revision untouched — confirmed `reviewVerification`'s `$set`
+  carries no `$inc`) -> customer edits (no lock while `action_required`, no revision change,
+  confirmed `identityUpdateForAccount`'s `verified` branch is the only one that increments, and
+  `action_required`/`rejected`/`in_progress` take no `extraInc` branch) -> resubmit (rev -> 2) ->
+  a stale admin page holding `expectedRevision: 1` cannot match `verificationRevision: 2` in the
+  filter -> `REVISION_MISMATCH` -> 409. Matches the test at
+  `customer-profiles.test.ts` describe block `'ABA resubmission race (§4.3)'`, which passes.
+- **Simple TOCTOU is closed by composition**, not by the revision check alone: a customer cannot
+  edit identity-bearing fields while `pending_review` at all — `identityUpdateForAccount` throws
+  `ProfileVerificationLockedError` before any write is attempted whenever `currentStatus ===
+  'pending_review'`, checked first as the design specifies. So the data an admin is reviewing
+  cannot change out from under them while the record is actually under review; the revision
+  check's job is specifically the *resubmission* (ABA) case, which it closes as shown above.
+- **State-overlap check:** the customer-side lock/reset branch (`identityUpdateForAccount`) and
+  the admin-side CAS (`reviewVerification`) key off disjoint states — the customer branch only
+  resets from `verified`, and only locks (never writes) while `pending_review`; the admin branch
+  only ever writes while `verificationStatus: 'pending_review'`. There is no document state in
+  which both a customer identity-write and an admin decision-write can race each other, so no
+  additional cross-path CAS is needed beyond what's already there. Confirmed by reading, no gap
+  found.
+- `identityUpdateForAccount`'s own retry-once CAS loop (customer-vs-customer or
+  customer-vs-admin-driven-status-change) is correctly scoped: filter is
+  `{accountId, verificationStatus: currentStatus}` (or `{accountId}` on first-ever insert), retried
+  once if the write misses, then hard-fails with a clean 500-class error rather than silently
+  falling back to an unconditional `$set` — matches the "fail closed" standard.
+
+**Verdict on this specific question: the CAS correctly and completely closes the approval race
+described in Defect 2, including both the simple-TOCTOU and ABA sub-cases.** No exploitable gap
+found in the revision mechanism itself.
+
+### 9.2 Other findings
+
+- **Auth/authZ:** both routes require `authenticate` + `requireUserType('admin')`;
+  the decision route additionally requires `requireStepUp(ctx, STEP_UP_WINDOW_SECONDS
+  .invitationIssuance)` ahead of any read/write of the subject profile, consistent with
+  ADR-0012 SU-FU-1 treating verification status as a trust primitive. No IDOR: `:id` is
+  looked up via `ctx.accounts.findById`/`findByIdForAdminDetail` and gated on
+  `account.userType === 'customer'`, not trusted blindly.
+- **Input validation:** `idParamsSchema` (`z.string().uuid()`), `reviewBodySchema` (`decision`
+  enum, `expectedRevision: z.number().int().nonnegative()` — no default, so a caller cannot
+  omit it and get an unchecked write; a missing/non-numeric value is a 400, not a bypass).
+  `rejectionReasonCustomerSafe` required when `decision` is `rejected`/`action_required`,
+  enforced both at the schema (optional) and explicitly in the handler. No raw user input
+  reaches a MongoDB query as an operator or unescaped key anywhere in this path — `patch` on the
+  customer side is built field-by-field from fixed string keys (`customer-profile.ts`), never
+  from `Object.keys(req.body)` directly, so there's no object-injection route to `$where` or
+  operator-keyed fields. `accountId` driving all Mongo filters originates from `req.auth` (server
+  session) or a UUID-validated path param, never an unvalidated free-text field.
+- **Rate limiting:** present on all four routes (`admin-verification-list`,
+  `admin-verification-count`, `admin-profile-detail`, `admin-profile-review`), keyed per-admin
+  account, consistent with existing conventions elsewhere in this file.
+- **Audit trail (property (d)):** `customer_identity_reset` (subject=actor=customer, correctly
+  excluded from `PRIVILEGED_ACCESS_EVENT_TYPES`) and `customer_verification_decision`
+  (subject=customer, actor=admin, correctly included in `PRIVILEGED_ACCESS_EVENT_TYPES`, carries
+  `decision`) are both present and wired as designed in `audit-log.ts`. The decision event is
+  written in addition to, not instead of, the existing generic `privileged_data_access` row, as
+  §5 requires. `assertInvariants()` enforces `decision` is set iff `eventType ===
+  'customer_verification_decision'` and that privileged event types carry an actor — matches the
+  two new CHECK constraints in migration 039.
+- **Migrations:** 038/039 correctly split per the `alter type ... add value` /
+  same-transaction-literal constraint (same precedent as 032/033); 039's constraints are
+  unconditionally valid (no `NOT VALID`) and that is justified by construction (brand-new enum
+  value, brand-new column, zero pre-existing non-conforming rows) — agree with
+  `database-architect`'s reasoning in §8.3.
+- **Frontend round-trip verified, not just flagged:** `src/admin/pages/AdminVerificationPages.tsx`
+  does send `expectedRevision: data.profile.verificationRevision` back on the decision call —
+  the dependency §5 flagged as required coordinated work has in fact landed, so the fix is not
+  backend-only/silently-broken on the admin UI side.
+- **Process finding, not a code defect, flagging for the record per house process:** migrations
+  038 and 039 are marked `APPLIED` directly to the production Supabase project by the account
+  owner via an ad hoc script, with a password "supplied by the owner in chat" and credential
+  rotation declined, per the migration headers' own cross-reference to `INC-003 §36/§38`. That
+  incident is already on record and the owner's decision is already noted there as a recorded
+  owner decision rather than a new lapse — not re-litigated here — but flagging explicitly in
+  this Stage 8 record since it's adjacent to identity-verification data: confirm with
+  `cybersecurity-architect`/`compliance-specialist` that INC-003's disposition is understood to
+  cover this specific application too, rather than assuming it by proximity.
+- **Minor, non-blocking:** §8.1's suggested cosmetic addition (`verificationRevision` added to
+  `customerProfilesJsonSchemaValidator` as optional `{bsonType: ['int','long']}`) was flagged as
+  a "should-do," not a blocker, for whoever implements §4 — did not verify whether it landed;
+  worth a one-line follow-up check by `backend-engineer` but it has no security impact either
+  way (the validator is already partial/non-enforcing per §8.1's own reasoning).
+
+### 9.3 Verdict
+
+**PASS — Stage 8 sign-off granted for DEFECT-001's landed implementation.** The CAS correctly
+closes the approval race (both TOCTOU and ABA sub-cases) as designed; auth, input validation,
+rate limiting, injection-resistance, and audit-trail attributability all check out against this
+role's standard Stage 8 checklist. Test suites covering this code (28 tests across
+`customer-profiles.test.ts`, `admin-verification.test.ts`, `customer-profile.test.ts`) pass. No
+code changes required from `backend-engineer` as a condition of this sign-off; the two items
+above (INC-003 applicability confirmation, §8.1 schema-validator cosmetic check) are
+housekeeping, not fixes, and don't block closing this defect-fix track's Stage 8 gate.
+
+**Filed by:** `security-engineer`, 2026-10-29 — Stage 8 technical review, concurrence from
+`cybersecurity-architect` on the architecture-level framing (CAS design, audit event
+classification per §2/§3) still recommended per the normal three-party gate convention before
+this is marked fully closed in the roadmap, but not re-blocking the implementation itself since
+no design-level concern was found.
