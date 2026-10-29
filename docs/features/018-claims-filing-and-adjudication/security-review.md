@@ -2241,3 +2241,86 @@ re-read the CR-018-12a order test. `CLAIMS_API_ENABLED` stays unset.
 | Role | Decision | Date |
 |---|---|---|
 | `cybersecurity-architect` (chair, A) | **BLOCKED. The chair has no open engineering items. Compliance-owned engineering items remain.** CR-018-11 security control CLOSED (threshold 100 at `admin-claims.ts:65`, 99/100 boundary tests). C-018-23 CLOSED. New C-018-24 (stale comment at `:53-55`, non-blocking for the chair). CR-018-12a (compliance §21.3, blocks the flip) not implemented. CR-018-11 compliance items 2c, 3 and 4 not done. Compliance has not concurred on the fix. Based on reading the working tree. Not reproduced: `tsc`, `npm test` (reported 994/994), `git show 27588b1`. Not committed by me (no shell). | 2026-10-29 |
+
+---
+
+## 23. `security-engineer` re-check of SR-018-11 against the landed code (2026-10-29)
+
+Per §17's commitment and the chair's §22 note that this re-check was still outstanding, I read the actual
+current implementation (not the design intent) of both halves of SR-018-11 / CR-018-10's placeholder guard,
+and ran the test suite myself.
+
+**1. Request-time guard — `backend/src/lib/claim-decision-notice.ts`.**
+
+- `isClaimNoticePlaceholderValue` (`:166-168`) trims the value and checks `startsWith(CLAIM_NOTICE_PLACEHOLDER_PREFIX)`
+  (`'TODO_OWNER_MUST_CONFIGURE'`, `:164`).
+- `requireConfigValue` (`:170-176`) trims the input and throws `ClaimDecisionNoticeConfigError` on **either**
+  a falsy/blank trimmed value **or** `isClaimNoticePlaceholderValue(trimmed)` — so a placeholder is rejected
+  exactly like a blank value, not treated as acceptable non-empty text. Confirmed as described.
+- `resolveNoticeConfig` (`:209-225`) calls `requireConfigValue` on all twelve `claimsNotice` fields
+  (`internalComplaintsContact`, `nfoContactName/Website/Phone/Email`, `faisOmbudContactName/Website/Phone/Email`,
+  `insurerLegalName/LicenceNumber/FspNumber`). This is every field the `Env['claimsNotice']` type declares
+  (`backend/src/config/env.ts:189-202`) — I diffed the type's key list against `resolveNoticeConfig`'s calls
+  and against the `claimsNotice` object literal in `loadEnv()` (`:494-513`); all three lists are the same
+  twelve keys. No field is skipped.
+- Call-site order in `backend/src/routes/admin-claims.ts:400-445`: the notice is built (and can throw) at
+  line 400, **before** `ctx.adminAccessLog.recordStateChange(...)` (line 497) and before the claim mutation
+  (`approveAndAdvance`/`transitionForAdmin`, line 512+). The catch block (`:439-445`) maps
+  `ClaimDecisionNoticeConfigError` to `apiError('CLAIM_NOTICE_CONFIG_INCOMPLETE')` and returns immediately —
+  nothing downstream executes. **Verified: a placeholder (or blank) config value causes the PATCH to fail
+  with no audit row and no claim state change, for all three notice-producing actions (`rejected`,
+  `approved` with a shortfall, `closed`).**
+
+**2. Boot-time guard — `backend/src/config/env.ts:515-534`.**
+
+- Runs only `if (isProduction && claimsApiEnabled)` (`:522`). `claimsApiEnabled` is the SR-018-2 kill switch
+  (`:471-472`, exact-string `"true"` fail-closed). `isProduction` is `nodeEnv === 'production'` (`:318`), the
+  same flag every other hard-stop boot guard in this function uses (e.g. the Supabase CA-cert check at
+  `:331`, the Redis TLS check at `:357`) — consistent with existing precedent, no bespoke bypass logic.
+- The check iterates `Object.entries(claimsNotice)` and filters on `value.startsWith('TODO_OWNER_MUST_CONFIGURE')`
+  (`:523-524`) — this is a `Object.entries` walk over the *whole* `claimsNotice` object as actually
+  constructed at `:494-513`, not a hardcoded subset, so it automatically covers all twelve fields; it cannot
+  silently miss a field added to the object without also being added to the type (and vice versa, since the
+  object is typed as `Env['claimsNotice']`). If any field is still a placeholder, `loadEnv()` throws and the
+  process does not start (`:527-533`). Confirmed as described.
+- Gap (not a defect in the two mechanisms asked about, but worth recording): the boot guard's scope is
+  `isProduction && claimsApiEnabled`. If an environment runs with `CLAIMS_API_ENABLED=true` but
+  `NODE_ENV` is not literally `"production"` (e.g. a future staging tier that reuses this backend without
+  setting `NODE_ENV=production`), the boot-time refusal does not fire, and the only backstop is the
+  request-time `requireConfigValue` throw verified in part 1 above. That request-time throw **does** still
+  fail closed per request (confirmed above — no notice, no audit row, no mutation), so there is no live
+  bypass of the control's effect, only a reliance on the request-time layer instead of the boot-time layer
+  in that specific environment shape. No action required before the flag flip (no such staging tier exists
+  yet to be affected); flagging for whoever stands up the first non-production, non-dev deployment tier
+  (`site-reliability-engineer`/`devops-engineer`) to make sure `NODE_ENV=production` is set wherever
+  `CLAIMS_API_ENABLED` can be `true`, or to extend the boot guard's condition if that assumption ever breaks.
+- No other bypass path found: `envOrPlaceholder` (`:488-492`) only substitutes the placeholder when the var
+  is genuinely `undefined`; an explicitly blank/whitespace value is passed through unmodified and still
+  caught by `requireConfigValue`'s blank check. There is no code path that constructs a `claimsNotice` value
+  outside `loadEnv()`.
+
+**Verification run (this session):**
+
+```
+cd backend && npx tsc --noEmit   → clean, no errors
+cd backend && npm test           → 83 files passed (83), 995 tests passed (995)
+```
+
+This matches the last-known count cited in §22 and does not regress it.
+
+**Verdict on SR-018-11: CLOSED, concurred.** Both mechanisms work as described: the request-time guard
+rejects a placeholder value with no audit row and no claim mutation, in the correct order relative to the
+audit log write and the state transition, for every notice-producing admin action; the boot-time guard
+refuses to start in production with `CLAIMS_API_ENABLED=true` and any of the twelve `claimsNotice` fields
+still a placeholder, walking the full field set rather than a hardcoded partial list. One non-blocking
+operational note recorded above for future staging-tier setup; it does not weaken the control today and is
+not a reason to withhold concurrence.
+
+This closes the one engineering item the chair's §22 flagged as still outstanding for this role. I have no
+other open engineering items on this feature. Outstanding items per §22 remain CR-018-12a (compliance,
+blocks the flip) and CR-018-11 compliance items 2c/3/4 — both owned by `compliance-specialist`, not this
+role.
+
+| Role | Decision | Date |
+|---|---|---|
+| `security-engineer` | **SR-018-11 re-check CLOSED, concurred** — `requireConfigValue`/`isClaimNoticePlaceholderValue` (`claim-decision-notice.ts:164-176`) and the production boot guard (`env.ts:515-534`) both verified against the landed code to fail closed as described, with no audit row or claim mutation on a placeholder/blank config value, and the boot guard covering all twelve `claimsNotice` fields via a full-object walk. `tsc --noEmit` clean; `npm test` 83/83 files, 995/995 tests. No other engineering item open on this feature; remaining blockers are compliance-owned (CR-018-12a, CR-018-11 items 2c/3/4). | 2026-10-29 |
