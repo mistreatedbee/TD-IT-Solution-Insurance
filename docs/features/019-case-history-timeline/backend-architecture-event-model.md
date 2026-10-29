@@ -302,3 +302,292 @@ dispatch model (PDM-6, G-7)"), and (b) a fresh compliance review, because this d
 sign-off (once obtained) will have been granted on the explicit basis that this collection carries
 no location data. Do not treat "it's just one more optional field" as a small change against this
 document's review.
+
+---
+
+## 9. Stage 8 Security Review — `cybersecurity-architect` (2026-10-29)
+
+**Appended section. §1–§8 above are `backend-architect`'s and are not modified.** Where I disagree
+with them I say so here and cite the section.
+
+**Verdict: APPROVE WITH CONDITIONS (architecture sign-off).** The design holds up: it has a separate
+collection, an append-only repository, post-CAS append, admin-only reads, and no location field.
+The conditions below are binding on the build. Conditions SR-019-1 through SR-019-8 are
+**build-blocking**: implement them in the first PR, and `security-engineer` verifies them at Stage
+10. SR-019-9 is **production-enablement-blocking**: the code can merge, but the appends must not
+write real production data until it is closed. This is one of the three Stage 8 signatures.
+`security-engineer` and `compliance-specialist` must still sign before Development starts (the
+joint-gate rule). The compliance signature matters most for SR-019-9.
+
+### 9.1 What I verified against the code, not the doc
+
+Read on 2026-10-29: `backend/src/repositories/recovery-cases.ts`, `backend/src/routes/security-cases.ts`,
+`backend/src/routes/recovery.ts`, `backend/src/routes/support-lookup.ts` (call sites only),
+`backend/src/lib/mongo-pagination.ts`, `backend/scripts/seed-demo-security-dashboard.ts` (delete
+call sites), `docs/organization/runbooks/account-deletion-request-runbook.md` §5 table.
+
+**The §2.2 claim of a "1:1 mapping onto existing transitions" is correct for the lifecycle state
+machine. It is not correct for every mutation of `recovery_cases`:**
+
+| Mutation in code today | Caller | Covered by §2.2? |
+|---|---|---|
+| `createForAccount` | `recovery.ts` `POST /recovery/cases` (customer) | Yes, `case_created` |
+| `claimForPartnerOrg` | `security-cases.ts` `POST .../claim` | Yes, `case_claimed` |
+| `updateStatusForPartnerOrg` | `security-cases.ts` `PATCH .../:caseId` | Yes, `status_changed` |
+| `releaseForPartnerOrg` | `security-cases.ts` `POST .../release` | Yes, `case_released` |
+| `reassignForPartnerOrg` | `security-cases.ts` `POST .../reassign` | Yes, `case_reassigned` |
+| no repo mutation (notification only) | `security-cases.ts` `POST .../messages` | Yes, `customer_contacted` (see SR-019-5 on its name and semantics) |
+| `appendCallCentreNote` | `support-lookup.ts` `POST` (support_agent) | **No.** Not mentioned in §2.2 |
+| `setPoliceReportFields` | `recovery.ts` `PATCH .../police-report` (customer) | **No.** Not mentioned in §2.2 |
+| `police-report-retention.ts` `updateMany` field purge | system job | **No.** Not mentioned in §2.2 |
+| raw `deleteMany` on `recovery_cases` | `scripts/seed-demo-security-dashboard.ts:169` (demo teardown) | **No.** Relevant to SR-019-8 |
+
+**Ruling on the uncovered rows:** leaving them out of increment 1 is the **correct** choice, but §2.2
+must say so explicitly instead of implying full coverage. The police-report path in particular must
+**never** become an event type while SR-011-1's exclusion discipline applies only to
+`recovery_cases`. Even a value-free `police_report_updated` event would tell the timeline's readers
+that police were involved, and that fact is itself governed by C-011-9. Any future event type for
+call-centre notes or police reports needs its own Stage 8 review. Also note that the demo seed
+script drives the repository directly, not through the routes, so with route-layer appends (§4) the
+pre-claimed demo cases will have no events. That is acceptable, but nobody should read it as a bug.
+
+**Other code-versus-doc discrepancies found:**
+
+- **§4's `occurredAt` rule cannot be implemented as written.** Every mutation method computes its
+  own `new Date()` internally (`recovery-cases.ts` lines 577, 742, 851, 917, 960). None accepts a
+  timestamp parameter, and §4 says the methods stay unchanged. "Pass the same `new Date()` the
+  mutation uses" is therefore impossible without a signature change. See SR-019-3 for the fix.
+- **§5's pagination plan is broken against the real helper.** `mongoCursorFilter`
+  (`lib/mongo-pagination.ts:70`) is hard-wired to `createdAt` **descending** with an `_id`
+  tiebreak. It cannot page an `occurredAt` sort, and it cannot page ascending. A timeline that
+  silently skips or duplicates events at page boundaries is an integrity defect in an
+  audit-adjacent view, not just a UX bug. See SR-019-7.
+- The §2.2 table's "Written from" column names repository methods, but §4 puts the append calls in
+  the route layer. §4 is the correct one: the repository methods stay untouched. The table should
+  be read as "corresponds to", not "written from".
+
+### 9.2 Ruling on the write-ordering deviation (§4), actively evaluated
+
+**I accept "append only after a successful CAS mutation." I reject §4.1's failure handling.**
+
+*Why post-CAS is correct:* `admin_access_log` is the **audit record of authority** (ADR-0006 §18,
+AUD-8 hash chain, fail-closed per AUD-10, written before the mutation). An intent row there for a
+lost race is harmless, because it records an attempt. A timeline row for a lost race would be a
+false statement of fact. These are two different artefacts with two different correctness rules,
+and the deviation follows from that difference. It is not an inconsistency.
+
+*Why §4.1 is wrong:* §4.1 turns an append failure after the mutation into a 5xx "because audit
+durability is part of correctness." That reasoning belongs to the audit log, and the audit log has
+already been written by that point. Failing the request does not undo the mutation or make
+anything more durable. It only tells the client something false. The client sees a 500 for a claim
+that succeeded. If it retries, the CAS misses and it gets `404 Case is not available to claim`
+while its own org now holds the case, and the operator has no idea why. That is a worse integrity
+outcome (operator confusion, duplicate attempts, support load) for no gain.
+
+**The threat that actually needs designing for is the silent gap:** the mutation succeeds and the
+append is lost (a throw, or a process crash between the two calls). The case state and the timeline
+then disagree, permanently and invisibly. SR-019-2 makes that gap detectable and reconcilable from
+the audit row already written before the mutation. `case_created` is the exception, because it has
+no audit row (§4). Its gap can instead be rebuilt from the parent document, since
+`recovery_cases.createdAt` is the same fact.
+
+**A corollary that must be stated:** `recovery_case_events` is **not** tamper-evident (it is
+outside the AUD-8 chain) and is **not** an audit record. It is a product-facing, derived history.
+No surface may label it "audit log", and no compliance or legal process may treat it as the
+authoritative record. Disputes resolve against `admin_access_log`.
+
+### 9.3 Build-blocking conditions
+
+- **SR-019-1. Write-path inputs come only from trusted sources.** Every field of an appended event
+  must come from `req.auth` (`actor.accountId`, `actor.partnerOrganizationId`) or from the CAS
+  mutation's returned document (`caseId` = `result.id`, `toStatus`, `toPartnerOrganizationId`,
+  `closeReason`), or, for `from*`, from the handler's own pre-read (`existing`). This is the same
+  rule as §18.8(a)(1) for `resourceId`. **Never** use `req.params.caseId` or any `req.body` field,
+  with one exception: `reassign`'s `targetPartnerOrganizationId`, and only after the existing
+  active-org validation and only as echoed back by `reassigned.partnerOrganizationId`. Test: a
+  request whose path `caseId` differs in case or format from the DB id still records the DB id.
+
+- **SR-019-2. Failure handling and reconciliation (replaces §4.1).**
+  (a) The post-CAS `append` is wrapped in its own `try/catch`. On failure it emits a structured
+  `error`-level log `recovery_case_event_append_failed` and a counter metric, then **continues to
+  the success response**. The log carries only `caseId`, `eventType`, `auditRequestId`, and the
+  error class: no accountIds and no message text. The pre-mutation `recordStateChange` stays
+  fail-closed exactly as today. Do not touch SR-009S-4's tests.
+  (b) Add `auditRequestId: string | null` to `RecoveryCaseEventDocument`, populated from
+  `req.auditRequestId` (the same value the preceding `recordStateChange` row carries). This is the
+  join key that lets a later reconciliation job find "audit row with no matching event, and case
+  state consistent with the transition". It holds no PII.
+  (c) Add a partial unique index on `{ caseId: 1, eventType: 1, auditRequestId: 1 }` with
+  `partialFilterExpression: { auditRequestId: { $type: 'string' } }`, so any future retry or
+  backfill path cannot double-append the same transition. Treat duplicate-key error 11000 on
+  `append` as success.
+  (d) The reconciliation job itself is **not** required in this build. It goes on the risk
+  register as **RR-019-A** (owner `backend-engineer` and `site-reliability-engineer`, target before
+  the admin timeline UI ships). The admin UI must not ship while RR-019-A is open unless the UI
+  says "history may be incomplete". The `append_failed` alert is the interim detective control.
+
+- **SR-019-3. `occurredAt` source (fixes §4).** Use the CAS result's own `updatedAt` as
+  `occurredAt` for claim, status_changed, release, and reassign. `toCase()` returns `updatedAt`,
+  and none of the tier projections exclude it. For `case_created`, use `recoveryCase.createdAt`.
+  For `customer_contacted`, use one `new Date()` captured in the handler. This keeps the
+  repository methods unchanged, as §4 intends, and still guarantees that `occurredAt` equals the
+  case's `updatedAt` for that transition.
+
+- **SR-019-4. Location exclusion must be structural, not a comment (tightens §2.4).** As written,
+  `metadata: Record<string, string | number | boolean | null>` would accept `{ latitude: -26.2 }`
+  and pass the type check. "Enforced at the repository boundary" has no mechanism behind it yet.
+  Required:
+  (a) **Remove `metadata` from increment 1 entirely.** No event in §2.2 needs it.
+  `customer_contacted`'s `messageLength` example has no consumer, and dropping it shrinks the
+  surface. If a later event type needs detail, add it as a typed, named top-level field via a
+  discriminated union per `eventType`, never as an open record.
+  (b) `append()` validates its input with a `zod` schema that is a discriminated union on
+  `eventType`, with **`.strict()` on every branch**, so unknown keys are rejected rather than
+  stripped. The `insertOne` document is then built field by field from the parsed value, never by
+  spreading the input.
+  (c) Tests: `append` rejects an input carrying any of `latitude`, `longitude`, `lastLocation`,
+  `lastLocationAt`, `location`, `notes`, `text`, `message`, `sapsCaseNumber`, `reportingStation`,
+  `reportedToPoliceAt`, `reason`, or `metadata`. Add one schema-snapshot test asserting the exact
+  key set of the inserted document, so any field addition fails CI and forces a §8 review.
+  (d) Never copy `recovery_cases.notes` (customer free text) or the audit row's free-text `reason`
+  into an event.
+
+- **SR-019-5. Allowed actors per event, and `customer_contacted` semantics.**
+  (a) `append()` enforces an explicit allowlist: `case_created` → `customer`. `case_claimed`,
+  `status_changed`, `case_released`, `case_reassigned`, and the contact event →
+  `security_company_operator` with a non-null `actor.partnerOrganizationId`. `support_agent` and
+  `system` may stay in the TypeScript union (§2.3), but **no event type accepts them in this
+  build.** Adding one needs a review, in particular because `support_agent` writes would bring in
+  the call-centre trust boundary.
+  (b) Rename `customer_contacted` to **`customer_contact_initiated`**. The route returns 202 and
+  dispatches in the background through `notifyCaseMessage`, which respects opt-outs. The event can
+  truthfully say an operator initiated contact, but not that the customer was contacted. Append it
+  after the existing `recordStateChange` call, synchronously and before `res.status(202)`, under
+  the same failure rule as SR-019-2(a). Store no message content and no length.
+
+- **SR-019-6. Data minimisation on the actor (resolves the first part of §6's open question).**
+  (a) When `actor.type` is `'customer'`, store `actor.accountId: null`. Under this build's
+  allowlist, the customer actor is by definition the case owner, and the case owner's id is already
+  on the parent `recovery_cases.accountId`. Duplicating it adds nothing and creates a second copy
+  that would need erasing. The read API resolves it from the case. This changes §2.3's comment
+  ("null only for system") to "null for `system` and `customer`".
+  (b) `actor.accountId` for operators is stored as the opaque Supabase UUID **only**. No email,
+  display name, or role label is ever denormalised into an event. Names are resolved at read time
+  through the identity layer, so an erased or pseudonymised identity shows up automatically as
+  "deleted user" with no write to this collection.
+
+- **SR-019-7. Read API gating and pagination (for the §5 endpoint, when built).** The required
+  shape for `GET /v1/admin/recovery-cases/:caseId/events`:
+  (a) `authenticate`, `requireUserType('admin')`, and a rate limiter keyed on
+  `req.auth.accountId`, using `AUDIT_LOG_READ_LIMIT` (the same class as the scorecard and audit-log
+  reads, not `DEFAULT_AUTHENTICATED_LIMIT`). Step-up is not required: this is a read, consistent
+  with every other admin read in the codebase.
+  (b) Validate `:caseId` as 24-hex. Then resolve the parent case with a **new, minimal** repo
+  method, `findAccountIdForAdmin(caseId)`, with projection `{ accountId: 1 }` only. Return
+  `NOT_FOUND` if the case does not exist, so an empty list never confirms or denies a caseId.
+  (c) Before serialising, write `adminAccessLog.recordDetail({ resourceType: 'recovery_case',
+  resourceId: <db id>, targetAccountId: <case.accountId>, ... })`, fail-closed per AUD-10. The
+  response discloses which operators handled a customer's theft case, and that is a PDM-8
+  disclosure like any other admin case read.
+  (d) Pagination: either use the existing `mongoCursorFilter`/`buildPage` helpers **as they are**,
+  sorting `{ createdAt: -1, _id: -1 }` (newest first; the UI reverses it for display) with the
+  index `{ caseId: 1, createdAt: -1, _id: -1 }` replacing §3's first index, or write a dedicated
+  cursor encoder for `occurredAt` in both directions with its own tests. Do **not** sort on one
+  field while paging on another. The first option is recommended. The asc/desc query parameter
+  in §5 is dropped for increment 1.
+  (e) Use an explicit allowlist serializer. Output only `id`, `eventType`, `occurredAt`,
+  `actor{type, accountId, partnerOrganizationId}`, `fromStatus`, `toStatus`,
+  `fromPartnerOrganizationId`, `toPartnerOrganizationId`, and `closeReason`. Never spread the
+  document.
+  (f) If the route is built in this increment, mount it behind an env flag that defaults to off,
+  following the `claimsApiEnabled` pattern in `admin-claims.ts`, until RR-019-A is closed or the
+  UI carries the completeness caveat.
+
+- **SR-019-8. Append-only stays structural, and lifecycle deletion goes through an allowlist.**
+  `recovery-case-events.ts` exports only `append` and `listForCase`, plus the index bootstrap in
+  `db/`. Add a test asserting the module's exact export set. Parent-case deletion must still
+  cascade, because orphaned events for a deleted case are personal data with no retention basis.
+  Today the only such path is the demo teardown at `scripts/seed-demo-security-dashboard.ts:169`.
+  That script must also `deleteMany({ caseId: { $in: <deleted case ids> } })` on
+  `recovery_case_events`, using its own raw-collection handle in the same way it already handles
+  `admin_access_log` (line 198). It must not use a new repository export. Any future production
+  deletion or anonymisation of `recovery_cases` must cascade by `caseId` in the same way. Record
+  that obligation in §8's guardrail list.
+
+### 9.4 Production-enablement-blocking condition
+
+- **SR-019-9. Retention of operator identity, and erasure consistency (the §6 duplication
+  question).** After SR-019-6, the only personal data this collection holds is
+  **`actor.accountId` for security-company operators.** That is a real **retention extension**,
+  not a neutral duplicate. Today an operator's per-case activity is held in `admin_access_log` for
+  **12 months** (ADR-0006 §14.2 / FU-A8; account-deletion runbook §5, "Retain"). By contrast,
+  `recovery_cases` documents are retained **indefinitely** (runbook §5 table row). If the events
+  collection simply follows its parent case, as §6 suggests, operator identity would be kept
+  indefinitely, outliving the audit trail it duplicates. That conflicts with AUD-7(a)'s
+  equal-periods principle.
+  **Default, which applies unless `compliance-specialist` rules otherwise in writing:** event
+  documents live as long as their parent case (SR-019-8). `actor.accountId` is **cleared to `null`
+  12 months after `occurredAt`**, keeping `actor.type` and `actor.partnerOrganizationId`, by a
+  field-level purge job modelled on `lib/police-report-retention.ts`: an idempotent `updateMany`,
+  a `retention_job_runs` record, and a `legalHold` override read from the parent case. This is the
+  one sanctioned non-append write to the collection. It runs as a job outside the repository
+  module, so SR-019-8's export test still holds. Org-level attribution is all that §7's
+  response-time metrics and the scorecard need, so no product capability is lost.
+  `compliance-specialist` also needs to add a `recovery_case_events` row to the
+  account-deletion runbook §5 table. Until the ruling exists or the default job is built, the
+  append calls must stay disabled in production behind an env flag that defaults to off. In test
+  and dev environments they run.
+
+### 9.5 Pre-ruled constraints for the future partner-visibility question (§5, last paragraph)
+
+This is not authorised here, and it needs its own Stage 8 review. That review starts from these
+constraints, which I am setting now so the admin build does not paint itself into a corner:
+
+1. A partner org may see only events whose `occurredAt` falls inside an interval in which that org
+   held the case (claim/reassign-in until release/reassign-out or terminal), plus the single event
+   that ended its holding.
+2. **Other orgs' operator `actor.accountId` values are never disclosed to a partner.** At most it
+   sees `actor.type` and "another organisation", and whether even the other org's id is shown is a
+   PDM question for `compliance-specialist`. Cross-org disclosure of personnel identity is a
+   lateral-information channel between competing partners, and it is denied by default.
+3. The customer's identity stays covered by PDM-1. Since SR-019-6(a) stores none on events, this
+   holds by construction.
+4. The partner read path must be its own repository method that applies the predicate at query
+   level, following the pattern of `claimedCaseVisiblePredicate`/`findByIdForPartnerOrg`. It
+   **never** filters the admin method's output in memory.
+5. Design assumption, per this role's standing practice: the partner-org reader is a malicious
+   insider. Nothing in the partner response may help them locate, time, or profile a customer or
+   another org's operators.
+
+### 9.6 Threat-model delta and risk register
+
+- **STRIDE, new collection.** *Spoofing*: actor derived server-side only (SR-019-1). *Tampering*:
+  no update path exists in the app (SR-019-8). The collection is not tamper-evident at the DB layer,
+  which is accepted because it is not the audit record (§9.2). **FU-019-B:** when ADR-0008's Mongo
+  provisioning lands, grant the app role only `insert`/`find` on this collection (an Atlas custom
+  role), with the retention job running under a separate role. *Repudiation*: resolved against
+  `admin_access_log`, not this collection. *Information disclosure*: admin-only, disclosure-audited
+  (SR-019-7), with no location, police-report, or free-text data (SR-019-4). *DoS*: the read path is
+  rate-limited and paginated, and growth per case is bounded by the length of the state machine
+  plus the rate-limited `/messages` events. *Elevation*: no new privilege. Writes ride existing
+  authorised routes.
+- **Account takeover.** A compromised operator account gains nothing new from this collection, and
+  the events it generates are attributed to that account, which helps detection. A compromised
+  admin can already read case data, so this adds operator-identity history to what such an admin
+  can read, and that read is disclosure-audited.
+- **Risk register additions:** **RR-019-A** silent timeline gap (SR-019-2(d)), owners
+  `backend-engineer`/`site-reliability-engineer`. **RR-019-B** operator-identity retention pending
+  the compliance ruling (SR-019-9), owner `compliance-specialist`. **FU-019-B** DB-layer append-only
+  role, owner `database-architect`, gated on ADR-0008. Pre-existing cases get no backfill and their
+  history starts at the deploy date. The future UI must state this rather than show a partial
+  timeline as complete (owner `frontend-engineer`, at UI time).
+
+### 9.7 Gate status
+
+| Signatory | Status |
+|---|---|
+| `cybersecurity-architect` | **Approve with conditions** (SR-019-1 to SR-019-8 build-blocking, SR-019-9 production-enablement-blocking), 2026-10-29 |
+| `security-engineer` | Pending. Verifies SR-019-1 to SR-019-8 in implementation, and the export-set and strict-schema tests in particular |
+| `compliance-specialist` | Pending. Rules on SR-019-9 (accept the default or set a different period) and adds the runbook §5 row |
+
+Development may start when the two pending signatures are recorded in new sections below this one.
