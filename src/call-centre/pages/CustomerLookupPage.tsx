@@ -119,6 +119,45 @@ function NotificationPreferencesPanel({ accountId }: { accountId: string }) {
   );
 }
 
+/**
+ * First thing an agent should see for a panicked theft-report caller. Flags open
+ * recovery-case / active-claim status prominently; a recurrence count above 1 is shown as a
+ * softer informational note, not an alarm. Renders nothing when there is nothing to flag —
+ * no empty box.
+ */
+function SituationSummaryBanner({ summary }: { summary: SupportCustomerLookup['situationSummary'] }) {
+  const { hasOpenRecoveryCase, hasActiveClaim, recentRecoveryCaseCount } = summary;
+  const hasRecurrence = recentRecoveryCaseCount > 1;
+
+  if (!hasOpenRecoveryCase && !hasActiveClaim && !hasRecurrence) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2" data-testid="situation-summary-banner">
+      {hasOpenRecoveryCase ? (
+        <InlineAlert tone="danger">
+          <Badge tone="gold">Open recovery case</Badge>{' '}
+          <span>Customer has an open recovery case.</span>
+        </InlineAlert>
+      ) : null}
+      {hasActiveClaim ? (
+        <InlineAlert tone="danger">
+          <Badge tone="gold">Active claim</Badge> <span>Customer has an active claim.</span>
+        </InlineAlert>
+      ) : null}
+      {hasRecurrence ? (
+        <InlineAlert tone="warning">
+          <Badge tone="neutral">Recurrence</Badge>{' '}
+          <span>
+            {recentRecoveryCaseCount} recovery cases in the last 6 months.
+          </span>
+        </InlineAlert>
+      ) : null}
+    </div>
+  );
+}
+
 function RecoveryCasePanel({
   recoveryCase,
   onNoteAdded,
@@ -343,6 +382,7 @@ export function CustomerLookupPage() {
 
       {result ? (
         <div className="space-y-6">
+          <SituationSummaryBanner summary={result.situationSummary} />
           <InlineAlert tone="warning">
             No approved caller-identity verification procedure exists on this platform yet. Do not
             treat anything you searched for on this page (email, phone number, or policy ID) as

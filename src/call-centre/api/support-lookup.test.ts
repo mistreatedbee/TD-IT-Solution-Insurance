@@ -63,6 +63,11 @@ describe('call-centre support-lookup API client', () => {
           recoveryCases: [],
           openSupportCaseCount: 0,
           supportCases: [],
+          situationSummary: {
+            hasOpenRecoveryCase: false,
+            hasActiveClaim: false,
+            recentRecoveryCaseCount: 0,
+          },
         },
       }),
     );
@@ -75,6 +80,11 @@ describe('call-centre support-lookup API client', () => {
       model: 'iPhone 15',
       serialNumber: null,
       imei: '490154203237518',
+    });
+    expect(result.situationSummary).toEqual({
+      hasOpenRecoveryCase: false,
+      hasActiveClaim: false,
+      recentRecoveryCaseCount: 0,
     });
   });
 

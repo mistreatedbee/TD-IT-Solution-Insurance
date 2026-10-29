@@ -62,6 +62,17 @@ export interface SupportCustomerLookup {
     createdAt: string;
     callerVerified: boolean;
   }>;
+  /**
+   * Top-level glance summary for a panicked theft-report caller (commit e51b6f8). Intended
+   * to be rendered before the rest of the customer detail, not derived client-side from
+   * `openRecoveryCaseCount`/`recoveryCases` — the backend's 6-month recurrence window is not
+   * otherwise reconstructable from this payload.
+   */
+  situationSummary: {
+    hasOpenRecoveryCase: boolean;
+    hasActiveClaim: boolean;
+    recentRecoveryCaseCount: number;
+  };
 }
 
 export async function lookupCustomerByEmail(email: string): Promise<SupportCustomerLookup> {
