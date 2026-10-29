@@ -18,7 +18,12 @@ import type { AccountStatus } from '../repositories/accounts.js';
 import type { AssetDocument } from '../repositories/assets.js';
 import type { PolicyDocument } from '../repositories/policies.js';
 import type { ClaimDocument } from '../repositories/claims.js';
-import { isForwardClaimTransition, MAX_CLAIM_APPROVED_AMOUNT, type ClaimStatus } from '../lib/claim-rules.js';
+import {
+  isForwardClaimTransition,
+  MAX_CLAIMED_AMOUNT_SANITY_BOUND,
+  MAX_CLAIM_APPROVED_AMOUNT_ZAR,
+  type ClaimStatus,
+} from '../lib/claim-rules.js';
 import type { Env } from '../config/env.js';
 import type {
   AdminAccessBulkDisclosureInput,
@@ -165,6 +170,12 @@ function createHarness(opts: {
   claim: ClaimDocument;
   mfaVerifiedAt?: Date | null;
   envOverrides?: Partial<Env>;
+  linkedRecoveryCase?: {
+    id: string;
+    status: string;
+    partnerOrganizationId: string | null;
+    referenceNumber: string;
+  } | null;
 }) {
   const env = fakeEnv(opts.envOverrides);
   const kv = new InMemoryKeyValueStore();
@@ -200,6 +211,9 @@ function createHarness(opts: {
       },
       async findNonTerminalByAssetForAccount() {
         return null;
+      },
+      async getLinkedRecoveryCaseSummary() {
+        return opts.linkedRecoveryCase ?? null;
       },
       async transitionForAdmin(
         _id: string,
@@ -310,6 +324,60 @@ afterEach(async () => {
     await new Promise((resolve) => activeServer!.close(resolve));
     activeServer = undefined;
   }
+});
+
+describe('GET /v1/admin/claims/{claimId} — linked recovery-case summary', () => {
+  it('product-manager linkage: exposes linkedRecoveryCase when the claim has a recoveryCaseId', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { recoveryCaseId: '507f1f77bcf86cd799439099' }),
+      linkedRecoveryCase: {
+        id: '507f1f77bcf86cd799439099',
+        status: 'open',
+        partnerOrganizationId: 'partner-org-1',
+        referenceNumber: 'RC-20260901-0001',
+      },
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.linkedRecoveryCase).toEqual({
+      id: '507f1f77bcf86cd799439099',
+      status: 'open',
+      partnerOrganizationId: 'partner-org-1',
+      referenceNumber: 'RC-20260901-0001',
+    });
+  });
+
+  it('returns linkedRecoveryCase: null when the claim has no recoveryCaseId', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { recoveryCaseId: null }),
+      linkedRecoveryCase: null,
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.linkedRecoveryCase).toBeNull();
+  });
 });
 
 describe('PATCH /v1/admin/claims/{claimId}', () => {
@@ -514,7 +582,7 @@ describe('PATCH /v1/admin/claims/{claimId}', () => {
       accountId: acctId,
       policy: samplePolicy(acctId),
       asset: sampleAsset(acctId),
-      claim: sampleClaim(acctId, { claimedAmount: MAX_CLAIM_APPROVED_AMOUNT + 1_000_000 }),
+      claim: sampleClaim(acctId, { claimedAmount: MAX_CLAIMED_AMOUNT_SANITY_BOUND + 1_000_000 }),
     });
     const listened = await listen(harness.app);
     activeServer = listened.server;
@@ -523,12 +591,77 @@ describe('PATCH /v1/admin/claims/{claimId}', () => {
     const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
       method: 'PATCH',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'approved', approvedAmount: MAX_CLAIM_APPROVED_AMOUNT + 1 }),
+      body: JSON.stringify({ action: 'approved', approvedAmount: MAX_CLAIMED_AMOUNT_SANITY_BOUND + 1 }),
     });
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.code).toBe('VALIDATION_ERROR');
     expect(harness.getClaim().status).toBe('under_review');
+  });
+
+  it('security-review.md §12.4: rejects approval above the self-service ZAR ceiling with 422 APPROVAL_REQUIRES_ESCALATION, without capping or mutating the claim', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { claimedAmount: MAX_CLAIM_APPROVED_AMOUNT_ZAR + 50_000 }),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'approved', approvedAmount: MAX_CLAIM_APPROVED_AMOUNT_ZAR + 1 }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error.code).toBe('APPROVAL_REQUIRES_ESCALATION');
+    expect(harness.getClaim().status).toBe('under_review');
+  });
+
+  it('security-review.md §12.4: allows approval exactly at the self-service ZAR ceiling', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { claimedAmount: MAX_CLAIM_APPROVED_AMOUNT_ZAR }),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'approved', approvedAmount: MAX_CLAIM_APPROVED_AMOUNT_ZAR }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('security-review.md §12.4: fails closed (requires escalation) when the claim currency is not ZAR', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId, { claimedAmount: 1000, claimedAmountCurrency: 'USD' }),
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'approved', approvedAmount: 100 }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error.code).toBe('APPROVAL_REQUIRES_ESCALATION');
   });
 
   it('SR-018-3: rejects an approvedAmount with more than 2 decimal places with 400 VALIDATION_ERROR', async () => {

@@ -266,6 +266,55 @@ export function createClaimsRepo(db: Db) {
     },
 
     /**
+     * Foundational claim <-> recovery-case linkage (product-manager research,
+     * 2026-10-28) — `claims.recoveryCaseId` is already set at filing time
+     * (`routes/claims.ts`) when the customer supplies a `recoveryCaseId`; this
+     * is the read-side join. Admin-only consumer (`admin-claims.ts`'s claim
+     * detail response) — never exposed to the customer serializer, since the
+     * point is letting an adjudicator see an asset's already-open recovery
+     * case, not surfacing recovery-case internals to the claimant.
+     *
+     * Queries the `recovery_cases` collection directly (by `_id`, no
+     * `accountId` scoping) rather than going through `RecoveryCasesRepo`, to
+     * avoid a repo-to-repo dependency — this repo is constructed from a bare
+     * `Db` the same way `recovery-cases.ts` is (see `context.ts`), and only a
+     * minimal, already-public-shaped summary is read back.
+     */
+    async getLinkedRecoveryCaseSummary(claimId: string): Promise<{
+      id: string;
+      status: string;
+      partnerOrganizationId: string | null;
+      referenceNumber: string;
+    } | null> {
+      if (!ObjectId.isValid(claimId)) return null;
+      const claimRow = await collection().findOne(
+        { _id: new ObjectId(claimId) },
+        { projection: { recoveryCaseId: 1 } },
+      );
+      if (!claimRow?.recoveryCaseId || !ObjectId.isValid(claimRow.recoveryCaseId)) return null;
+
+      const recoveryCaseRow = await db
+        .collection<{
+          _id: ObjectId;
+          status: string;
+          partnerOrganizationId: string | null;
+          referenceNumber: string;
+        }>('recovery_cases')
+        .findOne(
+          { _id: new ObjectId(claimRow.recoveryCaseId) },
+          { projection: { status: 1, partnerOrganizationId: 1, referenceNumber: 1 } },
+        );
+      if (!recoveryCaseRow) return null;
+
+      return {
+        id: recoveryCaseRow._id.toHexString(),
+        status: recoveryCaseRow.status,
+        partnerOrganizationId: recoveryCaseRow.partnerOrganizationId,
+        referenceNumber: recoveryCaseRow.referenceNumber,
+      };
+    },
+
+    /**
      * Admin review transitions (`under_review` entry, `more_info_requested`,
      * `rejected`, administrative `closed`) — §2.2/§2.3. Compare-and-set on
      * `expectedStatus` (the caller's pre-read), same C-A discipline

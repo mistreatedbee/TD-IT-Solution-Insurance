@@ -84,6 +84,19 @@ export function serializeClaimForAdmin(
     policyEffectiveDate: Date;
     assetRegisteredAt: Date;
     duplicateOpenClaimId: string | null;
+    /**
+     * Product-manager research, 2026-10-28 — a minimal summary of the
+     * recovery case linked via `claim.recoveryCaseId`, if any. Admin-only:
+     * lets an adjudicator see "this asset's theft already has an open
+     * recovery case with partner org X" on the claim screen. Never added to
+     * `serializeClaimForCustomer`.
+     */
+    linkedRecoveryCase: {
+      id: string;
+      status: string;
+      partnerOrganizationId: string | null;
+      referenceNumber: string;
+    } | null;
   },
 ) {
   const waitingPeriodClearedAt = waitingPeriodClearsAt(context.policyEffectiveDate, context.assetRegisteredAt);
@@ -102,5 +115,6 @@ export function serializeClaimForAdmin(
       claim.claimedAmountCurrency,
     ),
     duplicateOpenClaimIdAtFiling: context.duplicateOpenClaimId,
+    linkedRecoveryCase: context.linkedRecoveryCase,
   };
 }

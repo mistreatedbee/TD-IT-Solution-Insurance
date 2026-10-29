@@ -18,7 +18,8 @@ import {
   exceedsCoverageLimit,
   hasAtMostTwoDecimalPlaces,
   isForwardClaimTransition,
-  MAX_CLAIM_APPROVED_AMOUNT,
+  MAX_CLAIMED_AMOUNT_SANITY_BOUND,
+  requiresApprovalEscalation,
   type ClaimStatus,
 } from '../lib/claim-rules.js';
 import { InvalidClaimStatusTransitionError } from '../repositories/claims.js';
@@ -49,15 +50,19 @@ const patchBodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('more_info_requested'), reviewNote: requiredReasonSchema }),
   z.object({
     action: z.literal('approved'),
-    // SR-018-3: a hard platform ceiling (safety backstop, not a real
-    // business/coverage limit — see MAX_CLAIM_APPROVED_AMOUNT's doc comment)
-    // plus a 2-decimal-place precision rule (currency has no fractional
-    // cents). The approvedAmount <= claimedAmount check needs the claim
-    // itself, so it is enforced in the handler below, not here.
+    // security-review.md §12.4: at the schema level we only apply the same
+    // generic anti-garbage-input sanity bound used at filing (NOT the real
+    // approval ceiling — that is `MAX_CLAIM_APPROVED_AMOUNT_ZAR`, enforced in
+    // the handler below where the claim's currency is known) plus a
+    // 2-decimal-place precision rule (currency has no fractional cents).
+    // The approvedAmount <= claimedAmount check also needs the claim
+    // itself, so it is enforced in the handler, not here.
     approvedAmount: z
       .number()
       .positive()
-      .max(MAX_CLAIM_APPROVED_AMOUNT, { message: `approvedAmount must not exceed ${MAX_CLAIM_APPROVED_AMOUNT}` })
+      .max(MAX_CLAIMED_AMOUNT_SANITY_BOUND, {
+        message: `approvedAmount must not exceed ${MAX_CLAIMED_AMOUNT_SANITY_BOUND}`,
+      })
       .refine(hasAtMostTwoDecimalPlaces, { message: 'approvedAmount must have at most 2 decimal places' }),
     // §12.2 R7-3 — required ONLY when the claim carries
     // FLAG_INCIDENT_BEFORE_ELIGIBILITY (enforced in the handler, not here,
@@ -94,10 +99,11 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
 
   async function loadAdminSerializationContext(claim: Awaited<ReturnType<typeof ctx.claims.findByIdForAdmin>>) {
     if (!claim) return null;
-    const [policy, asset, duplicate] = await Promise.all([
+    const [policy, asset, duplicate, linkedRecoveryCase] = await Promise.all([
       ctx.policies.findByIdForAdmin(claim.policyId),
       ctx.assets.findByIdForAdmin(claim.assetId),
       ctx.claims.findNonTerminalByAssetForAccount(claim.accountId, claim.assetId),
+      ctx.claims.getLinkedRecoveryCaseSummary(claim.id),
     ]);
     return serializeClaimForAdmin(claim, {
       accountId: claim.accountId,
@@ -105,6 +111,7 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
       policyEffectiveDate: policy?.effectiveDate ?? claim.submittedAt,
       assetRegisteredAt: asset?.registeredAt ?? claim.submittedAt,
       duplicateOpenClaimId: duplicate && duplicate.id !== claim.id ? duplicate.id : null,
+      linkedRecoveryCase,
     });
   }
 
@@ -271,6 +278,18 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
             )
           ) {
             next(apiError('APPROVED_AMOUNT_EXCEEDS_COVERAGE_LIMIT'));
+            return;
+          }
+
+          // security-review.md §12.4 — the approval ceiling is an
+          // OPERATIONAL control, not a coverage limit: it must never
+          // silently cap or reject the claim. Above it (or when the
+          // claim's currency isn't the ceiling's ZAR, which fails closed),
+          // this self-service PATCH is refused outright and the admin is
+          // told to escalate, rather than approving a smaller amount than
+          // what was asked for.
+          if (requiresApprovalEscalation(body.approvedAmount, existing.claimedAmountCurrency)) {
+            next(apiError('APPROVAL_REQUIRES_ESCALATION'));
             return;
           }
 

@@ -147,6 +147,17 @@ export const ERROR_CATALOG = {
     message:
       'This claim has an incident-date eligibility flag. An eligibility determination must be recorded before it can be approved.',
   },
+  // security-review.md §12.4 (compliance ruling 2026-10-28) — the approval
+  // ceiling is an operational control (a single admin cannot approve above
+  // it alone), never a coverage limit, so it must not silently reduce or
+  // reject a claim. It blocks THIS self-service PATCH only and routes the
+  // admin to escalate instead. Also returned, fail-closed, when the claim's
+  // currency is not the ceiling's currency (ZAR).
+  APPROVAL_REQUIRES_ESCALATION: {
+    statusCode: 422,
+    message:
+      'This approval amount exceeds the self-service approval ceiling (or the claim is not in the ceiling currency) and must be escalated for approval above the standard admin limit.',
+  },
   INTERNAL_ERROR: { statusCode: 500, message: 'An internal error occurred.' },
 } as const satisfies Record<string, ErrorCatalogEntry>;
 

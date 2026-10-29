@@ -119,6 +119,7 @@ describe('serializeClaimForAdmin (SR-018-6 — admin still sees everything, plus
       policyEffectiveDate: new Date('2026-01-01T00:00:00.000Z'),
       assetRegisteredAt: new Date('2026-01-01T00:00:00.000Z'),
       duplicateOpenClaimId: null,
+      linkedRecoveryCase: null,
     });
     expect(serialized.fraudFlags).toEqual(['FLAG_INCIDENT_BEFORE_ELIGIBILITY']);
     expect(serialized.reviewNotes).toEqual([

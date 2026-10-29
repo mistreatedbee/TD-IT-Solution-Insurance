@@ -9,7 +9,10 @@ import {
   isOverClaimRateThreshold,
   isTerminalClaimStatus,
   isWaitingPeriodMet,
-  MAX_CLAIM_APPROVED_AMOUNT,
+  MAX_CLAIMED_AMOUNT_SANITY_BOUND,
+  MAX_CLAIM_APPROVED_AMOUNT_ZAR,
+  MAX_APPROVED_AMOUNT_CEILING_CURRENCY,
+  requiresApprovalEscalation,
   waitingPeriodClearsAt,
   type ClaimStatus,
 } from './claim-rules.js';
@@ -231,9 +234,24 @@ describe('§1.4 coverage-limit interaction', () => {
 });
 
 describe('SR-018-3 — approved/claimed amount guardrails', () => {
-  it('MAX_CLAIM_APPROVED_AMOUNT is a large, named sentinel ceiling', () => {
-    expect(MAX_CLAIM_APPROVED_AMOUNT).toBeGreaterThan(0);
-    expect(Number.isFinite(MAX_CLAIM_APPROVED_AMOUNT)).toBe(true);
+  it('MAX_CLAIMED_AMOUNT_SANITY_BOUND is a large, named sentinel ceiling', () => {
+    expect(MAX_CLAIMED_AMOUNT_SANITY_BOUND).toBeGreaterThan(0);
+    expect(Number.isFinite(MAX_CLAIMED_AMOUNT_SANITY_BOUND)).toBe(true);
+  });
+
+  it('MAX_CLAIM_APPROVED_AMOUNT_ZAR is lower than the filing sanity bound (§12.4)', () => {
+    expect(MAX_CLAIM_APPROVED_AMOUNT_ZAR).toBeGreaterThan(0);
+    expect(MAX_CLAIM_APPROVED_AMOUNT_ZAR).toBeLessThan(MAX_CLAIMED_AMOUNT_SANITY_BOUND);
+    expect(MAX_APPROVED_AMOUNT_CEILING_CURRENCY).toBe('ZAR');
+  });
+
+  it('requiresApprovalEscalation: false at/under the ZAR ceiling, true above it', () => {
+    expect(requiresApprovalEscalation(MAX_CLAIM_APPROVED_AMOUNT_ZAR, 'ZAR')).toBe(false);
+    expect(requiresApprovalEscalation(MAX_CLAIM_APPROVED_AMOUNT_ZAR + 0.01, 'ZAR')).toBe(true);
+  });
+
+  it('requiresApprovalEscalation: fails closed (requires escalation) for a non-ZAR currency', () => {
+    expect(requiresApprovalEscalation(100, 'USD')).toBe(true);
   });
 
   it('hasAtMostTwoDecimalPlaces accepts whole numbers and 2-decimal amounts', () => {

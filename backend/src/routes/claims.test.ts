@@ -20,7 +20,7 @@ import type { AccountStatus } from '../repositories/accounts.js';
 import type { AssetDocument } from '../repositories/assets.js';
 import type { PolicyDocument } from '../repositories/policies.js';
 import { DuplicateOpenClaimError, type ClaimDocument } from '../repositories/claims.js';
-import { isForwardClaimTransition, MAX_CLAIM_APPROVED_AMOUNT, type ClaimStatus } from '../lib/claim-rules.js';
+import { isForwardClaimTransition, MAX_CLAIMED_AMOUNT_SANITY_BOUND, type ClaimStatus } from '../lib/claim-rules.js';
 import type { Env } from '../config/env.js';
 import type { IdempotencyRepo } from '../repositories/idempotency.js';
 
@@ -412,7 +412,7 @@ describe('POST /v1/claims', () => {
         assetId: ASSET_ID,
         incidentDescription: 'Laptop was stolen from my car overnight.',
         incidentDate: '2026-09-15',
-        claimedAmount: MAX_CLAIM_APPROVED_AMOUNT + 1,
+        claimedAmount: MAX_CLAIMED_AMOUNT_SANITY_BOUND + 1,
       }),
     });
     expect(res.status).toBe(400);

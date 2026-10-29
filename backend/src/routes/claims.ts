@@ -15,7 +15,7 @@ import {
   hasAtMostTwoDecimalPlaces,
   isForwardClaimTransition,
   isWaitingPeriodMet,
-  MAX_CLAIM_APPROVED_AMOUNT,
+  MAX_CLAIMED_AMOUNT_SANITY_BOUND,
   rateThresholdWindowStart,
   waitingPeriodClearsAt,
   type ClaimStatus,
@@ -36,18 +36,22 @@ const createClaimSchema = z.object({
   incidentDescription: z.string().trim().min(20).max(5000),
   incidentDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
   evidenceDescription: z.string().trim().max(5000).optional(),
-  // SR-018-3: same platform ceiling + 2-decimal-place precision rule as
-  // `approvedAmount` on the admin side — otherwise an absurd claimedAmount
-  // (e.g. `1e300`) would skew every later FLAG_AMOUNT_OUTLIER baseline for
-  // this account. SR-018-4: `claimedAmountCurrency` is intentionally NOT a
-  // field here — currency is never a customer choice; see the handler,
-  // which always sets it from `policy.billing.currency` server-side. Any
-  // `claimedAmountCurrency` sent in the request body is stripped by this
-  // non-passthrough schema and has no effect.
+  // SR-018-3 / security-review.md §12.4: this is an anti-garbage-input
+  // sanity bound only — NOT the approval ceiling (see
+  // `MAX_CLAIM_APPROVED_AMOUNT_ZAR` in admin-claims.ts) — kept high and
+  // currency-agnostic so an absurd claimedAmount (e.g. `1e300`) doesn't skew
+  // every later FLAG_AMOUNT_OUTLIER baseline for this account. SR-018-4:
+  // `claimedAmountCurrency` is intentionally NOT a field here — currency is
+  // never a customer choice; see the handler, which always sets it from
+  // `policy.billing.currency` server-side. Any `claimedAmountCurrency` sent
+  // in the request body is stripped by this non-passthrough schema and has
+  // no effect.
   claimedAmount: z
     .number()
     .positive()
-    .max(MAX_CLAIM_APPROVED_AMOUNT, { message: `claimedAmount must not exceed ${MAX_CLAIM_APPROVED_AMOUNT}` })
+    .max(MAX_CLAIMED_AMOUNT_SANITY_BOUND, {
+      message: `claimedAmount must not exceed ${MAX_CLAIMED_AMOUNT_SANITY_BOUND}`,
+    })
     .refine(hasAtMostTwoDecimalPlaces, { message: 'claimedAmount must have at most 2 decimal places' }),
 });
 

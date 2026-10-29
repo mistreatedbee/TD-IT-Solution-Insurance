@@ -63,17 +63,55 @@ export function isForwardClaimTransition(from: ClaimStatus, to: ClaimStatus): bo
 export const CLAIM_WAITING_PERIOD_DAYS = 30;
 
 /**
- * SR-018-3 — a platform-wide hard ceiling applied to both `claimedAmount`
- * (at filing) and `approvedAmount` (at approval), regardless of whether
- * `coverageLimits` has a matching entry for the asset type. This is NOT a
- * real business/coverage limit — no such limits are configured today
- * (every policy's `coverageLimits` is `[]`) — it exists purely so "no
- * coverage limit configured" never means "literally unbounded" (e.g.
- * `1e15`). `product-manager`/`compliance-specialist` should replace this
- * with real per-plan/per-asset-type coverage ceilings and revisit this
- * constant once that work lands.
+ * security-review.md §12.4 (compliance ruling, 2026-10-28) — superseded
+ * `MAX_CLAIM_APPROVED_AMOUNT`, which conflated two different jobs under one
+ * undisclosed number: (1) a sanity bound on a customer-entered figure, and
+ * (2) a ceiling on what an admin can actually pay out. Compliance rejected
+ * using one unexplained number for both, so the two are now separate
+ * constants with separate behaviour on breach. See
+ * `MAX_CLAIM_APPROVED_AMOUNT_ZAR` below for the approval-side ceiling.
+ *
+ * This bound applies ONLY to `claimedAmount` at filing — it is an
+ * anti-garbage-input check, not a coverage limit, and is intentionally left
+ * high and currency-agnostic (it never by itself determines a payout).
  */
-export const MAX_CLAIM_APPROVED_AMOUNT = 10_000_000;
+export const MAX_CLAIMED_AMOUNT_SANITY_BOUND = 10_000_000;
+
+/**
+ * security-review.md §12.4 — the approval-side figure, renamed and lowered
+ * per the compliance ruling: "R10,000,000 ... bounds nothing realistic" for
+ * this product's personal-lines asset cover. 1,000,000 is compliance's
+ * starting point pending `product-manager` confirmation of the real
+ * business number.
+ *
+ * Unlike the old combined constant, hitting this ceiling must NEVER reduce
+ * or reject a claim — an undisclosed internal number is not a valid ground
+ * to pay a customer less than a policy entitles them to. It is an
+ * OPERATIONAL control only: above this figure, a single admin cannot
+ * self-service-approve the claim; the PATCH must be rejected with a clear
+ * "needs escalation" error instead of silently capping `approvedAmount`.
+ *
+ * Every policy in this system is ZAR-denominated today (§12.4), so the
+ * ceiling is explicitly scoped to ZAR via `MAX_APPROVED_AMOUNT_CEILING_CURRENCY`.
+ * If a claim's `claimedAmountCurrency` is ever not ZAR, this ceiling cannot
+ * be meaningfully applied — callers must fail closed (treat as requiring
+ * escalation) rather than silently skip the check.
+ */
+export const MAX_CLAIM_APPROVED_AMOUNT_ZAR = 1_000_000;
+
+/** security-review.md §12.4 — the currency the approval ceiling above is denominated in. */
+export const MAX_APPROVED_AMOUNT_CEILING_CURRENCY = 'ZAR';
+
+/**
+ * Whether `approvedAmount` requires escalation above the self-service
+ * approval ceiling. Returns `true` (escalation required) whenever the
+ * currency is not the ceiling's currency — fail closed per §12.4, rather
+ * than silently skipping the check for a non-ZAR policy.
+ */
+export function requiresApprovalEscalation(approvedAmount: number, approvedCurrency: string): boolean {
+  if (approvedCurrency !== MAX_APPROVED_AMOUNT_CEILING_CURRENCY) return true;
+  return approvedAmount > MAX_CLAIM_APPROVED_AMOUNT_ZAR;
+}
 
 /**
  * Currency amounts carry at most 2 decimal places (no fractional cents).
