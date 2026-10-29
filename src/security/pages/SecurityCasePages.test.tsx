@@ -257,6 +257,72 @@ describe('CaseDetailPage: release case', () => {
   });
 });
 
+describe('CaseDetailPage: terminal status change requires a close reason', () => {
+  it('does not call the API until a close reason is selected, then sends it in the PATCH body', async () => {
+    const recovered: SecurityRecoveryCase = {
+      ...baseCase,
+      status: 'recovered',
+      closeReason: 'recovered-intact',
+    };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse(baseCase)) // initial GET
+      .mockImplementationOnce(() => jsonResponse(recovered)); // PATCH
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', { onLine: true });
+
+    renderCaseDetail();
+    await waitFor(() => expect(screen.getByText('REF-001')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mark recovered' }));
+
+    // Reason picker shown, Confirm disabled until a reason is chosen, no fetch yet.
+    expect(screen.getByText('Why is this case being marked recovered?')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.length).toBe(1);
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+
+    await userEvent.click(screen.getByLabelText('Recovered intact'));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(2));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      status: 'recovered',
+      closeReason: 'recovered-intact',
+    });
+  });
+
+  it('does not show the reason picker for non-terminal status changes', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse(baseCase))
+      .mockImplementationOnce(() => jsonResponse({ ...baseCase, status: 'investigating' }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', { onLine: true });
+
+    renderCaseDetail();
+    await waitFor(() => expect(screen.getByText('REF-001')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Start investigating' }));
+
+    expect(screen.queryByText(/Why is this case being/)).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(2));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ status: 'investigating' });
+  });
+
+  it('displays the stored close reason once a case is closed/recovered', async () => {
+    const recovered: SecurityRecoveryCase = {
+      ...baseCase,
+      status: 'recovered',
+      closeReason: 'handed-to-police',
+    };
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => jsonResponse(recovered)));
+
+    renderCaseDetail();
+
+    await waitFor(() => expect(screen.getByText('Handed to police')).toBeInTheDocument());
+  });
+});
+
 describe('CaseDetailPage: contact customer', () => {
   const claimedByMe: SecurityRecoveryCase = {
     ...baseCase,

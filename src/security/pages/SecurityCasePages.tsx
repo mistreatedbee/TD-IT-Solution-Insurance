@@ -9,7 +9,9 @@ import {
   getSecurityCase,
   listSecurityCases,
   releaseSecurityCase,
+  TERMINAL_SECURITY_CASE_STATUSES,
   updateSecurityCaseStatus,
+  type SecurityCaseCloseReason,
   type SecurityCaseStatus,
   type SecurityRecoveryCase,
 } from '../api/cases';
@@ -26,6 +28,20 @@ const STATUS_ACTIONS: { label: string; status: SecurityCaseStatus }[] = [
   { label: 'Mark recovered', status: 'recovered' },
   { label: 'Close case', status: 'closed' },
 ];
+
+// Mirrors backend/src/repositories/recovery-cases.ts RECOVERY_CASE_CLOSE_REASONS.
+const CLOSE_REASON_OPTIONS: { value: SecurityCaseCloseReason; label: string }[] = [
+  { value: 'recovered-intact', label: 'Recovered intact' },
+  { value: 'recovered-damaged', label: 'Recovered damaged' },
+  { value: 'not-located', label: 'Not located' },
+  { value: 'handed-to-police', label: 'Handed to police' },
+  { value: 'customer-withdrew', label: 'Customer withdrew' },
+];
+
+function formatCloseReason(reason: string): string {
+  const match = CLOSE_REASON_OPTIONS.find((o) => o.value === reason);
+  return match ? match.label : reason.replace(/-/g, ' ');
+}
 
 export function CasesListPage() {
   const [rows, setRows] = useState<SecurityRecoveryCase[]>([]);
@@ -118,6 +134,10 @@ export function CaseDetailPage() {
   const [contactSending, setContactSending] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
   const [contactSent, setContactSent] = useState(false);
+  const [pendingTerminalStatus, setPendingTerminalStatus] = useState<SecurityCaseStatus | null>(
+    null,
+  );
+  const [closeReason, setCloseReason] = useState<SecurityCaseCloseReason | null>(null);
 
   useEffect(() => {
     if (!caseId) return;
@@ -135,7 +155,17 @@ export function CaseDetailPage() {
   // would get a 404 even if the original attempt actually succeeded — handled below by
   // refetching and treating "no longer open" as proof the original claim landed.
 
-  async function setStatus(status: SecurityCaseStatus) {
+  function requestStatusChange(status: SecurityCaseStatus) {
+    if (TERMINAL_SECURITY_CASE_STATUSES.includes(status)) {
+      setError(null);
+      setPendingTerminalStatus(status);
+      setCloseReason(null);
+      return;
+    }
+    void setStatus(status);
+  }
+
+  async function setStatus(status: SecurityCaseStatus, reason?: SecurityCaseCloseReason) {
     if (!caseId) return;
     if (!isOnline) {
       setError("You're offline. This status change has not been saved — reconnect and try again.");
@@ -144,8 +174,10 @@ export function CaseDetailPage() {
     setUpdating(true);
     setError(null);
     try {
-      const updated = await updateSecurityCaseStatus(caseId, status);
+      const updated = await updateSecurityCaseStatus(caseId, status, reason);
       setRecoveryCase(updated);
+      setPendingTerminalStatus(null);
+      setCloseReason(null);
     } catch (err) {
       if (isNetworkError(err)) {
         setError("We couldn't confirm this status change was saved. Check your connection and try again.");
@@ -155,6 +187,16 @@ export function CaseDetailPage() {
     } finally {
       setUpdating(false);
     }
+  }
+
+  function confirmTerminalStatus() {
+    if (!pendingTerminalStatus || !closeReason) return;
+    void setStatus(pendingTerminalStatus, closeReason);
+  }
+
+  function cancelTerminalStatus() {
+    setPendingTerminalStatus(null);
+    setCloseReason(null);
   }
 
   async function claimCase() {
@@ -253,6 +295,9 @@ export function CaseDetailPage() {
           { label: 'Reported', value: new Date(recoveryCase.reportedAt).toLocaleString() },
           { label: 'Notes', value: recoveryCase.notes ?? '—' },
           { label: 'Partner org', value: recoveryCase.partnerOrganizationId ?? 'Unassigned' },
+          ...(recoveryCase.closeReason
+            ? [{ label: 'Close reason', value: formatCloseReason(recoveryCase.closeReason) }]
+            : []),
         ]}
       />
       <div className="mt-6 flex flex-wrap gap-2">
@@ -267,7 +312,7 @@ export function CaseDetailPage() {
             size="sm"
             variant="secondary"
             loading={updating}
-            onClick={() => void setStatus(action.status)}
+            onClick={() => requestStatusChange(action.status)}
           >
             {action.label}
           </Button>
@@ -293,6 +338,40 @@ export function CaseDetailPage() {
           </Button>
         ) : null}
       </div>
+      {pendingTerminalStatus ? (
+        <div className="mt-4 rounded border border-border-default p-4">
+          <p className="mb-2 text-sm font-medium">
+            Why is this case being {pendingTerminalStatus === 'recovered' ? 'marked recovered' : 'closed'}?
+          </p>
+          <div className="flex flex-col gap-2">
+            {CLOSE_REASON_OPTIONS.map((option) => (
+              <label key={option.value} className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="close-reason"
+                  value={option.value}
+                  checked={closeReason === option.value}
+                  onChange={() => setCloseReason(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <Button
+              size="sm"
+              loading={updating}
+              disabled={!closeReason}
+              onClick={() => confirmTerminalStatus()}
+            >
+              Confirm
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => cancelTerminalStatus()}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {contactOpen ? (
         <div className="mt-4 rounded border border-border-default p-4">
           <label htmlFor="contact-customer-message" className="mb-2 block text-sm font-medium">
