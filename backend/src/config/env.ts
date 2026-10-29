@@ -512,6 +512,28 @@ export function loadEnv(): Env {
     insurerFspNumber: envOrPlaceholder('CLAIMS_NOTICE_INSURER_FSP_NUMBER', "the insurer's FSP number"),
   };
 
+  // SR-018-11 / CR-018-10: a placeholder notice value is harmless in
+  // dev/test (nothing production-real can be issued), but in production,
+  // with the claims API actually enabled, it means a real adverse decision
+  // notice could ship reading "licence number TODO_OWNER_MUST_CONFIGURE: ...".
+  // Fail fast at boot, same as the other hard-stop `throw new Error(...)`
+  // misconfiguration guards in this function, rather than let the process
+  // start in a state that can issue a defective legal notice.
+  if (isProduction && claimsApiEnabled) {
+    const placeholderFields = Object.entries(claimsNotice)
+      .filter(([, value]) => typeof value === 'string' && value.startsWith('TODO_OWNER_MUST_CONFIGURE'))
+      .map(([key]) => key);
+    if (placeholderFields.length > 0) {
+      throw new Error(
+        '[config/env] CLAIMS_API_ENABLED=true in production, but claim decision-notice ' +
+          `configuration is still a TODO_OWNER_MUST_CONFIGURE placeholder for: ${placeholderFields.join(', ')}. ` +
+          'Refusing to start — this would let a real adverse claim notice ship with placeholder ' +
+          'licence/contact details (security-review.md SR-018-11 / CR-018-10). Set the real ' +
+          'CLAIMS_NOTICE_* environment variables, or leave CLAIMS_API_ENABLED unset, before starting.',
+      );
+    }
+  }
+
   return {
     nodeEnv,
     isProduction,

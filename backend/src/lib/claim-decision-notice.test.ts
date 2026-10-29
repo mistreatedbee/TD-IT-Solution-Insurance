@@ -163,6 +163,28 @@ describe('buildRejectionNotice', () => {
       ClaimDecisionNoticeConfigError,
     );
   });
+
+  // SR-018-11 / CR-018-10: `config/env.ts`'s `loadEnv()` substitutes a
+  // `TODO_OWNER_MUST_CONFIGURE: ...` placeholder for an unset claims-notice
+  // var — non-blank in form, but blank in substance. A rejection notice must
+  // never be issued, and the claim's status/audit trail must never be
+  // mutated, while even one field is still a placeholder.
+  it('treats a TODO_OWNER_MUST_CONFIGURE placeholder value the same as blank — no notice is composed', () => {
+    const withPlaceholder = {
+      ...COMPLETE_CONFIG,
+      insurerLicenceNumber: 'TODO_OWNER_MUST_CONFIGURE: the insurer licence number not yet configured (CLAIMS_NOTICE_INSURER_LICENCE_NUMBER)',
+    };
+    expect(() => buildRejectionNotice({ ...baseInput, env: fakeEnv(withPlaceholder) })).toThrow(
+      ClaimDecisionNoticeConfigError,
+    );
+  });
+
+  it('rejects a placeholder value even without the full "not yet configured" wording, as long as it starts with the sentinel', () => {
+    const withPlaceholder = { ...COMPLETE_CONFIG, nfoEmail: 'TODO_OWNER_MUST_CONFIGURE' };
+    expect(() => buildRejectionNotice({ ...baseInput, env: fakeEnv(withPlaceholder) })).toThrow(
+      ClaimDecisionNoticeConfigError,
+    );
+  });
 });
 
 describe('buildPartialApprovalShortfallNotice', () => {

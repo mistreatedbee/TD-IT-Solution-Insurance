@@ -147,9 +147,24 @@ export class ClaimDecisionNoticeConfigError extends Error {
   }
 }
 
+/**
+ * SR-018-11 / CR-018-10: `config/env.ts`'s `loadEnv()` substitutes a
+ * `TODO_OWNER_MUST_CONFIGURE: ...` placeholder string when a `claimsNotice`
+ * env var is genuinely unset (not blank). That string is non-empty, so a
+ * blank/whitespace-only check alone lets it through. A placeholder value is
+ * "blank licence details" in substance even though it is not blank in form
+ * (security-review.md §12.3 N-2(8), §16.4 SR-018-11) — treat it exactly like
+ * a blank value.
+ */
+export const CLAIM_NOTICE_PLACEHOLDER_PREFIX = 'TODO_OWNER_MUST_CONFIGURE';
+
+export function isClaimNoticePlaceholderValue(value: string | undefined): boolean {
+  return typeof value === 'string' && value.trim().startsWith(CLAIM_NOTICE_PLACEHOLDER_PREFIX);
+}
+
 function requireConfigValue(value: string | undefined, fieldLabel: string): string {
   const trimmed = value?.trim();
-  if (!trimmed) {
+  if (!trimmed || isClaimNoticePlaceholderValue(trimmed)) {
     throw new ClaimDecisionNoticeConfigError(fieldLabel);
   }
   return trimmed;
