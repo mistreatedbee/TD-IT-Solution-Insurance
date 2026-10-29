@@ -54,6 +54,25 @@ function fakeEnv(overrides?: Partial<Env>): Env {
     emailVerificationRedirectUrl: 'tditinsurance://verify-email',
     passwordResetRedirectUrl: 'tditinsurance://reset-password',
     invitationAcceptRedirectUrl: 'tditinsurance://invitations/accept',
+    // security-review.md §12.3 — a complete (non-placeholder) fixture so
+    // every pre-existing test that exercises a rejection/close/partial-
+    // approval path can build a notice without hitting
+    // ClaimDecisionNoticeConfigError. The dedicated config test below
+    // overrides this to assert the missing-config failure mode.
+    claimsNotice: {
+      internalComplaintsContact: 'complaints@test.example (fixture)',
+      nfoContactName: 'Test NFO',
+      nfoWebsite: 'https://nfo.test.example',
+      nfoPhone: '0000000000',
+      nfoEmail: 'nfo@test.example',
+      faisOmbudContactName: 'Test FAIS Ombud',
+      faisOmbudWebsite: 'https://fais.test.example',
+      faisOmbudPhone: '0000000001',
+      faisOmbudEmail: 'fais@test.example',
+      insurerLegalName: 'Test Insurer (Pty) Ltd',
+      insurerLicenceNumber: 'TEST-LIC-0001',
+      insurerFspNumber: 'TEST-FSP-0001',
+    },
     // SR-018-2: the claims API kill switch defaults to false (fail-closed).
     // Every pre-existing test in this file exercises claims *behavior*, so it
     // must opt in explicitly; the kill-switch-specific tests below override it.
@@ -152,6 +171,9 @@ function sampleClaim(accountId: string, overrides?: Partial<ClaimDocument>): Cla
     claimedAmountCurrency: 'ZAR',
     approvedAmount: null,
     rejectionReason: null,
+    closeReason: null,
+    quantumReason: null,
+    decisionNotices: [],
     reviewNotes: [],
     statusHistory: [],
     fraudFlags: [],
@@ -176,6 +198,9 @@ function createHarness(opts: {
     partnerOrganizationId: string | null;
     referenceNumber: string;
   } | null;
+  /** §12.3 N-4 — other claims on the account, for `findByIdForAccount`
+   * lookups exercised by `closeGround: 'DUPLICATE_CLAIM'`. */
+  otherClaims?: ClaimDocument[];
 }) {
   const env = fakeEnv(opts.envOverrides);
   const kv = new InMemoryKeyValueStore();
@@ -215,9 +240,19 @@ function createHarness(opts: {
       async getLinkedRecoveryCaseSummary() {
         return opts.linkedRecoveryCase ?? null;
       },
+      async findByIdForAccount(accountId: string, claimId: string) {
+        return (opts.otherClaims ?? []).find((c) => c.accountId === accountId && c.id === claimId) ?? null;
+      },
       async transitionForAdmin(
         _id: string,
-        input: { expectedStatus: ClaimStatus; toStatus: ClaimStatus; actorAccountId: string; reason: string | null },
+        input: {
+          expectedStatus: ClaimStatus;
+          toStatus: ClaimStatus;
+          actorAccountId: string;
+          reason: string | null;
+          notice?: unknown;
+          customerFacingReviewNoteText?: string;
+        },
       ) {
         if (claim.status !== input.expectedStatus) return null;
         if (!isForwardClaimTransition(input.expectedStatus, input.toStatus)) {
@@ -227,8 +262,24 @@ function createHarness(opts: {
           ...claim,
           status: input.toStatus,
           rejectionReason: input.toStatus === 'rejected' ? input.reason : claim.rejectionReason,
+          closeReason: input.toStatus === 'closed' ? input.reason : claim.closeReason,
           decidedAt: ['awaiting_payout', 'rejected', 'closed'].includes(input.toStatus) ? new Date() : claim.decidedAt,
           updatedAt: new Date(),
+          reviewNotes:
+            input.toStatus === 'more_info_requested' && input.reason
+              ? [
+                  ...claim.reviewNotes,
+                  {
+                    actorAccountId: input.actorAccountId,
+                    authorRole: 'admin' as const,
+                    text: input.customerFacingReviewNoteText ?? input.reason,
+                    createdAt: new Date(),
+                  },
+                ]
+              : claim.reviewNotes,
+          decisionNotices: input.notice
+            ? [...claim.decisionNotices, input.notice as ClaimDocument['decisionNotices'][number]]
+            : claim.decisionNotices,
         };
         return claim;
       },
@@ -239,6 +290,8 @@ function createHarness(opts: {
           approvedAmount: number;
           actorAccountId: string;
           eligibilityDetermination?: string | null;
+          quantumReason?: string | null;
+          notice?: unknown;
         },
       ) {
         if (claim.status !== input.expectedStatus) return null;
@@ -249,8 +302,12 @@ function createHarness(opts: {
           ...claim,
           status: 'awaiting_payout',
           approvedAmount: input.approvedAmount,
+          quantumReason: input.quantumReason ?? claim.quantumReason,
           decidedAt: new Date(),
           updatedAt: new Date(),
+          decisionNotices: input.notice
+            ? [...claim.decisionNotices, input.notice as ClaimDocument['decisionNotices'][number]]
+            : claim.decisionNotices,
           statusHistory: [
             ...claim.statusHistory,
             {
@@ -769,12 +826,23 @@ describe('PATCH /v1/admin/claims/{claimId}', () => {
     const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
       method: 'PATCH',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'rejected', rejectionReason: 'Insufficient evidence of ownership.' }),
+      body: JSON.stringify({
+        action: 'rejected',
+        rejectionReason: 'Insufficient evidence of ownership.',
+        groundCode: 'INSUFFICIENT_EVIDENCE_OF_OWNERSHIP',
+      }),
     });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe('rejected');
     expect(body.rejectionReason).toBe('Insufficient evidence of ownership.');
+    // security-review.md §12.3 N-1 — a server-composed notice is issued,
+    // not just the admin's raw text.
+    expect(body.decisionNotices).toHaveLength(1);
+    expect(body.decisionNotices[0].kind).toBe('rejection');
+    expect(body.decisionNotices[0].groundCode).toBe('INSUFFICIENT_EVIDENCE_OF_OWNERSHIP');
+    expect(body.decisionNotices[0].renderedText).toContain('Insufficient evidence of ownership.');
+    expect(body.decisionNotices[0].renderedText).toContain('National Financial Ombud Scheme');
   });
 
   it('AC-10: rejects any further transition on an already-terminal claim with 409', async () => {
@@ -905,6 +973,339 @@ describe('PATCH /v1/admin/claims/{claimId}', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe('under_review');
+  });
+});
+
+describe('security-review.md §12.3 — claim decision notices (SR-018-6)', () => {
+  it('rejecting without a groundCode returns 400 VALIDATION_ERROR', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'rejected', rejectionReason: 'No cover for this cause of loss.' }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+    expect(harness.getClaim().status).toBe('under_review');
+  });
+
+  it('rejecting with an invalid groundCode returns 400 VALIDATION_ERROR', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'rejected', rejectionReason: 'x', groundCode: 'NOT_A_REAL_CODE' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('a rejection notice includes the ground code, the admin reason, the 90-day representation right, the NFO/FAIS Ombud contacts, re-filing, and insurer licence details', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'rejected',
+        rejectionReason: 'No photographic evidence of the asset was provided.',
+        groundCode: 'INSUFFICIENT_EVIDENCE_OF_LOSS',
+        policyClauseReference: 'Clause 7.2',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.decisionNotices).toHaveLength(1);
+    const notice = body.decisionNotices[0];
+    expect(notice.kind).toBe('rejection');
+    expect(notice.groundCode).toBe('INSUFFICIENT_EVIDENCE_OF_LOSS');
+    expect(notice.templateVersion).toBe(1);
+    expect(notice.renderedText).toContain('No photographic evidence of the asset was provided.');
+    expect(notice.renderedText).toContain('Clause 7.2');
+    expect(notice.renderedText).toContain('90 days');
+    expect(notice.renderedText).toContain('National Financial Ombud Scheme');
+    expect(notice.renderedText).toContain('FAIS Ombud');
+    expect(notice.renderedText).toContain('TEST-LIC-0001');
+    expect(notice.renderedText).toContain('TEST-FSP-0001');
+    expect(notice.renderedText).toContain('file a new claim');
+    // fraud-flag names/heuristics must never appear in a notice.
+    expect(notice.renderedText).not.toContain('FLAG_');
+  });
+
+  it('does not require eligibilityDetermination-style config to block a notice when config is fully set, but FAILS LOUDLY (500) when required notice config is blank — no mutation occurs', async () => {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      policy: samplePolicy(acctId),
+      asset: sampleAsset(acctId),
+      claim: sampleClaim(acctId),
+      envOverrides: {
+        claimsNotice: {
+          internalComplaintsContact: 'complaints@test.example',
+          nfoContactName: 'Test NFO',
+          nfoWebsite: 'https://nfo.test.example',
+          nfoPhone: '0000000000',
+          nfoEmail: 'nfo@test.example',
+          faisOmbudContactName: '', // blank — required field missing
+          faisOmbudWebsite: 'https://fais.test.example',
+          faisOmbudPhone: '0000000001',
+          faisOmbudEmail: 'fais@test.example',
+          insurerLegalName: 'Test Insurer (Pty) Ltd',
+          insurerLicenceNumber: 'TEST-LIC-0001',
+          insurerFspNumber: 'TEST-FSP-0001',
+        },
+      },
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+    const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'rejected',
+        rejectionReason: 'No cover for this cause of loss.',
+        groundCode: 'EXCLUDED_EVENT_OR_CAUSE',
+      }),
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error.code).toBe('CLAIM_NOTICE_CONFIG_INCOMPLETE');
+    // No mutation and no audit row on a notice-composition failure.
+    expect(harness.getClaim().status).toBe('under_review');
+    expect(harness.stateChanges).toHaveLength(0);
+  });
+
+  describe('§12.3 N-3 — a partial approval is a partial rejection', () => {
+    it('requires quantumReason when approvedAmount < claimedAmount, 422 QUANTUM_REASON_REQUIRED otherwise', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({
+        accountId: acctId,
+        policy: samplePolicy(acctId),
+        asset: sampleAsset(acctId),
+        claim: sampleClaim(acctId, { claimedAmount: 1000 }),
+      });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'approved', approvedAmount: 600 }),
+      });
+      expect(res.status).toBe(422);
+      const body = await res.json();
+      expect(body.error.code).toBe('QUANTUM_REASON_REQUIRED');
+      expect(harness.getClaim().status).toBe('under_review');
+      expect(harness.stateChanges).toHaveLength(0);
+    });
+
+    it('approves a lower amount with a quantumReason, recording quantumReason and issuing a QUANTUM_DISPUTED shortfall notice', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({
+        accountId: acctId,
+        policy: samplePolicy(acctId),
+        asset: sampleAsset(acctId),
+        claim: sampleClaim(acctId, { claimedAmount: 1000 }),
+      });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'approved',
+          approvedAmount: 600,
+          quantumReason: 'Depreciated value of the asset at the time of loss was lower than claimed.',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.status).toBe('awaiting_payout');
+      expect(body.approvedAmount).toBe(600);
+      expect(body.quantumReason).toBe('Depreciated value of the asset at the time of loss was lower than claimed.');
+      expect(body.decisionNotices).toHaveLength(1);
+      expect(body.decisionNotices[0].kind).toBe('partial_approval_shortfall');
+      expect(body.decisionNotices[0].groundCode).toBe('QUANTUM_DISPUTED');
+      expect(body.decisionNotices[0].renderedText).toContain('600.00');
+      expect(body.decisionNotices[0].renderedText).toContain('1000.00');
+      // Recorded in the privileged-access decision record too.
+      expect(harness.stateChanges[0]!.reason).toContain('quantumReason=');
+    });
+
+    it('a full approval (approvedAmount === claimedAmount) does not require quantumReason and issues no notice', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({
+        accountId: acctId,
+        policy: samplePolicy(acctId),
+        asset: sampleAsset(acctId),
+        claim: sampleClaim(acctId, { claimedAmount: 1000 }),
+      });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'approved', approvedAmount: 1000 }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.decisionNotices).toHaveLength(0);
+      expect(body.quantumReason).toBeNull();
+    });
+  });
+
+  describe('§12.3 N-4 — administrative close is for non-merits grounds only', () => {
+    it('closing without a closeGround returns 400 VALIDATION_ERROR', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'closed', closeReason: 'Filed in error.' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('closing with an invalid (merits-based) closeGround returns 400 VALIDATION_ERROR — merits closes must go through rejected', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'closed', closeReason: 'Not covered.', closeGround: 'NO_COVER' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('closing with closeGround DUPLICATE_CLAIM requires a valid duplicateOfClaimId on the same account', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const missingRef = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'closed', closeReason: 'Duplicate of another claim.', closeGround: 'DUPLICATE_CLAIM' }),
+      });
+      expect(missingRef.status).toBe(422);
+      const missingBody = await missingRef.json();
+      expect(missingBody.error.code).toBe('DUPLICATE_CLAIM_REFERENCE_INVALID');
+      expect(harness.getClaim().status).toBe('under_review');
+    });
+
+    it('closing with closeGround DUPLICATE_CLAIM and a valid duplicateOfClaimId succeeds, with a notice stating this is not a merits decision', async () => {
+      const acctId = randomUUID();
+      const survivingClaim = sampleClaim(acctId, { id: '507f1f77bcf86cd799439077' });
+      const harness = createHarness({
+        accountId: acctId,
+        policy: samplePolicy(acctId),
+        asset: sampleAsset(acctId),
+        claim: sampleClaim(acctId),
+        otherClaims: [survivingClaim],
+      });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'closed',
+          closeReason: 'Duplicate of another open claim on the same asset.',
+          closeGround: 'DUPLICATE_CLAIM',
+          duplicateOfClaimId: survivingClaim.id,
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.status).toBe('closed');
+      expect(body.closeReason).toBe('Duplicate of another open claim on the same asset.');
+      expect(body.decisionNotices).toHaveLength(1);
+      expect(body.decisionNotices[0].kind).toBe('administrative_close');
+      expect(body.decisionNotices[0].groundCode).toBe('DUPLICATE_CLAIM');
+      expect(body.decisionNotices[0].renderedText).toContain(survivingClaim.id);
+      expect(body.decisionNotices[0].renderedText).toContain('decision on whether your claim is covered');
+    });
+
+    it('closing with closeGround FILED_IN_ERROR_CONFIRMED_BY_CUSTOMER (no duplicateOfClaimId needed) succeeds', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'closed',
+          closeReason: 'Customer confirmed by phone this was filed in error.',
+          closeGround: 'FILED_IN_ERROR_CONFIRMED_BY_CUSTOMER',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.status).toBe('closed');
+      expect(body.decisionNotices[0].groundCode).toBe('FILED_IN_ERROR_CONFIRMED_BY_CUSTOMER');
+    });
+  });
+
+  describe('§12.3 N-5 — more-info notice boilerplate', () => {
+    it('appends fixed "stays open / will not be rejected without further notice" boilerplate to the customer-visible reviewNotes entry, without altering the audit-trail reason', async () => {
+      const acctId = randomUUID();
+      const harness = createHarness({ accountId: acctId, policy: samplePolicy(acctId), asset: sampleAsset(acctId), claim: sampleClaim(acctId) });
+      const listened = await listen(harness.app);
+      activeServer = listened.server;
+      const token = tokenFor(harness.env, harness.adminAccountId, harness.adminSessionId, 'admin');
+
+      const adminText = 'Please provide a copy of the police case report.';
+      const res = await fetch(`${listened.baseUrl}/admin/claims/${CLAIM_ID}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'more_info_requested', reviewNote: adminText }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const adminNote = body.reviewNotes.find((n: { authorRole: string }) => n.authorRole === 'admin');
+      expect(adminNote.text).toContain(adminText);
+      expect(adminNote.text).toContain('will NOT be rejected for lack of a');
+      expect(adminNote.text).toContain('remains open');
+
+      // The raw admin text (without boilerplate) is what the audit trail records.
+      expect(harness.stateChanges[0]!.reason).toBe(adminText);
+    });
   });
 });
 

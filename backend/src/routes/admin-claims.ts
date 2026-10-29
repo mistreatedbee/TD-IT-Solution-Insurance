@@ -23,6 +23,15 @@ import {
   type ClaimStatus,
 } from '../lib/claim-rules.js';
 import { InvalidClaimStatusTransitionError } from '../repositories/claims.js';
+import {
+  appendMoreInfoBoilerplate,
+  buildAdministrativeCloseNotice,
+  buildPartialApprovalShortfallNotice,
+  buildRejectionNotice,
+  CLAIM_ADMIN_CLOSE_GROUNDS,
+  CLAIM_REJECTION_GROUND_CODES,
+  ClaimDecisionNoticeConfigError,
+} from '../lib/claim-decision-notice.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireUserType } from '../middleware/require-role.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
@@ -69,9 +78,38 @@ const patchBodySchema = z.discriminatedUnion('action', [
     // since the schema cannot see the claim). Optional at the schema level
     // so an ordinary approval body is unaffected.
     eligibilityDetermination: z.string().trim().min(1).max(2000).optional(),
+    // security-review.md §12.3 N-3 — required ONLY when approvedAmount <
+    // claimedAmount (enforced in the handler, which has both figures).
+    // "A partial approval is a partial rejection": the shortfall needs the
+    // same ground-reason discipline a full rejection does.
+    quantumReason: z.string().trim().min(1).max(2000).optional(),
   }),
-  z.object({ action: z.literal('rejected'), rejectionReason: requiredReasonSchema }),
-  z.object({ action: z.literal('closed'), closeReason: requiredReasonSchema }),
+  z.object({
+    action: z.literal('rejected'),
+    rejectionReason: requiredReasonSchema,
+    // security-review.md §12.3 N-2 item 2 — a structured ground code is
+    // REQUIRED on every admin rejection; the admin's free-text
+    // `rejectionReason` is one slot in the server-composed notice, never
+    // the whole notice.
+    groundCode: z.enum(CLAIM_REJECTION_GROUND_CODES),
+    /** Optional: not every rejection cites a specific policy clause. */
+    policyClauseReference: z.string().trim().min(1).max(500).optional(),
+  }),
+  z.object({
+    action: z.literal('closed'),
+    closeReason: requiredReasonSchema,
+    // security-review.md §12.3 N-4 — administrative close is for
+    // NON-MERITS grounds only. Any merits-based ending must go through
+    // `rejected` instead; this enum is deliberately narrower than the
+    // rejection ground codes.
+    closeGround: z.enum(CLAIM_ADMIN_CLOSE_GROUNDS),
+    /** Required by the handler when closeGround === 'DUPLICATE_CLAIM'; must
+     * resolve to another claim on the same account. */
+    duplicateOfClaimId: z
+      .string()
+      .regex(/^[0-9a-f]{24}$/i)
+      .optional(),
+  }),
 ]);
 
 export function createAdminClaimsRouter(ctx: AppContext): Router {
@@ -305,8 +343,96 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
             next(apiError('ELIGIBILITY_DETERMINATION_REQUIRED'));
             return;
           }
+
+          // security-review.md §12.3 N-3 — "a partial approval is a
+          // partial rejection". Require the same ground-reason discipline
+          // for the shortfall that a full rejection already requires.
+          if (body.approvedAmount < existing.claimedAmount && !body.quantumReason) {
+            next(apiError('QUANTUM_REASON_REQUIRED'));
+            return;
+          }
         }
 
+        // security-review.md §12.3 N-4 — administrative close is for
+        // non-merits grounds only. `DUPLICATE_CLAIM` must reference an
+        // existing claim belonging to the SAME account.
+        let duplicateOfClaim: Awaited<ReturnType<typeof ctx.claims.findByIdForAccount>> | null = null;
+        if (body.action === 'closed' && body.closeGround === 'DUPLICATE_CLAIM') {
+          if (!body.duplicateOfClaimId) {
+            next(apiError('DUPLICATE_CLAIM_REFERENCE_INVALID'));
+            return;
+          }
+          duplicateOfClaim = await ctx.claims.findByIdForAccount(existing.accountId, body.duplicateOfClaimId);
+          if (!duplicateOfClaim) {
+            next(apiError('DUPLICATE_CLAIM_REFERENCE_INVALID'));
+            return;
+          }
+        }
+
+        // security-review.md §12.3 — server-composed, versioned decision
+        // notices. Built BEFORE the audit-log write and the mutation, so a
+        // missing/blank required notice-config value (CLAIM_NOTICE_CONFIG_INCOMPLETE)
+        // fails the whole request with no audit row and no claim mutation,
+        // same posture as every other precondition above.
+        let notice;
+        try {
+          if (body.action === 'rejected') {
+            notice = buildRejectionNotice({
+              env: ctx.env,
+              claimId: existing.id,
+              assetDisplayName: existing.assetDisplayNameSnapshot,
+              submittedAt: existing.submittedAt,
+              decidedAt: new Date(),
+              claimedAmount: existing.claimedAmount,
+              claimedAmountCurrency: existing.claimedAmountCurrency,
+              groundCode: body.groundCode,
+              adminReason: body.rejectionReason,
+              policyClauseReference: body.policyClauseReference ?? null,
+            });
+          } else if (body.action === 'approved' && body.approvedAmount < existing.claimedAmount) {
+            notice = buildPartialApprovalShortfallNotice({
+              env: ctx.env,
+              claimId: existing.id,
+              assetDisplayName: existing.assetDisplayNameSnapshot,
+              submittedAt: existing.submittedAt,
+              decidedAt: new Date(),
+              claimedAmount: existing.claimedAmount,
+              approvedAmount: body.approvedAmount,
+              currency: existing.claimedAmountCurrency,
+              quantumReason: body.quantumReason!,
+            });
+          } else if (body.action === 'closed') {
+            notice = buildAdministrativeCloseNotice({
+              env: ctx.env,
+              claimId: existing.id,
+              assetDisplayName: existing.assetDisplayNameSnapshot,
+              submittedAt: existing.submittedAt,
+              decidedAt: new Date(),
+              closeGround: body.closeGround,
+              adminReason: body.closeReason,
+              survivingClaimId: duplicateOfClaim?.id ?? null,
+            });
+          }
+        } catch (err) {
+          if (err instanceof ClaimDecisionNoticeConfigError) {
+            next(apiError('CLAIM_NOTICE_CONFIG_INCOMPLETE'));
+            return;
+          }
+          throw err;
+        }
+
+        // security-review.md §12.3 N-5 — the more-info notice/message must
+        // state the claim stays open and will not be rejected without
+        // further written notice; this is fixed boilerplate, not the
+        // admin's free text alone.
+        const customerFacingReviewNoteText =
+          body.action === 'more_info_requested' ? appendMoreInfoBoilerplate(body.reviewNote) : undefined;
+
+        // NOTE: `reason` is the plain admin-supplied text, stored verbatim on
+        // the domain document's `rejectionReason`/`closeReason` (customer-
+        // visible) and in `statusHistory`/`reviewNotes` — it must never be
+        // the enriched/annotated string below, or that annotation would leak
+        // into customer-facing fields.
         const reason =
           body.action === 'more_info_requested'
             ? body.reviewNote
@@ -322,13 +448,27 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
                   // used for this column) rather than add a new one.
                   // §12.2 R7-3: append the admin's eligibility determination
                   // (present only on flagged claims) to the same audit row.
+                  // §12.3 N-3: ditto for a partial approval's quantumReason.
                   // Admin-only — this field is never serialized to the
                   // customer.
                   ? `approvedAmount=${body.approvedAmount.toFixed(2)} ${existing.claimedAmountCurrency}` +
                     (body.eligibilityDetermination
                       ? ` eligibilityDetermination=${body.eligibilityDetermination}`
-                      : '')
+                      : '') +
+                    (body.quantumReason ? ` quantumReason=${body.quantumReason}` : '')
                   : null;
+
+        // Audit-trail-only annotation (Trail B `privileged_state_change.reason`)
+        // — security-review.md §12.3 N-2 item 2: the structured ground/close
+        // code travels alongside the admin's reason in the privileged-access
+        // decision record. This is NEVER written to the domain document
+        // (`reason` above is what the repository persists there).
+        const auditReason =
+          body.action === 'rejected'
+            ? `groundCode=${body.groundCode} ${reason}`
+            : body.action === 'closed'
+              ? `closeGround=${body.closeGround} ${reason}`
+              : reason;
 
         // Write the decision record BEFORE the mutation (§18.8 ruling (b)).
         await ctx.adminAccessLog.recordStateChange({
@@ -340,7 +480,7 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
           resourceId: existing.id,
           fromStatus,
           toStatus: body.action === 'approved' ? 'awaiting_payout' : toStatus,
-          reason,
+          reason: auditReason,
           endpoint: ENDPOINT_PATCH,
           ipAddress: clientIp(req),
           userAgent: req.header('user-agent') ?? null,
@@ -354,6 +494,8 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
               approvedAmount: body.approvedAmount,
               actorAccountId: req.auth!.accountId,
               eligibilityDetermination: body.eligibilityDetermination ?? null,
+              quantumReason: body.quantumReason ?? null,
+              notice,
             });
           } else {
             updated = await ctx.claims.transitionForAdmin(claimId, {
@@ -361,6 +503,8 @@ export function createAdminClaimsRouter(ctx: AppContext): Router {
               toStatus,
               actorAccountId: req.auth!.accountId,
               reason,
+              notice,
+              customerFacingReviewNoteText,
             });
           }
         } catch (err) {

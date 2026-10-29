@@ -29,6 +29,8 @@ function baseClaim(overrides?: Partial<ClaimDocument>): ClaimDocument {
     approvedAmount: null,
     rejectionReason: null,
     closeReason: null,
+    quantumReason: null,
+    decisionNotices: [],
     reviewNotes: [],
     statusHistory: [],
     fraudFlags: [],

@@ -170,6 +170,38 @@ export interface Env {
   locationIngestionEnabled?: boolean;
 
   /**
+   * security-review.md §12.3 (compliance ruling, SR-018-6) — contact and
+   * licensing details that MUST appear in every server-composed claim
+   * decision notice (`lib/claim-decision-notice.ts`): the insurer's internal
+   * complaints contact, the National Financial Ombud Scheme (NFO), the FAIS
+   * Ombud, and the insurer's own licence/FSP numbers. None of these are real
+   * yet (Feature 002 §12.5.1 is still open; the NFO/FAIS Ombud contact
+   * details still need verification per §12.3 item 5). Each one defaults to
+   * an obviously-fake, clearly-marked `TODO_OWNER_MUST_CONFIGURE:` string
+   * when its env var is unset, rather than silently rendering a blank line
+   * in a document a customer may rely on for a 90-day representation
+   * window. An env var that is explicitly set to an empty/whitespace-only
+   * string is treated as a genuine configuration error (not "use the
+   * placeholder") and makes `buildClaimDecisionNotice` throw — see that
+   * file for the "fail loudly, never ship a notice with a blank required
+   * field" rule from §12.3.
+   */
+  claimsNotice?: {
+    internalComplaintsContact: string;
+    nfoContactName: string;
+    nfoWebsite: string;
+    nfoPhone: string;
+    nfoEmail: string;
+    faisOmbudContactName: string;
+    faisOmbudWebsite: string;
+    faisOmbudPhone: string;
+    faisOmbudEmail: string;
+    insurerLegalName: string;
+    insurerLicenceNumber: string;
+    insurerFspNumber: string;
+  };
+
+  /**
    * SR-018-2 kill switch: the Feature 018 claims API (`backend/src/routes/claims.ts`
    * customer routes and `backend/src/routes/admin-claims.ts` admin routes) was
    * mounted unconditionally in `index.ts`, with only a client-side mobile flag
@@ -447,6 +479,39 @@ export function loadEnv(): Env {
     );
   }
 
+  // security-review.md §12.3 — placeholder config for the claim
+  // decision-notice template. `envOrPlaceholder` yields the clearly-marked
+  // placeholder when the var is unset, but an explicitly-blank value (set to
+  // "" or whitespace) is NOT silently replaced — it is passed through as an
+  // empty string so `buildClaimDecisionNotice`'s required-field check fails
+  // loudly instead of ever rendering a blank line in a customer notice.
+  function envOrPlaceholder(varName: string, whatFor: string): string {
+    const raw = process.env[varName];
+    if (raw === undefined) return `TODO_OWNER_MUST_CONFIGURE: ${whatFor} not yet configured (${varName})`;
+    return raw.trim();
+  }
+
+  const claimsNotice: Env['claimsNotice'] = {
+    internalComplaintsContact: envOrPlaceholder(
+      'CLAIMS_NOTICE_INTERNAL_COMPLAINTS_CONTACT',
+      'the insurer internal complaints contact',
+    ),
+    nfoContactName: envOrPlaceholder('CLAIMS_NOTICE_NFO_NAME', 'the National Financial Ombud Scheme name'),
+    nfoWebsite: envOrPlaceholder('CLAIMS_NOTICE_NFO_WEBSITE', 'the National Financial Ombud Scheme website'),
+    nfoPhone: envOrPlaceholder('CLAIMS_NOTICE_NFO_PHONE', 'the National Financial Ombud Scheme phone number'),
+    nfoEmail: envOrPlaceholder('CLAIMS_NOTICE_NFO_EMAIL', 'the National Financial Ombud Scheme email'),
+    faisOmbudContactName: envOrPlaceholder('CLAIMS_NOTICE_FAIS_OMBUD_NAME', 'the FAIS Ombud name'),
+    faisOmbudWebsite: envOrPlaceholder('CLAIMS_NOTICE_FAIS_OMBUD_WEBSITE', 'the FAIS Ombud website'),
+    faisOmbudPhone: envOrPlaceholder('CLAIMS_NOTICE_FAIS_OMBUD_PHONE', 'the FAIS Ombud phone number'),
+    faisOmbudEmail: envOrPlaceholder('CLAIMS_NOTICE_FAIS_OMBUD_EMAIL', 'the FAIS Ombud email'),
+    insurerLegalName: envOrPlaceholder('CLAIMS_NOTICE_INSURER_LEGAL_NAME', 'the registered insurer legal name'),
+    insurerLicenceNumber: envOrPlaceholder(
+      'CLAIMS_NOTICE_INSURER_LICENCE_NUMBER',
+      "the insurer's licence number",
+    ),
+    insurerFspNumber: envOrPlaceholder('CLAIMS_NOTICE_INSURER_FSP_NUMBER', "the insurer's FSP number"),
+  };
+
   return {
     nodeEnv,
     isProduction,
@@ -474,6 +539,7 @@ export function loadEnv(): Env {
     invitationAcceptRedirectUrl,
     expoAccessToken,
     locationIngestionEnabled,
+    claimsNotice,
     claimsApiEnabled,
   };
 }

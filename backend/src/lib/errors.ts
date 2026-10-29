@@ -158,6 +158,28 @@ export const ERROR_CATALOG = {
     message:
       'This approval amount exceeds the self-service approval ceiling (or the claim is not in the ceiling currency) and must be escalated for approval above the standard admin limit.',
   },
+  // security-review.md §12.3 N-3: a partial approval is a partial
+  // rejection, and needs the admin's reason for the shortfall before it can
+  // go out with the required notice.
+  QUANTUM_REASON_REQUIRED: {
+    statusCode: 422,
+    message: 'approvedAmount is less than claimedAmount. A quantumReason explaining the shortfall is required.',
+  },
+  // security-review.md §12.3 N-4: `closeGround: 'DUPLICATE_CLAIM'` must name
+  // the surviving claim, and that claim must actually belong to the same
+  // account.
+  DUPLICATE_CLAIM_REFERENCE_INVALID: {
+    statusCode: 422,
+    message: 'duplicateOfClaimId must reference an existing claim belonging to the same account.',
+  },
+  // security-review.md §12.3 — a required decision-notice configuration
+  // value (internal complaints contact, NFO/FAIS Ombud details, insurer
+  // licence/FSP numbers) is missing or blank. Never ships a notice with a
+  // blank required field.
+  CLAIM_NOTICE_CONFIG_INCOMPLETE: {
+    statusCode: 500,
+    message: 'This decision cannot be issued because required notice configuration is missing. Escalate to the platform owner.',
+  },
   INTERNAL_ERROR: { statusCode: 500, message: 'An internal error occurred.' },
 } as const satisfies Record<string, ErrorCatalogEntry>;
 

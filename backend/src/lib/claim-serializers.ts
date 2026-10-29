@@ -29,6 +29,20 @@ export function serializeClaimForCustomer(claim: ClaimDocument) {
     // SR-018-6 — administrative close reason, customer-visible like rejectionReason.
     // Only ever populated on an admin-initiated close (never a customer withdrawal).
     closeReason: claim.closeReason,
+    // security-review.md §12.3 N-3 — the admin's reason for disputing the
+    // amount on a partial approval. Customer-visible, like rejectionReason.
+    quantumReason: claim.quantumReason,
+    // security-review.md §12.3 N-1 — server-composed, versioned decision
+    // notices (full/partial rejection, administrative close). This is
+    // customer-facing content, unlike `fraudFlags`/`statusHistory`, which
+    // stay internal/admin-only.
+    decisionNotices: claim.decisionNotices.map((n) => ({
+      kind: n.kind,
+      templateVersion: n.templateVersion,
+      groundCode: n.groundCode,
+      renderedText: n.renderedText,
+      issuedAt: n.issuedAt,
+    })),
     // SR-018-6 — `authorRole` lets the customer tell an admin's more-info
     // request apart from their own prior response, without ever exposing
     // `actorAccountId` (admin-only).

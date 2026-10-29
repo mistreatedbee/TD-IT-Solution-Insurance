@@ -13,6 +13,7 @@ import {
   type ClaimStatus,
   type FraudFlag,
 } from '../lib/claim-rules.js';
+import type { ClaimDecisionNotice } from '../lib/claim-decision-notice.js';
 
 export interface ClaimReviewNote {
   actorAccountId: string;
@@ -59,6 +60,17 @@ export interface ClaimDocument {
    * left null for a customer withdrawal, which already carries its own
    * fixed statusHistory reason). Customer-visible, like `rejectionReason`. */
   closeReason: string | null;
+  /** security-review.md §12.3 N-3 — the admin's reason for disputing the
+   * amount on a partial approval (`approvedAmount < claimedAmount`).
+   * Required by the route layer whenever that condition holds. Customer-
+   * visible, like `rejectionReason`. */
+  quantumReason: string | null;
+  /** security-review.md §12.3 N-1 — append-only, server-composed decision
+   * notices (one per admin `rejected`, administrative `closed`, or partial
+   * `approved` shortfall). Each entry pins its own `templateVersion` so a
+   * later template change never retroactively alters an already-issued
+   * notice. Customer-visible. */
+  decisionNotices: ClaimDecisionNotice[];
   reviewNotes: ClaimReviewNote[];
   statusHistory: ClaimStatusChange[];
   /** §5 — computed once at filing, admin-only, never shown to the customer. */
@@ -111,6 +123,8 @@ function toClaim(row: ClaimDbRow): ClaimDocument {
     approvedAmount: row.approvedAmount ?? null,
     rejectionReason: row.rejectionReason ?? null,
     closeReason: row.closeReason ?? null,
+    quantumReason: row.quantumReason ?? null,
+    decisionNotices: row.decisionNotices ?? [],
     reviewNotes: row.reviewNotes ?? [],
     statusHistory: row.statusHistory ?? [],
     fraudFlags: row.fraudFlags ?? [],
@@ -180,6 +194,8 @@ export function createClaimsRepo(db: Db) {
         approvedAmount: null,
         rejectionReason: null,
         closeReason: null,
+        quantumReason: null,
+        decisionNotices: [],
         reviewNotes: [],
         statusHistory: [],
         fraudFlags: input.fraudFlags,
@@ -328,6 +344,18 @@ export function createClaimsRepo(db: Db) {
         toStatus: ClaimStatus;
         actorAccountId: string;
         reason: string | null;
+        /** security-review.md §12.3 N-1 — the server-composed notice for a
+         * `rejected` or administrative `closed` transition. Appended to
+         * `decisionNotices[]` in the same atomic write as the status change.
+         * Omitted for `start_review`/`more_info_requested`, which are not
+         * adverse decisions. */
+        notice?: ClaimDecisionNotice;
+        /** security-review.md §12.3 N-5 — for `more_info_requested` only:
+         * the admin's `reviewNote` with the fixed "claim stays open" /
+         * "won't be rejected without further notice" boilerplate already
+         * appended. The raw admin text (without boilerplate) is still what
+         * goes into `statusHistory`/the audit trail's `reason` field. */
+        customerFacingReviewNoteText?: string;
       },
     ): Promise<ClaimDocument | null> {
       if (!ObjectId.isValid(claimId)) return null;
@@ -359,9 +387,14 @@ export function createClaimsRepo(db: Db) {
         $push.reviewNotes = {
           actorAccountId: input.actorAccountId,
           authorRole: 'admin',
-          text: input.reason,
+          // §12.3 N-5 — the customer sees the admin's text PLUS fixed
+          // boilerplate, never the admin's free text alone.
+          text: input.customerFacingReviewNoteText ?? input.reason,
           createdAt: now,
         } satisfies ClaimReviewNote;
+      }
+      if (input.notice) {
+        $push.decisionNotices = input.notice;
       }
       const row = await collection().findOneAndUpdate(
         { _id: new ObjectId(claimId), status: input.expectedStatus },
@@ -388,6 +421,13 @@ export function createClaimsRepo(db: Db) {
          * `FLAG_INCIDENT_BEFORE_ELIGIBILITY`. Admin-only; must never be
          * exposed to the customer serializer. */
         eligibilityDetermination?: string | null;
+        /** security-review.md §12.3 N-3 — required by the route layer
+         * whenever `approvedAmount < claimedAmount`. Customer-visible. */
+        quantumReason?: string | null;
+        /** §12.3 N-3 — the server-composed shortfall notice, appended to
+         * `decisionNotices[]` in the same atomic write as the approval,
+         * whenever this is a partial approval. */
+        notice?: ClaimDecisionNotice | null;
       },
     ): Promise<ClaimDocument | null> {
       if (!ObjectId.isValid(claimId)) return null;
@@ -415,16 +455,21 @@ export function createClaimsRepo(db: Db) {
           changedAt: now,
         },
       ];
+      const $push: Record<string, unknown> = { statusHistory: { $each: entries } };
+      if (input.notice) {
+        $push.decisionNotices = input.notice;
+      }
       const row = await collection().findOneAndUpdate(
         { _id: new ObjectId(claimId), status: input.expectedStatus },
         {
           $set: {
             status: 'awaiting_payout',
             approvedAmount: input.approvedAmount,
+            quantumReason: input.quantumReason ?? null,
             decidedAt: now,
             updatedAt: now,
           },
-          $push: { statusHistory: { $each: entries } },
+          $push,
         },
         { returnDocument: 'after' },
       );
