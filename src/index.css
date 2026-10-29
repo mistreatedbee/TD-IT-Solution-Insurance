@@ -144,7 +144,7 @@
      `--glass-background*`/`--glass-border` tokens above, which stay for any
      consumer not yet migrated. See
      docs/organization/design-system/ob-17-glass-redesign-tokens.md. */
-  --glass-accent: #2DBDB6;
+  --glass-accent: #00B5B5;
   --glass-accent-deep: #1E8F89;
   --glass-accent-tint: #E3F6F4;
   --glass-bg-gradient-start: #FCFCFC;

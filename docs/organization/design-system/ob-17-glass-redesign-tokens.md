@@ -449,3 +449,66 @@ exist today just creates another open item for no real savings.
 Scope: status/semantic positive states only (recovered, approved, active-protected where a
 distinct "good" signal beyond generic teal is wanted) — always paired with an icon/text label per
 the existing no-colour-only house rule, never used for CTAs or navigation.
+
+## 8. PAAQ full-palette reference cross-check (2026-10-29, `design-system-manager`)
+
+Owner supplied a new, different kind of Figma reference: PAAQ's own colour-palette design-system
+sheet (node `59341:24588`, file `Crcdvg7h55ihIcy6clT3Nq`) — a full 50-950 shade scale for six
+brand colours, not a product screen. This is a third-and-fourth data point layered onto the two
+screen pulls already cited in §7a, used here only to tighten confidence/values already in this
+doc, not to reopen ratified decisions.
+
+1. **`--glass-action-secondary` confidence upgraded, no value change.** §7a sourced `#181f1f`
+   from one Figma screen pull (screens doc §13.1). This palette sheet independently confirms
+   `#181f1f` as PAAQ's actual "Main Black" 500 shade in their own documented system, not an
+   estimate read off a rendered button. Two independent Figma sources now converge on the exact
+   same hex. Confidence raised from "Figma-sourced value in one screen" to "confirmed against
+   PAAQ's own token reference" — value unchanged (`#181f1f` light / `#E8EDED` dark, unchanged).
+
+2. **`--glass-accent` tightened from `#2DBDB6` to `#00B5B5`.** §2.1's `#2DBDB6` was read off
+   rendered UI (pill tab, logo) across two screenshots — reasonable, but a rendered colour can
+   carry gradient/lighting/anti-aliasing drift from the underlying flat token. This palette sheet
+   gives the actual documented "Primary" 500 value (`#00B5B5`) PAAQ's own system defines — a third
+   data point for the same colour, and the first one sourced from a flat-swatch reference rather
+   than a rendered screen. Finalizing on the documented token value over the rendered estimate:
+
+   | Token | Previous | New |
+   |---|---|---|
+   | `--glass-accent` | `#2DBDB6` | `#00B5B5` |
+   | `--glass-accent-deep` | `#1E8F89` | kept — deep/hover shade still derived as a ~25% darkening of the accent per §2.1's original rationale; recompute if a future reference supplies PAAQ's own 600/700 shade for this hue |
+   | `--glass-accent-tint` | `#E3F6F4` | kept — light tint derivation unaffected by the base-hue tightening; close enough to PAAQ's own 50 (`#E5FFFF`) that no change is warranted |
+
+   This is a tightening, not a reversal — same hue family, ~4 points apart on each channel. Needs
+   are implementation-only: `src/index.css`, `tailwind.config.js`, and `mobile/src/theme/colorSchemes.ts`
+   (`glassAccent` in both `lightColors`/`darkColors`) update to `#00B5B5`; no screen-spec or
+   component-API change follows from this.
+
+3. **No new `--glass-warning`/`--glass-error` tokens added.** PAAQ's Tertiary Yellow (`#FFC823`)
+   and Tertiary Pink (`#E35369`) map conceptually to warning/error, but this project already has
+   adequate, non-glass semantic tokens covering that need: mobile `colorSchemes.ts` `tones.warning`
+   / `tones.danger` (amber/red family, both light and dark variants) plus `fieldError`/
+   `fieldErrorText` for form validation; web has no `--glass-*` equivalent but also no established
+   usage gap raised by any of the 8 OB-17 screens so far (none of them are a warning/error-heavy
+   surface). Adding glass-specific warning/error tokens now would be system-building ahead of a
+   real need — logged as available if a future screen (e.g. the report-theft flow's own
+   validation states) demonstrates existing `tones.warning`/`tones.danger` don't fit the glass
+   surface's contrast requirements. Not acted on today; no gap found.
+
+4. **`--glass-status-positive` kept at `#2E9E53`, not reconciled to PAAQ's Success `#67AC5B`.**
+   §7a's `#2E9E53` was already deliberately adjusted away from the Figma-observed `#4ead66` for a
+   verified ≥4.5:1 contrast against `--glass-surface-strong`; this was a *principled* deviation,
+   not a guess that a better reference now corrects. PAAQ's own documented Success 500
+   (`#67AC5B`) is a third sibling value in the same green family (`#4ead66` screen-render,
+   `#67AC5B` documented token, `#2E9E53` our contrast-driven pick) but doesn't change the
+   methodology point: we deliberately take the *pattern* (a distinct semantic green, separate
+   from brand teal and secondary black), not PAAQ's literal value, because PAAQ's reference
+   wasn't built against our own glass-surface contrast requirements. Re-running the contrast
+   check against `#67AC5B` is a reasonable future exercise but not required now — `#2E9E53`
+   already clears the bar this doc set for it. No change.
+
+5. **Tertiary Purple (`#702DBD`) — logged, not adopted.** No current token or screen in this
+   project's OB-17 scope has a use for a fifth accent colour. Noted for the record as available
+   in PAAQ's reference if a future, genuinely distinct need arises (e.g. a dedicated Admin Panel
+   or Security Company Dashboard accent, distinguishing those surfaces from the customer-facing
+   teal/black/positive-green system) — not reserving it, not blocking on it, not inventing a use
+   for it today.

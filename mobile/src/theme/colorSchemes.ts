@@ -105,7 +105,7 @@ export const lightColors: AppColors = {
   fieldError: '#EF4444',
   fieldErrorText: '#DC2626',
   // OB-17 glass tokens, light mode — ratified values, see colorSchemes.ts header note.
-  glassAccent: '#2DBDB6',
+  glassAccent: '#00B5B5',
   glassAccentDeep: '#1E8F89',
   glassAccentTint: '#E3F6F4',
   glassActionSecondary: '#181F1F',
@@ -189,7 +189,7 @@ export const darkColors: AppColors = {
   // OB-17 glass tokens, dark mode — the gradient pair is an unreferenced
   // extrapolation (tokens doc §2.2 honesty note); accent/status/surface
   // tokens otherwise mirror the ratified values.
-  glassAccent: '#2DBDB6',
+  glassAccent: '#00B5B5',
   glassAccentDeep: '#1E8F89',
   glassAccentTint: '#163432',
   glassActionSecondary: '#E8EDED',
