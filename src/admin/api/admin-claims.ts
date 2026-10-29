@@ -23,6 +23,73 @@ export type FraudFlag =
   | 'FLAG_AMOUNT_OUTLIER'
   | 'FLAG_RATE_THRESHOLD';
 
+/**
+ * security-review.md §12.3 N-2 item 2 — v1 ground codes for a full/partial
+ * rejection. Mirrors `backend/src/lib/claim-decision-notice.ts`'s
+ * `CLAIM_REJECTION_GROUND_CODES`.
+ */
+export type ClaimRejectionGroundCode =
+  | 'LOSS_OUTSIDE_PERIOD_OF_COVER'
+  | 'EXCLUDED_EVENT_OR_CAUSE'
+  | 'INSUFFICIENT_EVIDENCE_OF_LOSS'
+  | 'INSUFFICIENT_EVIDENCE_OF_OWNERSHIP'
+  | 'MISREPRESENTATION_OR_NON_DISCLOSURE'
+  | 'POLICY_NOT_IN_FORCE_AT_INCIDENT'
+  | 'QUANTUM_DISPUTED'
+  | 'OTHER';
+
+export const CLAIM_REJECTION_GROUND_CODES: ClaimRejectionGroundCode[] = [
+  'LOSS_OUTSIDE_PERIOD_OF_COVER',
+  'EXCLUDED_EVENT_OR_CAUSE',
+  'INSUFFICIENT_EVIDENCE_OF_LOSS',
+  'INSUFFICIENT_EVIDENCE_OF_OWNERSHIP',
+  'MISREPRESENTATION_OR_NON_DISCLOSURE',
+  'POLICY_NOT_IN_FORCE_AT_INCIDENT',
+  'QUANTUM_DISPUTED',
+  'OTHER',
+];
+
+export const CLAIM_REJECTION_GROUND_CODE_LABELS: Record<ClaimRejectionGroundCode, string> = {
+  LOSS_OUTSIDE_PERIOD_OF_COVER: 'Loss outside period of cover',
+  EXCLUDED_EVENT_OR_CAUSE: 'Excluded event or cause',
+  INSUFFICIENT_EVIDENCE_OF_LOSS: 'Insufficient evidence of loss',
+  INSUFFICIENT_EVIDENCE_OF_OWNERSHIP: 'Insufficient evidence of ownership',
+  MISREPRESENTATION_OR_NON_DISCLOSURE: 'Misrepresentation or non-disclosure',
+  POLICY_NOT_IN_FORCE_AT_INCIDENT: 'Policy not in force at incident',
+  QUANTUM_DISPUTED: 'Quantum disputed',
+  OTHER: 'Other',
+};
+
+/**
+ * security-review.md §12.3 N-4 — administrative close grounds. Mirrors
+ * `claim-decision-notice.ts`'s `CLAIM_ADMIN_CLOSE_GROUNDS`. Deliberately
+ * narrower than the rejection grounds above: non-merits reasons only.
+ */
+export type ClaimAdminCloseGround =
+  | 'DUPLICATE_CLAIM'
+  | 'FILED_IN_ERROR_CONFIRMED_BY_CUSTOMER'
+  | 'WITHDRAWN_AT_CUSTOMER_REQUEST';
+
+export const CLAIM_ADMIN_CLOSE_GROUNDS: ClaimAdminCloseGround[] = [
+  'DUPLICATE_CLAIM',
+  'FILED_IN_ERROR_CONFIRMED_BY_CUSTOMER',
+  'WITHDRAWN_AT_CUSTOMER_REQUEST',
+];
+
+export const CLAIM_ADMIN_CLOSE_GROUND_LABELS: Record<ClaimAdminCloseGround, string> = {
+  DUPLICATE_CLAIM: 'Duplicate claim',
+  FILED_IN_ERROR_CONFIRMED_BY_CUSTOMER: 'Filed in error (confirmed by customer)',
+  WITHDRAWN_AT_CUSTOMER_REQUEST: 'Withdrawn at customer request',
+};
+
+export interface ClaimDecisionNotice {
+  kind: 'rejection' | 'partial_approval_shortfall' | 'administrative_close' | 'more_info_request';
+  templateVersion: number;
+  groundCode: ClaimRejectionGroundCode | ClaimAdminCloseGround | null;
+  renderedText: string;
+  issuedAt: string;
+}
+
 export interface AdminClaim {
   id: string;
   accountId: string;
@@ -41,6 +108,9 @@ export interface AdminClaim {
   claimedAmountCurrency: string;
   approvedAmount: number | null;
   rejectionReason: string | null;
+  closeReason: string | null;
+  quantumReason: string | null;
+  decisionNotices: ClaimDecisionNotice[];
   reviewNotes: { text: string; createdAt: string }[];
   submittedAt: string;
   decidedAt: string | null;
@@ -80,9 +150,19 @@ export function getAdminClaim(claimId: string) {
 export type AdminClaimPatchBody =
   | { action: 'start_review' }
   | { action: 'more_info_requested'; reviewNote: string }
-  | { action: 'approved'; approvedAmount: number }
-  | { action: 'rejected'; rejectionReason: string }
-  | { action: 'closed'; closeReason: string };
+  | { action: 'approved'; approvedAmount: number; eligibilityDetermination?: string; quantumReason?: string }
+  | {
+      action: 'rejected';
+      rejectionReason: string;
+      groundCode: ClaimRejectionGroundCode;
+      policyClauseReference?: string;
+    }
+  | {
+      action: 'closed';
+      closeReason: string;
+      closeGround: ClaimAdminCloseGround;
+      duplicateOfClaimId?: string;
+    };
 
 export function patchAdminClaim(claimId: string, body: AdminClaimPatchBody) {
   return apiFetch<AdminClaim>(`/admin/claims/${encodeURIComponent(claimId)}`, {

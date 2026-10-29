@@ -8,9 +8,15 @@ import {
   getAdminClaim,
   listAdminClaims,
   patchAdminClaim,
+  CLAIM_REJECTION_GROUND_CODES,
+  CLAIM_REJECTION_GROUND_CODE_LABELS,
+  CLAIM_ADMIN_CLOSE_GROUNDS,
+  CLAIM_ADMIN_CLOSE_GROUND_LABELS,
   type AdminClaim,
   type ClaimStatus,
   type FraudFlag,
+  type ClaimRejectionGroundCode,
+  type ClaimAdminCloseGround,
 } from '../api/admin-claims';
 import { AdminNavLink } from '../layout/AdminLayout';
 import { StepUpDialog } from '../components/StepUpDialog';
@@ -223,8 +229,13 @@ function ClaimActions({
   const [open, setOpen] = useState<ActionKind | null>(null);
   const [reviewNote, setReviewNote] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionGroundCode, setRejectionGroundCode] = useState<ClaimRejectionGroundCode | ''>('');
+  const [policyClauseReference, setPolicyClauseReference] = useState('');
   const [closeReason, setCloseReason] = useState('');
+  const [closeGround, setCloseGround] = useState<ClaimAdminCloseGround | ''>('');
+  const [duplicateOfClaimId, setDuplicateOfClaimId] = useState('');
   const [approvedAmount, setApprovedAmount] = useState(String(claim.claimedAmount));
+  const [quantumReason, setQuantumReason] = useState('');
   const [busy, setBusy] = useState<ActionKind | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
@@ -281,6 +292,20 @@ function ClaimActions({
     claim.coverageLimit.limitAmount != null &&
     Number.isFinite(amountNumber) &&
     amountNumber > claim.coverageLimit.limitAmount;
+  // security-review.md §12.3 N-3 — "a partial approval is a partial
+  // rejection": the shortfall needs the same ground-reason discipline a
+  // full rejection does, required whenever the entered amount is below
+  // what was claimed.
+  const isPartialApproval = Number.isFinite(amountNumber) && amountNumber > 0 && amountNumber < claim.claimedAmount;
+  const approveDisabled =
+    busy !== null ||
+    !Number.isFinite(amountNumber) ||
+    amountNumber <= 0 ||
+    (isPartialApproval && !quantumReason.trim());
+  const rejectDisabled = busy !== null || !rejectionReason.trim() || !rejectionGroundCode;
+  const isDuplicateClose = closeGround === 'DUPLICATE_CLAIM';
+  const closeDisabled =
+    busy !== null || !closeReason.trim() || !closeGround || (isDuplicateClose && !duplicateOfClaimId.trim());
 
   return (
     <div className="space-y-4">
@@ -384,11 +409,30 @@ function ClaimActions({
               This amount exceeds the configured coverage limit and will be rejected by the server.
             </InlineAlert>
           ) : null}
+          {isPartialApproval ? (
+            <Input
+              label="Shortfall reason (required, shown to the customer — the approved amount is below the claimed amount)"
+              type="textarea"
+              rows={3}
+              value={quantumReason}
+              onChange={(e) => setQuantumReason(e.target.value)}
+              placeholder="Explain why the approved amount is less than the claimed amount."
+            />
+          ) : null}
           <Button
             size="sm"
             loading={busy === 'approved'}
-            disabled={busy !== null || !Number.isFinite(amountNumber) || amountNumber <= 0}
-            onClick={() => void run({ action: 'approved', approvedAmount: amountNumber }, 'approved')}
+            disabled={approveDisabled}
+            onClick={() =>
+              void run(
+                {
+                  action: 'approved',
+                  approvedAmount: amountNumber,
+                  ...(isPartialApproval ? { quantumReason: quantumReason.trim() } : {}),
+                },
+                'approved',
+              )
+            }
           >
             Confirm approval
           </Button>
@@ -397,6 +441,24 @@ function ClaimActions({
 
       {open === 'rejected' ? (
         <div className="space-y-3 rounded-lg border border-border p-4">
+          <div>
+            <label htmlFor="reject-ground-code" className="mb-1.5 block text-sm font-medium text-slate-800">
+              Ground code (required)
+            </label>
+            <select
+              id="reject-ground-code"
+              value={rejectionGroundCode}
+              onChange={(e) => setRejectionGroundCode(e.target.value as ClaimRejectionGroundCode | '')}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            >
+              <option value="">Select a ground code…</option>
+              {CLAIM_REJECTION_GROUND_CODES.map((code) => (
+                <option key={code} value={code}>
+                  {CLAIM_REJECTION_GROUND_CODE_LABELS[code]}
+                </option>
+              ))}
+            </select>
+          </div>
           <Input
             label="Rejection reason (required, shown to the customer)"
             type="textarea"
@@ -405,12 +467,29 @@ function ClaimActions({
             onChange={(e) => setRejectionReason(e.target.value)}
             placeholder="Explain why this claim is being rejected."
           />
+          <Input
+            label="Policy clause reference (optional)"
+            type="text"
+            value={policyClauseReference}
+            onChange={(e) => setPolicyClauseReference(e.target.value)}
+            placeholder="e.g. Section 4.2(b)"
+          />
           <Button
             variant="secondary"
             size="sm"
             loading={busy === 'rejected'}
-            disabled={busy !== null || !rejectionReason.trim()}
-            onClick={() => void run({ action: 'rejected', rejectionReason: rejectionReason.trim() }, 'rejected')}
+            disabled={rejectDisabled}
+            onClick={() =>
+              void run(
+                {
+                  action: 'rejected',
+                  rejectionReason: rejectionReason.trim(),
+                  groundCode: rejectionGroundCode as ClaimRejectionGroundCode,
+                  ...(policyClauseReference.trim() ? { policyClauseReference: policyClauseReference.trim() } : {}),
+                },
+                'rejected',
+              )
+            }
           >
             Confirm rejection
           </Button>
@@ -419,6 +498,33 @@ function ClaimActions({
 
       {open === 'closed' ? (
         <div className="space-y-3 rounded-lg border border-border p-4">
+          <div>
+            <label htmlFor="close-ground" className="mb-1.5 block text-sm font-medium text-slate-800">
+              Close ground (required)
+            </label>
+            <select
+              id="close-ground"
+              value={closeGround}
+              onChange={(e) => setCloseGround(e.target.value as ClaimAdminCloseGround | '')}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            >
+              <option value="">Select a close ground…</option>
+              {CLAIM_ADMIN_CLOSE_GROUNDS.map((ground) => (
+                <option key={ground} value={ground}>
+                  {CLAIM_ADMIN_CLOSE_GROUND_LABELS[ground]}
+                </option>
+              ))}
+            </select>
+          </div>
+          {isDuplicateClose ? (
+            <Input
+              label="Duplicate of claim ID (required)"
+              type="text"
+              value={duplicateOfClaimId}
+              onChange={(e) => setDuplicateOfClaimId(e.target.value)}
+              placeholder="The surviving claim ID on the same account."
+            />
+          ) : null}
           <Input
             label="Close reason (required, shown to the customer)"
             type="textarea"
@@ -431,8 +537,18 @@ function ClaimActions({
             variant="secondary"
             size="sm"
             loading={busy === 'closed'}
-            disabled={busy !== null || !closeReason.trim()}
-            onClick={() => void run({ action: 'closed', closeReason: closeReason.trim() }, 'closed')}
+            disabled={closeDisabled}
+            onClick={() =>
+              void run(
+                {
+                  action: 'closed',
+                  closeReason: closeReason.trim(),
+                  closeGround: closeGround as ClaimAdminCloseGround,
+                  ...(isDuplicateClose ? { duplicateOfClaimId: duplicateOfClaimId.trim() } : {}),
+                },
+                'closed',
+              )
+            }
           >
             Confirm close
           </Button>

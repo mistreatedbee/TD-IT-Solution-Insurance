@@ -5,11 +5,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { ClaimDetailPage, ClaimsQueuePage } from './AdminClaimsPages';
 import type { AdminClaim } from '../api/admin-claims';
 
-vi.mock('../api/admin-claims', () => ({
-  listAdminClaims: vi.fn(),
-  getAdminClaim: vi.fn(),
-  patchAdminClaim: vi.fn(),
-}));
+vi.mock('../api/admin-claims', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/admin-claims')>();
+  return {
+    ...actual,
+    listAdminClaims: vi.fn(),
+    getAdminClaim: vi.fn(),
+    patchAdminClaim: vi.fn(),
+  };
+});
 
 import { getAdminClaim, listAdminClaims, patchAdminClaim } from '../api/admin-claims';
 
@@ -32,6 +36,9 @@ function claim(overrides: Partial<AdminClaim> = {}): AdminClaim {
     claimedAmountCurrency: 'ZAR',
     approvedAmount: null,
     rejectionReason: null,
+    closeReason: null,
+    quantumReason: null,
+    decisionNotices: [],
     reviewNotes: [],
     submittedAt: '2026-10-02T00:00:00.000Z',
     decidedAt: null,
@@ -117,7 +124,7 @@ describe('ClaimDetailPage', () => {
     await waitFor(() => expect(patchAdminClaim).toHaveBeenCalledWith('claim-1', { action: 'start_review' }));
   });
 
-  it('requires a reason before confirming rejection', async () => {
+  it('requires a reason and ground code before confirming rejection', async () => {
     const user = userEvent.setup();
     vi.mocked(getAdminClaim).mockResolvedValue(claim({ status: 'under_review' }));
 
@@ -129,6 +136,9 @@ describe('ClaimDetailPage', () => {
     expect(confirmButton).toBeDisabled();
 
     await user.type(screen.getByLabelText(/Rejection reason/), 'Insufficient evidence.');
+    expect(confirmButton).toBeDisabled();
+
+    await user.selectOptions(screen.getByLabelText(/Ground code/), 'INSUFFICIENT_EVIDENCE_OF_LOSS');
     expect(confirmButton).not.toBeDisabled();
 
     vi.mocked(patchAdminClaim).mockResolvedValue(claim({ status: 'rejected', rejectionReason: 'Insufficient evidence.' }));
@@ -137,6 +147,87 @@ describe('ClaimDetailPage', () => {
       expect(patchAdminClaim).toHaveBeenCalledWith('claim-1', {
         action: 'rejected',
         rejectionReason: 'Insufficient evidence.',
+        groundCode: 'INSUFFICIENT_EVIDENCE_OF_LOSS',
+      }),
+    );
+  });
+
+  it('requires a shortfall reason before confirming a partial approval', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getAdminClaim).mockResolvedValue(claim({ status: 'under_review', claimedAmount: 10000 }));
+
+    renderDetail();
+    await waitFor(() => expect(screen.getByText('Approve')).toBeInTheDocument());
+    await user.click(screen.getByText('Approve'));
+
+    const amountInput = await screen.findByLabelText('Approved amount');
+    await user.clear(amountInput);
+    await user.type(amountInput, '5000');
+
+    const confirmButton = screen.getByText('Confirm approval');
+    expect(confirmButton).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/Shortfall reason/), 'Depreciated value only.');
+    expect(confirmButton).not.toBeDisabled();
+
+    vi.mocked(patchAdminClaim).mockResolvedValue(claim({ status: 'approved', approvedAmount: 5000 }));
+    await user.click(confirmButton);
+    await waitFor(() =>
+      expect(patchAdminClaim).toHaveBeenCalledWith('claim-1', {
+        action: 'approved',
+        approvedAmount: 5000,
+        quantumReason: 'Depreciated value only.',
+      }),
+    );
+  });
+
+  it('allows a full approval without a shortfall reason', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getAdminClaim).mockResolvedValue(claim({ status: 'under_review', claimedAmount: 10000 }));
+
+    renderDetail();
+    await waitFor(() => expect(screen.getByText('Approve')).toBeInTheDocument());
+    await user.click(screen.getByText('Approve'));
+
+    const confirmButton = await screen.findByText('Confirm approval');
+    expect(confirmButton).not.toBeDisabled();
+
+    vi.mocked(patchAdminClaim).mockResolvedValue(claim({ status: 'approved', approvedAmount: 10000 }));
+    await user.click(confirmButton);
+    await waitFor(() =>
+      expect(patchAdminClaim).toHaveBeenCalledWith('claim-1', {
+        action: 'approved',
+        approvedAmount: 10000,
+      }),
+    );
+  });
+
+  it('requires a close ground, and a duplicate claim ID when the ground is duplicate claim', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getAdminClaim).mockResolvedValue(claim({ status: 'under_review' }));
+
+    renderDetail();
+    await waitFor(() => expect(screen.getByText('Close')).toBeInTheDocument());
+    await user.click(screen.getByText('Close'));
+
+    const confirmButton = await screen.findByText('Confirm close');
+    await user.type(screen.getByLabelText(/Close reason/), 'No longer pursued.');
+    expect(confirmButton).toBeDisabled();
+
+    await user.selectOptions(screen.getByLabelText(/Close ground/), 'DUPLICATE_CLAIM');
+    expect(confirmButton).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/Duplicate of claim ID/), 'claim-0');
+    expect(confirmButton).not.toBeDisabled();
+
+    vi.mocked(patchAdminClaim).mockResolvedValue(claim({ status: 'closed', closeReason: 'No longer pursued.' }));
+    await user.click(confirmButton);
+    await waitFor(() =>
+      expect(patchAdminClaim).toHaveBeenCalledWith('claim-1', {
+        action: 'closed',
+        closeReason: 'No longer pursued.',
+        closeGround: 'DUPLICATE_CLAIM',
+        duplicateOfClaimId: 'claim-0',
       }),
     );
   });
