@@ -5,7 +5,10 @@ Owner: `ui-designer` (R, this doc). Tokens/component list: `design-system-manage
 does not repeat token values).
 
 Status: Draft screen specs, feeding Stage 5 (Architecture Review) and Stage 9
-(`frontend-engineer`/`mobile-engineer` build). Not yet Stage 8/10 signed off — see §9.
+(`frontend-engineer`/`mobile-engineer` build). Not yet Stage 8/10 signed off — see §9. The three
+open design questions accumulated in §§11-13 (glass-blur scope, black secondary accent, floating
+vs. static labels) are **resolved and ratified as of 2026-10-29** — see §14 for the decisions and
+the two resulting token-level edits to §3/§7.
 
 ## 0. Scope, honesty check, and what this doc is not
 
@@ -644,3 +647,75 @@ No edits made to §§1-8. Two items from this screen need `product-manager`/`cto
 `ui-designer` would apply them to any screen: §13.1's black-as-secondary-action recommendation,
 and §13.3's floating-label-vs-static-label conflict with the brief. Both logged as open items,
 not resolved here.
+
+**VOID (superseded 2026-10-29, see §14): "need `product-manager`/`cto` sign-off" above is no
+longer accurate** — the owner authorized `design-system-manager` to resolve these directly; both
+items are now ratified. §13.5's "no edits made to §§1-8" claim also needs revisiting per §14's
+token-level edits below.
+
+## 14. Resolution of §§11-13 open questions — ratified 2026-10-29 (`design-system-manager`)
+
+The owner authorized `design-system-manager` to resolve the three open design questions
+accumulated in this doc's §§11-13 and the tokens doc's §7 items 5-6, rather than continuing to
+hold them for `product-manager`/`cto` sign-off. Full reasoning and the new token values live in
+`ob-17-glass-redesign-tokens.md` §7a — this section records the resolutions as they apply to the
+screen specs, and makes the narrow token-level edits to §§1-8 that follow directly from the
+ratified tokens (colour/token substitutions only, no layout/content change — anything beyond that
+is left to `ui-designer`, per CLAUDE.md's edit-boundary rule for this doc).
+
+**Resolution 1 — glass-blur scope (tokens doc §7 item 5): RATIFIED as (b), flat-white-with-shadow
+for ordinary content, glass reserved for hero/header/modal.** This confirms, rather than
+contradicts, what §§1-8 already mostly specified — screens 1 (onboarding card), 2 (hero card
+only), 4 (hero card), 5 (map chrome, already glass by nature), 6 (form card), 8 (header card) were
+already written with glass used sparingly. The two places §§1-8 as currently worded read as
+"glass by default" for ordinary list rows are §3.1/§3.3 (asset list rows) and §7.1/§7.2 (alerts
+rows) — both currently say "List of GlassCard rows ... default surface." Per the ratified
+decision, these should become flat-white-with-shadow rows instead (using
+`--glass-surface-opaque`-equivalent flat fill + `--glass-shadow`, radius unchanged at
+`--glass-radius-card` 24), reserving `GlassCard`/`GlassSurface` for this doc's hero cards and the
+onboarding/map/modal moments as already spec'd. This is a token/fill-level substitution (glass →
+flat+shadow at the same radius/layout), not a layout or content change, so `design-system-manager`
+is making it directly here rather than deferring to `ui-designer`:
+  - §3.1: "List of GlassCard rows (radius-card 24, default surface, NOT strong..." → list rows
+    render as flat white cards (`--glass-surface-opaque` fill, `--glass-shadow`) at the same
+    `--glass-radius-card` 24, per the now-ratified blur-scope decision — no behavior/fallback
+    change needed since flat-white-with-shadow *is* what the reduced-transparency/low-end-Android
+    fallback already produces (§3.3's fallback note is now simply the screen's default state, not
+    a fallback-only state).
+  - §7.1: "List of GlassCard rows (radius-card 24, default surface)" → same substitution, flat
+    white rows at `--glass-radius-card` 24.
+  - §3.3/§7.2 ("Glass elements / fallback"): update to note rows are flat-white-with-shadow by
+    default now (not just on fallback); the filter-chip bar (§3) and any hero/header elements on
+    these screens remain the only glass surfaces needing the fallback rung.
+  Screens 1, 2, 4, 5, 6, 8's existing hero/modal-scoped glass usage needs no change — already
+  aligned.
+
+**Resolution 2 — black secondary accent (tokens doc §7 item 6): RATIFIED, narrow scope.** New
+token `--glass-action-secondary` (`#181f1f` light / `#E8EDED` dark) is approved for
+secondary/inline/tertiary actions only (e.g. a future inline info-toggle or compact embedded
+button, should one of the 8 screens need it) — it does **not** apply to any of §§1-8's existing
+primary CTAs or nav-active states, all of which correctly stay on `--glass-accent` (teal) already
+per each screen's "one primary button, accent colour" spec. No edit needed to §§1-8's existing
+primary-button references. `ui-designer` should reach for `--glass-action-secondary` if a future
+revision of these screens needs a secondary/inline action distinct from a text link (e.g. an
+inline "how it works" affordance) rather than inventing an ad hoc colour.
+
+**Resolution 3 — floating vs. static labels (§13.3): RATIFIED, floating labels retained, no
+change.** §§1.2/§6.1's existing floating-label spec for `FormField`/`Input` stands as written —
+see tokens doc §7a for the justification (explicit brief instruction outweighs a single
+secondary-form reference screen). No edit needed.
+
+**Bonus — status-green token (§13.2): formalized now as `--glass-status-positive` (`#2E9E53`
+light / `#4ADE80` dark) — see tokens doc §7a.** Relevant to this doc's §3.2 status-badge matrix:
+`AssetBadge` "Recovered" (and arguably "Active/protected" if a future revision wants to
+distinguish "protected" from "actively doing well") may use `--glass-status-positive` instead of
+a generic accent/success tone where one isn't already defined — left as a candidate for
+`ui-designer`'s next pass on §3.2's matrix, not force-applied here since that table's existing
+"success tone" entries may already map to an existing non-OB-17 success token; no token-identity
+conflict either way since `--glass-status-positive` is additive.
+
+**Scope note:** §§1-8's layout, composition, component choice, and route/behavior content are
+unchanged beyond the two flat-card substitutions in Resolution 1 above, which are fill/token-level
+only (same radius, same layout, same components-used list minus the glass surface itself on those
+two rows-lists). All other requested edits from this task are recorded here in §14 rather than
+rewritten into §§1-8, per the instruction to leave layout/content edits to `ui-designer`.

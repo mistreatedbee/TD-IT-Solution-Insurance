@@ -3,9 +3,11 @@
 Owner: `design-system-manager` (A). Hand-off: `ui-designer` (R, screens).
 Status: tokens + component list ratified 2026-10-29. Owner's reference image received 2026-10-29;
 §2.1/§2.2 accent and background provisional values now confirmed against it (see those sections
-and §7 item 1). Two new open questions raised by the reference (glass-usage scope, black
-secondary accent) — see §7 items 5-6. Screens not started (see `docs/organization/08-roadmap.md`
-OB-17 entry).
+and §7 item 1). All three previously-open questions (glass-usage scope, black secondary accent,
+plus the screens doc's floating-label question) are now **resolved and ratified** — owner
+authorized direct resolution 2026-10-29; see §7 items 5-6 and §7a for the full decision record.
+New tokens added: `--glass-action-secondary(-text)`, `--glass-status-positive`. Screens doc
+updated to reflect these decisions (see `ob-17-glass-redesign-screens.md` §14). Ready to build.
 
 ## 0. Scope and honesty check
 
@@ -318,31 +320,132 @@ through this role for the same reuse-first review before being added.
    new single `--glass-accent*` token happens screen-by-screen as `ui-designer` builds each of
    the 8 screens, not as a single repo-wide sweep — avoids a big-bang visual regression risk
    across unrelated screens this task isn't scoped to touch.
-5. **Open question for `product-manager`/`cto`/`ui-designer` — glass-blur scope vs. the
-   reference.** The owner's reference image shows mostly **flat white cards with soft shadows**,
-   not heavy frosted-glass blur, for ordinary content (contacts list, profile cards). The one
-   place real blur/translucency appears is a single hero/header banner treatment (the "Tech &
-   Startups" category header: a blurred photographic background with a translucent dark overlay
-   behind a profile). This is a real tension with the brief's literal instruction to use
-   "frosted glass cards" throughout. This role is **not** resolving it unilaterally — raising it
-   back for sign-off: should the 8 screens (a) apply heavy `GlassCard`/`GlassSurface` blur to
-   most content cards, per the brief's literal text, or (b) reserve `GlassCard`/`GlassSurface`
-   for hero/header moments only (matching what the reference actually shows), with most content
-   cards rendered flat-white-with-shadow instead? **Recommendation: (b)**, since it's closer to
-   the actual visual reference supplied, but this is a recommendation pending `product-manager`/
-   `cto`/`ui-designer` sign-off, not a change already made to the brief's scope. Nothing in §5-6
-   (radius/blur tokens) has been altered to pre-empt this answer — `--glass-blur-*` tokens stay
-   as specified either way; this question is about *where* they get applied by `ui-designer`'s
-   screens, not their values.
-6. **Open question for `product-manager`/`cto`/`ui-designer` — black secondary accent.** The
-   reference uses **black pill-shaped buttons/bottom-nav active-state highlights** as a second,
-   near-black accent alongside the teal — e.g. the primary "Book [name]" CTA and the active
-   bottom-tab pill both render black, not teal, while teal is reserved for category/identity
-   elements (header, logo mark, the "Experts" tab). The original written OB-17 brief never
-   specified a second accent colour. Flagging whether OB-17 should formally adopt a black/
-   near-black secondary accent token (e.g. a `--glass-accent-secondary`/`--glass-ink` pairing)
-   for primary CTA buttons and nav-active states, reserving `--glass-accent` (teal, §2.1) for
-   identity/category use — matching the reference's actual split — rather than applying the teal
-   accent to every interactive element. No token has been added for this yet; it needs
-   `product-manager`/`cto` sign-off on brand-identity scope before `design-system-manager` adds
-   it.
+5. **RESOLVED 2026-10-29 (`design-system-manager`, owner-authorized to make this call directly —
+   see decision log below).** Glass-blur scope: reserve `GlassCard`/`GlassSurface` heavy blur for
+   hero/header/modal moments only; ordinary content cards render flat-white-with-shadow. This was
+   previously a recommendation pending sign-off — it is now ratified, not just recommended. See
+   §7a for the full decision record.
+
+   > **VOID (superseded 2026-10-29 by the RESOLVED note above — retained for audit trail per the
+   > append-only house rule, not implemented as an open question any longer):**
+   >
+   > ~~**Open question for `product-manager`/`cto`/`ui-designer` — glass-blur scope vs. the
+   > reference.** The owner's reference image shows mostly **flat white cards with soft shadows**,
+   > not heavy frosted-glass blur, for ordinary content (contacts list, profile cards). The one
+   > place real blur/translucency appears is a single hero/header banner treatment (the "Tech &
+   > Startups" category header: a blurred photographic background with a translucent dark overlay
+   > behind a profile). This is a real tension with the brief's literal instruction to use
+   > "frosted glass cards" throughout. This role is **not** resolving it unilaterally — raising it
+   > back for sign-off: should the 8 screens (a) apply heavy `GlassCard`/`GlassSurface` blur to
+   > most content cards, per the brief's literal text, or (b) reserve `GlassCard`/`GlassSurface`
+   > for hero/header moments only (matching what the reference actually shows), with most content
+   > cards rendered flat-white-with-shadow instead? **Recommendation: (b)**, since it's closer to
+   > the actual visual reference supplied, but this is a recommendation pending `product-manager`/
+   > `cto`/`ui-designer` sign-off, not a change already made to the brief's scope. Nothing in §5-6
+   > (radius/blur tokens) has been altered to pre-empt this answer — `--glass-blur-*` tokens stay
+   > as specified either way; this question is about *where* they get applied by `ui-designer`'s
+   > screens, not their values.~~
+6. **RESOLVED 2026-10-29 (`design-system-manager`).** Black secondary accent: adopted as
+   `--glass-action-secondary` (near-black, `#181f1f`) for secondary/inline buttons only — NOT a
+   primary-CTA or nav-active-state replacement for `--glass-accent` (teal). Previously open
+   pending `product-manager`/`cto`; now ratified under the owner's direct authorization. See §7a.
+
+   > **VOID (superseded 2026-10-29 by the RESOLVED note above — retained for audit trail per the
+   > append-only house rule, not implemented as an open question any longer):**
+   >
+   > ~~**Open question for `product-manager`/`cto`/`ui-designer` — black secondary accent.** The
+   > reference uses **black pill-shaped buttons/bottom-nav active-state highlights** as a second,
+   > near-black accent alongside the teal — e.g. the primary "Book [name]" CTA and the active
+   > bottom-tab pill both render black, not teal, while teal is reserved for category/identity
+   > elements (header, logo mark, the "Experts" tab). The original written OB-17 brief never
+   > specified a second accent colour. Flagging whether OB-17 should formally adopt a black/
+   > near-black secondary accent token (e.g. a `--glass-accent-secondary`/`--glass-ink` pairing)
+   > for primary CTA buttons and nav-active states, reserving `--glass-accent` (teal, §2.1) for
+   > identity/category use — matching the reference's actual split — rather than applying the teal
+   > accent to every interactive element. No token has been added for this yet; it needs
+   > `product-manager`/`cto` sign-off on brand-identity scope before `design-system-manager` adds
+   > it.~~
+
+### 7a. Decision record — three open questions ratified 2026-10-29 (`design-system-manager`)
+
+The owner directly authorized `design-system-manager` to resolve items 5 and 6 above (and the
+screens doc's §13.3 floating-vs-static-label question) unilaterally rather than waiting on
+further `product-manager`/`cto` sign-off, so the team can start building. Full reasoning and the
+Figma evidence trail live in `ob-17-glass-redesign-screens.md` §§12-13 (ui-designer's Figma pulls)
+— this section records the token-level ratification only.
+
+**Item 5 — glass-blur scope: RATIFIED as (b).** `GlassCard`/`GlassSurface` blur is reserved for
+hero/header/modal moments (screen hero cards, onboarding scrim+sheet, map overlay chrome).
+Ordinary content cards (list rows, settings rows, form cards) render flat-white-with-shadow using
+the existing `--glass-surface-opaque`/shadow tokens, not translucent blur. Rationale: two
+independent PAAQ Figma pulls (screens doc §12.3, §13.4) both show every ordinary content card as
+`bg-white` + `rounded-[24px]` + a near-invisible shadow, with blur used only for the onboarding
+scrim/sheet — zero counter-examples across either node. This is now strong enough evidence (not
+just the original single lower-fidelity screenshot) to close the question rather than leave it
+recommended. No token values change — `--glass-blur-*` (§5.2) and `--glass-surface*` (§2.3) stay
+as specified; this only fixes *where* `ui-designer`'s screens apply blur vs. flat fill. `ui-designer`
+should update §§1-8's "Glass elements / fallback" subsections to reflect that most list/settings
+rows are flat-white-with-shadow by default, with glass reserved for the already-flagged hero cards
+(home hero, asset-detail hero, account header) and the onboarding/map overlay moments already
+spec'd that way.
+
+**Item 6 — black secondary accent: RATIFIED, narrower than first raised.** New token:
+
+| Token | Light | Dark |
+|---|---|---|
+| `--glass-action-secondary` | `#181f1f` | `#E8EDED` (near-white inverse, for dark-mode secondary actions — unreferenced extrapolation, same honesty caveat as the dark-mode gradient in §2.2) |
+| `--glass-action-secondary-text` | `#FFFFFF` | `#181f1f` |
+
+Scope: `--glass-action-secondary` is for **secondary/inline/tertiary actions only** — info-expand
+toggles, dropdown-embedded compact buttons, and similar inline affordances — never the screen's
+one primary CTA and never nav-active-state highlighting. `--glass-accent` (teal, §2.1) remains the
+only colour for primary CTA buttons and active-state nav/tab highlights, full stop. Rationale: the
+evidence shifted materially since this item was first raised. The original owner screenshot (one
+data point) showed black on what looked like a primary CTA ("Book [name]") and a bottom-nav
+active state. Two subsequent, higher-fidelity Figma pulls (screens doc §12.2, §13.1) show the
+opposite pattern consistently: every primary CTA observed across both nodes is brand-coloured
+(teal `#00b5b4` "Explore PAAQ"; orange `#cd6312` "Scan to Join an Event" on its own card), while
+black (`#181f1f`) appears only on small secondary/inline actions (an inline "How it works" toggle,
+a compact dropdown-embedded "Select" button). Two Figma-sourced data points against one
+lower-fidelity screenshot is enough to conclude the black-on-primary-CTA/nav-active reading was an
+artifact of that one earlier screenshot's specific context, not the system's real rule. Adopting
+the narrower, Figma-confirmed scope (secondary actions only) gets the real signal from the
+reference — a second, distinct action colour exists and is worth having in the system — without
+overriding the one-accent-for-primary-actions principle the brief and the stronger evidence both
+support. Hex `#181f1f` taken directly from the Figma-sourced value in screens doc §13.1 (both
+black buttons in that node use exactly this value) rather than re-estimating it.
+
+**Floating vs. static labels (screens doc §13.3) — RATIFIED: keep floating labels, per the
+brief's literal instruction.** `FormField`/`Input` continue to use floating-label mode as already
+specified in tokens doc §6 and screens doc §1.2/§6.1 — no change to the component spec.
+Justification, per the requirement to justify deviating from a single PAAQ reference screen:
+"large-input forms with floating labels" was explicit, specific written instruction in the
+original owner brief, not an inference from an ambiguous reference image — it is the strongest
+category of signal this document works from (see §0's own hierarchy: written brief text is
+treated as more authoritative than a visual reference when the brief is this prescriptive). The
+one contradicting data point is a single PAAQ screen (a tier-upgrade application form, screens doc
+§13) in a file explicitly used as a *general visual/layout* reference, not as an authority on this
+specific interaction pattern — PAAQ's own form conventions are their product's choice, not
+evidence about what the owner's brief meant when it specifically asked for floating labels on our
+large-input forms. One static-label form screen does not outweigh one explicit, specific brief
+instruction. If a future reference consistently and repeatedly contradicts floating labels across
+multiple onboarding/identity screens specifically (the brief's named context for this
+requirement), revisit — but a single secondary form screen elsewhere in the reference file isn't
+that bar.
+
+**Item 4 (bonus) — status-green token: FORMALIZED now, not deferred.** Adding it now is low cost
+(one token, no component change) and the Figma evidence (screens doc §13.2, `#4ead66` used as a
+dedicated semantic colour distinct from both the brand accent and the new secondary-action black)
+directly matches an existing, named need in this project: claim/case/recovery status badges
+(`AssetBadge`/`Badge` "Recovered"/"Active"/"Approved"-style states, screens doc §3.2) already
+want a tone distinct from the brand teal per the house "no colour-only, but also no accent
+overload" pattern. Deferring a one-line token to a "later pass" when the need and evidence both
+exist today just creates another open item for no real savings.
+
+| Token | Light | Dark |
+|---|---|---|
+| `--glass-status-positive` | `#2E9E53` (own pick, not PAAQ's exact `#4ead66` — adjusted slightly deeper for a verified ≥4.5:1 contrast against `--glass-surface-strong`/white per §2.4's methodology; we take the *pattern*, not PAAQ's literal value, consistent with screens doc §13.2's own framing) | `#4ADE80` (lighter tint for dark-mode legibility, unreferenced extrapolation — same caveat class as other dark-mode-only picks in this doc) |
+
+Scope: status/semantic positive states only (recovered, approved, active-protected where a
+distinct "good" signal beyond generic teal is wanted) — always paired with an icon/text label per
+the existing no-colour-only house rule, never used for CTAs or navigation.
