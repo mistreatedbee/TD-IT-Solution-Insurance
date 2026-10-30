@@ -227,7 +227,8 @@
           "SR-INC002B-S2 (BLOCKING): a signed partner-operator data-sharing agreement exists before any real partner org holds a claim. Until then the Play 'shared' determination (declaration §4(3)) cannot be answered and compliance-specialist's §9.6a referral stays open.",
           "SR-INC002B-S3 (CLOSED 2026-10-29, cybersecurity-architect — discharged by construction; not a risk acceptance): no partner-operator path fetches lastLocation at any tier. OFFER_TIER_FIELD_EXCLUSION_PROJECTION excludes lastLocation + lastLocationAt and CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION excludes lastLocation (backend/src/repositories/recovery-cases.ts:252-273), applied on every partner find/findOneAndUpdate (list, detail, claim, status, release, reassign), with exact-key-set regression tests; re-verified in code 2026-10-29. Chair finding: security-review-security-operations.md line 269 (discharge conditional on SR-009S-1, confirmed closed at §9.1). Residual de-identified open-pool property is not carried under S3: it is retired by ADR-0017 D1 (directed dispatch) when OB-03 ships and remains covered meanwhile by S2 + PDM-6 + flag-stays-false. Keeps-closed condition: adding any location field (lastLocation, lastLocationAt at offer tier, or any derived/coarsened coordinate) to any partner projection or serializer at any tier REOPENS S3 automatically; the ADR-0017 D3 grant-checked route is the only lawful partner location path. Record: ADR-0017 'cybersecurity-architect sign-off' section. [Superseded text, void as of 2026-10-29: 'SR-INC002B-S3 (BLOCKING): disposition of INC-002 §10.3's open-case-pool property — buildPartnerOrgQuery matches partnerOrganizationId:null for EVERY operator org, so an unclaimed open case's lastLocation is visible to any operator of any org before anyone claims it. Either scope the pool (region/dispatch assignment) or record it as a dated risk acceptance with a named accountable owner. Silent acceptance is not permitted.']",
           "R-INC002B-1 (architecture recommendation, not a precondition to the flag but the durable fix): ship the operator portal as a separate application/build identity rather than a flag-gated route group inside the consumer app. A feature flag is a rendering decision; it is not a trust boundary, and treating it as one is what made INC-002-B possible.",
-          "Review date 2026-10-20, owner cybersecurity-architect."
+          "Review date 2026-10-20, owner cybersecurity-architect.",
+          "[APPENDED 2026-10-30, OB-03 Tier A sub-task 5, CS-9 §7 'security-cases-accept-decline' manifest item.] This entry's scope is extended, not superseded, to cover OB-03 Tier A's additions to this same router: POST /v1/security/cases/:caseId/accept (replaces claim), POST /v1/security/cases/:caseId/decline (new), POST /v1/security/cases/:caseId/release (repurposed hand-back), and PATCH /v1/security/cases/:caseId (new status route, §3.1a). Per CS-9 this is an amendment to this existing entry, not a new one, since it is the same router and the same waived-conditional-blocked-third-party-trust-boundary disposition (flag stays false regardless). Reviewed at the design-doc level only as part of OB-03 Tier A's chair+security-engineer+compliance-specialist design review; no dedicated code-level Stage 8 review of the accept/decline/release/status additions has been performed, and this appendment does not grant one."
         ]
       }
     },
@@ -802,6 +803,68 @@
         "doc": "docs/features/012-employee-dashboard/security-review.md",
         "verdict": "conditional-sign-off",
         "note": "FR-4. Distinct entry, not an amendment to backend-support-cases-list. Registered above /support-cases/:caseId (SR-012-2). Query schema is scope='mine' (literal, explicit 'all' rejection mirroring SR-010-2) + optional status only — NO accountId, NO category (SR-012-1/C-012-2: an optional accountId would make this a subject-keyed count requiring a privileged_data_access row instead). countMine() mirrors listMine's filter minus accountId/category. Emits exactly one privileged_bulk_access row, resultCount 0, via recordBulkDisclosure({disclosedAccountIds: []}) per compliance-specialist §9.6. Own rate-limiter bucket (support-cases-count:*) distinct from the list/detail/notes/status shared limiter (SR-012-3.2)."
+      }
+    },
+    {
+      "id": "admin-case-dispatch",
+      "kind": "backend_route_group",
+      "pattern": "/admin/dispatch/cases*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "CS-9 manifest coverage (api-design-ob03-dispatch-location-grants.md §7). Covers GET /v1/admin/dispatch/cases, GET /v1/admin/dispatch/cases/count, GET /v1/admin/dispatch/cases/:caseId, POST /v1/admin/dispatch/cases/:caseId/dispatch, POST /v1/admin/dispatch/cases/:caseId/re-dispatch, POST /v1/admin/dispatch/cases/:caseId/re-dispatch/approve (backend/src/routes/admin-case-dispatch.ts). OB-03 Tier A's Stage 8 review (chair + security-engineer + compliance-specialist) covered this router at the design-doc level (step-up MFA gating, the [A4] state-keyed two-admin gate, [A8] per-subject Trail B on detail reads, [A9(iii)] same-holder rejection) before implementation — no dedicated line-by-line Stage 8 code review of the merged router has been performed yet. This entry records CS-9 coverage, it does not substitute for that review.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "security-cases-location",
+      "kind": "backend_route",
+      "pattern": "/security/cases/:caseId/location",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "CS-9 manifest coverage (api-design-ob03-dispatch-location-grants.md §7/§4). This is the one dedicated partner-location route (D3.3), reviewed at the design-doc level only — CS-9 flags it as a MANDATED THREAT-MODEL WORKSHOP item, not merely a manifest line, before its own Stage 8 can be filed. Distinct from backend-security-cases (which is waived for the operator trust-boundary reason, not for this route's location-disclosure content) and from backend-recovery (SR-INC002B-T1, the customer-facing case location read) — this is the partner-facing counterpart, gated on a live/consumed pre-authorization grant that cannot exist while PARTNER_LOCATION_SHARING_ENABLED is off (Tier B). No code is exposed under Tier A alone.",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "Threat-model workshop required before this entry may be replaced with a doc/verdict record — CS-9, owner cybersecurity-architect with security-engineer.",
+          "PARTNER_LOCATION_SHARING_ENABLED must remain off/false in every non-development environment until that workshop and this route's own Stage 8 review are both complete."
+        ]
+      }
+    },
+    {
+      "id": "recovery-location-share-grants",
+      "kind": "backend_route_group",
+      "pattern": "/recovery/cases/:caseId/{location-preauthorization,location-grant}*",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "CS-9 manifest coverage (api-design-ob03-dispatch-location-grants.md §7/§5). Covers POST/DELETE /v1/recovery/cases/:caseId/location-preauthorization, POST/DELETE /v1/recovery/cases/:caseId/location-grant and GET /v1/recovery/grants — the customer-facing consent/pre-authorization routes gating security-cases-location. Reviewed at the design-doc level only (SG-3's one-tap revoke, SG-8's access-history list) as part of OB-03 Tier A's chair+security-engineer+compliance-specialist design review; no dedicated code-level Stage 8 review performed. Gated the same as security-cases-location: no live grant can exist while PARTNER_LOCATION_SHARING_ENABLED is off (Tier B).",
+        "owner": "cybersecurity-architect",
+        "conditions": [
+          "PARTNER_LOCATION_SHARING_ENABLED must remain off/false in every non-development environment until this entry is replaced with a doc/verdict record alongside security-cases-location's threat-model workshop."
+        ]
+      }
+    },
+    {
+      "id": "dispatch-location-sweeper",
+      "kind": "backend_job",
+      "pattern": "recovery-case dispatch/location sweeper (R-3)",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "CS-9 manifest coverage (api-design-ob03-dispatch-location-grants.md §7/§6) — not an HTTP route, but CS-9 reads 'each new route' broadly to cover an equivalent privileged-write surface. Scheduled job that expires pending re-dispatch approvals and lapsed location grants/pre-authorizations. Reviewed at the design-doc level only as part of OB-03 Tier A's chair+security-engineer+compliance-specialist design review; no dedicated code-level Stage 8 review performed.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "recovery-case-push-suppression",
+      "kind": "backend_component_group",
+      "pattern": "recovery-case-reported-stolen push suppression + broadcast shutoff (CO-OB03-1/CO-OB03-2)",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "reason": "CS-9 manifest coverage (api-design-ob03-dispatch-location-grants.md §7/§3.7) — new entry, not an amendment, since it is new logic rather than an existing reviewed router. Covers the device-filtered push path for reported-stolen devices (CO-OB03-1) and removal of the unfiltered theft-report broadcast push (CO-OB03-2), both merge conditions for Tier A. Implemented this session (OB-03 Tier A sub-task 4). Reviewed at the design-doc level only as part of OB-03 Tier A's chair+security-engineer+compliance-specialist design review; no dedicated code-level Stage 8 review of the implementation has been performed.",
+        "owner": "cybersecurity-architect"
       }
     },
     {

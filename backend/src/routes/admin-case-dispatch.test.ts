@@ -753,6 +753,98 @@ describe('routes/admin-case-dispatch', () => {
       });
       expect(res.status).toBe(202);
     });
+
+    it('[A4] decline-then-re-dispatch: a partner decline (re-dispatch to null) followed by a real second re-dispatch call to a different org requires approval (202), not 200', async () => {
+      // Literal two-sequential-call scenario named in §2.4, distinct from the
+      // "null-then-dispatch bypass" test above (which presets
+      // firstDispatchedAt rather than driving the null transition via a real
+      // call). Step 1 models a partner decline/hand-back landing on the same
+      // underlying null transition §2.4 says it shares with admin
+      // re-dispatch-to-null (the decline/release routes live in
+      // security-cases.ts, out of this router's scope, but the transition —
+      // and the firstDispatchedAt survival property under test — is
+      // identical). Step 2 is a real, separate HTTP call.
+      const org1 = sampleOrg();
+      const org2 = sampleOrg();
+      const kase = sampleCase({
+        dispatchStatus: 'pending',
+        partnerOrganizationId: org1.id,
+        firstDispatchedAt: new Date('2026-10-01T00:00:00.000Z'),
+      });
+      const { app, adminBearer } = createHarness({ cases: [kase], orgs: [org1, org2] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const declineRes = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}/re-dispatch`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: null, reason: 'partner_declined' }),
+      });
+      expect(declineRes.status).toBe(200);
+      const declineBody = (await declineRes.json()) as { data: { dispatchStatus: string } };
+      expect(declineBody.data.dispatchStatus).toBe('undispatched');
+
+      const secondRes = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}/re-dispatch`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: org2.id, reason: 'partner_declined' }),
+      });
+      expect(secondRes.status).toBe(202);
+      const secondBody = (await secondRes.json()) as { data: { pendingApprovalId: string } };
+      expect(typeof secondBody.data.pendingApprovalId).toBe('string');
+    });
+
+    it('[A4] lapse-then-re-dispatch: a lapsed pending approval does not revert the gate to single-admin on a real second re-dispatch call', async () => {
+      // Literal two-sequential-call scenario named in §2.4. Step 1 requests a
+      // cross-org re-dispatch on a previously-dispatched case, creating a
+      // pendingApproval. We then simulate its expiresAt lapsing (no second
+      // admin acted in time) and make a real second re-dispatch call — the
+      // gate must still require approval, not fall back to single-admin just
+      // because the earlier pending request timed out.
+      const org1 = sampleOrg();
+      const org2 = sampleOrg();
+      const org3 = sampleOrg();
+      const kase = sampleCase({
+        dispatchStatus: null,
+        partnerOrganizationId: null,
+        firstDispatchedAt: new Date('2026-10-01T00:00:00.000Z'),
+      });
+      const { app, adminBearer, cases } = createHarness({ cases: [kase], orgs: [org1, org2, org3] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const firstRes = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}/re-dispatch`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: org2.id, reason: 'other' }),
+      });
+      expect(firstRes.status).toBe(202);
+      const firstBody = (await firstRes.json()) as { data: { pendingApprovalId: string } };
+      const firstApprovalId = firstBody.data.pendingApprovalId;
+
+      // Simulate the lapse: the pendingApproval's expiresAt is in the past.
+      // No new mutation reaches the case otherwise — expiry alone is what
+      // voids the request per §2.4 ("If the pending approval's `expiresAt`
+      // lapses, the request is void; the requester must call `re-dispatch`
+      // again.").
+      const stored = cases.get(kase.id)!;
+      cases.set(kase.id, {
+        ...stored,
+        pendingApproval: stored.pendingApproval
+          ? { ...stored.pendingApproval, expiresAt: new Date('2000-01-01T00:00:00.000Z') }
+          : null,
+      });
+
+      const secondRes = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}/re-dispatch`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: org3.id, reason: 'other' }),
+      });
+      expect(secondRes.status).toBe(202);
+      const secondBody = (await secondRes.json()) as { data: { pendingApprovalId: string } };
+      expect(typeof secondBody.data.pendingApprovalId).toBe('string');
+      expect(secondBody.data.pendingApprovalId).not.toBe(firstApprovalId);
+    });
   });
 
   describe('POST /admin/dispatch/cases/:caseId/re-dispatch/approve', () => {
