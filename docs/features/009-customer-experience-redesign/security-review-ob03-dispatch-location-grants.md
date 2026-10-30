@@ -674,3 +674,219 @@ merge-condition set alongside A1–A9) and for Tier B remaining blocked per the 
 values fixed in §9.5 above.
 
 <!-- compliance-specialist concurrence: append below this line. Do not edit the chair's section. -->
+
+## 10. `compliance-specialist` concurrence and CR-8 / Tier A ruling (Stage 8, third required signature, 2026-10-30)
+
+**Verdict.**
+- **Tier A: CONCUR, APPROVED WITH CONDITIONS.** Build may start. I add CO-OB03-1 to CO-OB03-6 below.
+  CO-OB03-1 (CR-8 under Tier A) and CO-OB03-2 (the theft-report broadcast push) gate **real partner traffic**,
+  not the build. CO-OB03-3 to CO-OB03-6 are merge conditions alongside A1 to A9.
+- **Tier B: CONCUR, BLOCKED.** I agree with B1 to B12 and add three compliance notes (§C4). Tier B comes back
+  to a full joint Stage 8, and my CR-3 precondition still stands.
+
+Regime basis: POPIA, confirmed for South African data subjects. GDPR is still unconfirmed and is applied as a
+design floor only. PCI-DSS does not apply (no payment data). The chair has not assumed any other regime. I
+found no silent single-regime assumption in the chair's section.
+
+**Code I read for this section (2026-10-30):** `backend/src/lib/recovery-case-notifications.ts`,
+`backend/src/lib/recovery-notification-service.ts` (`sendTheftEmailAndPush` :99,
+`notifySecurityOperatorsTheftReported` :167, `notifyCaseMessage` :229), `backend/src/lib/push-notification-service.ts`
+(`sendToAccount` :33 sends to **every** enabled token from `listEnabledForAccount`, with no device filter),
+`backend/src/repositories/push-tokens.ts` (tokens carry `deviceId`), `backend/src/repositories/assets.ts:268`
+(`reportingDeviceId`, the self-device binding), `backend/src/routes/recovery.ts:118-141` (theft-report
+notifications), `backend/src/repositories/accounts.ts:470` (`listActiveSecurityOperatorIds`).
+
+### C1. Ruling: CR-8 binds Tier A
+
+**Yes. Customer recovery-case push must not reach push tokens bound to the reported device, under Tier A as
+well as Tier B.** This is a Tier A **flag precondition**, not a build blocker. I agree with the chair that
+Tier A does not widen the existing behaviour.
+
+**1. CR-8 already says this.** My text (ADR-0017, compliance ruling §3, CR-8) reads: "Customer push **about a
+case**, a grant activation or an access history must not be sent to push tokens bound to the reported device."
+Case pushes are the first item on that list. It was ruled while the location flow was under review, but it was
+never limited to that flow. I am confirming the reading here, not extending it.
+
+**2. The legal basis does not depend on location.** The chair is right that the original "thief sees live
+tracking" concern does not arise under Tier A. But the location concern was never the operative POPIA ground.
+The ground is **s19**: reasonable measures against unauthorised access to and disclosure of personal
+information. Once the customer has told us a device is stolen, we know that whoever holds it is an
+unauthorised recipient. Sending the customer's personal information to it anyway is not a reasonable measure.
+What Tier A's pushes actually carry today (from the templates above):
+- `assetName`, the customer's free-text asset label. PDM-5 F-7 already found this routinely contains a
+  person's name or a number plate. That is personal information, whatever else is in the push.
+- the case reference and a status label ("Investigating", "Tracking", "assigned", "recovered").
+- for `recovery.case.message`, the **partner's free text, verbatim**. That is the worst one. An operator
+  writing "we are on our way" or "we have located it near…" sends a recovery tip-off to the person the
+  recovery is aimed at. That puts partner operators at physical risk.
+
+**3. Lock-screen display makes this worse than app access.** In Tier A the stolen device's customer session
+is still fully trusted, because CS-3/CR-1 is a Tier B deliverable. So someone could argue that a thief who can
+unlock the phone can read the case in the app anyway, and suppressing push adds nothing. That argument fails.
+A push is shown on the **lock screen**, with no unlock. It reaches the thief who **cannot** get into the
+phone, which is the common case, and it arrives at the moment the status changes. That gives the thief
+"recovery is active now" in real time. Suppressing push closes that path, even before CR-1 closes the in-app
+path. A gap that CR-1 will close later does not justify leaving this one open now.
+
+**4. Why a flag precondition and not a build blocker.** The behaviour exists today on the `claim` path. It
+does no harm yet only because there is no real partner traffic (`EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR="false"`,
+SR-INC002B-S1/S2 BLOCKING). Directed dispatch is what makes partner-driven status changes and messages real.
+So the control has to be in place before the first real partner action, whichever of these happens first.
+
+**CO-OB03-1 (CR-8 suppression, Tier A).** Owners: `notification-engineer` (transport), `backend-engineer`
+(implementation), `qa-architect` (tests). It binds whichever of these flips first in a non-development
+environment: `DIRECTED_DISPATCH_ENABLED` or `EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR`.
+- **(a) Scope.** It covers every customer push sent through `sendTheftEmailAndPush` for a recovery case:
+  `recovery.case.created`, `.assigned`, `.updated`, `.recovered`, `.closed` and `.message`. It also covers any
+  new Tier A customer template, such as accept, decline or hand-back status. Wire it in one place, in the
+  recovery notification path (for example an `excludeDeviceIds` parameter on `sendToAccount`), so no
+  individual template can forget it.
+- **(b) Which device.** The reported device is the case asset's `reportingDeviceId` (`assets.ts:268`).
+  Evaluate it **at send time**, not when the report is filed. A thief's phone that reports location later and
+  binds a null `reportingDeviceId` is then picked up too. Skip tokens where `token.deviceId === reportingDeviceId`.
+  If the asset has no binding, nothing is suppressed. That is correct for a laptop, a vehicle or a TV, where
+  the customer's phone is not the stolen item.
+- **(c) CR-7 carve-out.** If the theft report was **filed from** the reported device itself, do not suppress.
+  The person holding it is presumed to be the customer, and CR-7 forbids demoting the reporting session. Today
+  the case does not record the reporting session's device. `backend-architect` chooses how to capture it (for
+  example `reportedFromDeviceId` on create). `database-architect` appends the field if one is needed.
+- **(d) Fail closed.** If the binding lookup errors, send **no push** for that event. Email still goes. A
+  missed push to the customer's other devices is recoverable. A disclosure to the thief is not.
+- **(e) Email cannot be targeted per device. Accepted, with a record.** Email goes to the customer's mailbox
+  and may be readable on the stolen phone's mail app. I accept that residual for Tier A, because email is the
+  customer's own channel and the fallback CR-8 depends on. Two limits apply: email links deep-link to sign-in
+  (CR-8, already ruled), and (f) below.
+- **(f) No partner free text in any push payload.** `recovery.case.message` push becomes generic: "New message
+  about case [reference]". The text is shown only after authentication, in the app or the email body. This
+  also covers the residual cases where suppression cannot identify the device: a null binding on a phone
+  asset, or a thief's second device logged in with stolen credentials. Lock screens on trusted devices are
+  covered for the same reason. This is s10 minimality. A notification only needs to say that something
+  happened.
+- **(g) Tests.** Three tests are required: a reported-device token gets no push while a second token on the
+  same account does; a null binding suppresses nothing and sends a generic message payload; a lookup failure
+  sends no push and still sends the email.
+- **(h) Not covered by this ruling.** Non-case pushes to the stolen device, such as login alerts and plan
+  notices, remain part of CS-3/CR-1's untrusted-session scope (Tier B, `authentication-engineer`). I am not
+  pulling them into Tier A.
+
+**Breach classification (restating my ADR note for Tier A).** After CO-OB03-1 is live, a case push delivered
+to a reported device's token is a **s19 incident** for the INC runbook: log it, find the root cause, fix it.
+It is **not automatically** a s22 notification event. If it is shown that the device holder read case
+content, assess it under s22 at that point. Before CO-OB03-1 is live there must be no real partner traffic,
+so the question does not arise.
+
+### C2. Compliance pass on the chair's Tier A findings
+
+I concur with A1 to A9. Compliance additions:
+
+- **CO-OB03-2 (High, missed): the theft-report broadcast push still goes to every partner org.**
+  `recovery.ts:128-141` calls `notifySecurityOperatorsTheftReported` on every theft report. That pushes
+  `caseId`, `referenceNumber`, `assetType` and **`assetId`** to `listActiveSecurityOperatorIds()`
+  (`accounts.ts:470`), which is every active operator in every org, with no agreement or eligibility filter.
+  Stage 7 adds the target-org push at dispatch (§2.3) but never removes this broadcast. The chair's §1 "D1
+  visibility: no org sees an undispatched case in any form" holds for the read predicates, but **not for this
+  push.**
+  Under POPIA this is a disclosure of a data subject's case to operators that may have no s21 written agreement
+  (SR-INC002B-S2 is still BLOCKING). It is also outside the s13 purpose the customer was told about (one
+  partner chosen by us). `assetId` is an internal identifier that can be linked to the customer, and PDM-5/CS-6
+  allow only category and reference.
+  **Fix:** while `DIRECTED_DISPATCH_ENABLED` is on, the broadcast does not fire. The only partner push is
+  §2.3's target-org push, carrying category and reference only. Drop `assetId` from the partner payload. Test:
+  a theft report with the flag on sends no partner push. A dispatch sends a push only to the target org's
+  operators. Owners: `backend-architect` (Stage 7 addendum), `backend-engineer`. This binds the same real-traffic
+  flip as CO-OB03-1. Because the broadcast exists today, it also binds any `EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR`
+  flip made without directed dispatch.
+- **CO-OB03-3 (A1, PDM-4 wrap-up after termination).** A1 correctly puts the PDM-4 90-day wrap-up `$or` back
+  on the claimed predicate. A2(a) says termination returns the org's **open** cases to the queue. Together
+  they leave a **terminated** org with Tier 2 sight of its closed cases for up to 90 days. Once a POPIA s21
+  operator agreement has ended, the operator has no basis for continued access. The claimed predicate (or the
+  termination transition) must remove visibility of **every** case held by a terminated org, wrap-up window
+  included. Test: an accepted case that closed 30 days ago is visible at Tier 2. Terminate the org, and it
+  returns 404.
+- **CO-OB03-4 (A2, the eligibility source is the s21 evidence).** I accept option (b), the single-org
+  allowlist, for the pilot **only if** the allowlist entry records the executed agreement's reference and
+  effective date (the SR-INC002B-S2 artefact), and that record is in this file. Without that link, an
+  allowlist turns an unsigned partner into an "eligible" one. Option (a) is still owed before a second partner.
+- **CO-OB03-5 (A5/A6, s23 recipient history).** Under D1, every org that was offered a case (pending, then
+  declined, lapsed or re-dispatched) has received the customer's personal information at offer tier. POPIA
+  s23(1)(b) entitles the customer to the identity of every third party that has had access. The case document
+  overwrites `partnerOrganizationId` and `dispatchedBy`, so the answer must come from the audit trail.
+  - If Tier A writes Trail B only (A6's option), I accept that on one condition: every offer, accept, decline,
+    lapse, hand-back and re-dispatch writes a Trail B row with `caseId`, the customer `accountId` and the org.
+    The rows must be queryable per customer and kept for the audit-trail retention period, not the case
+    retention period.
+  - A5's migration returns must write the same rows (the chair's CS-4 point covers this).
+  - A test reconstructs the full recipient list for a case that went through decline, re-dispatch and accept.
+- **CO-OB03-6 (s16 accuracy of the customer's case view).** When a case returns to the queue (decline, lapse,
+  hand-back, migration return), the customer's view and any status push must not keep saying "assigned". No
+  new consent and no push is needed for that. Accuracy is enough.
+- **A8: concur, on s10 grounds.** A bulk list of every stolen asset's coordinates is not necessary for a
+  dispatch decision. The per-subject Trail B row on the detail route is what answers "who viewed this
+  customer's location and why".
+- **A4: concur.** I add that the `pendingApproval` record can be cleared from the case on approval, expiry or
+  cancel, because the Trail B rows (requester row, and an approval row naming both admins) are the record of
+  that decision. Do not keep it on the case.
+- **Notice (owned by me, not a merge condition).** Tier A needs **no new consent**. Dispatching the customer's
+  own theft report to a contracted partner rests on the existing basis: performance of the recovery service
+  the customer asked for when they filed the report (s11(1)(b)). The s18 notice must describe recipients as
+  "one security partner we select and have a written agreement with". I have not re-verified the current live
+  copy against that wording. I will confirm it, or supply a correction, before the Tier A flag flip. It goes
+  in the same copy package as CR-9.
+
+### C3. Things I checked and found fine
+
+- B5: I concur strongly. If the partner chain returned CR-5's text, it would tell a third party that the
+  customer's device was reported stolen. CR-5 was written only for the untrusted customer session.
+- The 503/404 reasoning, the CS-6 closed enums, and the A9(ii) mounting choice raise no compliance issue.
+
+### C4. Compliance notes on the Tier B blockers
+
+I concur with B1 to B12. B1 (`case_unassigned`, my OQ-2 ruling, a s16 accuracy point), B8 (CR-1 covers
+reads), B9 (`noticeVersion` is my OQ-1(e); the 24-hour fixed Path A duration is SG-4) and B11 (CR-8 at
+activation, now also extended by C1 above) are my own conditions coming back. The chair has stated them
+correctly. Additions for the Tier B re-design:
+
+- **B7, `account_erased`.** The erasure path writes the end record. It must then follow the retention
+  exception already set for grant audit records, not delete them. The end record is part of the s23 history
+  and the accountability record. Erasure minimises identifiers on the record. It does not remove the record.
+  `database-architect` should confirm this against the SG retention rules in the Tier B Stage 6 amendment.
+- **B10, a spent consent with no grant.** If the pre-authorisation is consumed and grant creation fails, the
+  fallback to the Path B prompt must not treat the consumed pre-authorisation as still valid consent for a
+  retry. The prompt must collect fresh consent, stamped with its own `noticeVersion`. The SG-8 history should
+  record the failed activation honestly, not show it as a grant.
+- **B6, the read-rate value.** I support the chair's input: the per-case ceiling is derived from the Feature
+  008 report interval. Reading more often than points arrive is surveillance cadence, with no recovery
+  purpose (s10).
+
+### C5. Conditions register (compliance additions)
+
+| ID | Owner | Gate it binds |
+|---|---|---|
+| CO-OB03-1 (CR-8 suppression on case push) | `notification-engineer`, `backend-engineer`, `qa-architect` | First non-development flip of `DIRECTED_DISPATCH_ENABLED` or `EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR` |
+| CO-OB03-2 (remove the theft-report broadcast push, drop `assetId`) | `backend-architect`, `backend-engineer` | Merge of the Tier A dispatch change, and the same flips as CO-OB03-1 |
+| CO-OB03-3 to CO-OB03-6 | `backend-architect`, `database-architect`, `backend-engineer` | Merge of the affected Tier A router (with A1 to A9) |
+| s18 recipient wording | `compliance-specialist` | Tier A flag flip |
+| §C4 notes | Tier B re-design owners | Tier B joint Stage 8 |
+
+### C6. Compliance pre-approval checklist (Tier A)
+
+- [x] Regime confirmed: POPIA s10, s11(1)(b), s13, s16, s18, s19, s21, s23. GDPR is a floor only. No silent
+  assumption found.
+- [x] Lawful basis: Tier A adds no new processing purpose. Dispatch rests on the existing service basis.
+- [x] Classification: case PII at offer and claimed tiers (PDM-1/PDM-2). No partner location in Tier A.
+- [x] Retention: the new dispatch fields follow `recovery_cases`. Recipient history lives in Trail B for the
+  audit-trail retention period (CO-OB03-5). `pendingApproval` is cleared once its outcome is recorded.
+- [x] Audit: Trail B on every recipient change (A5, CO-OB03-5). Per-subject access row for location on the
+  admin detail route (A8).
+- [n/a] PCI-DSS: no payment data.
+- [ ] Third party: the s21 agreement is still outstanding (SR-INC002B-S2). It gates the flag, and CO-OB03-4
+  links it to eligibility.
+- [x] Breach: classification above (C1). CR-8 failure after go-live is a s19 incident, with s22 assessed case
+  by case.
+- [ ] Consent and notice copy: s18 recipient wording to be confirmed by me before the flag flips. CR-9 is still
+  owed for Tier B.
+
+**Signed:** `compliance-specialist`, 2026-10-30. `security-engineer` has already signed in §9, so this is the
+third signature. **Stage 8 for Tier A is now discharged: approved with conditions.** The merge conditions are
+A1 to A9, SE-1, SE-2 and CO-OB03-2 to CO-OB03-6. The flag-flip conditions are those in chair §5, plus
+CO-OB03-1, CO-OB03-2 and the s18 wording. **Tier B stays blocked**, pending a full joint re-review.
