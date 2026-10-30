@@ -322,11 +322,25 @@ export function createAdminCaseDispatchRouter(ctx: AppContext): Router {
           return;
         }
 
-        // [CO-OB03-2] — the target-org-only push (asset category + reference
-        // number only, never assetId) is owned by notification-engineer /
-        // the recovery notification path; not wired here (separate sub-task
-        // per the dispatch, per CO-OB03-2's own text — out of this file's
-        // scope to invent a transport call that doesn't exist yet).
+        // [CO-OB03-2] — the ONLY partner push for a case, from report through
+        // dispatch while DIRECTED_DISPATCH_ENABLED is on: target-org-only,
+        // asset category + reference number only, never `assetId`. Fired
+        // alongside the Trail B write already made above, not blocking the
+        // response on delivery.
+        try {
+          const dispatchedAsset = await ctx.assets.findByIdForAdmin(existing.assetId);
+          await ctx.recoveryNotifications.notifyPartnerOrgCaseDispatched({
+            caseId: dispatched.id,
+            referenceNumber: dispatched.referenceNumber,
+            assetType: dispatchedAsset?.assetType ?? 'asset',
+            partnerOrganizationId,
+          });
+        } catch {
+          // Delivery failure must never fail the dispatch mutation itself —
+          // the case is already dispatched and its Trail B row already
+          // written; a push is a best-effort notice, not part of the
+          // write-before-mutate contract.
+        }
 
         res.status(200).json({ data: serializeAdminDispatchCase(dispatched) });
       } catch (err) {

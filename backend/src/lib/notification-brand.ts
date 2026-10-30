@@ -219,9 +219,13 @@ export function buildBrandedPushMessage(
       return {
         eventId: templateId,
         title: 'Message from your recovery partner',
-        body: variables.message
-          ? variables.message
-          : 'Your recovery partner has a question about your case. Open the app for details.',
+        // [CO-OB03-1(f)] — content minimization, unconditional (not just on a
+        // device-match): the partner's free-text message NEVER appears in a
+        // push payload or notification body, regardless of device identity.
+        // It is shown only after sign-in (in-app or in the email body).
+        body: variables.referenceNumber
+          ? `New message about case ${variables.referenceNumber}. Open the app for details.`
+          : 'New message about your recovery case. Open the app for details.',
         subtitle,
         category: 'theft_critical',
         deepLink: messageDeepLink,

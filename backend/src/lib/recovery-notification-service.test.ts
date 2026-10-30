@@ -71,6 +71,14 @@ describe('recovery-notification-service', () => {
           };
         },
       } as never,
+      assets: {
+        async findByIdForAdmin() {
+          return { id: '507f1f77bcf86cd799439021', reportingDeviceId: null } as never;
+        },
+        async findByIdForAccount() {
+          return null;
+        },
+      } as never,
       pushNotifications: { sendToAccount: pushSend } as never,
     });
 
@@ -263,5 +271,217 @@ describe('recovery-notification-service', () => {
     const payload = JSON.parse(fetchInit.body as string) as Array<{ to: string }>;
     expect(payload).toHaveLength(1);
     expect(payload[0]?.to).toBe('ExponentPushToken[enabled]');
+  });
+
+  describe('[CO-OB03-1] device suppression on reported-stolen devices', () => {
+    const basePrefs = {
+      async getOrCreate(accountId: string) {
+        return {
+          id: `pref-${accountId}`,
+          accountId,
+          channels: { theft_critical: { push: true, email: true, sms: false } },
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      },
+    };
+    const baseAccount = {
+      async findById() {
+        return {
+          id: 'acct-1',
+          userType: 'customer',
+          accountState: 'active',
+          email: 'customer@example.com',
+          phone: null,
+          mfaRequired: false,
+          partnerOrganizationId: null,
+          invitedBy: null,
+          createdAt: new Date(),
+        };
+      },
+    };
+
+    function buildService(assets: unknown, pushTokens: Record<string, unknown>) {
+      const pushNotifications = createPushNotificationService({
+        env: fakeEnv(),
+        pushTokens: pushTokens as never,
+        notificationPreferences: basePrefs as never,
+      });
+      return createRecoveryNotificationService({
+        env: fakeEnv(),
+        accounts: baseAccount as never,
+        assets: assets as never,
+        notificationPreferences: basePrefs as never,
+        pushNotifications,
+      });
+    }
+
+    it('suppresses the push to the reported-stolen device token while a second token on the same account still receives it', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ data: [{ status: 'ok', id: 't-1' }] }), { status: 200 }),
+      );
+      const service = buildService(
+        {
+          async findByIdForAdmin() {
+            return { id: 'asset-1', reportingDeviceId: 'stolen-device' };
+          },
+        },
+        {
+          async listEnabledForAccount() {
+            return [
+              { expoPushToken: 'ExponentPushToken[stolen]', deviceId: 'stolen-device' },
+              { expoPushToken: 'ExponentPushToken[other]', deviceId: 'other-device' },
+            ];
+          },
+          async disableForDevice() {
+            return undefined;
+          },
+        },
+      );
+
+      await service.notifyCaseStatusUpdated({
+        accountId: 'acct-1',
+        assetName: 'iPhone',
+        caseId: '507f1f77bcf86cd799439011',
+        referenceNumber: 'RC-20260801-ABCD',
+        status: 'tracking',
+        assetId: 'asset-1',
+        reportedFromDeviceId: null,
+      });
+
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+      const pushCall = fetchMock.mock.calls.find((call) => {
+        try {
+          return Array.isArray(JSON.parse((call[1] as RequestInit).body as string));
+        } catch {
+          return false;
+        }
+      }) as [string, RequestInit] | undefined;
+      expect(pushCall).toBeDefined();
+      const payload = JSON.parse((pushCall as [string, RequestInit])[1].body as string) as Array<{ to: string }>;
+      expect(payload).toHaveLength(1);
+      expect(payload[0]?.to).toBe('ExponentPushToken[other]');
+    });
+
+    it('[CR-7 carve-out] does NOT suppress the reported device token when it is also the device the report was filed from', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ data: [{ status: 'ok', id: 't-1' }] }), { status: 200 }),
+      );
+      const service = buildService(
+        {
+          async findByIdForAdmin() {
+            return { id: 'asset-1', reportingDeviceId: 'stolen-device' };
+          },
+        },
+        {
+          async listEnabledForAccount() {
+            return [{ expoPushToken: 'ExponentPushToken[stolen]', deviceId: 'stolen-device' }];
+          },
+          async disableForDevice() {
+            return undefined;
+          },
+        },
+      );
+
+      await service.notifyCaseStatusUpdated({
+        accountId: 'acct-1',
+        assetName: 'iPhone',
+        caseId: '507f1f77bcf86cd799439011',
+        referenceNumber: 'RC-20260801-ABCD',
+        status: 'tracking',
+        assetId: 'asset-1',
+        // Reported from the same device that is now the case's reported
+        // device — CR-7's carve-out: this session isn't demoted.
+        reportedFromDeviceId: 'stolen-device',
+      });
+
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+      const pushCall = fetchMock.mock.calls.find((call) => {
+        try {
+          return Array.isArray(JSON.parse((call[1] as RequestInit).body as string));
+        } catch {
+          return false;
+        }
+      }) as [string, RequestInit] | undefined;
+      expect(pushCall).toBeDefined();
+      const payload = JSON.parse((pushCall as [string, RequestInit])[1].body as string) as Array<{ to: string }>;
+      expect(payload).toHaveLength(1);
+      expect(payload[0]?.to).toBe('ExponentPushToken[stolen]');
+    });
+
+    it('[fail-closed] suppresses the push entirely (not just one token) when the device-binding lookup errors, but still sends the email', async () => {
+      const fetchMock = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(new Response(JSON.stringify({ id: 'email-1' }), { status: 200 }));
+      const listEnabledForAccount = vi.fn();
+      const service = buildService(
+        {
+          async findByIdForAdmin() {
+            throw new Error('mongo unavailable');
+          },
+          async findByIdForAccount() {
+            throw new Error('mongo unavailable');
+          },
+        },
+        {
+          listEnabledForAccount,
+          async disableForDevice() {
+            return undefined;
+          },
+        },
+      );
+
+      await service.notifyCaseStatusUpdated({
+        accountId: 'acct-1',
+        assetName: 'iPhone',
+        caseId: '507f1f77bcf86cd799439011',
+        referenceNumber: 'RC-20260801-ABCD',
+        status: 'tracking',
+        assetId: 'asset-1',
+        reportedFromDeviceId: null,
+      });
+
+      // Email still sent unconditionally.
+      expect(fetchMock).toHaveBeenCalledOnce();
+      // No push attempt at all — the token lookup itself was never reached.
+      expect(listEnabledForAccount).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('[CO-OB03-2] target-org-only dispatch push', () => {
+    it('sends to active operators of the target org only, with no assetId in the payload', async () => {
+      const pushSend = vi.fn(async () => ({ tickets: [], invalidTokens: [] }));
+      const calledOrgIds: string[] = [];
+
+      const service = createRecoveryNotificationService({
+        env: fakeEnv(),
+        accounts: {
+          async listActiveSecurityOperatorIdsForOrg(orgId: string) {
+            calledOrgIds.push(orgId);
+            return ['op-target-1'];
+          },
+          async listActiveSecurityOperatorIds() {
+            throw new Error('must not be called for a dispatch-time push');
+          },
+        } as never,
+        assets: {} as never,
+        notificationPreferences: {} as never,
+        pushNotifications: { sendToAccount: pushSend } as never,
+      });
+
+      await service.notifyPartnerOrgCaseDispatched({
+        caseId: '507f1f77bcf86cd799439011',
+        referenceNumber: 'RC-20260801-ABCD',
+        assetType: 'laptop',
+        partnerOrganizationId: 'org-target',
+      });
+
+      expect(calledOrgIds).toEqual(['org-target']);
+      expect(pushSend).toHaveBeenCalledWith(
+        expect.objectContaining({ accountId: 'op-target-1', templateId: 'recovery.case.partner.new' }),
+      );
+      const [call] = pushSend.mock.calls[0] as [{ variables?: Record<string, unknown> }];
+      expect(call.variables).not.toHaveProperty('assetId');
+    });
   });
 });

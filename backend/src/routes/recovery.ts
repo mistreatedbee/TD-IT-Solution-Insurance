@@ -87,6 +87,18 @@ export function createRecoveryRouter(ctx: AppContext): Router {
           return;
         }
 
+        // OB-03 §3.7(c) — capture the filing session's device id so the CR-7
+        // carve-out can be evaluated later. Best-effort: a session lookup
+        // failure or an unbound session (e.g. web, no deviceId) must not
+        // block theft-report filing, so this stays `null` rather than erroring.
+        let reportedFromDeviceId: string | null = null;
+        try {
+          const session = await ctx.sessions.findById(req.auth!.sessionId);
+          reportedFromDeviceId = session?.deviceId ?? null;
+        } catch {
+          reportedFromDeviceId = null;
+        }
+
         const existingOpen = await ctx.recoveryCases.listByAccount(accountId, 5, null);
         const duplicate = existingOpen.find(
           (c) => c.assetId === parsed.data.assetId && c.status !== 'closed' && c.status !== 'recovered',
@@ -113,6 +125,7 @@ export function createRecoveryRouter(ctx: AppContext): Router {
           parsed.data.assetId,
           parsed.data.notes ?? null,
           null,
+          reportedFromDeviceId,
         );
 
         notifyInBackground(
@@ -123,22 +136,30 @@ export function createRecoveryRouter(ctx: AppContext): Router {
             caseId: recoveryCase.id,
             referenceNumber: recoveryCase.referenceNumber,
             assetId: asset.id,
+            reportedFromDeviceId,
           }),
         );
-        notifyInBackground(
-          'recovery.case.partner.new',
-          ctx.recoveryNotifications.notifySecurityOperatorsTheftReported({
-            caseId: recoveryCase.id,
-            referenceNumber: recoveryCase.referenceNumber,
-            // PDM-5 (compliance-review-security-partner-data-minimisation.md
-            // F-7): the partner-facing push must NOT carry the customer's
-            // free-text asset display name (`asset.displayName`) — it
-            // routinely contains a person's name or a number plate. Pass
-            // only the asset's category enum, which is not customer PII.
-            assetType: asset.assetType,
-            assetId: asset.id,
-          }),
-        );
+        // [CO-OB03-2] While directed dispatch is on, the theft-report
+        // broadcast to every active operator in every org is turned OFF
+        // entirely — the only partner push for a case is the target-org-only
+        // push fired at the moment of admin dispatch
+        // (`admin-case-dispatch.ts`'s `dispatch` route).
+        if (!ctx.env.directedDispatchEnabled) {
+          notifyInBackground(
+            'recovery.case.partner.new',
+            ctx.recoveryNotifications.notifySecurityOperatorsTheftReported({
+              caseId: recoveryCase.id,
+              referenceNumber: recoveryCase.referenceNumber,
+              // PDM-5 (compliance-review-security-partner-data-minimisation.md
+              // F-7): the partner-facing push must NOT carry the customer's
+              // free-text asset display name (`asset.displayName`) — it
+              // routinely contains a person's name or a number plate. Pass
+              // only the asset's category enum, which is not customer PII.
+              assetType: asset.assetType,
+              assetId: asset.id,
+            }),
+          );
+        }
 
         res.status(201).json(serializeRecoveryCase(recoveryCase));
       } catch (err) {

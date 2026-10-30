@@ -21,6 +21,13 @@ export interface PushNotificationService {
     accountId: string;
     templateId: PushTemplateId;
     variables?: PushTemplateVariables;
+    /**
+     * [CO-OB03-1] Device ids to exclude from delivery, e.g. a reported-stolen
+     * device's own `deviceId` — checked against each enabled push token's
+     * `deviceId`, not the account as a whole, so other devices on the same
+     * account still receive the push.
+     */
+    excludeDeviceIds?: string[];
   }): Promise<ExpoPushSendResult>;
 }
 
@@ -30,7 +37,7 @@ export function createPushNotificationService(deps: {
   notificationPreferences: NotificationPreferencesRepo;
 }): PushNotificationService {
   return {
-    async sendToAccount({ accountId, templateId, variables }) {
+    async sendToAccount({ accountId, templateId, variables, excludeDeviceIds }) {
       const content = buildBrandedPushMessage(templateId, variables);
       const prefs = await deps.notificationPreferences.getOrCreate(accountId);
 
@@ -38,7 +45,11 @@ export function createPushNotificationService(deps: {
         return { tickets: [], invalidTokens: [] };
       }
 
-      const tokens = await deps.pushTokens.listEnabledForAccount(accountId);
+      const allTokens = await deps.pushTokens.listEnabledForAccount(accountId);
+      // [CO-OB03-1] Exclusion is per-token (`deviceId`), not per-account — a
+      // second device on the same account still receives the push.
+      const excludeSet = new Set(excludeDeviceIds ?? []);
+      const tokens = excludeSet.size === 0 ? allTokens : allTokens.filter((row) => !excludeSet.has(row.deviceId));
       if (tokens.length === 0) {
         return { tickets: [], invalidTokens: [] };
       }

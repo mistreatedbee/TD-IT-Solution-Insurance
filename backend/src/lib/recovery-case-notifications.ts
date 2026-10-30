@@ -31,6 +31,11 @@ export async function notifyCustomerRecoveryCaseChange(
     assetName: asset.name,
     caseId: recoveryCase.id,
     referenceNumber: recoveryCase.referenceNumber,
+    // [CO-OB03-1] threaded through so the notification service can resolve
+    // the asset's bound `reportingDeviceId` and apply the CR-7 carve-out
+    // against this case's own `reportedFromDeviceId`.
+    assetId: asset.id,
+    reportedFromDeviceId: recoveryCase.reportedFromDeviceId,
   };
 
   if (event === 'claimed') {
@@ -85,6 +90,10 @@ export interface RecoveryCaseMessageTarget {
   accountId: string;
   assetId: string;
   referenceNumber: string;
+  /** [CO-OB03-1] CR-7 carve-out input — `null`/absent on tier-projected reads
+   * that don't carry it (device-suppression then falls back to "no carve-out
+   * device named", which still suppresses the reported device correctly). */
+  reportedFromDeviceId?: string | null;
 }
 
 /** Security Company Dashboard "contact customer" action — reuses the same
@@ -102,6 +111,8 @@ export async function notifyCustomerRecoveryCaseMessage(
     caseId: recoveryCase.id,
     referenceNumber: recoveryCase.referenceNumber,
     message,
+    assetId: asset.id,
+    reportedFromDeviceId: recoveryCase.reportedFromDeviceId ?? null,
   });
 }
 

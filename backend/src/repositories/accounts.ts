@@ -476,6 +476,22 @@ export function createAccountsRepo(db: Queryable) {
       return result.rows.map((row) => row.id);
     },
 
+    /**
+     * [CO-OB03-2] Active security-company operator account IDs scoped to a single
+     * partner org — used by the directed-dispatch target-org-only push, which must
+     * never reach any operator outside the org a case was actually dispatched to.
+     */
+    async listActiveSecurityOperatorIdsForOrg(partnerOrganizationId: string): Promise<string[]> {
+      const result = await db.query<{ id: string }>(
+        `select id from app.accounts
+         where user_type = 'security_company_operator'
+           and account_state = 'active'
+           and partner_organization_id = $1`,
+        [partnerOrganizationId],
+      );
+      return result.rows.map((row) => row.id);
+    },
+
     /** GET /v1/admin/accounts/{id} — admin detail (§11.E). */
     async findByIdForAdminDetail(id: string): Promise<AdminAccountDetail | null> {
       const result = await db.query<AdminDetailDbRow>(

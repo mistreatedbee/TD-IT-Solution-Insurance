@@ -143,6 +143,7 @@ function createHarness(
     cases?: RecoveryCaseDocument[];
     orgs?: PartnerOrganizationDocument[];
     mfaVerifiedAt?: Date | null;
+    onDispatchPush?: (params: Record<string, unknown>) => void;
   } = {},
 ) {
   const env = fakeEnv();
@@ -323,6 +324,16 @@ function createHarness(
         };
         cases.set(caseId, updated);
         return { outcome: 'ok' as const, case: updated };
+      },
+    },
+    assets: {
+      async findByIdForAdmin() {
+        return { id: randomUUID(), assetType: 'laptop', reportingDeviceId: null };
+      },
+    },
+    recoveryNotifications: {
+      async notifyPartnerOrgCaseDispatched(params: Record<string, unknown>) {
+        opts.onDispatchPush?.(params);
       },
     },
   } as unknown as AppContext;
@@ -547,6 +558,32 @@ describe('routes/admin-case-dispatch', () => {
       expect(body.data.dispatchStatus).toBe('pending');
       expect(body.data.dispatchCount).toBe(1);
       expect(auditRows.some((r) => (r as { kind: string }).kind === 'state-change')).toBe(true);
+    });
+
+    it('[CO-OB03-2] sends the target-org-only push at dispatch time, with no assetId in the payload', async () => {
+      const kase = sampleCase();
+      const org = sampleOrg();
+      let captured: Record<string, unknown> | undefined;
+      const { app, adminBearer } = createHarness({
+        cases: [kase],
+        orgs: [org],
+        onDispatchPush: (params) => {
+          captured = params;
+        },
+      });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}/dispatch`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ partnerOrganizationId: org.id }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(captured).toBeDefined();
+      expect(captured?.partnerOrganizationId).toBe(org.id);
+      expect(captured).not.toHaveProperty('assetId');
     });
 
     it('[A2] rejects dispatch to a non-eligible (not executed) org with 422', async () => {

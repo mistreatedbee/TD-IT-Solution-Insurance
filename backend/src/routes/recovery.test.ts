@@ -183,6 +183,9 @@ function createHarness(opts: {
   planCatalogId?: string | null;
   envOverrides?: Partial<Env>;
   onNotifySecurityOperators?: (params: Record<string, unknown>) => void;
+  /** [CO-OB03-1/2] the filing session's device id, as `ctx.sessions.findById` would
+   * report it — `undefined` to exercise the "no sessions repo"/lookup-failure path. */
+  sessionDeviceId?: string | null;
 }) {
   const env = fakeEnv(opts.envOverrides);
   const kv = new InMemoryKeyValueStore();
@@ -195,6 +198,13 @@ function createHarness(opts: {
   const ctx = {
     env,
     kv,
+    sessions: {
+      async findById(id: string) {
+        if (id !== sessionId) return null;
+        if (opts.sessionDeviceId === undefined) return { id: sessionId, accountId, deviceId: null };
+        return { id: sessionId, accountId, deviceId: opts.sessionDeviceId };
+      },
+    },
     accounts: {
       async getAccountStatus(id: string): Promise<AccountStatus | null> {
         if (id !== accountId) return null;
@@ -215,9 +225,16 @@ function createHarness(opts: {
       },
     },
     recoveryCases: {
-      async createForAccount(acctId: string, assetId: string, notes: string | null) {
+      async createForAccount(
+        acctId: string,
+        assetId: string,
+        notes: string | null,
+        _partnerOrganizationId: string | null,
+        reportedFromDeviceId: string | null = null,
+      ) {
         const created = sampleCase(acctId, assetId, '507f1f77bcf86cd799439088');
         created.notes = notes;
+        created.reportedFromDeviceId = reportedFromDeviceId;
         cases.push(created);
         return created;
       },
@@ -414,6 +431,64 @@ describe('routes/recovery', () => {
     expect(captured).toBeDefined();
     expect(captured).not.toHaveProperty('assetName');
     expect(captured?.assetType).toBeDefined();
+  });
+
+  it('[CO-OB03-2] sends the theft-report partner broadcast when DIRECTED_DISPATCH_ENABLED is off', async () => {
+    const assetId = '507f1f77bcf86cd799439021';
+    const acctId = randomUUID();
+    let captured: Record<string, unknown> | undefined;
+    const { app, accountId, sessionId, env } = createHarness({
+      accountId: acctId,
+      assets: [sampleAsset(acctId, assetId)],
+      envOverrides: { directedDispatchEnabled: false },
+      onNotifySecurityOperators: (params) => {
+        captured = params;
+      },
+    });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const res = await fetch(`${listened.baseUrl}/recovery/cases`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+        'idempotency-key': randomUUID(),
+      },
+      body: JSON.stringify({ assetId, notes: 'Stolen yesterday' }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(captured).toBeDefined();
+  });
+
+  it('[CO-OB03-2] turns the theft-report partner broadcast OFF entirely when DIRECTED_DISPATCH_ENABLED is on', async () => {
+    const assetId = '507f1f77bcf86cd799439021';
+    const acctId = randomUUID();
+    let captured: Record<string, unknown> | undefined;
+    const { app, accountId, sessionId, env } = createHarness({
+      accountId: acctId,
+      assets: [sampleAsset(acctId, assetId)],
+      envOverrides: { directedDispatchEnabled: true },
+      onNotifySecurityOperators: (params) => {
+        captured = params;
+      },
+    });
+    const listened = await listen(app);
+    server = listened.server;
+
+    const res = await fetch(`${listened.baseUrl}/recovery/cases`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+        'content-type': 'application/json',
+        'idempotency-key': randomUUID(),
+      },
+      body: JSON.stringify({ assetId, notes: 'Stolen yesterday' }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(captured).toBeUndefined();
   });
 
   it('returns 409 when an open case already exists for the asset', async () => {

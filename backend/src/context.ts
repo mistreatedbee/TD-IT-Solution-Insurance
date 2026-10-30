@@ -161,6 +161,7 @@ export function buildAppContext(env: Env): AppContext {
     notificationPreferences,
   });
   const accounts = createAccountsRepo(pool);
+  const assets = createAssetsRepo(getDb());
   const policies = createPoliciesRepo(getDb());
   const policyStatusHistory = createPolicyStatusHistoryRepo(getDb());
   const policyNotifications = createPolicyNotificationService({
@@ -185,6 +186,7 @@ export function buildAppContext(env: Env): AppContext {
   const recoveryNotifications = createRecoveryNotificationService({
     env,
     accounts,
+    assets,
     notificationPreferences,
     pushNotifications,
   });
@@ -203,7 +205,7 @@ export function buildAppContext(env: Env): AppContext {
     auditLog,
     idempotency: createIdempotencyRepo(pool),
     policies,
-    assets: createAssetsRepo(getDb()),
+    assets,
     policyStatusHistory,
     adminAccessLog: createAdminAccessLogRepo(getDb()),
     recoveryCases: createRecoveryCasesRepo(getDb()),
