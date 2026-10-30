@@ -149,6 +149,23 @@ function visibleToOrg(c: RecoveryCaseDocument, orgId: string): 'claimed' | 'offe
   return null;
 }
 
+/** OB-03 §3.5 [A1] — mirrors the new dispatch-model predicates
+ * (`pendingCaseVisiblePredicate`/`dispatchClaimedCaseVisiblePredicate`) closely
+ * enough for route-level tests. No "unclaimed pool" tier exists under this model. */
+function visibleToOrgDispatch(c: RecoveryCaseDocument, orgId: string): 'claimed' | 'offer' | null {
+  if (c.partnerOrganizationId !== orgId) return null;
+  if (c.dispatchStatus === 'pending' && c.status === 'open') return 'offer';
+  if (c.dispatchStatus === 'accepted') {
+    if ((c.status === 'recovered' || c.status === 'closed') && c.closedAt) {
+      const cutoff = new Date();
+      cutoff.setUTCDate(cutoff.getUTCDate() - WRAP_UP_WINDOW_DAYS);
+      if (c.closedAt <= cutoff) return null;
+    }
+    return 'claimed';
+  }
+  return null;
+}
+
 function toResult(c: RecoveryCaseDocument, tier: 'claimed' | 'offer') {
   const caseShape =
     tier === 'claimed'
@@ -190,10 +207,30 @@ function createHarness(opts: {
    * that happened anyway. */
   failStateChangeAudit?: boolean;
   /** Target-org fixtures for `ctx.partnerOrganizations.findById` — the reassign
-   * route's validation path. Defaults to an empty directory (every lookup 404s). */
-  partnerOrganizations?: Array<{ id: string; status: 'active' | 'suspended' }>;
+   * route's validation path. Defaults to an empty directory (every lookup 404s).
+   * OB-03 — also used by the dispatch model's `isOrgDispatchEligible` check; add
+   * `agreementStatus`/`terminatedAt` fields on these fixtures to drive CO-OB03-3
+   * tests (defaults: `executed`/`null` when the caller's own org isn't fixtured,
+   * see `callerOrgEligible` below for the common case). */
+  partnerOrganizations?: Array<{
+    id: string;
+    status: 'active' | 'suspended';
+    agreementStatus?: 'executed' | 'terminated' | null;
+    terminatedAt?: Date | null;
+  }>;
+  /** OB-03 — whether the harness's own `partnerOrgId` is eligible per
+   * `isOrgDispatchEligible` (`agreementStatus: 'executed', terminatedAt: null`).
+   * Defaults to `true`. Set `false` to exercise CO-OB03-3 (terminated org). */
+  callerOrgEligible?: boolean;
+  /** OB-03 §3 — mounts the dispatch-model routes/predicates instead of the pool
+   * model (`ctx.env.directedDispatchEnabled`). Defaults to `false`/unset, matching
+   * every pre-OB-03 test in this file. */
+  directedDispatchEnabled?: boolean;
 }) {
   const env = fakeEnv();
+  if (opts.directedDispatchEnabled) {
+    (env as unknown as { directedDispatchEnabled: boolean }).directedDispatchEnabled = true;
+  }
   const kv = new InMemoryKeyValueStore();
   const operatorId = randomUUID();
   const sessionId = randomUUID();
@@ -341,20 +378,140 @@ function createHarness(opts: {
         };
         return cases[idx]!;
       },
+      // -----------------------------------------------------------------
+      // OB-03 §3 — dispatch-model fakes, mirroring `recovery-cases.ts`'s
+      // real `*Dispatch` methods closely enough for route-level tests.
+      // -----------------------------------------------------------------
+      async listForPartnerOrgDispatch(orgId: string, filters: { status?: RecoveryCaseStatus }, limit: number) {
+        return cases
+          .map((c) => ({ c, tier: visibleToOrgDispatch(c, orgId) }))
+          .filter(({ tier }) => tier !== null)
+          .filter(({ c }) => (filters.status ? c.status === filters.status : true))
+          .slice(0, limit)
+          .map(({ c, tier }) => toResult(c, tier!));
+      },
+      async countForPartnerOrgDispatch(orgId: string, filters: { status?: RecoveryCaseStatus }) {
+        return cases
+          .map((c) => ({ c, tier: visibleToOrgDispatch(c, orgId) }))
+          .filter(({ tier }) => tier !== null)
+          .filter(({ c }) => (filters.status ? c.status === filters.status : true)).length;
+      },
+      async findByIdForPartnerOrgDispatch(orgId: string, caseId: string) {
+        const row = cases.find((c) => c.id === caseId);
+        if (!row) return null;
+        const tier = visibleToOrgDispatch(row, orgId);
+        if (!tier) return null;
+        return toResult(row, tier);
+      },
+      async acceptDispatchedCase(orgId: string, caseId: string) {
+        const idx = cases.findIndex(
+          (c) => c.id === caseId && c.partnerOrganizationId === orgId && c.dispatchStatus === 'pending',
+        );
+        if (idx < 0) return null;
+        cases[idx] = {
+          ...cases[idx]!,
+          dispatchStatus: 'accepted',
+          acceptedAt: new Date(),
+          status: cases[idx]!.status === 'open' ? 'investigating' : cases[idx]!.status,
+          updatedAt: new Date(),
+        };
+        return cases[idx]!;
+      },
+      async declineDispatchedCase(orgId: string, caseId: string) {
+        const idx = cases.findIndex(
+          (c) => c.id === caseId && c.partnerOrganizationId === orgId && c.dispatchStatus === 'pending',
+        );
+        if (idx < 0) return null;
+        cases[idx] = {
+          ...cases[idx]!,
+          partnerOrganizationId: null,
+          dispatchStatus: null,
+          acceptedAt: null,
+          dispatchedBy: null,
+          updatedAt: new Date(),
+        };
+        return cases[idx]!;
+      },
+      async handBackAcceptedCase(orgId: string, caseId: string) {
+        const idx = cases.findIndex(
+          (c) => c.id === caseId && c.partnerOrganizationId === orgId && c.dispatchStatus === 'accepted',
+        );
+        if (idx < 0) return null;
+        cases[idx] = {
+          ...cases[idx]!,
+          partnerOrganizationId: null,
+          dispatchStatus: null,
+          acceptedAt: null,
+          dispatchedBy: null,
+          updatedAt: new Date(),
+        };
+        return cases[idx]!;
+      },
+      async updateStatusForPartnerOrgDispatch(
+        orgId: string,
+        caseId: string,
+        status: RecoveryCaseStatus,
+        expectedStatus: RecoveryCaseStatus,
+        closeReason: RecoveryCaseDocument['closeReason'] | null = null,
+      ) {
+        mutationCalls.updateStatus += 1;
+        const idx = cases.findIndex(
+          (c) =>
+            c.id === caseId &&
+            c.partnerOrganizationId === orgId &&
+            c.dispatchStatus === 'accepted' &&
+            c.status === expectedStatus,
+        );
+        if (idx < 0) return null;
+        cases[idx] = {
+          ...cases[idx]!,
+          status,
+          updatedAt: new Date(),
+          closeReason: status === 'recovered' || status === 'closed' ? closeReason : cases[idx]!.closeReason,
+        };
+        return cases[idx]!;
+      },
     },
     partnerOrganizations: {
       async findById(id: string) {
         const found = (opts.partnerOrganizations ?? []).find((o) => o.id === id);
-        if (!found) return null;
-        return {
-          id: found.id,
-          name: 'Test Partner Org',
-          status: found.status,
-          contactEmail: 'partner@example.com',
-          notes: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
+        if (found) {
+          return {
+            id: found.id,
+            name: 'Test Partner Org',
+            status: found.status,
+            contactEmail: 'partner@example.com',
+            notes: null,
+            agreementStatus: found.agreementStatus ?? 'executed',
+            agreementReference: 'AGR-TEST',
+            effectiveFrom: new Date(),
+            terminatedAt: found.terminatedAt ?? null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        }
+        // OB-03 — the harness's own `partnerOrgId` (the caller's org) is not
+        // usually listed in `opts.partnerOrganizations` (that array is for
+        // reassign-target fixtures). Default it to eligible unless
+        // `callerOrgEligible: false` is set, so pre-existing tests that never
+        // set either option keep working under the dispatch model too.
+        if (id === partnerOrgId) {
+          const eligible = opts.callerOrgEligible !== false;
+          return {
+            id,
+            name: 'Caller Partner Org',
+            status: 'active' as const,
+            contactEmail: 'caller@example.com',
+            notes: null,
+            agreementStatus: eligible ? ('executed' as const) : ('terminated' as const),
+            agreementReference: eligible ? 'AGR-CALLER' : null,
+            effectiveFrom: eligible ? new Date() : null,
+            terminatedAt: eligible ? null : new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        }
+        return null;
       },
     },
     auditLog: {
@@ -2467,6 +2624,387 @@ describe('routes/security-cases', () => {
         body: JSON.stringify({ message: 'Hello' }),
       });
       expect(res.status).toBe(403);
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // OB-03 (api-design-ob03-dispatch-location-grants.md §3, Tier A sub-task 3) —
+  // dispatch-model routes/predicates, `ctx.env.directedDispatchEnabled: true`.
+  // ---------------------------------------------------------------------
+  describe('dispatch model (DIRECTED_DISPATCH_ENABLED=true)', () => {
+    function pendingCase(overrides: Partial<RecoveryCaseDocument> & { id: string; partnerOrganizationId: string }) {
+      return sampleCase({
+        accountId: randomUUID(),
+        assetId: randomUUID(),
+        status: 'open',
+        dispatchStatus: 'pending',
+        dispatchedAt: new Date(),
+        dispatchedBy: randomUUID(),
+        firstDispatchedAt: new Date(),
+        dispatchCount: 1,
+        ...overrides,
+      });
+    }
+
+    function acceptedCase(overrides: Partial<RecoveryCaseDocument> & { id: string; partnerOrganizationId: string }) {
+      return sampleCase({
+        accountId: randomUUID(),
+        assetId: randomUUID(),
+        status: 'investigating',
+        dispatchStatus: 'accepted',
+        dispatchedAt: new Date(),
+        dispatchedBy: randomUUID(),
+        acceptedAt: new Date(),
+        firstDispatchedAt: new Date(),
+        dispatchCount: 1,
+        ...overrides,
+      });
+    }
+
+    it('claim is unmounted (404) once the flag is on', async () => {
+      harness = createHarness({ directedDispatchEnabled: true });
+      await harness.start();
+      const res = await fetch(harness.url(`/security/cases/${randomUUID().replace(/-/g, '').slice(0, 24)}/claim`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it('reassign is unmounted (404) once the flag is on', async () => {
+      harness = createHarness({ directedDispatchEnabled: true });
+      await harness.start();
+      const res = await fetch(harness.url(`/security/cases/${randomUUID().replace(/-/g, '').slice(0, 24)}/reassign`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: randomUUID() }),
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it('a pending case is visible at the offer tier only; list/count include it', async () => {
+      harness = createHarness({
+        directedDispatchEnabled: true,
+        cases: [pendingCase({ id: '507f1f77bcf86cd799439011', partnerOrganizationId: '' })],
+      });
+      // partnerOrganizationId is filled in after harness creation below, since the
+      // fixture needs the harness's own generated partnerOrgId.
+      harness.cases[0]!.partnerOrganizationId = harness.partnerOrgId;
+      await harness.start();
+
+      const listRes = await fetch(harness.url('/security/cases'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(listRes.status).toBe(200);
+      const listBody = (await listRes.json()) as { data: Array<Record<string, unknown>> };
+      expect(listBody.data).toHaveLength(1);
+      expect(listBody.data[0]).not.toHaveProperty('notes');
+
+      const countRes = await fetch(harness.url('/security/cases/count'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect((await countRes.json()) as { data: { count: number } }).toEqual({ data: { count: 1 } });
+
+      const detailRes = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439011'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(detailRes.status).toBe(200);
+    });
+
+    it('a pending (not yet accepted) org cannot message or PATCH status', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+      harness.cases.push(pendingCase({ id: caseId, partnerOrganizationId: harness.partnerOrgId }));
+      await harness.start();
+
+      const msgRes = await fetch(harness.url(`/security/cases/${caseId}/messages`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'hello' }),
+      });
+      expect(msgRes.status).toBe(404);
+
+      const patchRes = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'tracking' }),
+      });
+      expect(patchRes.status).toBe(404);
+    });
+
+    it('accept transitions pending -> accepted and the customer sees "investigating"', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+      harness.cases.push(pendingCase({ id: caseId, partnerOrganizationId: harness.partnerOrgId }));
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/accept`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(200);
+      expect(harness.cases[0]!.dispatchStatus).toBe('accepted');
+      expect(harness.cases[0]!.status).toBe('investigating');
+      expect(harness.cases[0]!.acceptedAt).not.toBeNull();
+    });
+
+    it('accept rejects an unexpected body field (SE-1)', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+      harness.cases.push(pendingCase({ id: caseId, partnerOrganizationId: harness.partnerOrgId }));
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/accept`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ $ne: null }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('decline returns the case to the queue with a fixed-vocabulary reason', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+      harness.cases.push(pendingCase({ id: caseId, partnerOrganizationId: harness.partnerOrgId }));
+      await harness.start();
+
+      const badRes = await fetch(harness.url(`/security/cases/${caseId}/decline`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: 'free-text-not-allowed' }),
+      });
+      expect(badRes.status).toBe(400);
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/decline`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: 'no_capacity' }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ data: { caseId, status: 'returned_to_queue' } });
+      expect(harness.cases[0]!.partnerOrganizationId).toBeNull();
+      expect(harness.cases[0]!.dispatchStatus).toBeNull();
+    });
+
+    it('release (repurposed) hands an accepted case back to the queue', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+      harness.cases.push(acceptedCase({ id: caseId, partnerOrganizationId: harness.partnerOrgId }));
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: 'unable_to_proceed' }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ data: { caseId, status: 'returned_to_queue' } });
+      expect(harness.cases[0]!.partnerOrganizationId).toBeNull();
+      expect(harness.cases[0]!.dispatchStatus).toBeNull();
+    });
+
+    it('release rejects a free-text/invalid reason (SE-1)', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+      harness.cases.push(acceptedCase({ id: caseId, partnerOrganizationId: harness.partnerOrgId }));
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: 'whatever I want' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('a pending-only org cannot release (only an accepted org can)', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+      harness.cases.push(pendingCase({ id: caseId, partnerOrganizationId: harness.partnerOrgId }));
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: 'unable_to_proceed' }),
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it('an accepted org can PATCH status forward and message the customer', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+      harness.cases.push(acceptedCase({ id: caseId, partnerOrganizationId: harness.partnerOrgId }));
+      await harness.start();
+
+      const patchRes = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'tracking' }),
+      });
+      expect(patchRes.status).toBe(200);
+      expect(harness.cases[0]!.status).toBe('tracking');
+
+      const msgRes = await fetch(harness.url(`/security/cases/${caseId}/messages`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'Update on your case' }),
+      });
+      expect(msgRes.status).toBe(202);
+    });
+
+    it('an accepted case closed 30 days ago is still visible at Tier 2 (wrap-up restored)', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const closedAt = new Date();
+      closedAt.setUTCDate(closedAt.getUTCDate() - 30);
+      harness = createHarness({
+        directedDispatchEnabled: true,
+        cases: [
+          acceptedCase({
+            id: caseId,
+            partnerOrganizationId: '',
+            status: 'closed',
+            closedAt,
+            closeReason: 'recovered-intact',
+          }),
+        ],
+      });
+      harness.cases[0]!.partnerOrganizationId = harness.partnerOrgId;
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('[CO-OB03-3] a terminated org loses access immediately, even inside the 90-day window', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const closedAt = new Date();
+      closedAt.setUTCDate(closedAt.getUTCDate() - 30);
+      harness = createHarness({
+        directedDispatchEnabled: true,
+        callerOrgEligible: false,
+        cases: [
+          acceptedCase({
+            id: caseId,
+            partnerOrganizationId: '',
+            status: 'closed',
+            closedAt,
+            closeReason: 'recovered-intact',
+          }),
+        ],
+      });
+      harness.cases[0]!.partnerOrganizationId = harness.partnerOrgId;
+      await harness.start();
+
+      const detailRes = await fetch(harness.url(`/security/cases/${caseId}`), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(detailRes.status).toBe(404);
+
+      const listRes = await fetch(harness.url('/security/cases'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(listRes.status).toBe(200);
+      expect(((await listRes.json()) as { data: unknown[] }).data).toHaveLength(0);
+
+      const countRes = await fetch(harness.url('/security/cases/count'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(((await countRes.json()) as { data: { count: number } }).data.count).toBe(0);
+
+      const msgRes = await fetch(harness.url(`/security/cases/${caseId}/messages`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'hello' }),
+      });
+      expect(msgRes.status).toBe(404);
+
+      const releaseRes = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: 'unable_to_proceed' }),
+      });
+      expect(releaseRes.status).toBe(404);
+    });
+
+    // [A9(i)] CS-8 oracle uniformity — identical NOT_FOUND body across
+    // undispatched / dispatched-elsewhere / nonexistent, for detail/release/
+    // messages/status-PATCH, plus cross-type tokens.
+    describe('[A9(i)] CS-8 oracle uniformity', () => {
+      const CASE_ID = '507f1f77bcf86cd799439099';
+
+      async function bodyOf(res: Response) {
+        if (res.status !== 404) return null;
+        const body = (await res.json()) as { error: Record<string, unknown> };
+        const { requestId: _requestId, ...rest } = body.error;
+        return rest;
+      }
+
+      it('detail returns the identical body for nonexistent / dispatched-elsewhere / undispatched', async () => {
+        const otherOrgId = randomUUID();
+        harness = createHarness({
+          directedDispatchEnabled: true,
+          cases: [pendingCase({ id: CASE_ID, partnerOrganizationId: otherOrgId })],
+        });
+        await harness.start();
+
+        const nonexistentRes = await fetch(harness.url('/security/cases/507f1f77bcf86cd799439098'), {
+          headers: { authorization: `Bearer ${harness.token}` },
+        });
+        const dispatchedElsewhereRes = await fetch(harness.url(`/security/cases/${CASE_ID}`), {
+          headers: { authorization: `Bearer ${harness.token}` },
+        });
+
+        expect(nonexistentRes.status).toBe(404);
+        expect(dispatchedElsewhereRes.status).toBe(404);
+        expect(await bodyOf(nonexistentRes)).toEqual(await bodyOf(dispatchedElsewhereRes));
+      });
+
+      it('a customer token and an admin token both get the same NOT_FOUND shape as a partner token', async () => {
+        harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+        await harness.start();
+        const env = fakeEnv();
+
+        const customerToken = signAccessToken(
+          {
+            sub: randomUUID(),
+            user_type: 'customer',
+            mfa_required: false,
+            account_state: 'active',
+            partner_organization_id: null,
+            session_id: randomUUID(),
+          },
+          env.jwtSigningKeys,
+          env.jwtActiveKid,
+        ).token;
+        const adminToken = signAccessToken(
+          {
+            sub: randomUUID(),
+            user_type: 'admin',
+            mfa_required: true,
+            account_state: 'active',
+            partner_organization_id: null,
+            session_id: randomUUID(),
+          },
+          env.jwtSigningKeys,
+          env.jwtActiveKid,
+        ).token;
+
+        const customerRes = await fetch(harness.url(`/security/cases/${CASE_ID}`), {
+          headers: { authorization: `Bearer ${customerToken}` },
+        });
+        const adminRes = await fetch(harness.url(`/security/cases/${CASE_ID}`), {
+          headers: { authorization: `Bearer ${adminToken}` },
+        });
+        // Neither has a partnerOrganizationId, so both are rejected by
+        // `requirePartnerOrg` before ever reaching a case lookup — same 403
+        // shape either way, and distinctly NOT a 200/404 case-shaped body.
+        expect(customerRes.status).toBe(403);
+        expect(adminRes.status).toBe(403);
+      });
     });
   });
 });

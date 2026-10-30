@@ -552,6 +552,48 @@ export function unclaimedCaseVisiblePredicate(): Document {
 }
 
 /**
+ * OB-03 §3.5 [A1] (api-design-ob03-dispatch-location-grants.md) — the "pending"
+ * (offer-tier, dispatch model) predicate. A case dispatched to this org but not
+ * yet accepted — offer-tier visibility only, no `messages`/status-PATCH access
+ * (those gate on `dispatchClaimedCaseVisiblePredicate` below). Replaces
+ * `unclaimedCaseVisiblePredicate` for list/count/detail while
+ * `DIRECTED_DISPATCH_ENABLED` is on — no org sees any case in the pending state
+ * other than the one it was dispatched to (D1).
+ */
+export function pendingCaseVisiblePredicate(partnerOrganizationId: string): Document {
+  return {
+    partnerOrganizationId,
+    dispatchStatus: 'pending',
+    status: 'open' as RecoveryCaseStatus,
+  };
+}
+
+/**
+ * OB-03 §3.5 [A1] — the fixed "claimed" (dispatch model) predicate: an org must
+ * have actually ACCEPTED the case (`dispatchStatus: 'accepted'`), not merely be
+ * named on it (`partnerOrganizationId` alone — the review's highest-severity
+ * Tier A finding: the prior draft's fix left this as the sole condition, giving
+ * a pending org Tier 2 access before it ever accepted). Carries the SAME PDM-4
+ * 90-day wrap-up `$or` clause as `claimedCaseVisiblePredicate` above, restored
+ * rather than dropped. [CO-OB03-3]'s org-termination check is applied by the
+ * route layer (`isOrgDispatchEligible` in `routes/security-cases.ts`), not
+ * embedded here — either placement is acceptable per the design document, and
+ * keeping it at the route layer lets every dispatch-gated route (list/count/
+ * detail/messages/accept/decline/release/status-PATCH) share one check.
+ */
+export function dispatchClaimedCaseVisiblePredicate(partnerOrganizationId: string): Document {
+  return {
+    partnerOrganizationId,
+    dispatchStatus: 'accepted',
+    $or: [
+      { status: { $nin: ['recovered', 'closed'] } },
+      { closedAt: null },
+      { closedAt: { $gt: wrapUpCutoff() } },
+    ],
+  };
+}
+
+/**
  * Feature 012 (api-design.md §3 / security-review.md §10.5, C-012-3) — the SAME
  * partner-visible filter used by both `listForPartnerOrg` and `countForPartnerOrg`.
  * Extracted so the two paths cannot drift apart (C-012-3: a count's population may
@@ -1050,6 +1092,264 @@ export function createRecoveryCasesRepo(db: Db) {
             updatedAt: new Date(),
           },
         },
+        { returnDocument: 'after', projection: CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION },
+      );
+      return result ? toCase(result as unknown as RecoveryCaseDbRow) : null;
+    },
+
+    // -----------------------------------------------------------------------
+    // OB-03 §3 — dispatch-model partner routes (`security-cases.ts`, mounted
+    // only while `DIRECTED_DISPATCH_ENABLED` is on). Replace the pool-model
+    // claim/release/reassign group above for that flag state; do not call
+    // these while the flag is off.
+    // -----------------------------------------------------------------------
+
+    /**
+     * OB-03 §3.5 [A1] — dispatch-model list. Two branches (pending-to-caller,
+     * claimed-by-caller), each separately projected, same k-way-merge
+     * reasoning as `listForPartnerOrg` above. No shared "unclaimed pool"
+     * branch exists under the dispatch model (D1 — no org ever sees an
+     * undispatched case).
+     */
+    async listForPartnerOrgDispatch(
+      partnerOrganizationId: string,
+      filters: { status?: RecoveryCaseStatus },
+      limit: number,
+      cursor: MongoDecodedCursor | null,
+    ): Promise<PartnerVisibleCaseResult[]> {
+      const cursorFilter = mongoCursorFilter(cursor);
+      const statusFilter = filters.status ? { status: filters.status } : {};
+
+      const includePending = !filters.status || filters.status === 'open';
+      const pendingRows = includePending
+        ? ((await collection()
+            .find(andFilters(pendingCaseVisiblePredicate(partnerOrganizationId), cursorFilter))
+            .project(OFFER_TIER_FIELD_EXCLUSION_PROJECTION)
+            .sort({ createdAt: -1, _id: -1 })
+            .limit(limit)
+            .toArray()) as unknown as OfferTierCaseDbRow[])
+        : [];
+
+      const claimedRows = (await collection()
+        .find(andFilters(dispatchClaimedCaseVisiblePredicate(partnerOrganizationId), statusFilter, cursorFilter))
+        .project(CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION)
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(limit)
+        .toArray()) as unknown as ClaimedTierCaseDbRow[];
+
+      const pending: Array<PartnerVisibleCaseResult & { _id: ObjectId }> = pendingRows.map((row) => ({
+        tier: 'offer' as const,
+        accountId: row.accountId,
+        createdAt: row.createdAt,
+        case: toOfferTierCase(row),
+        _id: row._id,
+      }));
+      const claimed: Array<PartnerVisibleCaseResult & { _id: ObjectId }> = claimedRows.map((row) => ({
+        tier: 'claimed' as const,
+        accountId: row.accountId,
+        createdAt: row.createdAt,
+        case: toClaimedTierCase(row),
+        _id: row._id,
+      }));
+
+      const merged = [...claimed, ...pending].sort(compareDesc).slice(0, limit);
+      return merged.map(({ tier, accountId, createdAt, case: c }) => ({
+        tier,
+        accountId,
+        createdAt,
+        case: c,
+      }) as PartnerVisibleCaseResult);
+    },
+
+    /** OB-03 §3.5 [A1] — dispatch-model count, same two-branch filter as
+     * `listForPartnerOrgDispatch` (C-012-3 discipline carried into the
+     * dispatch model: count's population must never exceed list's). */
+    async countForPartnerOrgDispatch(
+      partnerOrganizationId: string,
+      filters: { status?: RecoveryCaseStatus },
+    ): Promise<number> {
+      const statusFilter = filters.status ? { status: filters.status } : {};
+      const includePending = !filters.status || filters.status === 'open';
+      const pendingCount = includePending
+        ? await collection().countDocuments(pendingCaseVisiblePredicate(partnerOrganizationId))
+        : 0;
+      const claimedCount = await collection().countDocuments(
+        andFilters(dispatchClaimedCaseVisiblePredicate(partnerOrganizationId), statusFilter),
+      );
+      return pendingCount + claimedCount;
+    },
+
+    /** OB-03 §3.5 [A1] — dispatch-model detail. Tries the claimed branch
+     * first (Tier 2), then the pending branch (offer tier) — mirrors
+     * `findByIdForPartnerOrg`'s two-step shape. */
+    async findByIdForPartnerOrgDispatch(
+      partnerOrganizationId: string,
+      caseId: string,
+    ): Promise<PartnerVisibleCaseResult | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const _id = new ObjectId(caseId);
+
+      const claimedRow = (await collection().findOne(
+        { _id, ...dispatchClaimedCaseVisiblePredicate(partnerOrganizationId) },
+        { projection: CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION },
+      )) as unknown as ClaimedTierCaseDbRow | null;
+      if (claimedRow) {
+        return {
+          tier: 'claimed',
+          accountId: claimedRow.accountId,
+          createdAt: claimedRow.createdAt,
+          case: toClaimedTierCase(claimedRow),
+        };
+      }
+
+      const pendingRow = (await collection().findOne(
+        { _id, ...pendingCaseVisiblePredicate(partnerOrganizationId) },
+        { projection: OFFER_TIER_FIELD_EXCLUSION_PROJECTION },
+      )) as unknown as OfferTierCaseDbRow | null;
+      if (pendingRow) {
+        return {
+          tier: 'offer',
+          accountId: pendingRow.accountId,
+          createdAt: pendingRow.createdAt,
+          case: toOfferTierCase(pendingRow),
+        };
+      }
+
+      return null;
+    },
+
+    /** OB-03 §3.1 — `accept` (replaces `claim`). CAS on `dispatchStatus:
+     * 'pending'` AND org match (not `partnerOrganizationId: null` like the
+     * pool-model `claimForPartnerOrg`). */
+    async acceptDispatchedCase(
+      partnerOrganizationId: string,
+      caseId: string,
+    ): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const now = new Date();
+      const result = await collection().findOneAndUpdate(
+        { _id: new ObjectId(caseId), partnerOrganizationId, dispatchStatus: 'pending' },
+        {
+          $set: {
+            dispatchStatus: 'accepted',
+            acceptedAt: now,
+            updatedAt: now,
+          },
+        },
+        { returnDocument: 'after', projection: CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION },
+      );
+      if (!result) return null;
+      const updated = toCase(result as unknown as RecoveryCaseDbRow);
+      // status moves to 'investigating' if still 'open' — separate $set so
+      // the CAS above stays a pure dispatchStatus transition; a case already
+      // past 'open' (shouldn't happen while pending, but defensive) is left
+      // as-is.
+      if (updated.status === 'open') {
+        const statusResult = await collection().findOneAndUpdate(
+          { _id: new ObjectId(caseId), partnerOrganizationId, status: 'open' },
+          { $set: { status: 'investigating', updatedAt: new Date() } },
+          { returnDocument: 'after', projection: CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION },
+        );
+        if (statusResult) return toCase(statusResult as unknown as RecoveryCaseDbRow);
+      }
+      return updated;
+    },
+
+    /** OB-03 §3.2 — `decline` (new). Same underlying "return to queue"
+     * transition as admin re-dispatch-to-null (`reDispatchToNull`), but
+     * additionally CAS-scoped to the caller's org and `dispatchStatus:
+     * 'pending'` so a declining org can only ever affect a case dispatched to
+     * IT. */
+    async declineDispatchedCase(
+      partnerOrganizationId: string,
+      caseId: string,
+    ): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const result = await collection().findOneAndUpdate(
+        { _id: new ObjectId(caseId), partnerOrganizationId, dispatchStatus: 'pending' },
+        {
+          $set: {
+            partnerOrganizationId: null,
+            dispatchStatus: null,
+            acceptedAt: null,
+            dispatchedBy: null,
+            updatedAt: new Date(),
+          },
+        },
+        { returnDocument: 'after' },
+      );
+      return result ? toCase(result) : null;
+    },
+
+    /** OB-03 §3.3 — `release` repurposed as hand-back-to-queue. Same
+     * underlying transition as `declineDispatchedCase`/admin
+     * `reDispatchToNull`, CAS-scoped to `dispatchStatus: 'accepted'` (an
+     * org may only hand back a case it has actually accepted). */
+    async handBackAcceptedCase(
+      partnerOrganizationId: string,
+      caseId: string,
+    ): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const result = await collection().findOneAndUpdate(
+        { _id: new ObjectId(caseId), partnerOrganizationId, dispatchStatus: 'accepted' },
+        {
+          $set: {
+            partnerOrganizationId: null,
+            dispatchStatus: null,
+            acceptedAt: null,
+            dispatchedBy: null,
+            updatedAt: new Date(),
+          },
+        },
+        { returnDocument: 'after' },
+      );
+      return result ? toCase(result) : null;
+    },
+
+    /** OB-03 §3.1a [A3] — status-PATCH, dispatch model. Same forward-
+     * transition/`closeReason` discipline as `updateStatusForPartnerOrg`,
+     * additionally requiring `dispatchStatus: 'accepted'` (not merely org
+     * match) on the CAS filter — a pending-not-yet-accepted org must not be
+     * able to move a case's status any more than it can message the
+     * customer ([A1]'s predicate fix, restated at the write path). */
+    async updateStatusForPartnerOrgDispatch(
+      partnerOrganizationId: string,
+      caseId: string,
+      status: RecoveryCaseStatus,
+      expectedStatus: RecoveryCaseStatus,
+      closeReason: RecoveryCaseCloseReason | null = null,
+    ): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      if (!isForwardStatusTransition(expectedStatus, status)) return null;
+
+      const setFields: {
+        status: RecoveryCaseStatus;
+        updatedAt: Date;
+        closedAt?: Date;
+        closeReason?: RecoveryCaseCloseReason | null;
+      } = {
+        status,
+        updatedAt: new Date(),
+      };
+      if (status === 'closed' || status === 'recovered') {
+        setFields.closeReason = closeReason;
+        const existing = await collection().findOne(
+          { _id: new ObjectId(caseId), partnerOrganizationId, dispatchStatus: 'accepted' },
+          { projection: { closedAt: 1 } },
+        );
+        if (existing && (existing as unknown as { closedAt: Date | null }).closedAt == null) {
+          setFields.closedAt = new Date();
+        }
+      }
+
+      const result = await collection().findOneAndUpdate(
+        {
+          _id: new ObjectId(caseId),
+          partnerOrganizationId,
+          dispatchStatus: 'accepted',
+          status: expectedStatus,
+        },
+        { $set: setFields },
         { returnDocument: 'after', projection: CLAIMED_TIER_FIELD_EXCLUSION_PROJECTION },
       );
       return result ? toCase(result as unknown as RecoveryCaseDbRow) : null;
