@@ -1314,3 +1314,37 @@ record, verbatim instruction and analysis: `11-documented-client-instructions.md
   route's own Stage 8/Stage 10, and CS-1 to CS-9 remain the applicable gates.
 
 Filed by `product-manager`.
+
+## `solution-architect` note: D3.4 and a false-alarm or withdrawn report (2026-10-30)
+
+Append-only; nothing above is changed. This answers the item `product-manager` flagged above. I checked
+it against `backend/src/repositories/recovery-cases.ts` and `backend/src/routes/`.
+
+**Finding: D3.4 needs no new trigger and no new `endReason`.**
+- The code has no "withdrawn" or "false alarm" **status**. `RecoveryCaseStatus` is `open | investigating
+  | tracking | recovered | closed`. Withdrawal is a **close reason**, not a status:
+  `RECOVERY_CASE_CLOSE_REASONS` already contains `customer-withdrew`. A withdrawn or false-alarm report is
+  therefore a transition to `closed` with a close reason. That is D3.4's existing `case_terminal` row,
+  which applies whatever the close reason is.
+- Access stops at once, before any end record is written. D3.3 condition 1 requires status
+  `investigating` or `tracking` on every read, so the location route goes dark on the same request that
+  closes the case.
+- Before the case is closed, the customer can end the grant at any time with `revoked_by_customer`, or
+  withdraw an unused pre-authorisation (D3.1). Under CR-3 that can be done from web, another trusted
+  session, or support. A closed case cannot be accepted, so an unused pre-authorisation left on it can
+  never be consumed.
+
+**Not a D3.4 gap, but a dependency for the location build to record.** Today the only code path into
+`closed` is `updateStatusForPartnerOrg`, through `security-cases.ts`. In other words, only the operator
+of the partner that holds the case can close it. There is no customer "withdraw report" route in
+`recovery.ts`, and no admin route that closes a recovery case. `open` has no outgoing transitions. So if
+an admin decides a report was a false alarm, and neither the customer nor the partner acts, the grant
+lasts until it expires: 24 hours by default, 72 hours at most. That is bounded, but later than it
+should be. If a customer or admin close-case route is built, it is a "status transition" under D3.4's
+`case_terminal` row and must write the end record synchronously, as D3.4 already requires. No new rule
+is needed. `backend-architect` should list this as a known limitation in the Stage 8 package for the
+location route, not as a blocker.
+
+Item closed. No change to D3.4.
+
+Filed by `solution-architect`.
