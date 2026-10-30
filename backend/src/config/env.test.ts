@@ -109,4 +109,33 @@ describe('loadEnv — SR-018-11 / CR-018-10 production placeholder-notice-config
     resetEnv({ NODE_ENV: 'development', CLAIMS_API_ENABLED: 'true' });
     expect(() => loadEnv()).not.toThrow();
   });
+
+  describe('OB-03 CS-7 — DIRECTED_DISPATCH_ENABLED / PARTNER_LOCATION_SHARING_ENABLED', () => {
+    it('defaults both flags to false when unset', () => {
+      resetEnv({});
+      const env = loadEnv();
+      expect(env.directedDispatchEnabled).toBe(false);
+      expect(env.partnerLocationSharingEnabled).toBe(false);
+    });
+
+    it('enables directedDispatchEnabled only on the exact string "true"', () => {
+      resetEnv({ DIRECTED_DISPATCH_ENABLED: 'TRUE' });
+      expect(loadEnv().directedDispatchEnabled).toBe(false);
+      resetEnv({ DIRECTED_DISPATCH_ENABLED: 'true' });
+      expect(loadEnv().directedDispatchEnabled).toBe(true);
+    });
+
+    it('refuses to start when PARTNER_LOCATION_SHARING_ENABLED=true but DIRECTED_DISPATCH_ENABLED is not true', () => {
+      resetEnv({ PARTNER_LOCATION_SHARING_ENABLED: 'true', DIRECTED_DISPATCH_ENABLED: undefined });
+      expect(() => loadEnv()).toThrow(/CS-7/);
+    });
+
+    it('starts fine when both flags are true', () => {
+      resetEnv({ PARTNER_LOCATION_SHARING_ENABLED: 'true', DIRECTED_DISPATCH_ENABLED: 'true' });
+      expect(() => loadEnv()).not.toThrow();
+      const env = loadEnv();
+      expect(env.directedDispatchEnabled).toBe(true);
+      expect(env.partnerLocationSharingEnabled).toBe(true);
+    });
+  });
 });

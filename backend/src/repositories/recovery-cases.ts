@@ -92,6 +92,35 @@ export const MAX_POLICE_REPORT_HISTORY_ITEMS = 50;
  * triple: 5 years from case closure (`closedAt`), subject to `legalHold`/CT-4 override. */
 export const POLICE_REPORT_RETENTION_YEARS = 5;
 
+/**
+ * OB-03 (docs/features/009-customer-experience-redesign/
+ * api-design-ob03-dispatch-location-grants.md §2.3) — the admin dispatch-queue
+ * lifecycle state, additive and independent of `status`. `null`/unset means
+ * undispatched ("in the queue" or has no holder). This sub-task adds the schema
+ * fields only — the dispatch/accept/decline/re-dispatch transitions themselves are a
+ * separate, not-yet-built sub-task (the admin router + `security-cases.ts` changes).
+ */
+export type DispatchStatus = 'undispatched' | 'pending' | 'accepted';
+
+/**
+ * OB-03 §2.4's [A4] `pendingApproval` shape — a two-admin-approval request record
+ * living on the case document until approved, expired, or overwritten by a fresh
+ * `re-dispatch` call. Cleared once its outcome is recorded in Trail B (see the
+ * document's §2.4 reasoning for why this does not need to persist indefinitely).
+ */
+export interface PendingDispatchApproval {
+  id: string;
+  requestedBy: string;
+  requestedTargetOrgId: string;
+  requestedAt: Date;
+  expiresAt: Date;
+  snapshot: {
+    partnerOrganizationId: string | null;
+    dispatchStatus: DispatchStatus | null;
+    status: RecoveryCaseStatus;
+  };
+}
+
 export interface RecoveryCaseDocument {
   id: string;
   accountId: string;
@@ -105,6 +134,35 @@ export interface RecoveryCaseDocument {
   lastLocationAt: Date | null;
   lastLocation: LastKnownLocation | null;
   legalHold: boolean;
+  /** OB-03 §2.3/§2.4 — admin dispatch-queue lifecycle state. `null` = undispatched. */
+  dispatchStatus: DispatchStatus | null;
+  /** OB-03 §2.3 — set on every successful dispatch (overwritten on each re-dispatch,
+   * unlike `firstDispatchedAt` below). `null` while undispatched. */
+  dispatchedAt: Date | null;
+  /** OB-03 §2.3 — the admin `accountId` that performed the most recent dispatch.
+   * Overwritten on each dispatch, same lifecycle as `dispatchedAt`. */
+  dispatchedBy: string | null;
+  /** OB-03 §3.1 — set once, on the partner org's `accept` call. `null` while
+   * `dispatchStatus` is not `'accepted'`. */
+  acceptedAt: Date | null;
+  /** OB-03 §2.4's [A4] state-keyed two-admin gate — set on the case's FIRST-EVER
+   * dispatch and never cleared/overwritten afterward (survives decline/hand-back/
+   * re-dispatch-to-null), unlike `dispatchedBy`/`dispatchedAt`. Used to detect
+   * "this case has been dispatched before" for the cross-org re-dispatch approval
+   * rule. `null` only for a case that has never been dispatched at all. */
+  firstDispatchedAt: Date | null;
+  /** OB-03 §2.3 — incremented on every successful dispatch (first dispatch and every
+   * re-dispatch alike). Starts at 0. */
+  dispatchCount: number;
+  /** OB-03 §2.4's [A4] pending cross-org re-dispatch approval record. `null` when no
+   * approval request is outstanding. */
+  pendingApproval: PendingDispatchApproval | null;
+  /** OB-03 §3.7(c) CR-7 carve-out — the device id the theft/loss report was filed
+   * from, captured at case creation, so the push-suppression logic (a separate
+   * sub-task) can tell "the reporting session itself" apart from any other device on
+   * the account. `null` for a case created before this field existed, or filed from a
+   * context with no resolvable device id (e.g. web). */
+  reportedFromDeviceId: string | null;
   /** Feature 011 — set once, when `status` transitions to `'closed'`
    * (see `updateStatusForPartnerOrg`). Drives the police-report retention clock
    * (database-design.md §5.2) — do NOT substitute `updatedAt` for this field. */
@@ -144,6 +202,17 @@ interface RecoveryCaseDbRow {
   legalHold: boolean;
   closedAt?: Date | null;
   closeReason?: RecoveryCaseCloseReason | null;
+  // OB-03 schema additions (§2.4/§2.3/§3.7(c)) — optional on the row type because
+  // documents created before this sub-task shipped won't have these keys at all;
+  // `toCase` below defaults every one of them to its "undispatched"/empty equivalent.
+  dispatchStatus?: DispatchStatus | null;
+  dispatchedAt?: Date | null;
+  dispatchedBy?: string | null;
+  acceptedAt?: Date | null;
+  firstDispatchedAt?: Date | null;
+  dispatchCount?: number;
+  pendingApproval?: PendingDispatchApproval | null;
+  reportedFromDeviceId?: string | null;
   // Optional because the partner-scoped read paths deliberately project these fields
   // OUT of the query (SR-011-1a) — on those rows, these keys are simply absent, not null.
   sapsCaseNumber?: string | null;
@@ -184,6 +253,14 @@ function toCase(row: RecoveryCaseDbRow): RecoveryCaseDocument {
     legalHold: row.legalHold,
     closedAt: row.closedAt ?? null,
     closeReason: row.closeReason ?? null,
+    dispatchStatus: row.dispatchStatus ?? null,
+    dispatchedAt: row.dispatchedAt ?? null,
+    dispatchedBy: row.dispatchedBy ?? null,
+    acceptedAt: row.acceptedAt ?? null,
+    firstDispatchedAt: row.firstDispatchedAt ?? null,
+    dispatchCount: row.dispatchCount ?? 0,
+    pendingApproval: row.pendingApproval ?? null,
+    reportedFromDeviceId: row.reportedFromDeviceId ?? null,
     sapsCaseNumber: row.sapsCaseNumber ?? null,
     reportingStation: row.reportingStation ?? null,
     reportedToPoliceAt: row.reportedToPoliceAt ?? null,
@@ -573,6 +650,11 @@ export function createRecoveryCasesRepo(db: Db) {
       assetId: string,
       notes: string | null,
       partnerOrganizationId: string | null,
+      // OB-03 §3.7(c) — optional, additive parameter. Every existing call site
+      // (which predates this sub-task) continues to compile unchanged and simply
+      // passes `null` implicitly; wiring a real value through from the theft-report
+      // route is a separate sub-task (the push-suppression work).
+      reportedFromDeviceId: string | null = null,
     ): Promise<RecoveryCaseDocument> {
       const now = new Date();
       const doc: Omit<RecoveryCaseDbRow, '_id'> = {
@@ -589,6 +671,14 @@ export function createRecoveryCasesRepo(db: Db) {
         legalHold: false,
         closedAt: null,
         closeReason: null,
+        dispatchStatus: null,
+        dispatchedAt: null,
+        dispatchedBy: null,
+        acceptedAt: null,
+        firstDispatchedAt: null,
+        dispatchCount: 0,
+        pendingApproval: null,
+        reportedFromDeviceId,
         sapsCaseNumber: null,
         reportingStation: null,
         reportedToPoliceAt: null,

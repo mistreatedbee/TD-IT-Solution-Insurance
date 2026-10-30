@@ -59,6 +59,37 @@ export const recoveryCasesJsonSchemaValidator: Document = {
       // clock. `updatedAt` is NOT a safe substitute (editing police-report fields would
       // otherwise reset the clock — database-design.md §5.2 explains why).
       closedAt: { bsonType: ['date', 'null'] },
+      // OB-03 (docs/features/009-customer-experience-redesign/
+      // api-design-ob03-dispatch-location-grants.md §2.3/§2.4/§3.7(c)) — additive,
+      // backward-compatible schema fields for the (not yet built) admin dispatch
+      // router. Not required — every document created before this sub-task shipped
+      // has none of these keys, and `repositories/recovery-cases.ts`'s `toCase`
+      // defaults them accordingly.
+      dispatchStatus: { enum: ['undispatched', 'pending', 'accepted', null] },
+      dispatchedAt: { bsonType: ['date', 'null'] },
+      dispatchedBy: { bsonType: ['string', 'null'] },
+      acceptedAt: { bsonType: ['date', 'null'] },
+      firstDispatchedAt: { bsonType: ['date', 'null'] },
+      dispatchCount: { bsonType: ['int', 'long', 'double'] },
+      pendingApproval: {
+        bsonType: ['object', 'null'],
+        properties: {
+          id: { bsonType: 'string' },
+          requestedBy: { bsonType: 'string' },
+          requestedTargetOrgId: { bsonType: 'string' },
+          requestedAt: { bsonType: 'date' },
+          expiresAt: { bsonType: 'date' },
+          snapshot: {
+            bsonType: 'object',
+            properties: {
+              partnerOrganizationId: { bsonType: ['string', 'null'] },
+              dispatchStatus: { enum: ['undispatched', 'pending', 'accepted', null] },
+              status: { enum: ['open', 'investigating', 'tracking', 'recovered', 'closed'] },
+            },
+          },
+        },
+      },
+      reportedFromDeviceId: { bsonType: ['string', 'null'] },
       // Feature 011 (SAPS case-number capture) — docs/features/011-saps-case-reporting/.
       // Customer-only fields (C-011-9 / SR-011-1/-1a): the partner/security-company read
       // paths in repositories/recovery-cases.ts project these OUT of the query — never
@@ -104,6 +135,16 @@ export const recoveryCaseIndexes: IndexDescription[] = [
   { key: { partnerOrganizationId: 1, status: 1, createdAt: -1 } },
   { key: { referenceNumber: 1 }, unique: true },
   { key: { assetId: 1, status: 1 } },
+  // DB-5 (database-design-ob03-location-share-grants.md's cross-reference, appended
+  // per api-design-ob03-dispatch-location-grants.md §0 [A7]) — supports the
+  // (not-yet-built) admin dispatch-queue list/count routes
+  // (`GET /v1/admin/dispatch/cases`/`/count`), which filter on exactly this field
+  // order: a target org's own queue, filterable by `dispatchStatus`, filterable by
+  // `status`, sorted newest-first.
+  {
+    key: { partnerOrganizationId: 1, dispatchStatus: 1, status: 1, createdAt: -1 },
+    name: 'recovery_cases_dispatch_queue',
+  },
   // Feature 011 (database-design.md §4) — supports the (not-yet-scheduled) police-report
   // retention-expiry job: find terminal-state cases (`'closed'` or `'recovered'`, per
   // C-011-11 — security-review.md §9.2/§9.6) past the retention floor that still have at

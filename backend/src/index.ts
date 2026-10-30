@@ -64,6 +64,7 @@ import { createSupportLookupRouter } from './routes/support-lookup.js';
 import { createSupportCasesRouter } from './routes/support-cases.js';
 import { createClaimsRouter } from './routes/claims.js';
 import { createAdminClaimsRouter } from './routes/admin-claims.js';
+import { assertDirectedDispatchMigrationApplied } from './lib/dispatch-migration-guard.js';
 import { requestIdMiddleware, notFoundHandler, errorHandler } from './middleware/error-handler.js';
 
 async function main(): Promise<void> {
@@ -102,6 +103,12 @@ async function main(): Promise<void> {
   }
 
   const ctx = buildAppContext(env);
+
+  // OB-03 §1 [A5] second, independent boot guard — fails startup loudly (not per-
+  // request) if DIRECTED_DISPATCH_ENABLED=true but the flag-flip migration has not
+  // been run against every in-scope recovery_cases document. No-op while the flag is
+  // off/unset.
+  await assertDirectedDispatchMigrationApplied(getDb(), env.directedDispatchEnabled);
 
   // SR-16(a): rebuild the revocation set from the durable app.sessions
   // record before serving any traffic, so a fresh/failed-over Redis never

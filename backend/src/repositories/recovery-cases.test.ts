@@ -1297,3 +1297,54 @@ describe('Product-differentiation research — pool triage signals (age-in-pool/
     );
   });
 });
+
+describe('OB-03 schema additions (§2.3/§2.4/§3.7(c)) — createForAccount defaults', () => {
+  it('defaults every new dispatch field to its "undispatched"/empty equivalent', async () => {
+    const { db } = createFakeDb([]);
+    const repo = createRecoveryCasesRepo(db);
+    const created = await repo.createForAccount('acct-1', 'asset-1', null, null);
+
+    expect(created.dispatchStatus).toBeNull();
+    expect(created.dispatchedAt).toBeNull();
+    expect(created.dispatchedBy).toBeNull();
+    expect(created.acceptedAt).toBeNull();
+    expect(created.firstDispatchedAt).toBeNull();
+    expect(created.dispatchCount).toBe(0);
+    expect(created.pendingApproval).toBeNull();
+    expect(created.reportedFromDeviceId).toBeNull();
+  });
+
+  it('carries an explicit reportedFromDeviceId through (CR-7 carve-out input)', async () => {
+    const { db } = createFakeDb([]);
+    const repo = createRecoveryCasesRepo(db);
+    const created = await repo.createForAccount('acct-1', 'asset-1', null, null, 'device-abc');
+    expect(created.reportedFromDeviceId).toBe('device-abc');
+  });
+
+  it('toCase defaults missing OB-03 fields on documents created before this sub-task shipped', async () => {
+    const id = new ObjectId();
+    const now = new Date();
+    const { db } = createFakeDb([
+      {
+        _id: id,
+        accountId: 'acct-1',
+        assetId: 'asset-1',
+        partnerOrganizationId: null,
+        status: 'open',
+        referenceNumber: 'RC-20260801-OLD1',
+        reportedAt: now,
+        notes: null,
+        legalHold: false,
+        createdAt: now,
+        updatedAt: now,
+        // Deliberately no dispatchStatus/dispatchedAt/etc. — pre-existing document shape.
+      } as RawDoc,
+    ]);
+    const repo = createRecoveryCasesRepo(db);
+    const found = await repo.findByIdForAccount('acct-1', id.toHexString());
+    expect(found?.dispatchStatus).toBeNull();
+    expect(found?.dispatchCount).toBe(0);
+    expect(found?.pendingApproval).toBeNull();
+    expect(found?.reportedFromDeviceId).toBeNull();
+  });
+});

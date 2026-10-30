@@ -216,6 +216,23 @@ export interface Env {
    * is discharged.
    */
   claimsApiEnabled?: boolean;
+
+  /**
+   * OB-03 (docs/features/009-customer-experience-redesign/
+   * api-design-ob03-dispatch-location-grants.md §0, CS-7) — fail-closed kill switch for
+   * the (not yet built) admin dispatch router / `security-cases.ts` accept-decline
+   * changes. Same convention as `claimsApiEnabled`/`locationIngestionEnabled`: only the
+   * exact string `"true"` enables; anything else is off. Gates §2-§4 of that document.
+   */
+  directedDispatchEnabled?: boolean;
+
+  /**
+   * OB-03 §0 CS-7 — may only be `"true"` if `directedDispatchEnabled` is also `true`;
+   * this module refuses to start otherwise (fail-closed, checked once at boot, not
+   * per-request). Gates §4-§5 (the partner location route + customer grant/
+   * pre-authorization routes) of the same document.
+   */
+  partnerLocationSharingEnabled?: boolean;
 }
 
 function requireEnv(name: string): string {
@@ -512,6 +529,41 @@ export function loadEnv(): Env {
     insurerFspNumber: envOrPlaceholder('CLAIMS_NOTICE_INSURER_FSP_NUMBER', "the insurer's FSP number"),
   };
 
+  // OB-03 (api-design-ob03-dispatch-location-grants.md §0, CS-7) — same fail-closed
+  // kill-switch convention as LOCATION_INGESTION_ENABLED/CLAIMS_API_ENABLED above.
+  const directedDispatchEnabledRaw = process.env.DIRECTED_DISPATCH_ENABLED;
+  const directedDispatchEnabled = directedDispatchEnabledRaw === 'true';
+  if (directedDispatchEnabledRaw !== undefined && !directedDispatchEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] DIRECTED_DISPATCH_ENABLED is set to an unrecognized value ` +
+        `("${directedDispatchEnabledRaw}"). Treating as disabled (fail-closed, OB-03 CS-7). ` +
+        'Set it to exactly "true" to enable, or unset it to disable.',
+    );
+  }
+
+  const partnerLocationSharingEnabledRaw = process.env.PARTNER_LOCATION_SHARING_ENABLED;
+  const partnerLocationSharingEnabled = partnerLocationSharingEnabledRaw === 'true';
+  if (partnerLocationSharingEnabledRaw !== undefined && !partnerLocationSharingEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] PARTNER_LOCATION_SHARING_ENABLED is set to an unrecognized value ` +
+        `("${partnerLocationSharingEnabledRaw}"). Treating as disabled (fail-closed, OB-03 CS-7). ` +
+        'Set it to exactly "true" to enable, or unset it to disable.',
+    );
+  }
+
+  // OB-03 §0 CS-7 — the dependent-flag rule: PARTNER_LOCATION_SHARING_ENABLED may only
+  // be 'true' while DIRECTED_DISPATCH_ENABLED is also 'true'. Checked once here at boot
+  // (not per-request), per the document's explicit instruction that this be a hard
+  // startup refusal, not a softer runtime guard.
+  if (partnerLocationSharingEnabled && !directedDispatchEnabled) {
+    throw new Error(
+      '[config/env] PARTNER_LOCATION_SHARING_ENABLED=true requires DIRECTED_DISPATCH_ENABLED=true ' +
+        '(OB-03 api-design-ob03-dispatch-location-grants.md §0, CS-7). Refusing to start.',
+    );
+  }
+
   // SR-018-11 / CR-018-10: a placeholder notice value is harmless in
   // dev/test (nothing production-real can be issued), but in production,
   // with the claims API actually enabled, it means a real adverse decision
@@ -563,5 +615,7 @@ export function loadEnv(): Env {
     locationIngestionEnabled,
     claimsNotice,
     claimsApiEnabled,
+    directedDispatchEnabled,
+    partnerLocationSharingEnabled,
   };
 }

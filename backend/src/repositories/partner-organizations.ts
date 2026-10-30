@@ -25,12 +25,33 @@ import type { Db, Collection } from 'mongodb';
 
 export type PartnerOrganizationStatus = 'active' | 'suspended';
 
+/**
+ * OB-03 (docs/features/009-customer-experience-redesign/
+ * api-design-ob03-dispatch-location-grants.md §2.3(a), A2/CO-OB03-4) — the PDM-6
+ * agreement-status registry fields the (not-yet-built) admin dispatch router's
+ * eligibility check reads. Independent of `PartnerOrganizationStatus` above (`active`/
+ * `suspended` is an operational flag; `agreementStatus` is the legal/agreement state a
+ * dispatch decision must check instead per the document's A2 ruling that "the
+ * active-only status flag on today's directory is never sufficient on its own").
+ */
+export type PartnerOrganizationAgreementStatus = 'executed' | 'terminated';
+
 export interface PartnerOrganizationDocument {
   id: string;
   name: string;
   status: PartnerOrganizationStatus;
   contactEmail: string;
   notes: string | null;
+  /** OB-03 §2.3(a) — `null` until an admin moves the org to `'executed'`. */
+  agreementStatus: PartnerOrganizationAgreementStatus | null;
+  /** OB-03 §2.3(a)/CO-OB03-4 — the executed agreement's reference (SR-INC002B-S2
+   * artefact). `null` until set alongside `agreementStatus: 'executed'`. */
+  agreementReference: string | null;
+  /** OB-03 §2.3(a) — the agreement's effective date. `null` until set. */
+  effectiveFrom: Date | null;
+  /** OB-03 §2.3(a) — set when an admin terminates the org (moves it out of
+   * `'executed'`). `null` while the org has never been terminated. */
+  terminatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +62,13 @@ interface PartnerOrganizationRow {
   status: PartnerOrganizationStatus;
   contactEmail: string;
   notes: string | null;
+  // OB-03 schema additions — optional on the row type because every document
+  // created before this sub-task shipped won't have these keys; `toDocument` below
+  // defaults each to its "no agreement yet" null equivalent.
+  agreementStatus?: PartnerOrganizationAgreementStatus | null;
+  agreementReference?: string | null;
+  effectiveFrom?: Date | null;
+  terminatedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +82,10 @@ function toDocument(row: PartnerOrganizationRow): PartnerOrganizationDocument {
     status: row.status,
     contactEmail: row.contactEmail,
     notes: row.notes,
+    agreementStatus: row.agreementStatus ?? null,
+    agreementReference: row.agreementReference ?? null,
+    effectiveFrom: row.effectiveFrom ?? null,
+    terminatedAt: row.terminatedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -82,6 +114,10 @@ export function createPartnerOrganizationsRepo(db: Db) {
         status: 'active',
         contactEmail: input.contactEmail,
         notes: input.notes,
+        agreementStatus: null,
+        agreementReference: null,
+        effectiveFrom: null,
+        terminatedAt: null,
         createdAt: now,
         updatedAt: now,
       };
@@ -91,7 +127,19 @@ export function createPartnerOrganizationsRepo(db: Db) {
 
     async updateById(
       id: string,
-      patch: Partial<Pick<PartnerOrganizationDocument, 'name' | 'status' | 'contactEmail' | 'notes'>>,
+      patch: Partial<
+        Pick<
+          PartnerOrganizationDocument,
+          | 'name'
+          | 'status'
+          | 'contactEmail'
+          | 'notes'
+          | 'agreementStatus'
+          | 'agreementReference'
+          | 'effectiveFrom'
+          | 'terminatedAt'
+        >
+      >,
     ): Promise<PartnerOrganizationDocument | null> {
       const now = new Date();
       const result = await collection().findOneAndUpdate(

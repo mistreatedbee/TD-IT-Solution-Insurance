@@ -79,4 +79,41 @@ describe('partner organizations repository', () => {
       expect(updated).toBeNull();
     });
   });
+
+  it('OB-03 §2.3(a)/CO-OB03-4 — a freshly created org has no agreement yet', async () => {
+    await withRepo(async (repo) => {
+      const created = await repo.create({ name: 'Gamma Security', contactEmail: 'gamma@example.com', notes: null });
+      expect(created.agreementStatus).toBeNull();
+      expect(created.agreementReference).toBeNull();
+      expect(created.effectiveFrom).toBeNull();
+      expect(created.terminatedAt).toBeNull();
+    });
+  });
+
+  it('OB-03 §2.3(a) — executing then terminating an agreement round-trips through updateById', async () => {
+    await withRepo(async (repo) => {
+      const created = await repo.create({ name: 'Delta Security', contactEmail: 'delta@example.com', notes: null });
+      const effectiveFrom = new Date('2026-01-01T00:00:00Z');
+
+      const executed = await repo.updateById(created.id, {
+        agreementStatus: 'executed',
+        agreementReference: 'AGR-0001',
+        effectiveFrom,
+      });
+      expect(executed?.agreementStatus).toBe('executed');
+      expect(executed?.agreementReference).toBe('AGR-0001');
+      expect(executed?.effectiveFrom?.toISOString()).toBe(effectiveFrom.toISOString());
+      expect(executed?.terminatedAt).toBeNull();
+
+      const terminatedAt = new Date('2026-06-01T00:00:00Z');
+      const terminated = await repo.updateById(created.id, {
+        agreementStatus: 'terminated',
+        terminatedAt,
+      });
+      expect(terminated?.agreementStatus).toBe('terminated');
+      expect(terminated?.terminatedAt?.toISOString()).toBe(terminatedAt.toISOString());
+      // agreementReference/effectiveFrom are untouched by a termination-only patch.
+      expect(terminated?.agreementReference).toBe('AGR-0001');
+    });
+  });
 });
