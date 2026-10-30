@@ -64,6 +64,7 @@ import { createSupportLookupRouter } from './routes/support-lookup.js';
 import { createSupportCasesRouter } from './routes/support-cases.js';
 import { createClaimsRouter } from './routes/claims.js';
 import { createAdminClaimsRouter } from './routes/admin-claims.js';
+import { createAdminCaseDispatchRouter } from './routes/admin-case-dispatch.js';
 import { assertDirectedDispatchMigrationApplied } from './lib/dispatch-migration-guard.js';
 import { requestIdMiddleware, notFoundHandler, errorHandler } from './middleware/error-handler.js';
 
@@ -190,6 +191,12 @@ async function main(): Promise<void> {
   v1.use(createAdminVerificationRouter(ctx));
   v1.use(createClaimsRouter(ctx));
   v1.use(createAdminClaimsRouter(ctx));
+  // OB-03 §0 CS-7 — literally unmounted (not mounted-but-404) while
+  // DIRECTED_DISPATCH_ENABLED is off, per the design document's explicit
+  // ruling that this router family must not be enumerable at all.
+  if (env.directedDispatchEnabled) {
+    v1.use(createAdminCaseDispatchRouter(ctx));
+  }
   v1.use('/analytics', createAnalyticsRouter(ctx));
   v1.use('/admin/analytics', createAdminAnalyticsRouter(ctx));
   v1.use('/support', createSupportLookupRouter(ctx));

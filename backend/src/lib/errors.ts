@@ -180,6 +180,31 @@ export const ERROR_CATALOG = {
     statusCode: 500,
     message: 'This decision cannot be issued because required notice configuration is missing. Escalate to the platform owner.',
   },
+  // OB-03 §2.4 [A9(iii)] — a re-dispatch (or re-dispatch approval) naming the
+  // case's current holder as the target. No legitimate use (nothing would
+  // change); removed rather than given a defined no-op behavior.
+  NO_OP_TARGET: {
+    statusCode: 422,
+    message: 'The requested target is already the current holder of this case.',
+  },
+  // OB-03 §2.4 — the admin who created a pendingApproval cannot be the one
+  // who approves it.
+  CSA_SAME_ADMIN: {
+    statusCode: 403,
+    message: 'The admin who requested this re-dispatch cannot also approve it.',
+  },
+  // OB-03 §2.3(a)/A2 — the target partner organization does not have an
+  // executed, non-terminated agreement on file.
+  DISPATCH_TARGET_NOT_ELIGIBLE: {
+    statusCode: 422,
+    message: 'The target partner organization is not eligible to receive a dispatched case.',
+  },
+  // OB-03 §2.4 — the named pendingApproval no longer matches (not found,
+  // expired, or the case has moved since the request was created).
+  PENDING_APPROVAL_INVALID: {
+    statusCode: 409,
+    message: 'This re-dispatch approval request is no longer valid. It may have expired or the case may have changed.',
+  },
   INTERNAL_ERROR: { statusCode: 500, message: 'An internal error occurred.' },
 } as const satisfies Record<string, ErrorCatalogEntry>;
 

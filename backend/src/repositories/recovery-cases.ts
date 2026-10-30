@@ -1203,6 +1203,219 @@ export function createRecoveryCasesRepo(db: Db) {
       return { ok: true, case: toCase(result) };
     },
 
+    // ---------------------------------------------------------------------
+    // OB-03 §2 — admin dispatch router (`routes/admin-case-dispatch.ts`).
+    // Admin-only transitions on the dispatch-queue lifecycle fields this
+    // file's schema already carries (see `DispatchStatus`/`PendingDispatchApproval`
+    // above). No partner-org scoping on any of these — the caller's admin-ness
+    // is enforced by the route layer (`requireUserType('admin')`), not here.
+    // ---------------------------------------------------------------------
+
+    /** [A8] List projection excludes `lastLocation`/`lastLocationAt` — a bulk
+     * list of every open case's coordinates is the insider-surveillance aid
+     * the §2.1 design note exists to prevent. `dispatchStatus: 'undispatched'`
+     * (the public query-enum value) maps to the stored `null` sentinel. */
+    async listForAdminDispatchQueue(
+      filters: { status?: RecoveryCaseStatus; dispatchStatus?: DispatchStatus },
+      limit: number,
+      cursor: MongoDecodedCursor | null,
+    ): Promise<RecoveryCaseDocument[]> {
+      const statusFilter: Document = filters.status ? { status: filters.status } : {};
+      const dispatchFilter: Document =
+        filters.dispatchStatus === undefined
+          ? {}
+          : filters.dispatchStatus === 'undispatched'
+            ? { dispatchStatus: null }
+            : { dispatchStatus: filters.dispatchStatus };
+      const rows = await collection()
+        .find(andFilters(statusFilter, dispatchFilter, mongoCursorFilter(cursor)), {
+          projection: { lastLocation: 0, lastLocationAt: 0 },
+        })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(limit)
+        .toArray();
+      return rows.map((row) => toCase(row as unknown as RecoveryCaseDbRow));
+    },
+
+    async countForAdminDispatchQueue(filters: {
+      status?: RecoveryCaseStatus;
+      dispatchStatus?: DispatchStatus;
+    }): Promise<number> {
+      const statusFilter: Document = filters.status ? { status: filters.status } : {};
+      const dispatchFilter: Document =
+        filters.dispatchStatus === undefined
+          ? {}
+          : filters.dispatchStatus === 'undispatched'
+            ? { dispatchStatus: null }
+            : { dispatchStatus: filters.dispatchStatus };
+      return collection().countDocuments(andFilters(statusFilter, dispatchFilter));
+    },
+
+    /** [A8] Detail — unlike the list above, DOES include `lastLocation`/
+     * `lastLocationAt` (a single-case decision may legitimately need it). The
+     * route writes its own per-subject Trail B row for this read. */
+    async findByIdForAdmin(caseId: string): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const row = await collection().findOne({ _id: new ObjectId(caseId) });
+      return row ? toCase(row) : null;
+    },
+
+    /** §2.3 — dispatch an undispatched case to exactly one org. Compare-and-set
+     * on `dispatchStatus: null` (C-A); a concurrent dispatch winning the race
+     * produces a CAS miss (`null` return), which the route reports as `409`. */
+    async dispatchCase(
+      caseId: string,
+      input: { partnerOrganizationId: string; dispatchedBy: string },
+    ): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const _id = new ObjectId(caseId);
+      const existing = await collection().findOne({ _id });
+      if (!existing) return null;
+      const now = new Date();
+      const result = await collection().findOneAndUpdate(
+        { _id, dispatchStatus: null },
+        {
+          $set: {
+            partnerOrganizationId: input.partnerOrganizationId,
+            dispatchStatus: 'pending',
+            dispatchedAt: now,
+            dispatchedBy: input.dispatchedBy,
+            acceptedAt: null,
+            firstDispatchedAt: existing.firstDispatchedAt ?? now,
+            updatedAt: now,
+          },
+          $inc: { dispatchCount: 1 },
+        },
+        { returnDocument: 'after' },
+      );
+      return result ? toCase(result) : null;
+    },
+
+    /** §2.4 single-admin path — return a case to the queue with no new holder
+     * (`targetPartnerOrganizationId: null`). No CAS precondition on current
+     * `dispatchStatus` (an admin recall is valid from `pending` or `accepted`
+     * alike) beyond the case existing. */
+    async reDispatchToNull(caseId: string): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const now = new Date();
+      const result = await collection().findOneAndUpdate(
+        { _id: new ObjectId(caseId) },
+        {
+          $set: {
+            partnerOrganizationId: null,
+            dispatchStatus: null,
+            acceptedAt: null,
+            dispatchedBy: null,
+            updatedAt: now,
+          },
+        },
+        { returnDocument: 'after' },
+      );
+      return result ? toCase(result) : null;
+    },
+
+    /** §2.4 single-admin path — move directly to a different org (no second-
+     * admin gate required for this transition per [A4]'s state-keyed rule). */
+    async reDispatchToOrgDirect(
+      caseId: string,
+      input: { targetPartnerOrganizationId: string; actorAccountId: string },
+    ): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const _id = new ObjectId(caseId);
+      const existing = await collection().findOne({ _id });
+      if (!existing) return null;
+      const now = new Date();
+      const result = await collection().findOneAndUpdate(
+        { _id },
+        {
+          $set: {
+            partnerOrganizationId: input.targetPartnerOrganizationId,
+            dispatchStatus: 'pending',
+            dispatchedAt: now,
+            dispatchedBy: input.actorAccountId,
+            acceptedAt: null,
+            firstDispatchedAt: existing.firstDispatchedAt ?? now,
+            updatedAt: now,
+          },
+          $inc: { dispatchCount: 1 },
+        },
+        { returnDocument: 'after' },
+      );
+      return result ? toCase(result) : null;
+    },
+
+    /** §2.4 [A4] — records a cross-org re-dispatch request pending a second
+     * admin's approval. Does not itself mutate `partnerOrganizationId`/
+     * `dispatchStatus` (per the design: "not yet a mutation"). */
+    async createPendingDispatchApproval(
+      caseId: string,
+      approval: PendingDispatchApproval,
+    ): Promise<RecoveryCaseDocument | null> {
+      if (!ObjectId.isValid(caseId)) return null;
+      const result = await collection().findOneAndUpdate(
+        { _id: new ObjectId(caseId) },
+        { $set: { pendingApproval: approval, updatedAt: new Date() } },
+        { returnDocument: 'after' },
+      );
+      return result ? toCase(result) : null;
+    },
+
+    /** §2.4 — the second admin's approval. Re-validates the `pendingApproval`
+     * id, the TOCTOU snapshot, and that the approving admin differs from the
+     * requester, all inside this one method so the route layer cannot drift
+     * from the repository's own notion of "still valid." */
+    async approvePendingDispatch(
+      caseId: string,
+      input: { pendingApprovalId: string; approvingAdminAccountId: string },
+    ): Promise<
+      | { outcome: 'ok'; case: RecoveryCaseDocument }
+      | { outcome: 'not_found' }
+      | { outcome: 'same_admin' }
+      | { outcome: 'snapshot_mismatch' }
+    > {
+      if (!ObjectId.isValid(caseId)) return { outcome: 'not_found' };
+      const _id = new ObjectId(caseId);
+      const existing = await collection().findOne({ _id });
+      if (!existing || !existing.pendingApproval || existing.pendingApproval.id !== input.pendingApprovalId) {
+        return { outcome: 'not_found' };
+      }
+      const pending = existing.pendingApproval;
+      if (pending.requestedBy === input.approvingAdminAccountId) {
+        return { outcome: 'same_admin' };
+      }
+      // Lapsed pending approvals are treated as a snapshot mismatch (the
+      // request is void — the requester must call re-dispatch again, §2.4).
+      const snapshotStillMatches =
+        pending.expiresAt.getTime() >= Date.now() &&
+        pending.snapshot.partnerOrganizationId === (existing.partnerOrganizationId ?? null) &&
+        pending.snapshot.dispatchStatus === (existing.dispatchStatus ?? null) &&
+        pending.snapshot.status === existing.status;
+      if (!snapshotStillMatches) {
+        return { outcome: 'snapshot_mismatch' };
+      }
+
+      const now = new Date();
+      const result = await collection().findOneAndUpdate(
+        { _id, 'pendingApproval.id': input.pendingApprovalId },
+        {
+          $set: {
+            partnerOrganizationId: pending.requestedTargetOrgId,
+            dispatchStatus: 'pending',
+            dispatchedAt: now,
+            dispatchedBy: pending.requestedBy,
+            acceptedAt: null,
+            firstDispatchedAt: existing.firstDispatchedAt ?? now,
+            pendingApproval: null,
+            updatedAt: now,
+          },
+          $inc: { dispatchCount: 1 },
+        },
+        { returnDocument: 'after' },
+      );
+      if (!result) return { outcome: 'snapshot_mismatch' };
+      return { outcome: 'ok', case: toCase(result) };
+    },
+
     /** See `PartnerOrgScorecard`'s doc comment for the two documented
      * limitations of what this can and cannot represent given today's schema. */
     async getScorecardForPartnerOrg(
