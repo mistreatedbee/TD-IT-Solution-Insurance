@@ -514,4 +514,163 @@ after the CS-9 workshop.
 
 <!-- security-engineer concurrence: append below this line. Do not edit the chair's section. -->
 
+## 9. `security-engineer` concurrence (Stage 8, second required signature)
+
+**Date:** 2026-10-30. **Reviewed:** the chair's §0–§8 above, the ADR, the Stage 6 doc, the Stage 7 doc, and
+the same running-code surfaces the chair cites (`recovery-cases.ts`, `security-cases.ts`,
+`rate-limit.ts`, `step-up.ts`), plus `backend/src/lib/policy.ts` for this platform's existing rate-limit
+precedent and `backend/src/routes/asset-location.ts`/`recovery.ts` for the Feature 008 report-cadence and
+location-route limiter precedent that CS-5's values need to be grounded in. I did not re-derive the
+threat model; I checked the chair's Tier A findings against the code for anything missed, and set the
+CS-5(a)/(b) values the chair deferred to this role.
+
+### 9.1 Verdict
+
+**Tier A: concur with "approved with conditions," with two of my own findings (SE-1, SE-2) added to the
+A1–A9 set before Stage 9 merge — not new blockers on starting Stage 9, but merge conditions alongside
+A1–A9, same bar the chair set.** A1–A9 are all real and I found nothing that contradicts them on a second
+read of the code. **Tier B: concur with "blocked."** I looked specifically for anything my own lens
+(injection, rate limiting, secrets, dependency/config surface) would add beyond B1–B12 and found one
+item (SE-3) folding into the existing B6 fix rather than standing alone, plus the CS-5 values below which
+B6 named as owed to this role.
+
+### 9.2 SE-1 (New, Medium-High): query-parameter and body-field validation on the new admin/partner routes
+is not specified, and this is exactly the NoSQL-injection surface this role owns
+
+Stage 7 §2.1's `GET /v1/admin/dispatch/cases` takes `status?`, `dispatchStatus?`, `limit`, `cursor` and
+says only "same enum as `security-cases.ts`'s filter" for `status`— it does not say the same for
+`dispatchStatus`, and no `zod` schema is shown for either route's query parsing the way §5.1's
+`createCaseSchema` or `caseIdParamsSchema` are named for the customer routes. The chair's running-code
+read confirms the existing routers validate query input through named schemas before it reaches a Mongo
+filter (e.g. `security-cases.ts`'s list handler). Two concrete risks if `dispatchStatus`/`status` are read
+off `req.query` and dropped into `buildPartnerOrgQuery`/the new admin query builder without an allow-list:
+
+- **Query-operator injection.** Express's default query parser turns `?dispatchStatus[$ne]=null` into
+  `{ $ne: 'null' }` on `req.query.dispatchStatus`. If that value is spread into a Mongo filter object
+  (`{ dispatchStatus: req.query.dispatchStatus }`) rather than compared against a closed enum first, the
+  caller controls a query operator, not a value — the canonical NoSQL-injection shape this role's standing
+  mandate calls out by name.
+- **The same risk on `POST /v1/admin/dispatch/cases/:caseId/dispatch`'s `partnerOrganizationId` body field
+  and §2.4's `targetPartnerOrganizationId`.** Both must be validated as a string matching the org-id shape
+  (not just "truthy") before being used in `findActiveGrant`/the eligibility lookup, for the same reason.
+
+**Fix, merge condition for Tier A (SE-1):** every new/changed route in `admin-case-dispatch.ts` and the
+`security-cases.ts` additions parses `req.query`/`req.body` through a named `zod` schema with
+`dispatchStatus`/`status` as closed enums (`z.enum([...])`), and `partnerOrganizationId`/
+`targetPartnerOrganizationId` as string-shape-checked (existing project convention — whatever
+`security-cases.ts` already uses for org-id params) before any value reaches a repository filter, exactly
+as `recovery.ts`/`security-cases.ts` already do for their own routes. `qa-architect` adds a contract test
+sending `{ "$ne": null }`-shaped values as query/body input and asserts `400 VALIDATION_ERROR`, not a
+widened result set. This is a specification gap, not a defect in running code — nothing in Tier A is built
+yet — so it is cheap to close before the router exists rather than after.
+
+### 9.3 SE-2 (New, Medium): bulk-read rate limiting on the admin dispatch queue is unspecified
+
+Stage 7 §2.1/§2.2 give `admin-case-dispatch.ts` the generic chain "`authenticate` → `requireUserType('admin')`
+→ step-up check (dispatch/re-dispatch only) → per-route `createRateLimiter`" but never names the limiter
+value for the **list** and **count** routes, unlike `security-cases.ts`'s existing list/count routes,
+which the chair's own running-code read shows are each individually keyed with `DEFAULT_AUTHENTICATED_LIMIT`
+(`security-cases.ts:106,155`). The admin queue list is also the route A8 already flags for carrying
+`lastLocation` on every row — which makes an unspecified or missing limiter on that route a bulk-location-
+disclosure amplifier on top of A8's minimisation fix, not just a generic hygiene gap: a compromised or
+over-curious admin session could page through the full queue at whatever rate the client allows if no
+limiter is named.
+
+**Fix, merge condition for Tier A (SE-2):** `GET /v1/admin/dispatch/cases` and
+`GET /v1/admin/dispatch/cases/count` each get their own `createRateLimiter(ctx.kv, DEFAULT_AUTHENTICATED_LIMIT,
+(req) => \`admin-dispatch-{list|count}:${req.auth!.accountId}\`)` call, named explicitly in the Stage 7
+addendum the chair already requires for A1–A9, not left to "per-route `createRateLimiter`" as a one-line
+summary. `GET /admin/dispatch/cases/:caseId` (A8's detail route, once specced) gets the same.
+
+### 9.4 Everything else in A1–A9: no additional gaps found
+
+I checked A1 (predicate), A2 (eligibility source), A3 (status PATCH), A4 (approve step-up/`pendingApproval`),
+A5 (migration), A6 (OB-04), A7 (index), A9 (consistency) against the code and the Stage 6/7 text a second
+time, specifically for authn/authz, injection, secrets and rate-limit angles. Nothing to add. A4's
+`pendingApproval` snapshot-compare-and-set is the right shape for closing a TOCTOU window on the approval
+call itself, and A1's two-predicate split is the correct IDOR fix (an org's own id in `partnerOrganizationId`
+is not, on its own, authorization once "pending" and "accepted" are different disclosure tiers under one
+org id). No secrets or hardcoded vendor credentials appear anywhere in the Stage 6/7 text — consistent with
+the ADR's open-decision status on the GPS/payment vendors.
+
+### 9.5 CS-5 rate-limit values (deferred to this role by the chair, §2.4/§7)
+
+Grounded in two existing numbers already in `backend/src/lib/policy.ts`: `DEFAULT_AUTHENTICATED_LIMIT`
+(100/60s, the house default for an authenticated read route with no special sensitivity) and
+`ASSET_LOCATION_REPORT_LIMIT` (20 attempts / 15 minutes — Feature 008 Phase 1's self-device report cadence
+ceiling, i.e. a new point cannot legitimately exist more often than roughly once every 45 seconds). The
+chair's own framing in §2.4 is the right test: "reading faster than points arrive has no recovery value
+and is only surveillance cadence." Both limiters below key off `createRateLimiter`'s existing
+compound-key support (already used for CS-5(a)'s `operatorAccountId:caseId` key, per the chair's §2.1/§2.4
+read of Stage 7 §4) and are **chained**, not substituted for each other — the second does not loosen the
+first:
+
+- **CS-5(a), per-operator-per-case:** `{ attempts: 10, windowSeconds: 300 }` keyed
+  `location-read:{operatorAccountId}:{caseId}`. One read roughly every 30 seconds, sustained — comfortably
+  above the ~45-second floor at which a genuinely new point can exist, enough headroom for a UI that polls
+  on a fixed interval plus a manual refresh, but a hard ceiling on a scripted tight-poll loop against one
+  case by one operator account.
+- **CS-5(a)/(G-5), per-case aggregate across all operators of the holder org:** `{ attempts: 30,
+  windowSeconds: 300 }` keyed `location-read:{caseId}` (no operator in the key — this is the second
+  limiter instance the chair's §2.4 already calls for, chained after the per-operator one in the same
+  middleware position §4 names). Three times the per-operator ceiling, not N times: an org that puts ten
+  operators on one case does not get a tenfold read budget, closing the exact multiplier the chair named
+  as G-5. 30 reads / 5 minutes is still well above the ~45-second data-arrival floor (that alone would
+  allow ~33 reads/5 min at the theoretical ceiling), so the limiter binds on multi-operator fan-out before
+  it binds on a single diligent operator refreshing on a tight interval.
+- **CS-5(b), read-volume anomaly (the detective half, distinct from the two hard limiters above):** alert
+  (not block — this is a signal, the two limiters above are the actual control) when a single case's
+  **denied**-read counter (the one B4 already asks the handler to write) exceeds **5 denied reads within
+  60 minutes** from the same operator or org — denied reads have zero legitimate volume once a grant has
+  ended or a condition has gone false, unlike allowed reads, so this threshold can be tighter than either
+  hard limiter above without false-positiving on normal use. Reuse the existing admin-alert transport the
+  chair's §6/B12 already route sweeper-raised alerts through; no new notification mechanism.
+
+These three numbers are mine to set per the chair's deferral and are a Stage 7 addendum item (same
+mechanism as A1–A9: `backend-architect` writes them into the Stage 7 doc as an appended amendment, not a
+rewrite of §4). They bind **Tier B only** — the location route they gate is unmounted under
+`DIRECTED_DISPATCH_ENABLED` alone, so nothing here is a Tier A merge condition. I am recording them now,
+ahead of the Tier B re-review, because the chair asked for them here rather than leaving them to resurface
+at the next Stage 8 pass.
+
+### 9.6 SE-3 (folds into B6, not a standalone finding): the per-case aggregate limiter must not be
+satisfiable by rotating operator accounts within the same org
+
+B6(a) already requires the per-case-aggregate dimension; I add one implementation note so it is not
+rebuilt wrong: the aggregate key must be `caseId` alone (org-scoped by construction, since only one org is
+ever dispatched to a case at a time under D1), not `caseId:partnerOrganizationId`, and must be enforced
+server-side in the same middleware position as the per-operator limiter, not derived from a client-
+supplied operator count. A limiter keyed on anything the org can multiply (operator id, device id,
+request-header value) reintroduces G-5 by construction. This is folded into B6 rather than given its own
+ID because it's a specification detail of the same fix, not a new gap.
+
+### 9.7 Chair checklist cross-check
+
+I re-ran the chair's own unchecked boxes (§8: third-party least privilege/audit, account-takeover/
+stolen-device session) against the code with my own lens and reached the same conclusion: both are
+correctly left unresolved pending B2/B6/B8/B11/B12 and CS-3 respectively — there is no code yet for either
+to inspect, and nothing in Stage 6/7 closes them early. I have nothing to add there beyond concurring that
+they stay open.
+
+### 9.8 Security-engineer checklist
+
+- [x] All new/changed endpoints enforce authentication and object-level authorization — subject to A1
+  (chair) and SE-1 (this section) being fixed before merge.
+- [x] Input validation and sanitization confirmed for all user-/vendor-supplied data — **not yet**; SE-1 is
+  exactly this box, flagged as a Tier A merge condition, not a pass.
+- [x] Rate limiting in place on public and vendor-facing endpoints — **not yet** on the admin queue routes
+  (SE-2); CS-5 values fixed above for the Tier B location route.
+- [ ] GPS/vendor webhook signatures verified and replay protection confirmed — N/A to OB-03 (no vendor
+  webhook in this feature; Feature 008 self-device reporting is a separate, already-reviewed surface).
+- [x] No secrets, keys, or tokens present in source, logs, or client bundles — confirmed on the Stage 6/7
+  text; nothing to check yet in code, since none exists.
+- [ ] Dependency scan — N/A, no package changes in a design doc; owed at Stage 9 PR time as usual.
+- [x] Encryption at rest/in transit — deferred to, and consistent with, the chair's §8 and `database-
+  architect`'s ADR DB review; no new sensitive-data path beyond what the ADR already covers.
+- [x] Prior pentest findings relevant to this change — none exist yet for OB-03 specifically; N/A.
+
+**Signed:** `security-engineer`, 2026-10-30. Concurrence recorded for Tier A (with SE-1/SE-2 added to the
+merge-condition set alongside A1–A9) and for Tier B remaining blocked per the chair's B1–B12. CS-5(a)/(b)
+values fixed in §9.5 above.
+
 <!-- compliance-specialist concurrence: append below this line. Do not edit the chair's section. -->
