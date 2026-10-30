@@ -646,6 +646,47 @@ describe('routes/admin-case-dispatch', () => {
       });
       expect(res.status).toBe(400);
     });
+
+    it('[A4] a never-dispatched case (firstDispatchedAt null) still dispatches single-admin via /dispatch (existing behavior preserved)', async () => {
+      const kase = sampleCase({ dispatchStatus: null, partnerOrganizationId: null, firstDispatchedAt: null });
+      const org = sampleOrg();
+      const { app, adminBearer } = createHarness({ cases: [kase], orgs: [org] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}/dispatch`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ partnerOrganizationId: org.id }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { dispatchStatus: string } };
+      expect(body.data.dispatchStatus).toBe('pending');
+    });
+
+    it('[A4] a previously-dispatched case (firstDispatchedAt set, currently undispatched) cannot be single-admin dispatched via /dispatch — requires the two-admin path', async () => {
+      // dispatchStatus null (back in the queue after a decline/hand-back) but
+      // firstDispatchedAt set — the exact compositional-bypass shape [A4]
+      // closed for re-dispatch, reached here via the plain /dispatch route.
+      const kase = sampleCase({
+        dispatchStatus: null,
+        partnerOrganizationId: null,
+        firstDispatchedAt: new Date('2026-10-01T00:00:00.000Z'),
+      });
+      const org = sampleOrg();
+      const { app, adminBearer } = createHarness({ cases: [kase], orgs: [org] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}/dispatch`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ partnerOrganizationId: org.id }),
+      });
+      expect(res.status).toBe(202);
+      const body = (await res.json()) as { data: { pendingApprovalId: string } };
+      expect(typeof body.data.pendingApprovalId).toBe('string');
+    });
   });
 
   describe('POST /admin/dispatch/cases/:caseId/re-dispatch', () => {

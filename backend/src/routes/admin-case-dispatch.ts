@@ -294,6 +294,51 @@ export function createAdminCaseDispatchRouter(ctx: AppContext): Router {
           return;
         }
 
+        // [A4] state-keyed two-admin gate, same rule `re-dispatch` enforces:
+        // a case sitting at `dispatchStatus: null` that has been dispatched
+        // before (`firstDispatchedAt !== null` — e.g. after a decline or
+        // hand-back put it back to null) must not be single-admin assignable
+        // through this route. That is the exact compositional bypass [A4]
+        // closed for `re-dispatch`, reached here instead: null-then-dispatch
+        // with one admin across two calls. A never-dispatched case
+        // (`firstDispatchedAt === null`) keeps today's single-admin flow.
+        if (existing.firstDispatchedAt !== null) {
+          const now = new Date();
+          const pendingApprovalId = randomUUID();
+          await ctx.adminAccessLog.recordStateChange({
+            actorAccountId: req.auth!.accountId,
+            actorSessionId: req.auth!.sessionId,
+            auditRequestId: req.auditRequestId ?? null,
+            targetAccountId: existing.accountId,
+            resourceType: 'recovery_case',
+            resourceId: existing.id,
+            fromStatus: existing.dispatchStatus ?? 'undispatched',
+            toStatus: existing.dispatchStatus ?? 'undispatched',
+            endpoint: ENDPOINT_DISPATCH,
+            ipAddress: clientIp(req),
+            userAgent: req.header('user-agent') ?? null,
+            reason: `pending_approval_requested:${pendingApprovalId}:target=${partnerOrganizationId}:dispatch_after_prior_dispatch`,
+          });
+          const withPending = await ctx.recoveryCases.createPendingDispatchApproval(caseId, {
+            id: pendingApprovalId,
+            requestedBy: req.auth!.accountId,
+            requestedTargetOrgId: partnerOrganizationId,
+            requestedAt: now,
+            expiresAt: new Date(now.getTime() + PENDING_APPROVAL_WINDOW_MS),
+            snapshot: {
+              partnerOrganizationId: existing.partnerOrganizationId,
+              dispatchStatus: existing.dispatchStatus,
+              status: existing.status,
+            },
+          });
+          if (!withPending) {
+            next(apiError('CONFLICT'));
+            return;
+          }
+          res.status(202).json({ data: { pendingApprovalId } });
+          return;
+        }
+
         // (3) write the decision record before the mutation (§18.8 ruling b).
         await ctx.adminAccessLog.recordStateChange({
           actorAccountId: req.auth!.accountId,
