@@ -1285,3 +1285,32 @@ show the model is actually in force are CSA-R4-1 to CSA-R4-5 at the location rou
 
 **Signed:** `cybersecurity-architect`, 2026-10-29. `security-engineer` concurrence is still required, and
 is not given here.
+
+---
+
+## `product-manager` note — OQ-3 answered (2026-10-30)
+
+Append-only; the sections above are unchanged. The Client has answered **OQ-3** (§"Open questions"):
+*"I want the sharing to be allowed when the customer or the Admin has reported it missing."* Full
+record, verbatim instruction and analysis: `11-documented-client-instructions.md` §13.
+
+**Effect on this ADR, in brief (see doc 11 §13 for the reasoning):**
+- **Part (a) of OQ-3 (any partner location disclosure at all) is resolved: yes, conditionally** —
+  the condition being the existing case-creation gate this ADR already has (D3.1, D4): a recovery
+  case must exist, and a case only exists from a customer report (`recovery.ts`) or, once built, an
+  admin/agent on-behalf report (OB-02, G-18, currently NO-GO/not built). No new requirement is
+  created; the Client's condition matches the architecture already specified in D1-D4.
+- **Part (b) of OQ-3 (pool vs. directed dispatch) is not addressed by the Client's answer** — it is
+  silent on dispatch routing, which is a different question from *when* sharing is allowed. **The
+  revisit trigger is not hit** (the Client did not choose the pool and did not forbid disclosure),
+  so **D1 (directed dispatch, ratified 2026-10-29) stands, unchanged.**
+- **One item flagged for `solution-architect`/`compliance-specialist`, not a design change:**
+  D3.4's end-condition table does not name "report withdrawn by customer / found to be a false
+  alarm" as its own trigger, distinct from `case_terminal` or `revoked_by_customer`. This is very
+  likely already covered through those two paths in practice, but is not stated explicitly. Confirm
+  explicitly, or add a named trigger, before Stage 8 of the location build.
+- **Ratification trigger item 4's condition on OQ-3 is satisfied.** This does not by itself turn on
+  `PARTNER_LOCATION_SHARING_ENABLED` — the OB-spec §6 preconditions (P-1 to P-7), the location
+  route's own Stage 8/Stage 10, and CS-1 to CS-9 remain the applicable gates.
+
+Filed by `product-manager`.

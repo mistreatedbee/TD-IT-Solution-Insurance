@@ -292,3 +292,117 @@ not an instruction**. `compliance-specialist` may refine this row in a further a
 | **G-18** | **Call-centre staff initiating on-behalf recovery requests that the customer approves (OB-02, C-010-4)** | **Not built.** The design is ratified, but implementation is NO-GO until Stage 8. Stage 8 will cite Register A I-1 as base authority (§12.4). No on-behalf route exists | Whether the Client instructs agent-initiated on-behalf recovery requests approved in the customer's own session; disclosing the third-party reporter's stated relationship to the account holder; and the retention periods in §12.3 (24 months from resolution for requests that produced no case, with the case's life for approved ones). **Required before first real customer PII on this flow** |
 
 G-18 is prospective. It goes in the §8 item 5 second schedule and into the CT-4b instruction schedule draft.
+
+---
+
+## 13. G-7 — the Client's OQ-3 answer, recorded (2026-10-30, `product-manager`)
+
+Append-only. §1 to §12 are unchanged. This records the Client's answer to the open question
+`cto` flagged at `docs/organization/adr/0017-security-partner-directed-dispatch-and-location-share-grants.md`
+§3 ("OQ-3 is open and is not mine to rule on") and carried by `product-manager` to the Client per
+G-7's original assignment (§4) and ADR-0017's deciders list.
+
+### 13.1 The instruction, verbatim
+
+> "I want the sharing to be allowed when the customer or the Admin has reported it missing."
+
+This is **written confirmation from a person authorised to bind the Client, identifying its
+subject matter** (§2 table, "Sufficient"). It answers G-7 / OQ-3. It does not itself authorise
+location sharing to go live — ADR-0017 D5 and the OB-03 spec §6 preconditions (P-1 to P-7) still
+gate that, and this instruction is one gate among several, not a substitute for the others.
+
+### 13.2 What this resolves, checked against the ADR's actual text — not assumed
+
+**(a) Any partner location disclosure at all — resolved, cleanly, yes.** The Client's answer is
+conditional ("when... reported it missing"), not a blanket no. Combined with G-7(extended)'s
+original question ("whether the Client permits *any* location disclosure to a partner" — §11),
+this instruction supplies the missing "yes, conditionally" that §4/§11 flagged as absent. No
+location may reach a partner outside the stated trigger — but within it, disclosure is now
+instructed, subject to every other ADR-0017 gate (D5, OB-spec §6 P-1–P-7, Stage 8/10).
+
+**(b) Pool vs. directed dispatch — the Client's answer is silent, and I am not forcing a reading
+onto it.** The instruction speaks to *when* sharing may happen (the reporting trigger), not *how*
+a case is routed to a partner organisation. ADR-0017 D1 (directed dispatch) was decided on
+architecture/compliance grounds independent of this question (SG-1/SG-2/SG-3 consent specificity,
+removing Tier 0 — D1 items 1-3) and ratified by `cto` 2026-10-29, one day before this instruction
+was obtained. **This instruction neither ratifies nor reopens D1.** The revisit trigger ("The
+Client's G-7 instruction picks the pool, or forbids any partner location disclosure") is not
+triggered: the Client did not pick the pool, and did not forbid disclosure. D1 stands as ratified,
+unchanged by this entry.
+
+**(c) Does the instruction match what the architecture already does — verified, not assumed, by
+re-reading D3.1 and D4.** I checked this directly against the ADR body rather than taking the
+"of course it already works this way" reading at face value:
+
+- A location-share grant requires a `caseId` (SG-1, D3.1, D3.3 condition 1-2). ADR-0017 D4 lists
+  only `recovery.ts`'s customer report flow, and the not-yet-built OB-02 admin/agent
+  report-on-behalf flow (G-18, §12), as the two paths that create a recovery case. There is no
+  code path, proposed or built, that creates a case — and therefore no path that can produce a
+  grant — other than a report of loss or theft.
+- **Confirmed: "customer reported it missing" maps exactly to the existing customer report flow
+  (`recovery.ts`), and "Admin reported it missing" maps exactly to OB-02's agent-initiated,
+  customer-approved on-behalf flow (G-18) — once built.** No gap between the instruction and the
+  design exists for case creation. The Client's answer is not a new requirement; it is a
+  description of the only two gates the ADR already has.
+- **One precision the instruction surfaces, not previously stated as a condition anywhere in the
+  ADR or G-18's design: OB-02 (G-18) is NO-GO until Stage 8 (§12 of this doc) and has no on-behalf
+  route in code today.** Until OB-02 ships, "Admin reported it missing" as a case-creation trigger
+  does not exist — only the customer's own report flow does. This is not a gap in the Client's
+  instruction; it is a sequencing fact: the "Admin" half of the Client's own-stated condition is
+  not yet buildable, and `PARTNER_LOCATION_SHARING_ENABLED` must not be read as authorised for
+  cases created any other way (e.g. a case an admin creates outside the OB-02 consent flow, if one
+  is ever added) without a fresh instruction covering that path specifically.
+
+**Conclusion on (c): the ADR's D3 grant model, as written, already implements the Client's
+condition exactly, for the one case-creation path that exists today (customer report) and the one
+that is designed but not yet built (OB-02 admin-on-behalf, G-18). This is not a new requirement on
+`solution-architect` or `compliance-specialist` — it confirms the existing design. No ADR change is
+needed for (c).**
+
+### 13.3 One real edge case the instruction prompts, not yet explicitly covered
+
+**Withdrawn or false-alarm reports.** The Client's condition is "when ... reported it missing" —
+phrased as a trigger, not a standing state. ADR-0017 D3.4 lists the SG-4 end conditions and when
+each is written (customer revoke, case terminal, hand-back/re-dispatch, agreement ended, Feature
+008 consent withdrawn, account erasure, timeout). **None of these is "the report itself was
+withdrawn or found to be a false alarm, independent of the customer revoking the location grant or
+the case reaching a terminal status via the normal recovery workflow."** D3.3 is a per-request
+check, so access does stop the moment any existing end condition fires — the question is narrower:
+is "the underlying report is no longer a missing-asset report" itself one of those triggers, or
+does it rely on the case being manually walked to `closed` (which does fire `case_terminal`) or on
+the customer manually revoking?
+
+This is not a gap I am inventing to look thorough — D3.4's table does not name "report withdrawn/
+retracted by customer" or "report found to be false alarm" as a distinct, directly-firing trigger
+separate from the general case-status-transition and revoke paths. In practice a withdrawn report
+almost certainly becomes a `closed`/`recovered` case transition (covered) or a customer revoke
+(covered), so this may already be fully covered operationally — but the ADR does not say so in as
+many words, and no admin/customer "withdraw a false report" action is named anywhere in D1-D4.
+**Flagging to `solution-architect` and `compliance-specialist`: confirm explicitly that "report
+withdrawn/false alarm" is handled exclusively via the existing `case_terminal` or
+`revoked_by_customer` paths (D3.4), and if any report-withdrawal action is ever built that does
+not route through one of those two transitions, it must end any active grant synchronously under
+the same write-before-act discipline as the rest of D3.4 — not left to the timeout sweeper.** This
+is a request for an explicit confirmation/note, not a claim that sharing currently fails to stop
+in this scenario.
+
+### 13.4 Status
+
+- **G-7 / OQ-3 part (b) — dispatch model:** not resolved by this instruction; remains answered by
+  D1 as ratified by `cto` 2026-10-29 (pool retired, directed dispatch). The Client's silence on
+  this point is not a gap requiring further instruction — `cto`/`solution-architect` already hold
+  decision authority here per the ADR's deciders list, and the revisit trigger was not hit.
+- **G-7 / OQ-3 part (a) — any disclosure at all:** **resolved.** Conditional yes, trigger = missing
+  report (customer or, once OB-02 ships, admin-on-behalf).
+- **Unblocked by this entry:** OQ-3 as a ratification-trigger open question (ADR-0017 §"Ratification
+  trigger" item 4, "It does not authorise turning on location sharing... gated by... the Client's
+  G-7 answer (OQ-3)") is now answered. `PARTNER_LOCATION_SHARING_ENABLED` remains gated by every
+  other precondition unaffected by this entry: OB-spec §6 P-1 to P-7, its own Stage 8/Stage 10,
+  OQ-1/OQ-2 (compliance-specialist, already answered elsewhere per the ADR's sign-off sections),
+  and CS-1 to CS-9.
+- **Not unblocked:** nothing about OB-02/G-18 build status changes. "Admin reported it missing" as
+  a live trigger still requires OB-02 to ship.
+
+Filed by `product-manager`, 2026-10-30, carrying the Client's answer per ADR-0017 deciders list
+and this document's §2 standing rule ("No agent has a channel to the Client... Entries in §3 are
+transcriptions of a source").
