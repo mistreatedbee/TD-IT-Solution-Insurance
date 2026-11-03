@@ -19,6 +19,7 @@ function renderCaseDetail(caseId = 'case-1') {
     <MemoryRouter initialEntries={[`/security/cases/${caseId}`]}>
       <Routes>
         <Route path="/security/cases/:caseId" element={<CaseDetailPage />} />
+        <Route path="/security/cases" element={<div data-testid="cases-list-route">Cases list</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -320,6 +321,172 @@ describe('CaseDetailPage: terminal status change requires a close reason', () =>
     renderCaseDetail();
 
     await waitFor(() => expect(screen.getByText('Handed to police')).toBeInTheDocument());
+  });
+});
+
+describe('CaseDetailPage: OB-03 directed-dispatch (dispatchStatus)', () => {
+  function stubDashboardAuthAccount() {
+    mockDashboardAccount = { partnerOrganizationId: 'org-1' };
+  }
+
+  const pendingOffer: SecurityRecoveryCase = {
+    ...baseCase,
+    status: 'open',
+    partnerOrganizationId: 'org-1',
+    dispatchStatus: 'pending',
+  };
+
+  const accepted: SecurityRecoveryCase = {
+    ...baseCase,
+    status: 'investigating',
+    partnerOrganizationId: 'org-1',
+    dispatchStatus: 'accepted',
+  };
+
+  it('pending offer: renders only Accept/Decline — no Claim, status actions, or Contact customer', async () => {
+    stubDashboardAuthAccount();
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => jsonResponse(pendingOffer)));
+
+    renderCaseDetail();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Accept case' })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Decline case' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Claim case' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start investigating' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Contact customer' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Release case' })).not.toBeInTheDocument();
+  });
+
+  it('accept: on success, shows accepted-tier actions (status actions + Release + Contact customer)', async () => {
+    stubDashboardAuthAccount();
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse(pendingOffer)) // initial GET
+      .mockImplementationOnce(() => jsonResponse({ data: accepted })); // accept POST
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', { onLine: true });
+
+    renderCaseDetail();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Accept case' })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Accept case' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Release case' })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Contact customer' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Begin tracking' })).toBeInTheDocument();
+    expect(fetchMock.mock.calls[1][0]).toContain('/security/cases/case-1/accept');
+  });
+
+  it('accept: on 404, refetches and reconciles to dispatchStatus accepted for this org as success', async () => {
+    stubDashboardAuthAccount();
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse(pendingOffer)) // initial GET
+      .mockImplementationOnce(() => jsonResponse({ error: { code: 'NOT_FOUND', message: 'not found' } }, 404)) // accept POST
+      .mockImplementationOnce(() => jsonResponse(accepted)); // reconciling GET
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', { onLine: true });
+
+    renderCaseDetail();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Accept case' })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Accept case' }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Accept case' })).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Release case' })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.length).toBe(3);
+  });
+
+  it('accept: on 404 where the offer genuinely lapsed (still pending, different org), shows the generic error', async () => {
+    stubDashboardAuthAccount();
+    const stillPendingElsewhere: SecurityRecoveryCase = {
+      ...pendingOffer,
+      partnerOrganizationId: 'org-2',
+    };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse(pendingOffer)) // initial GET
+      .mockImplementationOnce(() => jsonResponse({ error: { code: 'NOT_FOUND', message: 'not found' } }, 404)) // accept POST
+      .mockImplementationOnce(() => jsonResponse(stillPendingElsewhere)); // reconciling GET
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', { onLine: true });
+
+    renderCaseDetail();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Accept case' })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Accept case' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('This case could not be found. It may have been closed or reassigned.')).toBeInTheDocument(),
+    );
+  });
+
+  it('decline: requires a fixed reason, then navigates back to the case list', async () => {
+    stubDashboardAuthAccount();
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse(pendingOffer)) // initial GET
+      .mockImplementationOnce(() => jsonResponse({ data: { caseId: 'case-1', status: 'returned_to_queue' } })); // decline POST
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', { onLine: true });
+
+    renderCaseDetail();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Decline case' })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Decline case' }));
+    expect(screen.getByText('Why is this case being declined?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+
+    await userEvent.click(screen.getByLabelText('No capacity'));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => expect(screen.getByTestId('cases-list-route')).toBeInTheDocument());
+    expect(fetchMock.mock.calls.length).toBe(2);
+    expect(fetchMock.mock.calls[1][0]).toContain('/security/cases/case-1/decline');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ reason: 'no_capacity' });
+  });
+
+  it('accepted tier: Release requires a fixed reason, sends it, then navigates back to the case list', async () => {
+    stubDashboardAuthAccount();
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse(accepted)) // initial GET
+      .mockImplementationOnce(() => jsonResponse({ ...accepted, status: 'open', partnerOrganizationId: null, dispatchStatus: null })); // release POST
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', { onLine: true });
+
+    renderCaseDetail();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Release case' })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Release case' }));
+    expect(screen.getByText('Why is this case being released?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+
+    await userEvent.click(screen.getByLabelText('Unable to proceed'));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => expect(screen.getByTestId('cases-list-route')).toBeInTheDocument());
+    expect(fetchMock.mock.calls.length).toBe(2);
+    expect(fetchMock.mock.calls[1][0]).toContain('/security/cases/case-1/release');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ reason: 'unable_to_proceed' });
+  });
+
+  it('a stale status action never renders while an accepted case is re-dispatched (dispatchStatus back to pending)', async () => {
+    stubDashboardAuthAccount();
+    const reDispatched: SecurityRecoveryCase = {
+      ...baseCase,
+      status: 'investigating',
+      partnerOrganizationId: 'org-1',
+      dispatchStatus: 'pending',
+    };
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => jsonResponse(reDispatched)));
+
+    renderCaseDetail();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Accept case' })).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Begin tracking' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Release case' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Contact customer' })).not.toBeInTheDocument();
   });
 });
 

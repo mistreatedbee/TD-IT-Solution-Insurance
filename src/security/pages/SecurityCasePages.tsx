@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Button, Card, SectionHeading } from '../../components';
 import { DataTable, DetailGrid, InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
 import { ApiError } from '../../dashboard/api/errors';
 import {
+  acceptSecurityCase,
   claimSecurityCase,
   contactSecurityCaseCustomer,
+  declineSecurityCase,
   getSecurityCase,
   listSecurityCases,
   releaseSecurityCase,
   TERMINAL_SECURITY_CASE_STATUSES,
   updateSecurityCaseStatus,
   type SecurityCaseCloseReason,
+  type SecurityCaseDeclineReason,
+  type SecurityCaseReleaseReason,
   type SecurityCaseStatus,
   type SecurityRecoveryCase,
 } from '../api/cases';
@@ -19,7 +23,6 @@ import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { isNetworkError } from '../../lib/network-error';
 import { useIsOnline } from '../../lib/useIsOnline';
 import { useDashboardAuth } from '../../dashboard/auth/DashboardAuthProvider';
-
 const CONTACT_MESSAGE_MAX_LENGTH = 500;
 
 const STATUS_ACTIONS: { label: string; status: SecurityCaseStatus }[] = [
@@ -42,6 +45,23 @@ function formatCloseReason(reason: string): string {
   const match = CLOSE_REASON_OPTIONS.find((o) => o.value === reason);
   return match ? match.label : reason.replace(/-/g, ' ');
 }
+
+// Mirrors backend/src/routes/security-cases.ts DECLINE_REASONS. Fixed enum only
+// (CS-6) — never free text.
+const DECLINE_REASON_OPTIONS: { value: SecurityCaseDeclineReason; label: string }[] = [
+  { value: 'no_capacity', label: 'No capacity' },
+  { value: 'outside_service_area', label: 'Outside service area' },
+  { value: 'other', label: 'Other' },
+];
+
+// Mirrors backend/src/routes/security-cases.ts HAND_BACK_REASONS. Fixed enum only
+// (CS-6) — never free text.
+const RELEASE_REASON_OPTIONS: { value: SecurityCaseReleaseReason; label: string }[] = [
+  { value: 'recovered_independently', label: 'Recovered independently' },
+  { value: 'unable_to_proceed', label: 'Unable to proceed' },
+  { value: 'agreement_lapsed', label: 'Agreement lapsed' },
+  { value: 'other', label: 'Other' },
+];
 
 export function CasesListPage() {
   const [rows, setRows] = useState<SecurityRecoveryCase[]>([]);
@@ -124,6 +144,7 @@ export function CasesListPage() {
 
 export function CaseDetailPage() {
   const { caseId } = useParams();
+  const navigate = useNavigate();
   const [recoveryCase, setRecoveryCase] = useState<SecurityRecoveryCase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
@@ -138,6 +159,13 @@ export function CaseDetailPage() {
     null,
   );
   const [closeReason, setCloseReason] = useState<SecurityCaseCloseReason | null>(null);
+  // OB-03 §3.8 — decline/release confirm state, kept separate from
+  // pendingTerminalStatus/closeReason (the terminal-status vocabulary doesn't apply
+  // to a mid-dispatch decline/release, per frontend-architect's Stage 6 note (iv)).
+  const [pendingDeclineConfirm, setPendingDeclineConfirm] = useState(false);
+  const [declineReason, setDeclineReason] = useState<SecurityCaseDeclineReason | null>(null);
+  const [pendingReleaseConfirm, setPendingReleaseConfirm] = useState(false);
+  const [releaseReason, setReleaseReason] = useState<SecurityCaseReleaseReason | null>(null);
 
   useEffect(() => {
     if (!caseId) return;
@@ -239,7 +267,7 @@ export function CaseDetailPage() {
     }
   }
 
-  async function releaseCase() {
+  async function releaseCase(reason?: SecurityCaseReleaseReason) {
     if (!caseId) return;
     if (!isOnline) {
       setError("You're offline. This case has not been released — reconnect and try again.");
@@ -248,7 +276,17 @@ export function CaseDetailPage() {
     setUpdating(true);
     setError(null);
     try {
-      const updated = await releaseSecurityCase(caseId);
+      const updated = await releaseSecurityCase(caseId, reason);
+      if (reason !== undefined) {
+        // Dispatch-mode release (hand-back) ends this org's relationship to the
+        // case — per frontend-architect's Stage 6 note (ii), don't keep rendering
+        // the now-foreign case; return to the list, which re-fetches on entry.
+        setRecoveryCase(updated);
+        setPendingReleaseConfirm(false);
+        setReleaseReason(null);
+        navigate('/security/cases', { replace: true });
+        return;
+      }
       setRecoveryCase(updated);
     } catch (err) {
       if (isNetworkError(err)) {
@@ -259,6 +297,95 @@ export function CaseDetailPage() {
     } finally {
       setUpdating(false);
     }
+  }
+
+  function confirmRelease() {
+    if (!releaseReason) return;
+    void releaseCase(releaseReason);
+  }
+
+  function cancelRelease() {
+    setPendingReleaseConfirm(false);
+    setReleaseReason(null);
+  }
+
+  // OB-03 §3.1 — accept a pending dispatch offer. Mirrors claimCase()'s 404-refetch
+  // idiom (frontend-architect Stage 6 note (iii)), restated in dispatchStatus terms:
+  // a 404 can mean the original attempt already succeeded, so refetch and treat
+  // `dispatchStatus === 'accepted'` for this org as proof of that, rather than an
+  // error.
+  async function acceptCase() {
+    if (!caseId) return;
+    if (!isOnline) {
+      setError("You're offline. This case has not been accepted — reconnect and try again.");
+      return;
+    }
+    setUpdating(true);
+    setError(null);
+    try {
+      const updated = await acceptSecurityCase(caseId);
+      setRecoveryCase(updated);
+    } catch (err) {
+      if (isNetworkError(err)) {
+        setError(
+          "We couldn't confirm this accept was received. Check your connection, then refresh before retrying — retrying an accept that already succeeded will show as unavailable, not as success.",
+        );
+        return;
+      }
+      if (err instanceof ApiError && err.status === 404) {
+        try {
+          const refreshed = await getSecurityCase(caseId);
+          if (refreshed.dispatchStatus === 'accepted' && refreshed.partnerOrganizationId === account?.partnerOrganizationId) {
+            setRecoveryCase(refreshed);
+            return;
+          }
+        } catch {
+          // Refetch itself failing doesn't change what we tell the user about
+          // the accept — fall through to the generic error below.
+        }
+      }
+      setError(mapUserFacingError(err, { context: 'security-case' }));
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  // OB-03 §3.2 — decline a pending dispatch offer. The backend's response is a
+  // `{ caseId, status: 'returned_to_queue' }` acknowledgement, not a full case —
+  // per frontend-architect's Stage 6 note (ii), navigate away rather than try to
+  // render it as the case's new state.
+  async function declineCase(reason: SecurityCaseDeclineReason) {
+    if (!caseId) return;
+    if (!isOnline) {
+      setError("You're offline. This case has not been declined — reconnect and try again.");
+      return;
+    }
+    setUpdating(true);
+    setError(null);
+    try {
+      await declineSecurityCase(caseId, reason);
+      setPendingDeclineConfirm(false);
+      setDeclineReason(null);
+      navigate('/security/cases', { replace: true });
+    } catch (err) {
+      if (isNetworkError(err)) {
+        setError("We couldn't confirm this case was declined. Check your connection and try again.");
+      } else {
+        setError(mapUserFacingError(err, { context: 'security-case' }));
+      }
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  function confirmDecline() {
+    if (!declineReason) return;
+    void declineCase(declineReason);
+  }
+
+  function cancelDecline() {
+    setPendingDeclineConfirm(false);
+    setDeclineReason(null);
   }
 
   async function sendContactMessage() {
@@ -301,30 +428,78 @@ export function CaseDetailPage() {
         ]}
       />
       <div className="mt-6 flex flex-wrap gap-2">
-        {recoveryCase.status === 'open' && !recoveryCase.partnerOrganizationId ? (
+        {/* Pool mode (dispatchStatus absent/null) — unchanged. */}
+        {!recoveryCase.dispatchStatus && recoveryCase.status === 'open' && !recoveryCase.partnerOrganizationId ? (
           <Button size="sm" loading={updating} onClick={() => void claimCase()}>
             Claim case
           </Button>
         ) : null}
-        {STATUS_ACTIONS.filter((a) => a.status !== recoveryCase.status).map((action) => (
-          <Button
-            key={action.status}
-            size="sm"
-            variant="secondary"
-            loading={updating}
-            onClick={() => requestStatusChange(action.status)}
-          >
-            {action.label}
-          </Button>
-        ))}
-        {(recoveryCase.status === 'investigating' || recoveryCase.status === 'tracking') &&
+        {/* Dispatch mode, pending offer — only Accept/Decline, per frontend-architect
+            Stage 6 note (i)/(v): no status actions, no Contact customer, no Claim. */}
+        {recoveryCase.dispatchStatus === 'pending' ? (
+          <>
+            <Button size="sm" loading={updating} onClick={() => void acceptCase()}>
+              Accept case
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={updating}
+              onClick={() => {
+                setError(null);
+                setPendingDeclineConfirm(true);
+                setDeclineReason(null);
+              }}
+            >
+              Decline case
+            </Button>
+          </>
+        ) : null}
+        {/* Status actions — pool mode (no dispatchStatus) OR accepted-tier dispatch
+            mode only; suppressed while a dispatch offer is merely 'pending' (note (i)/(v)). */}
+        {recoveryCase.dispatchStatus !== 'pending' &&
+          STATUS_ACTIONS.filter((a) => a.status !== recoveryCase.status).map((action) => (
+            <Button
+              key={action.status}
+              size="sm"
+              variant="secondary"
+              loading={updating}
+              onClick={() => requestStatusChange(action.status)}
+            >
+              {action.label}
+            </Button>
+          ))}
+        {/* Pool-mode release (hand back to shared pool) — unchanged legacy semantics. */}
+        {!recoveryCase.dispatchStatus &&
+        (recoveryCase.status === 'investigating' || recoveryCase.status === 'tracking') &&
         recoveryCase.partnerOrganizationId &&
         account?.partnerOrganizationId === recoveryCase.partnerOrganizationId ? (
           <Button size="sm" variant="secondary" loading={updating} onClick={() => void releaseCase()}>
             Release case
           </Button>
         ) : null}
-        {recoveryCase.partnerOrganizationId && account?.partnerOrganizationId === recoveryCase.partnerOrganizationId ? (
+        {/* Dispatch-mode release (hand back for re-dispatch) — only once accepted,
+            per frontend-architect Stage 6 note (i): "dispatchStatus === 'accepted'"
+            added so this doesn't also fire during 'pending'. */}
+        {recoveryCase.dispatchStatus === 'accepted' &&
+        recoveryCase.partnerOrganizationId &&
+        account?.partnerOrganizationId === recoveryCase.partnerOrganizationId ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={updating}
+            onClick={() => {
+              setError(null);
+              setPendingReleaseConfirm(true);
+              setReleaseReason(null);
+            }}
+          >
+            Release case
+          </Button>
+        ) : null}
+        {recoveryCase.dispatchStatus !== 'pending' &&
+        recoveryCase.partnerOrganizationId &&
+        account?.partnerOrganizationId === recoveryCase.partnerOrganizationId ? (
           <Button
             size="sm"
             variant="secondary"
@@ -338,6 +513,60 @@ export function CaseDetailPage() {
           </Button>
         ) : null}
       </div>
+      {pendingDeclineConfirm ? (
+        <div className="mt-4 rounded border border-border-default p-4">
+          <p className="mb-2 text-sm font-medium">Why is this case being declined?</p>
+          <div className="flex flex-col gap-2">
+            {DECLINE_REASON_OPTIONS.map((option) => (
+              <label key={option.value} className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="decline-reason"
+                  value={option.value}
+                  checked={declineReason === option.value}
+                  onChange={() => setDeclineReason(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" loading={updating} disabled={!declineReason} onClick={() => confirmDecline()}>
+              Confirm
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => cancelDecline()}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {pendingReleaseConfirm ? (
+        <div className="mt-4 rounded border border-border-default p-4">
+          <p className="mb-2 text-sm font-medium">Why is this case being released?</p>
+          <div className="flex flex-col gap-2">
+            {RELEASE_REASON_OPTIONS.map((option) => (
+              <label key={option.value} className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="release-reason"
+                  value={option.value}
+                  checked={releaseReason === option.value}
+                  onChange={() => setReleaseReason(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" loading={updating} disabled={!releaseReason} onClick={() => confirmRelease()}>
+              Confirm
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => cancelRelease()}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {pendingTerminalStatus ? (
         <div className="mt-4 rounded border border-border-default p-4">
           <p className="mb-2 text-sm font-medium">

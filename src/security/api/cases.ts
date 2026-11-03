@@ -18,6 +18,22 @@ export const TERMINAL_SECURITY_CASE_STATUSES: readonly SecurityCaseStatus[] = [
   'closed',
 ];
 
+// OB-03 §3.8 — directed-dispatch signal. Absent/null means pool mode (unchanged
+// legacy behaviour); 'pending' means this org has an un-accepted dispatch offer;
+// 'accepted' means this org currently holds the case. Mirrors
+// backend/src/repositories/recovery-cases.ts DispatchStatus.
+export type SecurityCaseDispatchStatus = 'pending' | 'accepted';
+
+// Mirrors backend/src/routes/security-cases.ts DECLINE_REASONS.
+export type SecurityCaseDeclineReason = 'no_capacity' | 'outside_service_area' | 'other';
+
+// Mirrors backend/src/routes/security-cases.ts HAND_BACK_REASONS.
+export type SecurityCaseReleaseReason =
+  | 'recovered_independently'
+  | 'unable_to_proceed'
+  | 'agreement_lapsed'
+  | 'other';
+
 export interface SecurityRecoveryCase {
   id: string;
   assetId: string;
@@ -28,6 +44,7 @@ export interface SecurityRecoveryCase {
   partnerOrganizationId?: string | null;
   updatedAt?: string;
   closeReason?: SecurityCaseCloseReason | null;
+  dispatchStatus?: SecurityCaseDispatchStatus | null;
 }
 
 export function listSecurityCases(params?: { cursor?: string; status?: SecurityCaseStatus }) {
@@ -75,9 +92,33 @@ export function claimSecurityCase(caseId: string) {
   });
 }
 
-export function releaseSecurityCase(caseId: string) {
+// OB-03 §3.1 — directed-dispatch only; replaces `claim` once dispatched to this org.
+// Backend responds `{ data: <case> }` (unlike claim/patch, which respond unwrapped).
+export function acceptSecurityCase(caseId: string) {
+  return apiFetch<{ data: SecurityRecoveryCase }>(`/security/cases/${encodeURIComponent(caseId)}/accept`, {
+    method: 'POST',
+  }).then((r) => r.data);
+}
+
+// OB-03 §3.2 — directed-dispatch only. Backend responds
+// `{ data: { caseId, status: 'returned_to_queue' } }`, not a full case — callers
+// should refetch the case (or navigate away) rather than treat this as the new
+// case state.
+export function declineSecurityCase(caseId: string, reason: SecurityCaseDeclineReason) {
+  return apiFetch<{ data: { caseId: string; status: string } }>(
+    `/security/cases/${encodeURIComponent(caseId)}/decline`,
+    { method: 'POST', body: { reason } },
+  ).then((r) => r.data);
+}
+
+// `reason` is required in dispatch mode (backend's `releaseBodySchema`) but the
+// backend skips body validation entirely in pool mode (flag off), so it stays
+// optional here and is only included in the request body when provided — pool-mode
+// callers keep today's exact request shape.
+export function releaseSecurityCase(caseId: string, reason?: SecurityCaseReleaseReason) {
   return apiFetch<SecurityRecoveryCase>(`/security/cases/${encodeURIComponent(caseId)}/release`, {
     method: 'POST',
+    ...(reason !== undefined ? { body: { reason } } : {}),
   });
 }
 
