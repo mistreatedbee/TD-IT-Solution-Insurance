@@ -310,3 +310,97 @@ full treatment:
 4. `security-engineer` Stage 8 delta on Track A, then Track B.
 5. `qa-test-strategy` Stage 10. **F1 permits a dev/demo flip; F2 permits a flip where real reports
    land.**
+
+---
+
+## `qa-test-strategy` Stage 10 re-run — Step 4, Gate F1 (2026-11-03)
+
+*Author: `qa-test-strategy`. Appended per the append-only rule. This is the Step 4 re-run directed
+by `cto`'s disposition above, against Findings 1-4 (Finding 5 was already "no issue").*
+
+### Finding 1 — re-verified CLOSED
+
+Both operator UIs now implement the §3.8 contract, not just claim/PATCH:
+
+- **Web** (`src/security/pages/SecurityCasePages.tsx`, `src/security/api/cases.ts`):
+  `acceptSecurityCase`, `declineSecurityCase(reason)`, and a `releaseSecurityCase(caseId, reason)`
+  that now sends a reason are all present and wired to real buttons. Gating matches cto's 0b(i)
+  spec exactly: pool mode is `!recoveryCase.dispatchStatus` (claim button and status actions,
+  unchanged code path), `dispatchStatus === 'pending'` renders accept/decline only, and
+  `dispatchStatus === 'accepted'` renders status/messages/release. Accept uses the claim button's
+  404-refetch idempotency idiom, restated in `dispatchStatus === 'accepted'` terms (0b(iii)).
+  Decline/release reasons are fixed-enum pickers (`SecurityCaseDeclineReason` /
+  `SecurityCaseReleaseReason`), not free text (CS-6, 0b(iv)).
+- **Mobile** (`mobile/src/screens/security/SecurityCaseDetailScreen.tsx`,
+  `mobile/src/api/security-cases.ts`): same three verbs, same `dispatchStatus`-keyed gating, same
+  reason-picker pattern (`declinePickerOpen`/`releasePickerOpen`), same refetch-and-check idiom on
+  accept/decline/release (`refreshed.dispatchStatus === ...`). This closes the item the original
+  review called out as missing entirely ("mobile has no release/hand-back at all").
+- **Pool-mode regression check**: not just "left alone" — `backend/src/routes/security-cases.test.ts`
+  and `admin-case-dispatch.test.ts` both pass in full (132/132 across the two files, see test run
+  below), including the pre-existing pool-mode PDM-8/claim/PATCH blocks, run in the same pass as
+  the new dispatch-mode tests. The §3.8 field is confirmed absent in pool-mode responses by
+  dedicated test (`security-cases.test.ts` §3.8 block), matching the "presence is the mode signal"
+  design and ADR point that pool-mode behaviour stays byte-identical when the field is absent.
+
+Finding 1 is closed on both surfaces. No further gap found.
+
+### Findings 2-4 — re-verified CLOSED (read test bodies, not just names)
+
+- **Finding 2 (CO-OB03-5 audit trail + SR-009S-4 fail-closed)**: read
+  `security-cases.test.ts:3017-3149`. Three positive tests assert exactly one `recordStateChange`
+  call per verb with the correct `fromStatus`/`toStatus`/`reason` tag (`dispatch_accepted`,
+  `dispatch_declined:<reason>`, `case_handed_back:<reason>`) — not just "a call happened." Three
+  fail-closed tests simulate the audit write throwing and assert (a) a 5xx response, (b) the
+  underlying mutation function was never called (`mutationCalls.accept/decline/handBack === 0`),
+  and (c) the case's stored `dispatchStatus`/`status`/`partnerOrganizationId` are unchanged. This
+  mirrors the pool-mode PDM-8/SR-009S-4 pattern exactly, as the recommendation asked. Gap closed.
+- **Finding 3 (SE-2 rate limiter triggers)**: read `admin-case-dispatch.test.ts:1042-1106`. Tests
+  drive each of list/count/detail past `DEFAULT_AUTHENTICATED_LIMIT` (100/60s) and assert
+  `statuses[100]` is `429`, plus a dedicated test that list and count limiters are keyed
+  independently (exhausting list doesn't 429 count). This is a real trigger assertion, not a
+  wiring/name check. Gap closed.
+- **Finding 4 (CO-OB03-6 partner-initiated accept -> release -> re-dispatch -> accept)**: read
+  `security-cases.test.ts:3159-3233`. The test drives a real accept via org A's harness, asserts
+  `dispatchStatus === 'accepted'`/`partnerOrganizationId === orgA` first; then release, and asserts
+  the `{data:{caseId,status:'returned_to_queue'}}` response shape *and* that the stored case's
+  `partnerOrganizationId`/`dispatchStatus` are `null` **immediately after the partner-initiated
+  release**, before any admin action — the exact CO-OB03-6 gap the original finding called out
+  (previously only the admin-initiated re-dispatch-to-null path was covered). It then mutates the
+  shared case store to simulate an admin re-dispatch to org B and has org B accept using a token
+  from a second harness scoped to org B, confirming the case ends up `accepted`/orgB. This is a
+  slightly unusual harness pattern (two `createHarness` calls sharing one `cases` array, only one
+  server actually started), but it does exercise what it claims: the full org-A-accept → org-A-
+  release → org-B-accept cycle through `security-cases.ts`'s own endpoints, with the compliance
+  check asserted at the correct point in the sequence. Gap closed.
+
+### Test suites re-run together (not just per-commit in isolation)
+
+- `backend`: `npm test` → **1141/1142 passed, 1 failed** (`admin-accounts.test.ts:675`, a `200`
+  vs `401` mismatch unrelated to OB-03 — not touched by any Step 0-3 commit this session, per
+  `git log` on that file/route, last touched by the unrelated TD-XXXXXX account-reference-number
+  feature). Re-ran `admin-accounts.test.ts` in isolation: 23/23 passed. This is a pre-existing
+  flaky/order-dependent test (likely a token-expiry or shared-fixture timing issue), not a
+  regression from this plan's changes. `security-cases.test.ts` and `admin-case-dispatch.test.ts`
+  — the two files carrying every Finding 1-4 fix — both pass clean together: **132/132**.
+- `web` (root `npm test`): **47 files / 247 tests, all passed**, including
+  `src/security/demo/*` and the Security Company Dashboard surfaces.
+- `mobile` (`npm test`): **60 suites / 303 tests, all passed**, including
+  `src/api/__tests__/security-cases.test.ts` and the operator screens.
+
+### Gate F1 verdict: **PASS**
+
+Findings 1-4 are all closed, verified against actual test/code content rather than commit
+messages or `[TAG]` naming alone. Finding 5 required no action (unchanged). Per `cto`'s ruling,
+this permits `DIRECTED_DISPATCH_ENABLED=true` in a **dev/demo environment where dispatch is
+driven by script** — not yet any environment with real customer theft reports, which still needs
+Gate F2 (Track B admin dispatch-queue UI, `security-engineer` B4, `qa-test-strategy` B5) and the
+non-engineering conditions already on record (CO-OB03-4 allowlist fields, §1 migration script
+exit-0).
+
+### Outstanding, not blocking F1
+
+- The one unrelated backend test flake (`admin-accounts.test.ts:675`) should be filed separately
+  for `backend-engineer`/`automation-qa-engineer` to root-cause (order-dependence or timing); it
+  is not an OB-03 regression and does not affect this gate.
+- Track B (Gate F2) has not been started in this session and remains fully open.
