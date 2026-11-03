@@ -1031,4 +1031,89 @@ describe('routes/admin-case-dispatch', () => {
       }
     });
   });
+
+  // Stage 10 QA report (qa-report-ob03-dispatch-tier-a.md) Finding 3 — SE-2: the
+  // named `createRateLimiter` calls on list/count/detail (admin-case-dispatch.ts
+  // :152,194,228, all keyed `DEFAULT_AUTHENTICATED_LIMIT` = 100 attempts/60s) are
+  // wired in code but were never proven to actually trigger a 429. Mirrors the
+  // threshold-exceeding pattern already used for this repo's other rate limiters
+  // (see `auth.test.ts`'s "per-IP ceiling bounds sweeping many different
+  // addresses" test, which drives the limiter past its configured window).
+  describe('[Finding 3] SE-2 — rate limiter actually triggers 429 on list/count/detail', () => {
+    it('GET /admin/dispatch/cases returns 429 after DEFAULT_AUTHENTICATED_LIMIT (100/60s) is exceeded', async () => {
+      const { app, adminBearer } = createHarness();
+      const listened = await listen(app);
+      server = listened.server;
+
+      const statuses: number[] = [];
+      for (let i = 0; i < 101; i += 1) {
+        const res = await fetch(`${listened.baseUrl}/admin/dispatch/cases`, {
+          headers: { authorization: adminBearer },
+        });
+        statuses.push(res.status);
+      }
+      expect(statuses.slice(0, 100).every((s) => s === 200)).toBe(true);
+      expect(statuses[100]).toBe(429);
+    });
+
+    it('GET /admin/dispatch/cases/count returns 429 after DEFAULT_AUTHENTICATED_LIMIT (100/60s) is exceeded', async () => {
+      const { app, adminBearer } = createHarness();
+      const listened = await listen(app);
+      server = listened.server;
+
+      const statuses: number[] = [];
+      for (let i = 0; i < 101; i += 1) {
+        const res = await fetch(`${listened.baseUrl}/admin/dispatch/cases/count`, {
+          headers: { authorization: adminBearer },
+        });
+        statuses.push(res.status);
+      }
+      expect(statuses.slice(0, 100).every((s) => s === 200)).toBe(true);
+      expect(statuses[100]).toBe(429);
+    });
+
+    it('GET /admin/dispatch/cases/:caseId returns 429 after DEFAULT_AUTHENTICATED_LIMIT (100/60s) is exceeded', async () => {
+      const kase = sampleCase();
+      const { app, adminBearer } = createHarness({ cases: [kase] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const statuses: number[] = [];
+      for (let i = 0; i < 101; i += 1) {
+        const res = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}`, {
+          headers: { authorization: adminBearer },
+        });
+        statuses.push(res.status);
+      }
+      expect(statuses.slice(0, 100).every((s) => s === 200)).toBe(true);
+      expect(statuses[100]).toBe(429);
+    });
+
+    it('the list limiter is keyed per-route, not shared with count/detail — exhausting list does not 429 count', async () => {
+      const kase = sampleCase();
+      const { app, adminBearer } = createHarness({ cases: [kase] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      for (let i = 0; i < 100; i += 1) {
+        await fetch(`${listened.baseUrl}/admin/dispatch/cases`, {
+          headers: { authorization: adminBearer },
+        });
+      }
+      const exhaustedListRes = await fetch(`${listened.baseUrl}/admin/dispatch/cases`, {
+        headers: { authorization: adminBearer },
+      });
+      expect(exhaustedListRes.status).toBe(429);
+
+      const countRes = await fetch(`${listened.baseUrl}/admin/dispatch/cases/count`, {
+        headers: { authorization: adminBearer },
+      });
+      expect(countRes.status).toBe(200);
+
+      const detailRes = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}`, {
+        headers: { authorization: adminBearer },
+      });
+      expect(detailRes.status).toBe(200);
+    });
+  });
 });

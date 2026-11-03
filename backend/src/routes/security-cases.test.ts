@@ -237,7 +237,7 @@ function createHarness(opts: {
   const partnerOrgId = opts.partnerOrgId ?? randomUUID();
   const cases = [...(opts.cases ?? [])];
   const auditCalls: Array<{ kind: 'record' | 'bulk'; event: unknown }> = [];
-  const mutationCalls = { claim: 0, updateStatus: 0, release: 0, reassign: 0 };
+  const mutationCalls = { claim: 0, updateStatus: 0, release: 0, reassign: 0, accept: 0, decline: 0, handBack: 0 };
   const caseMessageCalls: Array<{ accountId: string; assetName: string; caseId: string; referenceNumber: string; message: string }> = [];
   const accessLogCalls: Array<
     | { kind: 'detail'; event: unknown }
@@ -404,6 +404,7 @@ function createHarness(opts: {
         return toResult(row, tier);
       },
       async acceptDispatchedCase(orgId: string, caseId: string) {
+        mutationCalls.accept += 1;
         const idx = cases.findIndex(
           (c) => c.id === caseId && c.partnerOrganizationId === orgId && c.dispatchStatus === 'pending',
         );
@@ -418,6 +419,7 @@ function createHarness(opts: {
         return cases[idx]!;
       },
       async declineDispatchedCase(orgId: string, caseId: string) {
+        mutationCalls.decline += 1;
         const idx = cases.findIndex(
           (c) => c.id === caseId && c.partnerOrganizationId === orgId && c.dispatchStatus === 'pending',
         );
@@ -433,6 +435,7 @@ function createHarness(opts: {
         return cases[idx]!;
       },
       async handBackAcceptedCase(orgId: string, caseId: string) {
+        mutationCalls.handBack += 1;
         const idx = cases.findIndex(
           (c) => c.id === caseId && c.partnerOrganizationId === orgId && c.dispatchStatus === 'accepted',
         );
@@ -3004,6 +3007,228 @@ describe('routes/security-cases', () => {
         // shape either way, and distinctly NOT a 200/404 case-shaped body.
         expect(customerRes.status).toBe(403);
         expect(adminRes.status).toBe(403);
+      });
+    });
+
+    // Stage 10 QA report (qa-report-ob03-dispatch-tier-a.md) Finding 2 — CO-OB03-5 /
+    // SR-009S-4: accept/decline/release in dispatch mode must each write exactly one
+    // `recordStateChange` audit row (mirroring the pool-mode PDM-8/SR-009S-4 tests
+    // above at lines ~1195-1426), and a failing audit write must block the mutation.
+    describe('[Finding 2] CO-OB03-5 audit trail + SR-009S-4 fail-closed, dispatch mode', () => {
+      it('accept writes exactly one recordStateChange row with fromStatus "open"/toStatus "investigating"', async () => {
+        const caseId = '507f1f77bcf86cd799439011';
+        const accountId = randomUUID();
+        harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+        harness.cases.push(pendingCase({ id: caseId, accountId, partnerOrganizationId: harness.partnerOrgId }));
+        await harness.start();
+
+        const res = await fetch(harness.url(`/security/cases/${caseId}/accept`), {
+          method: 'POST',
+          headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        expect(res.status).toBe(200);
+
+        const stateChangeCalls = harness.accessLogCalls.filter((c) => c.kind === 'stateChange');
+        expect(stateChangeCalls).toHaveLength(1);
+        expect(stateChangeCalls[0]!.event).toMatchObject({
+          targetAccountId: accountId,
+          resourceType: 'recovery_case',
+          resourceId: caseId,
+          fromStatus: 'open',
+          toStatus: 'investigating',
+          reason: 'dispatch_accepted',
+        });
+      });
+
+      it('decline writes exactly one recordStateChange row tagged with the decline reason', async () => {
+        const caseId = '507f1f77bcf86cd799439011';
+        const accountId = randomUUID();
+        harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+        harness.cases.push(pendingCase({ id: caseId, accountId, partnerOrganizationId: harness.partnerOrgId }));
+        await harness.start();
+
+        const res = await fetch(harness.url(`/security/cases/${caseId}/decline`), {
+          method: 'POST',
+          headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ reason: 'no_capacity' }),
+        });
+        expect(res.status).toBe(200);
+
+        const stateChangeCalls = harness.accessLogCalls.filter((c) => c.kind === 'stateChange');
+        expect(stateChangeCalls).toHaveLength(1);
+        expect(stateChangeCalls[0]!.event).toMatchObject({
+          targetAccountId: accountId,
+          resourceType: 'recovery_case',
+          resourceId: caseId,
+          reason: 'dispatch_declined:no_capacity',
+        });
+      });
+
+      it('release (hand-back) writes exactly one recordStateChange row tagged with the hand-back reason', async () => {
+        const caseId = '507f1f77bcf86cd799439011';
+        const accountId = randomUUID();
+        harness = createHarness({ directedDispatchEnabled: true, cases: [] });
+        harness.cases.push(acceptedCase({ id: caseId, accountId, partnerOrganizationId: harness.partnerOrgId }));
+        await harness.start();
+
+        const res = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+          method: 'POST',
+          headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ reason: 'unable_to_proceed' }),
+        });
+        expect(res.status).toBe(200);
+
+        const stateChangeCalls = harness.accessLogCalls.filter((c) => c.kind === 'stateChange');
+        expect(stateChangeCalls).toHaveLength(1);
+        expect(stateChangeCalls[0]!.event).toMatchObject({
+          targetAccountId: accountId,
+          resourceType: 'recovery_case',
+          resourceId: caseId,
+          reason: 'case_handed_back:unable_to_proceed',
+        });
+      });
+
+      describe('SR-009S-4 fail-closed — dispatch-mode accept/decline/release', () => {
+        it('accept: recordStateChange throwing returns 5xx, never calls acceptDispatchedCase, and leaves the case pending', async () => {
+          const caseId = '507f1f77bcf86cd799439011';
+          harness = createHarness({ directedDispatchEnabled: true, failStateChangeAudit: true, cases: [] });
+          harness.cases.push(pendingCase({ id: caseId, partnerOrganizationId: harness.partnerOrgId }));
+          await harness.start();
+
+          const res = await fetch(harness.url(`/security/cases/${caseId}/accept`), {
+            method: 'POST',
+            headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+
+          expect(res.status).toBeGreaterThanOrEqual(500);
+          expect(harness.mutationCalls.accept).toBe(0);
+          const stored = harness.cases.find((c) => c.id === caseId)!;
+          expect(stored.dispatchStatus).toBe('pending');
+          expect(stored.status).toBe('open');
+        });
+
+        it('decline: recordStateChange throwing returns 5xx, never calls declineDispatchedCase, and leaves the case pending/assigned', async () => {
+          const caseId = '507f1f77bcf86cd799439011';
+          harness = createHarness({ directedDispatchEnabled: true, failStateChangeAudit: true, cases: [] });
+          harness.cases.push(pendingCase({ id: caseId, partnerOrganizationId: harness.partnerOrgId }));
+          await harness.start();
+
+          const res = await fetch(harness.url(`/security/cases/${caseId}/decline`), {
+            method: 'POST',
+            headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ reason: 'no_capacity' }),
+          });
+
+          expect(res.status).toBeGreaterThanOrEqual(500);
+          expect(harness.mutationCalls.decline).toBe(0);
+          const stored = harness.cases.find((c) => c.id === caseId)!;
+          expect(stored.dispatchStatus).toBe('pending');
+          expect(stored.partnerOrganizationId).toBe(harness.partnerOrgId);
+        });
+
+        it('release: recordStateChange throwing returns 5xx, never calls handBackAcceptedCase, and leaves the case accepted/assigned', async () => {
+          const caseId = '507f1f77bcf86cd799439011';
+          harness = createHarness({ directedDispatchEnabled: true, failStateChangeAudit: true, cases: [] });
+          harness.cases.push(acceptedCase({ id: caseId, partnerOrganizationId: harness.partnerOrgId }));
+          await harness.start();
+
+          const res = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+            method: 'POST',
+            headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ reason: 'unable_to_proceed' }),
+          });
+
+          expect(res.status).toBeGreaterThanOrEqual(500);
+          expect(harness.mutationCalls.handBack).toBe(0);
+          const stored = harness.cases.find((c) => c.id === caseId)!;
+          expect(stored.dispatchStatus).toBe('accepted');
+          expect(stored.partnerOrganizationId).toBe(harness.partnerOrgId);
+        });
+      });
+    });
+
+    // Stage 10 QA report Finding 4 — CO-OB03-6: a full partner-initiated
+    // accept -> release (hand-back) -> admin re-dispatch -> accept-by-a-different-org
+    // cycle through `security-cases.ts`'s own endpoints (as opposed to the
+    // admin-initiated re-dispatch-to-null path already covered at
+    // `admin-case-dispatch.test.ts:710`). Asserts the "returned to queue" signal is
+    // correct immediately after the partner-initiated release step specifically, not
+    // just after an admin-initiated recall.
+    describe('[Finding 4] CO-OB03-6 — partner-initiated accept -> release -> re-dispatch -> accept cycle', () => {
+      it('clears assignment on release, then a different org can accept after an admin re-dispatch', async () => {
+        const caseId = '507f1f77bcf86cd799439011';
+        const accountId = randomUUID();
+        const orgA = randomUUID();
+        const orgB = randomUUID();
+        harness = createHarness({
+          directedDispatchEnabled: true,
+          partnerOrgId: orgA,
+          partnerOrganizations: [{ id: orgB, status: 'active', agreementStatus: 'executed', terminatedAt: null }],
+          cases: [],
+        });
+        harness.cases.push(pendingCase({ id: caseId, accountId, partnerOrganizationId: orgA }));
+        await harness.start();
+
+        // Org A accepts.
+        const acceptRes = await fetch(harness.url(`/security/cases/${caseId}/accept`), {
+          method: 'POST',
+          headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        expect(acceptRes.status).toBe(200);
+        expect(harness.cases[0]!.dispatchStatus).toBe('accepted');
+        expect(harness.cases[0]!.partnerOrganizationId).toBe(orgA);
+
+        // Org A hands the case back (release).
+        const releaseRes = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+          method: 'POST',
+          headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ reason: 'unable_to_proceed' }),
+        });
+        expect(releaseRes.status).toBe(200);
+        expect(await releaseRes.json()).toEqual({ data: { caseId, status: 'returned_to_queue' } });
+
+        // [CO-OB03-6] Immediately after the partner-initiated release — not after a
+        // later admin action — the case must show as unassigned/returned to the
+        // queue, not still "assigned" to org A (the org that released it).
+        const afterRelease = harness.cases.find((c) => c.id === caseId)!;
+        expect(afterRelease.partnerOrganizationId).toBeNull();
+        expect(afterRelease.dispatchStatus).toBeNull();
+
+        // Admin re-dispatches the now-unassigned case to org B. This mutation mirrors
+        // exactly what `admin-case-dispatch.ts`'s dispatch/re-dispatch route performs
+        // on a `dispatchStatus: null` case (verified at the route level in
+        // `admin-case-dispatch.test.ts`); applied here directly against the shared
+        // fake store so org B can exercise its own `accept` through this file's
+        // `security-cases` router.
+        harness.cases[0] = {
+          ...harness.cases[0]!,
+          partnerOrganizationId: orgB,
+          dispatchStatus: 'pending',
+          status: 'open',
+          dispatchedAt: new Date(),
+          dispatchedBy: randomUUID(),
+          dispatchCount: (harness.cases[0]!.dispatchCount ?? 0) + 1,
+        };
+
+        // Org B's token — a fresh harness is needed to get a valid bearer scoped to
+        // orgB, since this harness's token is scoped to orgA.
+        const orgBHarness = createHarness({
+          directedDispatchEnabled: true,
+          partnerOrgId: orgB,
+          cases: harness.cases,
+        });
+
+        const acceptByOrgBRes = await fetch(harness.url(`/security/cases/${caseId}/accept`), {
+          method: 'POST',
+          headers: { authorization: `Bearer ${orgBHarness.token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        expect(acceptByOrgBRes.status).toBe(200);
+        expect(harness.cases[0]!.partnerOrganizationId).toBe(orgB);
+        expect(harness.cases[0]!.dispatchStatus).toBe('accepted');
       });
     });
   });
