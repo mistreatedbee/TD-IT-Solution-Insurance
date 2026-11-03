@@ -22,7 +22,8 @@ export const RETENTION_JOB_RUNS_COLLECTION = 'retention_job_runs';
 export type RetentionJobId =
   | 'police_report_retention_purge'
   | 'support_case_retention_purge'
-  | 'admin_access_log_purge';
+  | 'admin_access_log_purge'
+  | 'recovery_case_event_actor_purge';
 
 export type RetentionJobOutcome = 'success' | 'partial_failure' | 'failed';
 
@@ -43,11 +44,18 @@ export const retentionJobRunsJsonSchemaValidator: Document = {
     ],
     properties: {
       jobId: {
-        enum: ['police_report_retention_purge', 'support_case_retention_purge', 'admin_access_log_purge'],
+        enum: [
+          'police_report_retention_purge',
+          'support_case_retention_purge',
+          'admin_access_log_purge',
+          'recovery_case_event_actor_purge',
+        ],
         description:
           'Discriminator — closed enum, widen deliberately (mirrors the admin_access_log.resourceType ' +
           'convention in feature004-collections.ts) if a further retention job is added. Not a free-text job name. ' +
-          "'admin_access_log_purge' added per ADR-0006 §19.4 (database-architect, closing F-019-C1).",
+          "'admin_access_log_purge' added per ADR-0006 §19.4 (database-architect, closing F-019-C1). " +
+          "'recovery_case_event_actor_purge' added per OB-04 compliance ruling RR-019-B " +
+          '(docs/features/019-case-history-timeline/backend-architecture-event-model.md §11.1/§11.2).',
       },
       startedAt: { bsonType: 'date' },
       completedAt: {

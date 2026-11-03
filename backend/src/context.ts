@@ -30,6 +30,10 @@ import {
 } from './repositories/policy-status-history.js';
 import { createAdminAccessLogRepo, type AdminAccessLogRepo } from './repositories/admin-access-log.js';
 import { createRecoveryCasesRepo, type RecoveryCasesRepo } from './repositories/recovery-cases.js';
+import {
+  createRecoveryCaseEventsRepo,
+  type RecoveryCaseEventsRepo,
+} from './repositories/recovery-case-events.js';
 import { createPlanCatalogRepo, type PlanCatalogRepo } from './repositories/plan-catalog.js';
 import { createPushTokensRepo, type PushTokensRepo } from './repositories/push-tokens.js';
 import {
@@ -122,6 +126,7 @@ export interface AppContext {
   policyStatusHistory: PolicyStatusHistoryRepo;
   adminAccessLog: AdminAccessLogRepo;
   recoveryCases: RecoveryCasesRepo;
+  recoveryCaseEvents: RecoveryCaseEventsRepo;
   planCatalog: PlanCatalogRepo;
   pushTokens: PushTokensRepo;
   pushTokenSecurityLog: PushTokenSecurityLogRepo;
@@ -209,6 +214,7 @@ export function buildAppContext(env: Env): AppContext {
     policyStatusHistory,
     adminAccessLog: createAdminAccessLogRepo(getDb()),
     recoveryCases: createRecoveryCasesRepo(getDb()),
+    recoveryCaseEvents: createRecoveryCaseEventsRepo(getDb()),
     planCatalog: createPlanCatalogRepo(getDb()),
     pushTokens,
     pushTokenSecurityLog,

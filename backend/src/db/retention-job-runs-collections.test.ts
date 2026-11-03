@@ -59,6 +59,7 @@ describe('db/retention-job-runs-collections — static specs', () => {
       'police_report_retention_purge',
       'support_case_retention_purge',
       'admin_access_log_purge',
+      'recovery_case_event_actor_purge',
     ]);
     expect(schema.properties.outcome?.enum).toEqual(['success', 'partial_failure', 'failed']);
   });
