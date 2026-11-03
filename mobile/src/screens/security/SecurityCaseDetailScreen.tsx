@@ -1,15 +1,21 @@
 /**
  * Security partner — single recovery case detail with claim/status actions.
  */
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
+  acceptSecurityCase,
   claimSecurityCase,
+  declineSecurityCase,
   getSecurityCase,
+  releaseSecurityCase,
+  resolveCaseMode,
   TERMINAL_SECURITY_CASE_STATUSES,
   updateSecurityCaseStatus,
   type SecurityCaseCloseReason,
+  type SecurityCaseDeclineReason,
+  type SecurityCaseReleaseReason,
   type SecurityCaseStatus,
   type SecurityRecoveryCase,
 } from '../../api/security-cases';
@@ -35,6 +41,23 @@ const CLOSE_REASON_OPTIONS: SelectChipOption<SecurityCaseCloseReason>[] = [
   { value: 'not-located', label: 'Not located' },
   { value: 'handed-to-police', label: 'Handed to police' },
   { value: 'customer-withdrew', label: 'Customer withdrew' },
+];
+
+// Mirrors backend/src/routes/security-cases.ts DECLINE_REASONS exactly —
+// CS-6: fixed enum only, no TextInput anywhere in this flow.
+const DECLINE_REASON_OPTIONS: SelectChipOption<SecurityCaseDeclineReason>[] = [
+  { value: 'no_capacity', label: 'No capacity' },
+  { value: 'outside_service_area', label: 'Outside service area' },
+  { value: 'other', label: 'Other' },
+];
+
+// Mirrors backend/src/routes/security-cases.ts HAND_BACK_REASONS exactly —
+// CS-6: fixed enum only, no TextInput anywhere in this flow.
+const RELEASE_REASON_OPTIONS: SelectChipOption<SecurityCaseReleaseReason>[] = [
+  { value: 'recovered_independently', label: 'Recovered independently' },
+  { value: 'unable_to_proceed', label: 'Unable to proceed' },
+  { value: 'agreement_lapsed', label: 'Agreement lapsed' },
+  { value: 'other', label: 'Other' },
 ];
 
 function formatCloseReason(reason: string): string {
@@ -77,6 +100,7 @@ export function SecurityCaseDetailScreen() {
 }
 
 function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
+  const router = useRouter();
   const [recoveryCase, setRecoveryCase] = useState<SecurityRecoveryCase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,6 +109,14 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
     null,
   );
   const [closeReason, setCloseReason] = useState<SecurityCaseCloseReason | null>(null);
+  const [pendingDeclineReason, setPendingDeclineReason] = useState<SecurityCaseDeclineReason | null>(
+    null,
+  );
+  const [declinePickerOpen, setDeclinePickerOpen] = useState(false);
+  const [pendingReleaseReason, setPendingReleaseReason] = useState<SecurityCaseReleaseReason | null>(
+    null,
+  );
+  const [releasePickerOpen, setReleasePickerOpen] = useState(false);
   const isOnline = useIsOnline();
 
   useEffect(() => {
@@ -194,6 +226,136 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
     }
   }
 
+  // ADR-0017 §(iii) — accept is not naturally idempotent server-side (the
+  // backend's accept write only matches a case still dispatchStatus:
+  // 'pending' to this org), so it reuses handleClaim's three-part pattern
+  // verbatim rather than inventing a second one.
+  async function handleAccept() {
+    if (!caseId) return;
+    if (!isOnline) {
+      setError("You're offline. This case has not been accepted — reconnect and try again.");
+      return;
+    }
+    setUpdating(true);
+    setError(null);
+    try {
+      const updated = await acceptSecurityCase(caseId);
+      setRecoveryCase(updated);
+    } catch (err) {
+      if (err instanceof NetworkUnavailableError) {
+        setError("We couldn't confirm this accept was received. Check your connection, then refresh before retrying — retrying an accept that already succeeded will show as unavailable, not as success.");
+        return;
+      }
+      if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
+        try {
+          const refreshed = await getSecurityCase(caseId);
+          if (refreshed.dispatchStatus === 'accepted') {
+            setRecoveryCase(refreshed);
+            return;
+          }
+        } catch {
+          // Fall through to the generic error below — the refetch itself
+          // failing doesn't change what we tell the user about the accept.
+        }
+      }
+      setError(mapUserFacingError(err, { context: 'security-case' }));
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  // ADR-0017 §(ii) — on success the case leaves this org's visibility
+  // entirely, so this clears state implying this org still holds the case
+  // and navigates back to the list rather than re-fetching by ID (which
+  // would now 403/404).
+  function leaveCaseAfterHandoff() {
+    setRecoveryCase(null);
+    setPendingTerminalStatus(null);
+    setCloseReason(null);
+    setPendingDeclineReason(null);
+    setDeclinePickerOpen(false);
+    setPendingReleaseReason(null);
+    setReleasePickerOpen(false);
+    router.back();
+  }
+
+  // ADR-0017 §(iii) — decline/release are PATCH-shaped writes under a
+  // precondition (dispatchStatus === 'pending'/'accepted'), closer in
+  // idempotency shape to updateSecurityCaseStatus than to claim: a retry
+  // after an ambiguous failure either no-ops against the already-moved
+  // state, or 404s because the case already left this org's visibility —
+  // which is itself confirmation the original attempt succeeded.
+  async function handleDecline() {
+    if (!caseId || !pendingDeclineReason) return;
+    if (!isOnline) {
+      setError("You're offline. This case has not been declined — reconnect and try again.");
+      return;
+    }
+    setUpdating(true);
+    setError(null);
+    try {
+      await declineSecurityCase(caseId, pendingDeclineReason);
+      leaveCaseAfterHandoff();
+    } catch (err) {
+      if (err instanceof NetworkUnavailableError) {
+        setError("We couldn't confirm this decline was received. Check your connection, then refresh before retrying.");
+        return;
+      }
+      if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
+        try {
+          const refreshed = await getSecurityCase(caseId);
+          if (refreshed.dispatchStatus !== 'pending') {
+            // Original attempt landed — the case is no longer offered to
+            // this org (declined, or moved on some other way).
+            leaveCaseAfterHandoff();
+            return;
+          }
+        } catch {
+          leaveCaseAfterHandoff();
+          return;
+        }
+      }
+      setError(mapUserFacingError(err, { context: 'security-case' }));
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  async function handleRelease() {
+    if (!caseId || !pendingReleaseReason) return;
+    if (!isOnline) {
+      setError("You're offline. This case has not been released — reconnect and try again.");
+      return;
+    }
+    setUpdating(true);
+    setError(null);
+    try {
+      await releaseSecurityCase(caseId, pendingReleaseReason);
+      leaveCaseAfterHandoff();
+    } catch (err) {
+      if (err instanceof NetworkUnavailableError) {
+        setError("We couldn't confirm this release was received. Check your connection, then refresh before retrying.");
+        return;
+      }
+      if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
+        try {
+          const refreshed = await getSecurityCase(caseId);
+          if (refreshed.dispatchStatus !== 'accepted') {
+            // Original attempt landed — the case left this org's visibility.
+            leaveCaseAfterHandoff();
+            return;
+          }
+        } catch {
+          leaveCaseAfterHandoff();
+          return;
+        }
+      }
+      setError(mapUserFacingError(err, { context: 'security-case' }));
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   if (loading) {
     return (
       <Screen scroll={false}>
@@ -221,8 +383,11 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
     );
   }
 
+  const caseMode = resolveCaseMode(recoveryCase);
   const canClaim =
-    recoveryCase.status === 'open' && !recoveryCase.partnerOrganizationId;
+    caseMode === 'pool' &&
+    recoveryCase.status === 'open' &&
+    !recoveryCase.partnerOrganizationId;
 
   return (
     <Screen>
@@ -297,22 +462,115 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
         </Card>
       ) : null}
 
+      {declinePickerOpen ? (
+        <Card style={styles.section}>
+          <Text style={styles.detailLabel}>Reason for declining this case</Text>
+          <SelectChipGroup
+            options={DECLINE_REASON_OPTIONS}
+            value={pendingDeclineReason ?? ('' as SecurityCaseDeclineReason)}
+            onChange={setPendingDeclineReason}
+            style={styles.reasonPicker}
+          />
+          <View style={styles.actions}>
+            <Button
+              variant="primary"
+              loading={updating}
+              disabled={!pendingDeclineReason}
+              onPress={() => void handleDecline()}
+            >
+              Confirm decline
+            </Button>
+            <Button
+              variant="secondary"
+              onPress={() => {
+                setDeclinePickerOpen(false);
+                setPendingDeclineReason(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </View>
+        </Card>
+      ) : null}
+
+      {releasePickerOpen ? (
+        <Card style={styles.section}>
+          <Text style={styles.detailLabel}>Reason for releasing this case</Text>
+          <SelectChipGroup
+            options={RELEASE_REASON_OPTIONS}
+            value={pendingReleaseReason ?? ('' as SecurityCaseReleaseReason)}
+            onChange={setPendingReleaseReason}
+            style={styles.reasonPicker}
+          />
+          <View style={styles.actions}>
+            <Button
+              variant="primary"
+              loading={updating}
+              disabled={!pendingReleaseReason}
+              onPress={() => void handleRelease()}
+            >
+              Confirm release
+            </Button>
+            <Button
+              variant="secondary"
+              onPress={() => {
+                setReleasePickerOpen(false);
+                setPendingReleaseReason(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </View>
+        </Card>
+      ) : null}
+
       <View style={styles.actions}>
         {canClaim ? (
           <Button variant="primary" loading={updating} onPress={() => void handleClaim()}>
             Claim case
           </Button>
         ) : null}
-        {STATUS_ACTIONS.filter((a) => a.status !== recoveryCase.status).map((action) => (
+        {caseMode === 'offered' ? (
+          <>
+            <Button variant="primary" loading={updating} onPress={() => void handleAccept()}>
+              Accept
+            </Button>
+            <Button
+              variant="secondary"
+              loading={updating}
+              onPress={() => {
+                setDeclinePickerOpen(true);
+                setPendingDeclineReason(null);
+              }}
+            >
+              Decline
+            </Button>
+          </>
+        ) : null}
+        {caseMode !== 'offered'
+          ? STATUS_ACTIONS.filter((a) => a.status !== recoveryCase.status).map((action) => (
+              <Button
+                key={action.status}
+                variant="secondary"
+                loading={updating}
+                onPress={() => requestStatusChange(action.status)}
+              >
+                {action.label}
+              </Button>
+            ))
+          : null}
+        {caseMode === 'held' ? (
           <Button
-            key={action.status}
             variant="secondary"
             loading={updating}
-            onPress={() => requestStatusChange(action.status)}
+            onPress={() => {
+              setReleasePickerOpen(true);
+              setPendingReleaseReason(null);
+            }}
           >
-            {action.label}
+            Release
           </Button>
-        ))}
+        ) : null}
       </View>
     </Screen>
   );

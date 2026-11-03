@@ -3,10 +3,6 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-
 import { SecurityCaseDetailScreen } from '../SecurityCaseDetailScreen';
 import { ApiError, NetworkUnavailableError } from '../../../api/errors';
 
-jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => ({ caseId: 'case-1' }),
-}));
-
 jest.mock('../../../theme/primitives', () => {
   const React = require('react');
   const { Text, View, Pressable } = require('react-native');
@@ -15,8 +11,16 @@ jest.mock('../../../theme/primitives', () => {
     Alert: ({ children }: { children: React.ReactNode }) => <Text>{children}</Text>,
     Badge: ({ children }: { children: React.ReactNode }) => <Text>{children}</Text>,
     Card: ({ children }: { children: React.ReactNode }) => <View>{children}</View>,
-    Button: ({ children, onPress }: { children: string; onPress?: () => void }) => (
-      <Pressable onPress={onPress} accessibilityRole="button">
+    Button: ({
+      children,
+      onPress,
+      disabled,
+    }: {
+      children: string;
+      onPress?: () => void;
+      disabled?: boolean;
+    }) => (
+      <Pressable onPress={disabled ? undefined : onPress} accessibilityRole="button">
         <Text>{children}</Text>
       </Pressable>
     ),
@@ -25,11 +29,24 @@ jest.mock('../../../theme/primitives', () => {
 
 jest.mock('../../recovery/MapPlaceholder', () => ({ MapPlaceholder: () => null }));
 
-jest.mock('../../../api/security-cases', () => ({
-  getSecurityCase: (...args: unknown[]) => mockGetSecurityCase(...args),
-  claimSecurityCase: (...args: unknown[]) => mockClaimSecurityCase(...args),
-  updateSecurityCaseStatus: (...args: unknown[]) => mockUpdateSecurityCaseStatus(...args),
-  TERMINAL_SECURITY_CASE_STATUSES: ['recovered', 'closed'],
+jest.mock('../../../api/security-cases', () => {
+  const actual = jest.requireActual('../../../api/security-cases');
+  return {
+    ...actual,
+    getSecurityCase: (...args: unknown[]) => mockGetSecurityCase(...args),
+    claimSecurityCase: (...args: unknown[]) => mockClaimSecurityCase(...args),
+    acceptSecurityCase: (...args: unknown[]) => mockAcceptSecurityCase(...args),
+    declineSecurityCase: (...args: unknown[]) => mockDeclineSecurityCase(...args),
+    releaseSecurityCase: (...args: unknown[]) => mockReleaseSecurityCase(...args),
+    updateSecurityCaseStatus: (...args: unknown[]) => mockUpdateSecurityCaseStatus(...args),
+    TERMINAL_SECURITY_CASE_STATUSES: ['recovered', 'closed'],
+  };
+});
+
+let mockBack: jest.Mock;
+jest.mock('expo-router', () => ({
+  useLocalSearchParams: () => ({ caseId: 'case-1' }),
+  useRouter: () => ({ back: mockBack }),
 }));
 
 jest.mock('../../../network/NetworkProvider', () => ({
@@ -38,6 +55,9 @@ jest.mock('../../../network/NetworkProvider', () => ({
 
 const mockGetSecurityCase = jest.fn();
 const mockClaimSecurityCase = jest.fn();
+const mockAcceptSecurityCase = jest.fn();
+const mockDeclineSecurityCase = jest.fn();
+const mockReleaseSecurityCase = jest.fn();
 const mockUpdateSecurityCaseStatus = jest.fn();
 const mockIsOnline = jest.fn(() => true);
 
@@ -54,6 +74,7 @@ function openCase() {
 describe('SecurityCaseDetailScreen — data minimisation (PDM-1)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockBack = jest.fn();
     mockIsOnline.mockReturnValue(true);
     mockGetSecurityCase.mockResolvedValue(openCase());
   });
@@ -87,6 +108,7 @@ describe('SecurityCaseDetailScreen — data minimisation (PDM-1)', () => {
 describe('SecurityCaseDetailScreen — offline-tolerance policy', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockBack = jest.fn();
     mockIsOnline.mockReturnValue(true);
     mockGetSecurityCase.mockResolvedValue(openCase());
   });
@@ -159,6 +181,7 @@ describe('SecurityCaseDetailScreen — offline-tolerance policy', () => {
 describe('SecurityCaseDetailScreen — terminal status requires a close reason', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockBack = jest.fn();
     mockIsOnline.mockReturnValue(true);
     mockGetSecurityCase.mockResolvedValue({ ...openCase(), status: 'tracking' });
   });
@@ -214,5 +237,218 @@ describe('SecurityCaseDetailScreen — terminal status requires a close reason',
     await render(<SecurityCaseDetailScreen />);
 
     expect(await screen.findByText('Handed to police')).toBeTruthy();
+  });
+});
+
+function offeredCase() {
+  return { ...openCase(), dispatchStatus: 'pending' as const };
+}
+
+function heldCase() {
+  return { ...openCase(), status: 'investigating' as const, dispatchStatus: 'accepted' as const };
+}
+
+describe('SecurityCaseDetailScreen — dispatch mode: offered (dispatchStatus "pending")', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBack = jest.fn();
+    mockIsOnline.mockReturnValue(true);
+    mockGetSecurityCase.mockResolvedValue(offeredCase());
+  });
+
+  it('renders only Accept and Decline — no Claim and no STATUS_ACTIONS', async () => {
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('Accept');
+
+    expect(screen.getByText('Decline')).toBeTruthy();
+    expect(screen.queryByText('Claim case')).toBeNull();
+    expect(screen.queryByText('Start investigating')).toBeNull();
+    expect(screen.queryByText('Mark recovered')).toBeNull();
+    expect(screen.queryByText('Close case')).toBeNull();
+  });
+
+  it('accepts the case and shows the resulting held state', async () => {
+    mockAcceptSecurityCase.mockResolvedValue(heldCase());
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('Accept');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Accept'));
+    });
+
+    expect(mockAcceptSecurityCase).toHaveBeenCalledWith('case-1');
+    await waitFor(() => expect(screen.getByText('Release')).toBeTruthy());
+  });
+
+  it('blocks accepting when offline with a definite "has not been accepted" message', async () => {
+    mockIsOnline.mockReturnValue(false);
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('Accept');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Accept'));
+    });
+
+    await waitFor(() => expect(screen.getByText(/has not been accepted/)).toBeTruthy());
+    expect(mockAcceptSecurityCase).not.toHaveBeenCalled();
+  });
+
+  it('on NetworkUnavailableError, warns to refresh before retrying rather than reporting failure', async () => {
+    mockAcceptSecurityCase.mockRejectedValueOnce(new NetworkUnavailableError());
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('Accept');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Accept'));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText(/couldn.t confirm this accept was received/)).toBeTruthy(),
+    );
+  });
+
+  it('on a 409 after accepting, re-fetches and shows the held state if the original attempt landed', async () => {
+    mockAcceptSecurityCase.mockRejectedValueOnce(
+      new ApiError(409, { error: { code: 'CONFLICT', message: 'conflict', requestId: 'req-1' } }),
+    );
+    mockGetSecurityCase.mockResolvedValueOnce(offeredCase()).mockResolvedValueOnce(heldCase());
+
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('Accept');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Accept'));
+    });
+
+    await waitFor(() => expect(screen.getByText('Release')).toBeTruthy());
+    expect(screen.queryByText(/couldn.t confirm/)).toBeNull();
+  });
+
+  it('requires picking a fixed-enum reason before confirming decline, then declines and navigates back', async () => {
+    mockDeclineSecurityCase.mockResolvedValue({ caseId: 'case-1', status: 'returned_to_queue' });
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('Decline');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Decline'));
+    });
+
+    const confirmDecline = await screen.findByText('Confirm decline');
+    // Confirm is disabled until a reason chip is chosen.
+    await act(async () => {
+      fireEvent.press(confirmDecline);
+    });
+    expect(mockDeclineSecurityCase).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('No capacity'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Confirm decline'));
+    });
+
+    expect(mockDeclineSecurityCase).toHaveBeenCalledWith('case-1', 'no_capacity');
+    await waitFor(() => expect(mockBack).toHaveBeenCalled());
+  });
+});
+
+describe('SecurityCaseDetailScreen — dispatch mode: held (dispatchStatus "accepted")', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBack = jest.fn();
+    mockIsOnline.mockReturnValue(true);
+    mockGetSecurityCase.mockResolvedValue(heldCase());
+  });
+
+  it('renders STATUS_ACTIONS plus Release, and no Claim/Accept/Decline', async () => {
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('Release');
+
+    expect(screen.getByText('Begin tracking')).toBeTruthy();
+    expect(screen.getByText('Mark recovered')).toBeTruthy();
+    expect(screen.getByText('Close case')).toBeTruthy();
+    expect(screen.queryByText('Claim case')).toBeNull();
+    expect(screen.queryByText('Accept')).toBeNull();
+    expect(screen.queryByText('Decline')).toBeNull();
+  });
+
+  it('requires picking a fixed-enum reason before confirming release, then releases and navigates back', async () => {
+    mockReleaseSecurityCase.mockResolvedValue({ caseId: 'case-1', status: 'returned_to_queue' });
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('Release');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Release'));
+    });
+
+    const confirmRelease = await screen.findByText('Confirm release');
+    await act(async () => {
+      fireEvent.press(confirmRelease);
+    });
+    expect(mockReleaseSecurityCase).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Recovered independently'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Confirm release'));
+    });
+
+    expect(mockReleaseSecurityCase).toHaveBeenCalledWith('case-1', 'recovered_independently');
+    await waitFor(() => expect(mockBack).toHaveBeenCalled());
+  });
+
+  it('on a 404 after releasing, treats the case leaving this org visibility as confirmation and navigates back', async () => {
+    mockReleaseSecurityCase.mockRejectedValueOnce(
+      new ApiError(404, { error: { code: 'NOT_FOUND', message: 'not found', requestId: 'req-1' } }),
+    );
+    mockGetSecurityCase
+      .mockResolvedValueOnce(heldCase())
+      .mockResolvedValueOnce({ ...heldCase(), dispatchStatus: undefined });
+
+    await render(<SecurityCaseDetailScreen />);
+    await screen.findByText('Release');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Release'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Recovered independently'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Confirm release'));
+    });
+
+    await waitFor(() => expect(mockBack).toHaveBeenCalled());
+  });
+});
+
+describe('SecurityCaseDetailScreen — pool mode (dispatchStatus absent) stays byte-identical to today', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBack = jest.fn();
+    mockIsOnline.mockReturnValue(true);
+  });
+
+  it('renders Claim case for an open, unassigned case with no dispatchStatus', async () => {
+    mockGetSecurityCase.mockResolvedValue(openCase());
+    await render(<SecurityCaseDetailScreen />);
+
+    expect(await screen.findByText('Claim case')).toBeTruthy();
+    expect(screen.queryByText('Accept')).toBeNull();
+    expect(screen.queryByText('Decline')).toBeNull();
+    expect(screen.queryByText('Release')).toBeNull();
+  });
+
+  it('renders STATUS_ACTIONS once claimed, with no Release button', async () => {
+    mockGetSecurityCase.mockResolvedValue({
+      ...openCase(),
+      status: 'investigating',
+      partnerOrganizationId: 'org-1',
+    });
+    await render(<SecurityCaseDetailScreen />);
+
+    expect(await screen.findByText('Begin tracking')).toBeTruthy();
+    expect(screen.queryByText('Release')).toBeNull();
   });
 });
