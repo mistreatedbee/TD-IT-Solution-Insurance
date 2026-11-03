@@ -1,0 +1,154 @@
+# OB-03 Tier A — Stage 10 QA Report (Admin-Directed Dispatch, No Location Sharing)
+
+**Role:** `qa-test-strategy` (acting as Stage 10 gate owner)
+**Date:** 2026-11-03
+**Scope:** OB-03 Tier A only (D1/D2 of ADR-0017). Tier B (D3/D4, location sharing) remains
+out of scope and stays blocked per the Stage 8 reviews — not assessed here.
+**Inputs:** ADR-0017, `database-design-ob03-location-share-grants.md`,
+`api-design-ob03-dispatch-location-grants.md`, `security-review-ob03-dispatch-location-grants.md`
+(chair + `security-engineer` SE-1/SE-2 + `compliance-specialist` CO-OB03-1..6), the merged code
+(`backend/src/routes/admin-case-dispatch.ts`, `security-cases.ts`, `recovery.ts`,
+`repositories/recovery-cases.ts`, `lib/recovery-notification-service.ts`,
+`lib/recovery-case-notifications.ts`, `lib/dispatch-flag-flip-migration.ts`,
+`lib/dispatch-migration-guard.ts`) and their test files, plus `src/security/` (web) and
+`mobile/src/screens/security/` (mobile) frontend call sites. Test suite independently confirmed
+stated-clean (not re-run exhaustively here; coverage *quality* was the object of this review).
+
+## Verdict
+
+**BLOCKED for merge of the full Tier A condition set / flag flip, even in dev-staging.**
+Three of the eleven Tier A conditions (A1 through A9, SE-1, SE-2, CO-OB03-1 through 6 — 17 named
+items total) have no corresponding test, and one is a real cross-surface breakage that will
+manifest the moment `DIRECTED_DISPATCH_ENABLED` is set `true` in any environment, dev or
+otherwise, because it breaks the only UI path operators have to act on a case. The backend logic
+itself is in good shape — most conditions (A1, A2, A4, A5, A6 [indirectly], A7, A8, A9(i)-(iii),
+SE-1, CO-OB03-1, CO-OB03-2, CO-OB03-3, CO-OB03-4) are both implemented and have a test with an
+explicit `[TAG]` naming the condition it closes, which is good practice and made this trace fast.
+The gaps below are narrow and fixable without redesign.
+
+## Finding 1 (Blocking — cross-surface, highest severity): no frontend accept/decline/release UI exists
+
+Neither the web Security Company Dashboard (`src/security/pages/SecurityCasePages.tsx`,
+`src/security/api/cases.ts`) nor the mobile operator app
+(`mobile/src/screens/security/SecurityCaseDetailScreen.tsx`) implements the new dispatch-model
+verbs. Both still call only `claimSecurityCase()` → `POST /security/cases/:caseId/claim`.
+
+Per `backend/src/routes/security-cases.test.ts:2664` (`'claim is unmounted (404) once the flag is
+on'`) and `:2674` (`'reassign is unmounted (404) once the flag is on'`), both routes 404 once
+`DIRECTED_DISPATCH_ENABLED=true`. There is no `acceptSecurityCase`/`declineSecurityCase` function
+anywhere in `src/security/api/cases.ts` or the mobile equivalent — grep for `accept`/`decline`
+across both surfaces returns no case-action call sites, only an unrelated `/messages` route and a
+pre-existing "or reassigned" error string.
+
+**Effect:** the moment the flag flips to `true` in *any* environment an operator opens the app in,
+the claim button 404s with no fallback, and there is no way to accept/decline/release a case
+through either UI. This is exactly the risk flagged going into this review, now confirmed as real,
+not hypothetical. **This blocks flipping the flag anywhere a real operator will see it**, including
+a demo/dev environment if operators are expected to interact with it.
+
+**Recommendation:** either (a) scope and build the accept/decline/release UI for both surfaces
+before flipping the flag anywhere beyond isolated backend integration tests, or (b) if the flag
+flip is meant to land backend-only first, make that explicit in the rollout plan and keep the flag
+off in every environment an operator-facing build reaches until the frontend work is scheduled.
+This is a product/sequencing decision, not purely a QA one — flagging to `cto`/`product-manager`.
+
+## Finding 2 (Gap — CO-OB03-5, audit trail on accept/decline/release): code present, no test
+
+CO-OB03-5 requires a Trail B (`admin_access_log`) row on every offer/accept/decline/lapse/
+re-dispatch recipient-history change. `security-cases.ts` does call
+`ctx.adminAccessLog.recordStateChange(...)` at the accept (`:361`), decline (`:440`?), and release
+(repurposed hand-back) call sites inside the `dispatch model` describe block (lines 2634-2970 of
+`security-cases.test.ts`) — but unlike the pool-mode PDM-8 tests (lines 1070-1259, which explicitly
+assert `recordStateChange`/`recordCaseBulkDisclosure` call shape for claim/PATCH), **no test in the
+`dispatch model (DIRECTED_DISPATCH_ENABLED=true)` block asserts that accept/decline/release
+actually write an audit row**, nor its `fromStatus`/`dispatchStatus` content. The fail-closed
+behavior (`SR-009S-4`, "audit write throws → mutation never runs") is likewise only tested for
+`claim`/`PATCH` (pool mode), not for `accept`/`decline`/`release` (dispatch mode).
+
+**Recommendation:** add the PDM-8/SR-009S-4-style assertions to the dispatch-model describe block:
+one test per accept/decline/release confirming exactly one `recordStateChange` call with the
+correct `fromStatus`/`dispatchStatus`, and one fail-closed test confirming an audit-write throw
+blocks the mutation, mirroring the existing pool-mode pattern.
+
+## Finding 3 (Gap — SE-2, rate limiter wiring not directly tested)
+
+SE-2's fix (named per-route `createRateLimiter` calls on list/count/detail of
+`admin-case-dispatch.ts`) is present in code (`admin-case-dispatch.ts:152,194,228`, all keyed
+`DEFAULT_AUTHENTICATED_LIMIT`), satisfying the letter of the condition. However, no test in
+`admin-case-dispatch.test.ts` exercises the limiter itself (e.g. asserts a 429 after exceeding
+the configured window), unlike some other routes in this codebase that do test limiter triggering.
+This is a lower-severity gap than Findings 1-2 since the code is demonstrably present and named
+correctly per SE-2's literal text, but "wired, untested" is still a real gap for a condition whose
+entire point was abuse-at-scale protection.
+
+**Recommendation:** add one limiter-triggers test per route (or a shared parametrized test) for
+`admin-case-dispatch.ts`'s list/count/detail routes, consistent with however this repo already
+tests `createRateLimiter` elsewhere (check `rate-limit.test.ts` pattern if one exists and reuse it
+rather than inventing a new harness).
+
+## Finding 4 (Exploratory — state-machine gap found, not previously tested)
+
+The existing re-dispatch tests cover null-then-dispatch, decline-then-re-dispatch, and
+lapse-then-re-dispatch sequences (`admin-case-dispatch.test.ts:771,798,838`) — good adversarial
+coverage of the A4 two-admin gate across multi-step sequences, better than most Tier A code gets.
+However, I could not find a test for **a full accept → release → re-offer → accept cycle through
+`security-cases.ts`'s own accept/release endpoints** (as opposed to the admin's dispatch/
+re-dispatch endpoints) — i.e. does the partner-side `release` (repurposed hand-back) correctly
+clear `dispatchStatus` back to a state the *admin* dispatch queue will re-surface, and does a
+second `accept` by a different org after that release pass the same CO-OB03-6 "customer sees
+returned to queue" check attributed in code comments at `security-cases.ts:534,649,723`? No test
+asserts the customer-facing status *after* a partner-initiated release, only after
+admin-initiated re-dispatch-to-null (`admin-case-dispatch.test.ts:710`). Given CO-OB03-6 is a
+compliance condition specifically about customer-facing accuracy, this is worth closing before
+calling CO-OB03-6 test-verified, not just code-verified.
+
+I did not find a race-condition gap beyond what's already tested (concurrent dispatch is tested;
+concurrent accept+decline and dispatch+hand-back were not found as dedicated tests, but given
+`updateStatusForPartnerOrg`'s compare-and-set on `expectedStatus` is already proven at the
+repository layer — `recovery-cases.test.ts:1189-1221` — and the route layer's claim/PATCH races are
+tested at `security-cases.test.ts:1228,1298`, I assess this as **low residual risk**, not a
+blocking gap, since the same compare-and-set primitive underlies the dispatch-mode accept/decline
+paths. Confirming a dispatch-mode-specific concurrent accept/decline test exists would upgrade
+this from "low residual risk, defer" to "closed," but I would not block on it alone.
+
+## Finding 5 (Manifest/traceability — confirmed accurate, no issue)
+
+`docs/organization/gates/stage8-manifest.json`'s `admin-case-dispatch` (line ~809) and the
+`security-cases` amendment (line ~231) entries are honest about scope: both explicitly state "no
+dedicated code-level Stage 8 review ... has been performed," only a design-level review. This
+matches reality — the Stage 8 docs reviewed the design, and this Stage 10 pass is the first
+code-level look. No overclaiming found in the manifest. The `recovery-case-reported-stolen push
+suppression + broadcast shutoff (CO-OB03-1/CO-OB03-2)` entry correctly attributes implementation to
+"OB-03 Tier A sub-task 4," consistent with the commit range cited in the task brief. No
+manifest/code drift found.
+
+## Condition traceability summary
+
+| Condition | Code found | Test found | Status |
+|---|---|---|---|
+| A1 (shared predicate incl. wrap-up) | yes | yes (`security-cases.test.ts:152` mirror + recovery-cases predicate tests) | OK |
+| A2 (dispatch eligibility source) | yes | yes (`admin-case-dispatch.test.ts:589,606`) | OK |
+| A3 (status PATCH, dispatch model) | yes (`recovery-cases.ts:1309`) | yes, via dispatch-model PATCH test (`security-cases.test.ts:2835`) | OK |
+| A4 (two-admin approve + pendingApproval) | yes | yes, extensive (`admin-case-dispatch.test.ts:650-891`) | OK |
+| A5 (migration audit/coverage incl. wrap-up window) | yes | yes (`dispatch-flag-flip-migration.test.ts`, `dispatch-migration-guard.test.ts:59`) | OK |
+| A6 (OB-04 / Trail B on every transition) | Trail B via `admin_access_log`, not a distinct OB-04 collection | partially — see Finding 2 for accept/decline/release | Gap (Finding 2) |
+| A7 (dispatch-queue index) | yes (`db/recovery-collections.ts:139`) | yes, dedicated (`db/recovery-collections.test.ts`) | OK |
+| A8 (minimise lastLocation in list) | yes | yes (`admin-case-dispatch.test.ts:417,510`) | OK |
+| A9(i)-(iii) (oracle uniformity, no-op target) | yes | yes (`admin-case-dispatch.test.ts:693`, `security-cases.test.ts:2936-2966`) | OK |
+| SE-1 (input validation on new routes) | yes | yes (`admin-case-dispatch.test.ts:434,446,472,636`, `security-cases.test.ts:2752,2807`) | OK |
+| SE-2 (bulk-read rate limiting, named limiters) | yes | **no limiter-trigger test found** | Gap (Finding 3) |
+| CO-OB03-1 (device suppression on push) | yes | yes (`recovery-notification-service.test.ts:276-450`) | OK |
+| CO-OB03-2 (remove broadcast push, no assetId) | yes | yes (`recovery-notification-service.test.ts:451+`, `recovery.test.ts:436,465`, `admin-case-dispatch.test.ts:563`) | OK |
+| CO-OB03-3 (terminated org loses access in window) | yes | yes (`dispatch-flag-flip-migration.test.ts:90`, `security-cases.test.ts:2882`) | OK |
+| CO-OB03-4 (eligibility source = executed agreement) | yes (`repositories/partner-organizations.ts`) | yes (`partner-organizations.test.ts:83`) | OK |
+| CO-OB03-5 (recipient/offer history audit trail) | yes (`recordStateChange` calls present) | **no dedicated assertion in dispatch-model block** | Gap (Finding 2) |
+| CO-OB03-6 (customer-facing status accuracy) | yes (code comments at 3 sites in `security-cases.ts`) | partial — admin-initiated path tested, partner-initiated release path not confirmed (Finding 4) | Gap (Finding 4) |
+
+## Recommendation to `cto`
+
+Do not flip `DIRECTED_DISPATCH_ENABLED=true` anywhere an operator will interact with the app
+(Finding 1) until the frontend accept/decline/release surface is built, or until the rollout is
+explicitly scoped as backend-only with the flag kept off in every operator-facing build. Findings
+2, 3 and 4 are each small, well-scoped test-authoring tasks (no design or code change implied) and
+should go back to whichever of `backend-engineer`/`qa-architect` wrote the existing dispatch-model
+test block, as a fast follow before Tier A is called fully done. Finding 5 requires no action.
