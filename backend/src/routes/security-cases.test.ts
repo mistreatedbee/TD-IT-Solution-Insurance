@@ -3231,5 +3231,154 @@ describe('routes/security-cases', () => {
         expect(harness.cases[0]!.dispatchStatus).toBe('accepted');
       });
     });
+
+    // -------------------------------------------------------------------
+    // §3.8 — `dispatchStatus` as the client's mode signal (append-only addition,
+    // api-design-ob03-dispatch-location-grants.md §3.8).
+    // -------------------------------------------------------------------
+    describe('§3.8 dispatchStatus field', () => {
+      it("list includes dispatchStatus: 'pending' on an offer-tier (pending) row when dispatch mode is on", async () => {
+        const caseId = '507f1f77bcf86cd799439011';
+        harness = createHarness({
+          directedDispatchEnabled: true,
+          cases: [pendingCase({ id: caseId, partnerOrganizationId: '' })],
+        });
+        harness.cases[0]!.partnerOrganizationId = harness.partnerOrgId;
+        await harness.start();
+
+        const listRes = await fetch(harness.url('/security/cases'), {
+          headers: { authorization: `Bearer ${harness.token}` },
+        });
+        expect(listRes.status).toBe(200);
+        const listBody = (await listRes.json()) as { data: Array<Record<string, unknown>> };
+        expect(listBody.data).toHaveLength(1);
+        expect(listBody.data[0]!.dispatchStatus).toBe('pending');
+
+        const detailRes = await fetch(harness.url(`/security/cases/${caseId}`), {
+          headers: { authorization: `Bearer ${harness.token}` },
+        });
+        expect(detailRes.status).toBe(200);
+        expect(((await detailRes.json()) as Record<string, unknown>).dispatchStatus).toBe('pending');
+      });
+
+      it("list includes dispatchStatus: 'accepted' on a claimed-tier (accepted) row when dispatch mode is on", async () => {
+        const caseId = '507f1f77bcf86cd799439012';
+        harness = createHarness({
+          directedDispatchEnabled: true,
+          cases: [acceptedCase({ id: caseId, partnerOrganizationId: '' })],
+        });
+        harness.cases[0]!.partnerOrganizationId = harness.partnerOrgId;
+        await harness.start();
+
+        const listRes = await fetch(harness.url('/security/cases'), {
+          headers: { authorization: `Bearer ${harness.token}` },
+        });
+        expect(listRes.status).toBe(200);
+        const listBody = (await listRes.json()) as { data: Array<Record<string, unknown>> };
+        expect(listBody.data).toHaveLength(1);
+        expect(listBody.data[0]!.dispatchStatus).toBe('accepted');
+
+        const detailRes = await fetch(harness.url(`/security/cases/${caseId}`), {
+          headers: { authorization: `Bearer ${harness.token}` },
+        });
+        expect(detailRes.status).toBe(200);
+        expect(((await detailRes.json()) as Record<string, unknown>).dispatchStatus).toBe('accepted');
+      });
+
+      it("accept response includes dispatchStatus: 'accepted'", async () => {
+        const caseId = '507f1f77bcf86cd799439013';
+        harness = createHarness({
+          directedDispatchEnabled: true,
+          cases: [pendingCase({ id: caseId, partnerOrganizationId: '' })],
+        });
+        harness.cases[0]!.partnerOrganizationId = harness.partnerOrgId;
+        await harness.start();
+
+        const acceptRes = await fetch(harness.url(`/security/cases/${caseId}/accept`), {
+          method: 'POST',
+          headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        expect(acceptRes.status).toBe(200);
+        const body = (await acceptRes.json()) as { data: Record<string, unknown> };
+        expect(body.data.dispatchStatus).toBe('accepted');
+      });
+
+      it("PATCH status response retains dispatchStatus: 'accepted' when dispatch mode is on", async () => {
+        const caseId = '507f1f77bcf86cd799439014';
+        harness = createHarness({
+          directedDispatchEnabled: true,
+          cases: [acceptedCase({ id: caseId, partnerOrganizationId: '' })],
+        });
+        harness.cases[0]!.partnerOrganizationId = harness.partnerOrgId;
+        await harness.start();
+
+        const patchRes = await fetch(harness.url(`/security/cases/${caseId}`), {
+          method: 'PATCH',
+          headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ status: 'tracking' }),
+        });
+        expect(patchRes.status).toBe(200);
+        const body = (await patchRes.json()) as Record<string, unknown>;
+        expect(body.dispatchStatus).toBe('accepted');
+      });
+
+      it('decline/release responses never carry a dispatchStatus field (minimal returned_to_queue shape, §3.8)', async () => {
+        const caseId = '507f1f77bcf86cd799439015';
+        harness = createHarness({
+          directedDispatchEnabled: true,
+          cases: [pendingCase({ id: caseId, partnerOrganizationId: '' })],
+        });
+        harness.cases[0]!.partnerOrganizationId = harness.partnerOrgId;
+        await harness.start();
+
+        const declineRes = await fetch(harness.url(`/security/cases/${caseId}/decline`), {
+          method: 'POST',
+          headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ reason: 'no_capacity' }),
+        });
+        expect(declineRes.status).toBe(200);
+        const declineBody = (await declineRes.json()) as { data: Record<string, unknown> };
+        expect('dispatchStatus' in declineBody.data).toBe(false);
+      });
+
+      it('list/detail/accept responses do NOT carry a dispatchStatus key at all when dispatch mode is off (pool mode)', async () => {
+        const caseId = '507f1f77bcf86cd799439016';
+        harness = createHarness({
+          directedDispatchEnabled: false,
+          cases: [
+            sampleCase({
+              id: caseId,
+              partnerOrganizationId: null,
+              accountId: randomUUID(),
+              assetId: randomUUID(),
+              status: 'open',
+            }),
+          ],
+        });
+        await harness.start();
+
+        const listRes = await fetch(harness.url('/security/cases'), {
+          headers: { authorization: `Bearer ${harness.token}` },
+        });
+        expect(listRes.status).toBe(200);
+        const listBody = (await listRes.json()) as { data: Array<Record<string, unknown>> };
+        expect(listBody.data).toHaveLength(1);
+        expect('dispatchStatus' in listBody.data[0]!).toBe(false);
+
+        const detailRes = await fetch(harness.url(`/security/cases/${caseId}`), {
+          headers: { authorization: `Bearer ${harness.token}` },
+        });
+        expect(detailRes.status).toBe(200);
+        expect('dispatchStatus' in ((await detailRes.json()) as Record<string, unknown>)).toBe(false);
+
+        const claimRes = await fetch(harness.url(`/security/cases/${caseId}/claim`), {
+          method: 'POST',
+          headers: { authorization: `Bearer ${harness.token}` },
+        });
+        expect(claimRes.status).toBe(200);
+        expect('dispatchStatus' in ((await claimRes.json()) as Record<string, unknown>)).toBe(false);
+      });
+    });
   });
 });

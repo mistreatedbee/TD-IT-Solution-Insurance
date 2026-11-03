@@ -480,7 +480,18 @@ export function computePoolUrgencyTier(ageInPoolHours: number): PoolUrgencyTier 
   return 'stale';
 }
 
-export function serializeOfferTierRecoveryCase(doc: OfferTierRecoveryCase, now: Date = new Date()) {
+/**
+ * OB-03 §3.8 — `dispatchMode` controls whether a `dispatchStatus: 'pending'` field is
+ * added to the serialized row. When `dispatchMode` is `false` (pool mode /
+ * `DIRECTED_DISPATCH_ENABLED` off), the field is omitted entirely from the returned
+ * object — not set to `null` or `undefined` — so `'dispatchStatus' in row` is `false`
+ * for callers that check key presence, per §3.8's exhaustive value list.
+ */
+export function serializeOfferTierRecoveryCase(
+  doc: OfferTierRecoveryCase,
+  now: Date = new Date(),
+  dispatchMode = false,
+) {
   const ageInPoolMs = Math.max(0, now.getTime() - doc.updatedAt.getTime());
   const ageInPoolHours = ageInPoolMs / (1000 * 60 * 60);
   return {
@@ -492,10 +503,15 @@ export function serializeOfferTierRecoveryCase(doc: OfferTierRecoveryCase, now: 
     updatedAt: doc.updatedAt.toISOString(),
     ageInPoolSeconds: Math.round(ageInPoolMs / 1000),
     poolUrgencyTier: computePoolUrgencyTier(ageInPoolHours),
+    ...(dispatchMode ? { dispatchStatus: 'pending' as const } : {}),
   };
 }
 
-export function serializeClaimedTierRecoveryCase(doc: ClaimedTierRecoveryCase) {
+/** OB-03 §3.8 — `dispatchMode` behaves identically to
+ * `serializeOfferTierRecoveryCase`'s parameter of the same name, but maps to
+ * `dispatchStatus: 'accepted'` for this (claimed-tier) serializer per §3.8's value
+ * table — the claimed tier is never `'pending'`. */
+export function serializeClaimedTierRecoveryCase(doc: ClaimedTierRecoveryCase, dispatchMode = false) {
   return {
     id: doc.id,
     assetId: doc.assetId,
@@ -507,6 +523,7 @@ export function serializeClaimedTierRecoveryCase(doc: ClaimedTierRecoveryCase) {
     partnerOrganizationId: doc.partnerOrganizationId,
     updatedAt: doc.updatedAt.toISOString(),
     closeReason: doc.closeReason,
+    ...(dispatchMode ? { dispatchStatus: 'accepted' as const } : {}),
   };
 }
 

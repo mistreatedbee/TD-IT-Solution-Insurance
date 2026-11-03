@@ -120,10 +120,10 @@ const ENDPOINT_CONTACT = 'POST /v1/security/cases/:caseId/messages';
 
 /** PDM-2 — picks the matching serializer for a tagged partner-visible result; keeps
  * every call site from having to re-derive which serializer applies to which tier. */
-function serializePartnerCase(result: PartnerVisibleCaseResult) {
+function serializePartnerCase(result: PartnerVisibleCaseResult, dispatchMode: boolean) {
   return result.tier === 'claimed'
-    ? serializeClaimedTierRecoveryCase(result.case)
-    : serializeOfferTierRecoveryCase(result.case);
+    ? serializeClaimedTierRecoveryCase(result.case, dispatchMode)
+    : serializeOfferTierRecoveryCase(result.case, new Date(), dispatchMode);
 }
 
 export function createSecurityCasesRouter(ctx: AppContext): Router {
@@ -204,7 +204,7 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
         });
 
         res.status(200).json({
-          data: page.data.map(serializePartnerCase),
+          data: page.data.map((r) => serializePartnerCase(r, directedDispatchEnabled())),
           pagination: { nextCursor: page.nextCursor, hasMore: page.hasMore },
         });
       } catch (err) {
@@ -310,7 +310,7 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
           userAgent: req.header('user-agent') ?? null,
         });
 
-        res.status(200).json(serializePartnerCase(result));
+        res.status(200).json(serializePartnerCase(result, directedDispatchEnabled()));
       } catch (err) {
         next(err);
       }
@@ -471,7 +471,7 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
           });
 
           // (5) respond.
-          res.status(200).json({ data: serializeClaimedTierRecoveryCase(toClaimedTierView(accepted)) });
+          res.status(200).json({ data: serializeClaimedTierRecoveryCase(toClaimedTierView(accepted), true) });
         } catch (err) {
           next(err);
         }
@@ -654,7 +654,7 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
           event: 'status_updated',
         });
         // (5) respond.
-        res.status(200).json(serializeClaimedTierRecoveryCase(toClaimedTierView(updated)));
+        res.status(200).json(serializeClaimedTierRecoveryCase(toClaimedTierView(updated), dispatchMode));
       } catch (err) {
         next(err);
       }
