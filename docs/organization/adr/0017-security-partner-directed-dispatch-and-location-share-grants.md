@@ -1172,6 +1172,163 @@ code. `security-engineer` verifies the result. `database-architect` and
   `.env`/`.env.local` (`bootstrap-mongo-collections.ts`, `verify-mongo-catalog.ts`,
   `inc-001-location-inventory.ts`, `police-report-retention-purge.ts`). In practice, then, the
   runtime credential also lives on operator workstations.
+
+---
+
+## `frontend-architect` Stage 6 integration note — R-2, Track A (web operator UI) (2026-11-03)
+
+**Scope.** This answers `cto`'s five required questions from the disposition on
+`qa-report-ob03-dispatch-tier-a.md` Finding 1, for the web Security Company Dashboard only
+(`src/security/pages/SecurityCasePages.tsx`, `src/security/api/cases.ts`). Mobile
+(`mobile/src/screens/security/SecurityCaseDetailScreen.tsx`) needs the equivalent note from
+`mobile-architect` — not written here. This is Stage 6 integration review against the code as it
+exists today (claim-only), not a new design: D1's `dispatchStatus: 'pending' | 'accepted' | null`
+field (absent/`null` = pool mode, per `database-architect`'s review above) is the only new signal
+the client needs; everything below is a change to `CaseDetailPage`/`cases.ts`, not a new screen.
+
+**(i) Which actions render for each `dispatchStatus` value, and what renders when absent.**
+
+- `dispatchStatus` **absent/`null`** (pool mode, `partnerOrganizationId: null`): unchanged from
+  today — render `Claim case` when `status === 'open' && !partnerOrganizationId`. No accept/decline
+  verbs are reachable in pool mode; D1 never offers them for an unassigned case.
+- `dispatchStatus: 'pending'` (dispatched to this org, not yet accepted): render exactly two new
+  actions, `Accept case` and `Decline case`. Suppress every `STATUS_ACTIONS` button (investigating/
+  tracking/recovered/closed) and suppress `Contact customer` — see (v). This is the only state where
+  `Claim case` must definitively *not* render even though legacy pool-mode code (`status === 'open'
+  && !partnerOrganizationId`) would never match it anyway (a dispatched case has a
+  `partnerOrganizationId`), so no extra guard is needed there, but the existing `STATUS_ACTIONS`
+  `.filter((a) => a.status !== recoveryCase.status)` and `Contact customer` conditions (lines
+  309–339) must each gain an explicit `recoveryCase.dispatchStatus !== 'pending'` guard — today they
+  key only off `status`/`partnerOrganizationId`, which a `pending` case can already satisfy (e.g. a
+  previously-accepted-then-re-dispatched case can sit at `status: 'investigating'` with a new
+  `dispatchStatus: 'pending'`), so without the guard a stale status action would render during the
+  pending window.
+- `dispatchStatus: 'accepted'` (this org currently holds the case): render exactly what
+  claimed-pool-mode renders today — `STATUS_ACTIONS` minus current status, `Release case` (rename
+  label unchanged; semantics shift from "hand back to pool" to "hand back for re-dispatch", per (ii)),
+  and `Contact customer`. This is the `recoveryCase.partnerOrganizationId &&
+  account?.partnerOrganizationId === recoveryCase.partnerOrganizationId` branch already in the code;
+  it only needs `dispatchStatus === 'accepted'` added as an extra condition so it doesn't also fire
+  during `'pending'`.
+
+**(ii) Navigation/cache invalidation after decline/release.**
+
+Both decline and release end this org's relationship to the case. On success, drop all
+claimed-tier client state the same way `releaseCase()` already updates local state today, then
+navigate back to the list rather than re-rendering the detail page in a state that no longer has
+actions for this operator: call `navigate('/security/cases', { replace: true })` (React Router,
+already imported via `react-router-dom`) immediately after `setRecoveryCase(updated)` succeeds, and
+do **not** attempt to keep the detail page showing the now-foreign case. There is no query-cache
+layer in this codebase to invalidate (no React Query/SWR — `cases.ts` is a plain `apiFetch` wrapper
+over `fetch`), so "cache invalidation" here means: the `CasesListPage`'s `rows` state is not shared
+with `CaseDetailPage`, so returning to the list must re-trigger `listSecurityCases()` on mount
+(already happens — it's a fresh `useEffect` on route re-entry) rather than relying on stale `rows`
+from before the decline/release. No additional invalidation plumbing is needed; the existing
+list-page `useEffect` already re-fetches every time the route is entered.
+
+**(iii) Retry/idempotency for accept, adapting the claim 404-refetch idiom at
+`SecurityCasePages.tsx:224`.**
+
+Add `acceptSecurityCase(caseId)` → `POST /security/cases/:caseId/accept` to `cases.ts`, and an
+`acceptCase()` handler mirroring `claimCase()`'s structure exactly, with one change to the 404
+branch's refetch test. Today's claim retry logic treats "refetched case is no longer `open`" as
+proof the original attempt landed. Accept needs the equivalent precondition restated in
+`dispatchStatus` terms: on a 404 (the accept route's `expectedStatus`-style compare-and-set, per
+`database-architect`'s review, only matches a case currently `dispatchStatus: 'pending'` for this
+org), refetch and treat **`refreshed.dispatchStatus === 'accepted' &&
+refreshed.partnerOrganizationId === account?.partnerOrganizationId`** as proof the original attempt
+already succeeded (show the refreshed case, no error); any other refetched state (e.g. the pending
+offer lapsed, or a different org now holds it) falls through to the existing generic error message.
+This is the same idiom, just checked against `dispatchStatus` instead of `status !== 'open'`, because
+pool-mode "claimed" and dispatch-mode "accepted" are different fields now per D1.
+
+**(iv) Decline/release reason pickers, fixed enums only (CS-6), reusing the existing terminal-status
+`closeReason` pattern.**
+
+Reuse the `pendingTerminalStatus`/`closeReason` radio-picker UI pattern (lines 341–374) verbatim in
+shape — a confirm-before-send panel with a fixed radio list and a disabled-until-selected Confirm
+button — but as two new, separate enums, not `SecurityCaseCloseReason` reused: `SecurityCaseCloseReason`
+is specifically the terminal-status (`recovered`/`closed`) vocabulary and conflates meanings that
+don't apply to a mid-dispatch decline or release (e.g. `recovered-intact` makes no sense as a reason
+for declining an offer). Introduce `SecurityCaseDeclineReason` and `SecurityCaseReleaseReason` as
+new fixed string-literal unions in `cases.ts`, mirrored from whatever backend enum
+`security-cases.ts`'s accept/decline/release routes validate against (CS-6 requires fixed enums, no
+free text — the picker must offer exactly that enum's values, nothing else, same as
+`CLOSE_REASON_OPTIONS` today). Wire them through the same `pendingTerminalStatus`-style local
+confirm-state (e.g. `pendingDeclineConfirm: boolean`, `declineReason: SecurityCaseDeclineReason |
+null`), not through the existing `pendingTerminalStatus`/`closeReason` state itself, to avoid
+conflating decline/release confirmation with the unrelated terminal-status confirmation that can
+still apply once a case is accepted.
+
+**(v) Hiding status/message actions while pending.**
+
+Covered concretely in (i): while `dispatchStatus === 'pending'`, `STATUS_ACTIONS` and
+`Contact customer` must not render at all (not merely disabled) — an operator who has not yet
+accepted a case has no basis to message the customer or move its status, and CO-OB03-6-style
+customer-facing accuracy depends on the case not quietly transitioning statuses from an org that
+hasn't confirmed it will work it. Implementation is an added `dispatchStatus === 'accepted'` (or, for
+pool mode, `!dispatchStatus`) condition on the existing render guards at lines 309 and 327 — no new
+component, just tightening the existing conditionals to key off the new field in addition to
+`status`/`partnerOrganizationId`.
+
+---
+
+## `frontend-architect` Stage 6 integration note — B1 (admin dispatch-queue UI, Track B, new surface)
+(2026-11-03)
+
+**Scope.** Short structural note for the new admin dispatch-queue pages under `src/admin/`, which do
+not exist yet (new surface, not a modification of existing admin pages). Pattern source: the admin
+step-up flow already used for financially/access-sensitive admin mutations —
+`AdminClaimsPages.tsx`'s `useStepUpRetry(patchAdminClaim)` → `{ stepUpOpen, run: runStepUp,
+onStepUpVerified, onStepUpCancel }` (claim adjudication, ADR-0012 SU-FU-1) — and the Tier-A step-up
+gating convention documented in `PartnerOrganizationPages.tsx`'s header comment ("orgs is Tier-A
+step-up gated (`admin-partner-organizations.ts`)"). This is a code pattern, not a new design;
+`admin-case-dispatch.ts` is the backend route this surface calls.
+
+**Pages needed (new, under `src/admin/pages/`, e.g. `AdminCaseDispatchPages.tsx`):**
+
+1. **Queue list** — paginated list of undispatched/dispatchable cases, same `DataTable` +
+   `listSecurityCases`-style cursor-pagination shape already used by `CasesListPage`. No step-up
+   required for a read-only list (same posture as `PartnerOrganizationPages.tsx`'s read-only
+   aggregation view, line 123 comment).
+2. **Detail with location** — case detail plus whatever location field `admin-case-dispatch.ts`'s
+   list/detail routes expose (per A8/Finding-table above, the list route minimises `lastLocation`;
+   the detail route may expose more — confirm the exact field against the route's response schema
+   before building, do not assume parity with the list projection).
+3. **Dispatch action** — `POST` to the dispatch endpoint. Per `admin-case-dispatch.ts:338`, a
+   same-org/first-dispatch call can return `201`/`200` directly; a **cross-org re-dispatch while a
+   prior dispatch exists returns `202 { data: { pendingApprovalId } }`** (lines 307–338, 499–533) —
+   this is the two-admin gate (A4), not an error. The UI must treat `202` as a distinct success-shaped
+   response, not retry or show a failure state: render "Dispatch requested — awaiting a second
+   admin's approval" and surface the returned `pendingApprovalId` for the approval step.
+4. **Re-dispatch** — same action, same `202`-pending-approval branch; UI need not distinguish
+   dispatch vs. re-dispatch beyond the button label, since the backend's branching (null-target vs.
+   cross-org) determines whether `202` or an immediate result comes back.
+5. **Two-admin approve** — a confirmation view that **must show the target org's name and the
+   dispatch reason before approval is submitted**, per the task brief and consistent with
+   `admin-case-dispatch.ts`'s `requestedTargetOrgId`/reason fields recorded on the `pendingApproval`
+   record (lines 97–100, 320). Resolve `requestedTargetOrgId` to a display name via the existing
+   partner-organization lookup used elsewhere in `src/admin/` (`PartnerOrganizationPages.tsx`'s data
+   source) rather than showing a bare ID — approving "dispatch to `org_8f2a...`" without a resolved
+   name defeats the purpose of a second-admin check. The approve submission itself is the
+   step-up-gated mutation: wrap it in `useStepUpRetry(approveCaseDispatch)` exactly as
+   `AdminClaimsPages.tsx` does for `patchAdminClaim`, rendering the same `stepUpOpen` modal pattern
+   (line 558) on demand, since this is a second-admin authorization of a live case assignment —
+   the same sensitivity class as claim adjudication, not a routine read.
+6. **409 snapshot-mismatch handling** — `admin-case-dispatch.ts:586-593` rejects an approval whose
+   `pendingApproval.snapshot` (captured at request time: `partnerOrganizationId`, `dispatchStatus`,
+   `status`) no longer matches the case's current state (TOCTOU guard). On a `409` from the approve
+   call, do **not** silently retry or resubmit the stale `pendingApprovalId` — show an explicit
+   "This case changed since the dispatch was requested — refresh and start the dispatch again"
+   message and drop the pending-approval view back to the case detail, re-fetching it fresh. This
+   mirrors the decline/release "state changed under you" handling in the Track A note above, not the
+   claim-retry idempotency idiom (a `409` here is a real conflict, not a possibly-already-succeeded
+   write — the two-admin gate's whole point is that the snapshot must still hold).
+
+No code was written for this surface — it does not exist yet. This note is the structural contract
+`frontend-engineer` builds against; it is not a replacement for that implementation's own Stage 6
+review once the actual route response shapes are confirmed against `admin-case-dispatch.ts`'s
+Zod schemas at build time.
 - **The only Mongo least-privilege design on the platform is ADR-0006 AUD-11** (app user `find`+`insert`
   on `admin_access_log`, a separate purge user with `remove`). It has **never been provisioned**
   (FU-A6 open; `database-addendum-001.md` §1.4 says "checked, not enforced"). The comments in
@@ -1348,3 +1505,102 @@ location route, not as a blocker.
 Item closed. No change to D3.4.
 
 Filed by `solution-architect`.
+
+## `mobile-architect` Stage 6 integration note — R-2 condition, mobile operator app (2026-11-03)
+
+Append-only; nothing above is changed. This answers `cto`'s five required questions for the
+`qa-report-ob03-dispatch-tier-a.md` disposition (§3.8: `dispatchStatus: 'pending' | 'accepted'`,
+absent = pool mode, is the client's **server-authoritative** mode signal — not a client build flag,
+precisely because mobile's `featureEnabled()` fails open in local dev
+(`mobile/src/config/features.ts:33`), which would otherwise default a dev build into dispatch mode
+against a pool-mode backend). Scope is mobile only; `frontend-architect` files the web-side
+equivalent separately. Checked against the current code, not assumed: `mobile/src/api/
+security-cases.ts` (claim-only today — no `acceptSecurityCase`/`declineSecurityCase`/
+`releaseSecurityCase` exist, confirming Finding 1 of the QA report) and
+`mobile/src/screens/security/SecurityCaseDetailScreen.tsx`.
+
+**(i) Actions rendered per `dispatchStatus`, and when absent (pool mode).** The case object gains
+`dispatchStatus?: 'pending' | 'accepted' | null` in `SecurityRecoveryCase` (mirroring the backend
+field 1:1; no derived client state). Render rule, keyed off the value actually returned by the API
+on each fetch/refresh — never cached across the claim/accept/decline/release boundary:
+- **Absent / `null`** (pool mode — field not present on this case, which is also the only shape a
+  build running against a pre-R-2 backend will ever see): render exactly what exists today —
+  `Claim case` when `status === 'open' && !partnerOrganizationId`, plus the existing
+  `STATUS_ACTIONS` set once claimed. This is the fail-closed path: a build that doesn't know about
+  `dispatchStatus` yet (or a backend that hasn't shipped it) behaves exactly as it does now, not as
+  dispatch mode.
+- **`'pending'`** (this org has been offered the case, not yet acted on): render `Accept` and
+  `Decline` only. No `STATUS_ACTIONS`, no claim button — see (v).
+- **`'accepted'`** (this org holds the case): render the existing `STATUS_ACTIONS` set
+  (investigating/tracking/recovered/closed) plus a new `Release` action, and no `Claim`/`Accept`/
+  `Decline`. `canClaim`'s current boolean expression is replaced by a small `resolveCaseMode(case)`
+  helper returning `'pool' | 'offered' | 'held'`, computed once per fetched case object so the three
+  branches above can't desync from each other inside one render.
+
+**(ii) Navigation/cache invalidation after decline/release.** Both decline and release remove the
+case from this operator's visibility — the backend's dispatch model does not keep a declined/
+released case assigned to the org that just acted. On success: clear any component state that
+implies this org still holds the case (`pendingTerminalStatus`, `closeReason`, and the fetched
+`recoveryCase` itself — set to `null` rather than leaving the stale `'accepted'`-shaped object
+mounted, which matters because this screen's terminal-status picker and `STATUS_ACTIONS` render
+straight off that object), then `router.back()` to the case list rather than re-fetching this case
+by ID (a re-fetch would 403/404 the moment the backend unassigns it, which is a worse failure mode
+than just navigating away). The case list screen's own fetch (unchanged — it already re-queries on
+focus) picks the case back up in pool mode on the next load for whichever org it's now visible to;
+this screen does not try to push an update into the list's cache directly, consistent with there
+being no shared cache layer between these two screens today.
+
+**(iii) Retry/idempotency for accept, extending the claim-retry pattern.** `handleClaim` already
+establishes the pattern this file's inline comment documents for the rest of Stage 6 (lines 109-118
+above `handleClaim` in `SecurityCaseDetailScreen.tsx`): claim is not naturally idempotent server-side
+(the backend's write only matches an unclaimed case), so an ambiguous network failure on retry must
+not be read as "it failed." `accept` has the identical shape — the backend's accept write matches
+only a case in `dispatchStatus: 'pending'` offered to this org — so `handleAccept` reuses the same
+three-part handling verbatim rather than inventing a second pattern: (a) offline check before the
+call, same copy style ("You're offline. This case has not been accepted — reconnect and try
+again."); (b) on `NetworkUnavailableError`, tell the operator we couldn't confirm delivery and to
+refresh before retrying, exactly as claim does, rather than auto-retrying; (c) on a 404/409 from a
+direct retry, re-fetch the case before reporting failure — if `dispatchStatus` has already moved to
+`'accepted'` for this org, the original attempt landed; show that state instead of an error. Decline
+and release are PATCH-shaped status/field writes under a precondition (`dispatchStatus === 'pending'`
+for decline, `=== 'accepted'` and this org for release) rather than an unclaimed-match write, closer
+in idempotency shape to `updateSecurityCaseStatus` than to `claimSecurityCase` — a retry after an
+ambiguous failure either no-ops against the already-moved state or 404s if the case left this org's
+visibility entirely (handled by (ii)'s navigate-away-on-success already covering the success case;
+the retry-after-ambiguous-failure case re-fetches once, same as (c), and if the case is simply gone
+from this org's visibility, that absence *is* confirmation the original attempt succeeded, so the
+UI navigates to the list rather than showing an error).
+
+**(iv) Decline/release reason pickers reuse the existing `SelectChipGroup` pattern, fixed enums,
+no free text (CS-6).** This screen already has the exact shape needed, used today for the terminal-
+status close reason (`CLOSE_REASON_OPTIONS`, `SelectChipGroup` at
+`SecurityCaseDetailScreen.tsx:272`, gated behind `pendingTerminalStatus`/`closeReason` state). Decline
+and release each get their own fixed `SelectChipOption<T>[]` array (new enum types owned by
+`backend-architect`'s Stage 6 API contract for this ADR — not invented client-side, same discipline
+as `SecurityCaseCloseReason` mirroring `backend/src/repositories/recovery-cases.ts`), each gated
+behind its own `pendingDeclineReason`/`pendingReleaseReason` state following the same
+request-then-confirm two-step the terminal-status flow already uses (`Decline` button reveals the
+chip group + a `Confirm decline`/`Cancel` pair, confirm disabled until a reason is chosen — mirroring
+`disabled={!closeReason}` at line 282). No `TextInput` is introduced for either reason; CS-6's
+fixed-enum-only requirement is structural here, not a validation-layer afterthought, because the
+confirm button's `disabled` prop is wired directly to "a chip is selected," not to any freeform field
+existing at all.
+
+**(v) Hiding status/message actions while pending.** While `dispatchStatus === 'pending'`, the
+screen renders only `Accept`/`Decline` — no `STATUS_ACTIONS` block, and the existing
+`MapPlaceholder`/tracking-status block (gated on `recoveryCase.status === 'tracking'`) stays as-is
+since a pending offer can't yet be in `'tracking'` status server-side, but is listed here because
+`cto`'s concern (acting on a case not yet accepted) extends to any message/communication surface:
+this screen has no messaging UI today, so there is nothing to additionally hide on that front, but
+if OB-04's case-history/messaging surface (`docs/features/019-case-history-timeline/`) lands a
+message composer into this screen before dispatch mode ships, it must be added to the same
+`resolveCaseMode(case) !== 'held'` gate used for `STATUS_ACTIONS` rather than gated independently, so
+the two can't drift.
+
+**Not addressed here, deferred to backend-architect's Stage 6 contract:** the exact field name/enum
+values for decline/release reasons, and whether `acceptSecurityCase`/`declineSecurityCase`/
+`releaseSecurityCase` are POST-to-subresource (matching today's `.../claim`) or PATCH-shaped. This
+note is written to be correct under either, since (i)-(v) key off `dispatchStatus` returned in the
+response body, not off which HTTP verb produced it.
+
+Filed by `mobile-architect`.
