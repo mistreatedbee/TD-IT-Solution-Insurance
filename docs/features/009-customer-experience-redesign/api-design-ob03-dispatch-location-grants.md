@@ -760,3 +760,48 @@ conventions already in `security-cases.ts`/`recovery.ts`. Full OpenAPI schemas (
 Schema per route) are a Stage 9 implementation deliverable, not reproduced line-by-line here — this
 document fixes the contract shape and middleware chain `qa-architect`'s contract tests and
 `backend-engineer`'s implementation both build against.
+
+---
+
+## 3.8 `dispatchStatus` as the client's mode signal (append-only addition, 2026-11-03)
+
+Formalizes the `cto` disposition on the Stage 10 QA report's Finding 1
+(`qa-report-ob03-dispatch-tier-a.md`): the field/client-flag choice is decided in favor of a
+server-authoritative field, not a client-side build/`featureEnabled()` flag — rejected because
+mobile's `featureEnabled()` fails open in local dev, and a client flag would create client/server
+skew on long-lived mobile binaries. This section is additive to §3.5/§3.1/§3.2 above, not a
+redesign of any route already specified there.
+
+- **The field:** `dispatchStatus: 'pending' | 'accepted'`, added to the partner-visible list and
+  detail response rows — i.e. the objects returned by `serializeOfferTierRecoveryCase` (pending
+  tier) and `serializeClaimedTierRecoveryCase` (claimed tier) in
+  `backend/src/repositories/recovery-cases.ts`. Both functions gain the field **only** when
+  `DIRECTED_DISPATCH_ENABLED` is `'true'`; in pool mode (flag off) the field is **omitted
+  entirely** from both serializers' output — not `null`, not absent-but-typed, not present with an
+  `'undispatched'` value. Omission itself is the pool-mode signal.
+- **Values, exhaustive:**
+  - `'pending'` — the case is offered to the caller's org (`dispatchStatus: 'pending'` in the
+    underlying document, §3.5's pending predicate) and the row came from
+    `serializeOfferTierRecoveryCase`. The client renders the accept/decline affordances.
+  - `'accepted'` — the case is held-and-accepted by the caller's org (§3.5's claimed predicate)
+    and the row came from `serializeClaimedTierRecoveryCase`. The client renders the
+    release/hand-back and status-update affordances, never accept/decline.
+  - **Absent (key not present on the object at all):** dispatch mode is off for this
+    deployment/environment. The client falls back to today's pool-mode claim affordance. A client
+    must branch on `'dispatchStatus' in row` (or equivalent key-presence check), never on
+    `row.dispatchStatus === undefined`, since JSON serialization and any intermediate client
+    cache must not be relied on to preserve the distinction between "absent key" and "key present
+    with value `undefined`" — the server never sends the latter.
+  - No other string value is ever present on this field in a partner-visible response. (The
+    underlying document's `dispatchStatus: null`/`'undispatched'` document states are never
+    themselves serialized onto a partner-visible row — a case in those states does not match
+    either §3.5 predicate and so is not returned to this org as a row at all.)
+- **Decline/release response shape (confirms §3.2/§3.3 above, restated for `backend-engineer`'s
+  convenience, not a change to either):** both `POST /v1/security/cases/:caseId/decline` and
+  `POST /v1/security/cases/:caseId/release` return exactly
+  `{ data: { caseId: string, status: 'returned_to_queue' } }` — a deliberately minimal shape,
+  structurally distinct from both `OfferTierRecoveryCase` and `ClaimedTierRecoveryCase`, carrying
+  no `dispatchStatus` field at all. This is the signal to the calling client that the case has
+  left its list entirely: the client navigates back to the list view rather than attempting to
+  re-render the same case in place (there is nothing left for it to hold a tier-typed row for —
+  the org no longer has any claim on this case per §3.5's predicates).
