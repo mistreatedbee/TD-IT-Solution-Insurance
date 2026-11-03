@@ -152,3 +152,161 @@ explicitly scoped as backend-only with the flag kept off in every operator-facin
 2, 3 and 4 are each small, well-scoped test-authoring tasks (no design or code change implied) and
 should go back to whichever of `backend-engineer`/`qa-architect` wrote the existing dispatch-model
 test block, as a fast follow before Tier A is called fully done. Finding 5 requires no action.
+
+---
+
+## `cto` disposition (2026-11-03)
+
+*Author: `cto`. Appended per the append-only rule for shared lifecycle documents. This records a
+decision already made earlier in this session, in response to Finding 1 (operator UI gap) above.
+It is written up here, not re-decided.*
+
+### Ruling
+
+**GO. Build now.** No new design pass is needed. One small contract addition goes first, plus two
+time-boxed architecture reviews that are **not** waived. `DIRECTED_DISPATCH_ENABLED` stays **OFF**
+in every environment an operator build can reach until Gate F1 (below).
+
+### What was checked in the code, beyond the QA report
+
+The gap is wider than "claim 404s." In dispatch mode the existing UIs break in four more ways:
+
+1. **Web claim button goes missing.** A pending offer arrives with `status:'open'` and
+   `partnerOrganizationId` already set to the caller's org. The web claim button's condition
+   (`SecurityCasePages.tsx:304`, `!recoveryCase.partnerOrganizationId`) therefore hides it. The
+   operator sees no action at all, not even a 404.
+2. **Web shows status buttons that will 404.** `STATUS_ACTIONS` (`:309`) renders status buttons for
+   a pending case. Per §3.1a a pending org gets a 404 from the PATCH route.
+3. **Web release will fail.** `releaseSecurityCase()` sends no body. Dispatch mode requires
+   `releaseBodySchema {reason}`, so it returns 400. The response shape also changes to
+   `{ data: { caseId, status: 'returned_to_queue' } }`, so `setRecoveryCase(updated)` would corrupt
+   state.
+4. **Mobile has no release/hand-back at all**, only claim (`mobile/src/api/security-cases.ts:63`).
+5. **The client can't tell which mode it's in, or pending from accepted.**
+   `serializeOfferTierRecoveryCase` / `serializeClaimedTierRecoveryCase`
+   (`backend/src/repositories/recovery-cases.ts:483,498`) don't expose `dispatchStatus`, and no
+   capability signal exists.
+
+Item 5 is the only real contract gap. It is decided here.
+
+### Q1: Is it buildable now?
+
+**Yes.** §3.1-3.3 / §3.1a are stable and committed. The one addition is a **server-authoritative
+signal**: in dispatch mode, partner list and detail rows include
+`dispatchStatus: 'pending' | 'accepted'`. In pool mode the field is omitted. The field's
+**presence** is the mode signal, and its **value** picks accept/decline versus
+hand-back/status/messages.
+
+A client build flag (`VITE_FEATURE_DIRECTED_DISPATCH` / `EXPO_PUBLIC_*`) was **rejected** as the
+mode signal, for two reasons:
+
+- Mobile `featureEnabled()` fails open in local dev (`mobile/src/config/features.ts:33`), so a dev
+  build would default to dispatch mode against a pool-mode backend.
+- It creates client/server skew on long-lived mobile binaries.
+
+Data-minimisation impact is nil. The field only reaches the holder org (the A1 predicates already
+gate visibility), so CS-8 oracle uniformity is unaffected.
+
+### Q2: Who builds what, in order (Track A)
+
+**Step 0 (parallel)**
+
+- **0a — `backend-architect`:** adds §3.8 to `api-design-ob03-dispatch-location-grants.md`
+  specifying the field (append-only, half a page). It must state that the decline/release response
+  is `{caseId, status:'returned_to_queue'}`, so clients navigate back to the list rather than
+  re-render.
+- **0b — `frontend-architect` (web) and `mobile-architect` (mobile):** do the R-2 Stage 6 reviews,
+  scoped narrowly to operator accept/decline/hand-back only, appended to ADR-0017 under the R-2
+  item. Each must answer:
+  - (i) which actions render for each `dispatchStatus` value, and what renders when the field is
+    absent (pool mode);
+  - (ii) navigation and cache invalidation after decline/release: the case leaves the caller's
+    visibility, so drop the claimed-tier data held client-side and go back to the list;
+  - (iii) retry/idempotency for accept, adapting the claim 404-refetch idiom at
+    `SecurityCasePages.tsx:224` (CS-8);
+  - (iv) decline/release reason pickers reusing the existing close-reason pattern, fixed enums
+    only, no free text (CS-6);
+  - (v) hiding status/messages actions while pending.
+
+  The Tier B items R-2 also names (CR-3.1, CR-3.2, CR-5, CR-8) stay owed before Tier B and are out
+  of scope here.
+- **0c — `backend-engineer`:** closes QA Findings 2, 3 and 4 (test-only):
+  - Finding 2: accept/decline/release each assert a `recordStateChange` audit row, plus a
+    fail-closed test.
+  - Finding 3: a test that the rate limiter actually triggers on admin-case-dispatch
+    list/count/detail.
+  - Finding 4: a partner-initiated accept → release → re-dispatch → accept cycle asserting the
+    customer-facing status after release (CO-OB03-6).
+
+**Step 1 — `backend-engineer`:** builds the §3.8 field, with tests for both modes plus a test that
+the field is absent in pool mode, and updates the `stage8-manifest.json` security-cases entry.
+
+**Step 2 (parallel; after 0b; merge after Step 1; can start against mocks once 0a is written)**
+
+- **`frontend-engineer` (web: `src/security/api/cases.ts`, `src/security/pages/SecurityCasePages.tsx`):**
+  adds `acceptSecurityCase` and `declineSecurityCase(reason)`, changes `releaseSecurityCase` to take
+  a reason, gates actions on `dispatchStatus` per 0b, keeps pool-mode behaviour byte-identical when
+  the field is absent, and tests both modes.
+- **`mobile-engineer` (mobile: `mobile/src/api/security-cases.ts`,
+  `mobile/src/screens/security/SecurityCaseDetailScreen.tsx`):** adds accept, decline, and
+  release/hand-back, with the same gating, tests, and pool-mode preservation.
+
+**Step 3 — `security-engineer`:** Stage 8 delta review of the Step 1 and Step 2 diffs, checking: no
+claimed-tier data kept after decline/release, enum-only reasons, no actions exposed while pending,
+manifest entries accurate. Appended to `security-review-ob03-dispatch-location-grants.md`.
+
+**Step 4 — `qa-test-strategy`:** runs Stage 10 again on Findings 1-4, appended to this QA report.
+**Passing this is Gate F1.**
+
+### Q3: Admin dispatch-queue UI (Track B)
+
+Not needed to close Finding 1 (Steps 0-4 close it). It **is** needed before flipping the flag
+anywhere real theft reports land. With the flag on, CO-OB03-2 shuts off the broadcast push, so with
+no admin UI no partner ever hears about a case unless someone hand-calls step-up-gated admin
+endpoints. Flipping without it is safe for operators but leaves customers' cases unserviced.
+
+**Rule:** after F1, the flag may flip in a dev/demo environment where dispatch is driven by script.
+Any environment with real customer reports also needs **Gate F2**.
+
+Start it now as a parallel Track B, not on Track A's critical path. It is a new surface (queue
+list; detail with location per A8 / per-subject Trail B row; dispatch; re-dispatch; two-admin
+approve with `CSA_SAME_ADMIN` showing target org name and reason before approval), so it gets the
+full treatment:
+
+- **B1 — `frontend-architect`:** short Stage 6 note for `src/admin/` dispatch pages reusing the
+  admin step-up pattern in `PartnerOrganizationPages.tsx` / `AdminClaimsPages.tsx`, covering the
+  202 pending-approval state and 409 snapshot-mismatch handling.
+- **B2 — `ui-designer`:** queue/detail/approval layouts; `design-system-manager` signs off on any
+  component not already in the library.
+- **B3 — `frontend-engineer`:** builds it.
+- **B4 — `security-engineer`:** Stage 8 delta, focused on location display on admin detail and the
+  approval flow. Notes that the manifest records no code-level Stage 8 for
+  `admin-case-dispatch.ts` yet; fold that in.
+- **B5 — `qa-test-strategy`:** Stage 10.
+
+**Passing B4 and B5 is Gate F2.**
+
+### Q4: Other blockers
+
+- **Design system:** none for Track A, provided engineers reuse the existing Button/reason-picker/
+  alert patterns from 0b(iv). Any genuinely new component triggers `design-system-manager`
+  sign-off under the house rule; flag it, don't build ad hoc. No `ui-designer` pass is needed for
+  Track A; Track B needs both (B2).
+- **R-1 lockstep:** the web build ships in the same release as the backend on Render. The operator
+  app is `EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR=false` in EAS preview/production today, so there is
+  no skew exposure yet. The §3.8 server signal is what makes this safe once that flips.
+- **Non-engineering conditions on a non-dev flip (unchanged):** CO-OB03-4 allowlist
+  `agreementReference` / `effectiveFrom` filled in (needs the SR-INC002B-S2 executed agreement, an
+  owner/compliance action), and the §1 migration script run to exit 0 before the env var is
+  applied.
+
+### Dispatch order (short form)
+
+1. **In parallel:** `backend-architect` (0a), `frontend-architect` (0b web, plus B1),
+   `mobile-architect` (0b), `backend-engineer` (0c), `ui-designer` (B2).
+2. `backend-engineer` builds the §3.8 field.
+3. **In parallel:** `frontend-engineer` (web operator) and `mobile-engineer` (mobile operator); then
+   `frontend-engineer` on the admin dispatch UI (B3, after B1/B2).
+4. `security-engineer` Stage 8 delta on Track A, then Track B.
+5. `qa-test-strategy` Stage 10. **F1 permits a dev/demo flip; F2 permits a flip where real reports
+   land.**
