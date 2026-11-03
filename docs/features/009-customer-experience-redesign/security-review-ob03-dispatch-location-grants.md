@@ -890,3 +890,140 @@ correctly. Additions for the Tier B re-design:
 third signature. **Stage 8 for Tier A is now discharged: approved with conditions.** The merge conditions are
 A1 to A9, SE-1, SE-2 and CO-OB03-2 to CO-OB03-6. The flag-flip conditions are those in chair §5, plus
 CO-OB03-1, CO-OB03-2 and the s18 wording. **Tier B stays blocked**, pending a full joint re-review.
+
+## 11. `security-engineer` Stage 8 delta review — OB-03 Step 1/Step 2 operator-UI fix (2026-11-03)
+
+**Scope:** per `cto`'s disposition on `qa-report-ob03-dispatch-tier-a.md` (Finding 1 fix plan, Step 3),
+a code-level delta review of the three merged commits that build the §3.8 `dispatchStatus` field and the
+web/mobile operator accept/decline/release UI: `d6b7800` (backend field), `9675415` (mobile UI),
+`7d40b71` (web UI). This is a delta review of those diffs only, not a re-review of the backend
+accept/decline/release routes themselves (`security-cases.ts:402-545`), which were already covered by §9/§10
+above and are unchanged by these three commits except for the serializer call-site threading already noted in
+§11.2 below.
+
+### 11.1 Verdict: **PASS. Clears the path to Gate F1** (next: `qa-test-strategy` Stage 10 re-run per Step 4).
+
+All four review items in the Step 3 brief check out. No blocking or medium findings. One low/cosmetic
+observation (11.5) that does not need a fix before F1.
+
+### 11.2 Item 1 — no claimed-tier data kept client-side after decline/release
+
+**Mobile (`mobile/src/screens/security/SecurityCaseDetailScreen.tsx`):** confirmed correct. All three
+decline/release exit paths (`handleDecline` success, `handleRelease` success, and the 404/409-refetch
+"original attempt already landed" branches in both) route through a single `leaveCaseAfterHandoff()`
+(lines ~257-269 of the diff) which explicitly sets `recoveryCase`, `pendingTerminalStatus`, `closeReason`,
+`pendingDeclineReason`, `declinePickerOpen`, `pendingReleaseReason`, and `releasePickerOpen` all back to
+null/false *before* calling `router.back()`. This is a real clear, not a navigate-while-stale-state-sits
+pattern — if the screen were somehow kept mounted (e.g. a slow back-stack transition), it would already be
+rendering the empty/loading state, not stale case data. Good.
+
+**Web (`src/security/pages/SecurityCasePages.tsx`):** `declineCase()` never calls `setRecoveryCase` at all
+after success — it only clears the decline confirm state (`setPendingDeclineConfirm(false)`,
+`setDeclineReason(null)`) and calls `navigate('/security/cases', { replace: true })`. `react-router`'s
+`navigate` with `replace: true` swaps the route match synchronously as part of the same commit; there is no
+intermediate render of the detail page with stale data between the state update and the unmount, and
+`replace: true` means browser back cannot return to this detail route to re-expose it either. Confirmed
+correct.
+
+`releaseCase()` for dispatch mode (`reason !== undefined` branch) does call `setRecoveryCase(updated)`
+*before* navigating, where `updated` is the backend's minimal `{caseId, status:'returned_to_queue'}` ack —
+not the previously-held full claimed-tier case object. This does not reintroduce or retain any claimed-tier
+data (asset ID, location, notes, etc. are all absent from that shape); it overwrites the state with a smaller,
+non-sensitive object, and the component is then immediately unmounted by the following `navigate(...,
+{replace:true})`. **Low/cosmetic only** (11.5) — the variable is typed `SecurityRecoveryCase` but receives a
+narrower shape, which is a type-hygiene nit, not a data-exposure issue, since nothing resembling the original
+claimed case data is kept, shown, or reachable via back-navigation.
+
+### 11.3 Item 2 — enum-only reasons, no free text anywhere
+
+Confirmed on both surfaces, confirmed server-side too (defense in depth, unchanged by these commits):
+
+- **Backend** (`backend/src/routes/security-cases.ts:96-105`): `DECLINE_REASONS` and `HAND_BACK_REASONS` are
+  `as const` string-literal tuples validated with `z.object({ reason: z.enum(...) })` — Zod rejects any value
+  outside the tuple, including a valid-looking string the client didn't offer. This is the authoritative
+  enforcement point and it predates/is unaffected by Step 1/2.
+- **Web:** `DECLINE_REASON_OPTIONS`/`RELEASE_REASON_OPTIONS` (`SecurityCasePages.tsx`) are hardcoded arrays of
+  `{value, label}` mirroring the backend tuples exactly. The confirm UI is plain `<input type="radio">` bound
+  to `declineReason`/`releaseReason` state typed as the enum union; there is no `<textarea>`/`<input
+  type="text">` anywhere in the decline/release blocks, and no code path constructs the request body from
+  anything other than the selected enum value (`declineSecurityCase(caseId, declineReason)` /
+  `releaseSecurityCase(caseId, releaseReason)` where both locals are typed to the union, not `string`).
+- **Mobile:** the UI primitive used, `SelectChipGroup` (`mobile/src/theme/primitives/SelectChip.tsx`), is a
+  generic `<T extends string>` chip-list component — I read its full implementation: it renders one
+  `Pressable` per supplied `option`, calling `onChange(option.value)` on press, with no text-entry fallback of
+  any kind in the component itself. `DECLINE_REASON_OPTIONS`/`RELEASE_REASON_OPTIONS` passed into it in
+  `SecurityCaseDetailScreen.tsx` are the same fixed four/three-item arrays mirroring the backend tuples. The
+  `'other'` option is a plain enum member on both surfaces — selecting it submits the literal string
+  `'other'`, there is no accompanying "please specify" field. Confirmed: no free-text path exists on either
+  client, and the backend would reject one anyway.
+
+### 11.4 Item 3 — no actions exposed while pending (dispatchStatus === 'pending' / 'offered')
+
+**Mobile:** `caseMode = resolveCaseMode(recoveryCase)` is computed once per render from the server field
+only (no client-cached/derived alternative). `STATUS_ACTIONS` and the Release button are both gated
+`caseMode !== 'offered'` / `caseMode === 'held'` respectively — when `caseMode === 'offered'`,
+`STATUS_ACTIONS.map(...)` is short-circuited to `null` (the whole expression, not just a visual hide), so the
+`requestStatusChange` handler is never bound to any rendered element; the Release button block is likewise
+absent from the tree, not merely styled hidden. `handleAccept`/`handleDecline`/`handleRelease` are plain
+closures over component state — there is no exported/global/test-only hook, ref, or dev-menu entry point that
+could invoke them outside the gated JSX, and no `useEffect` auto-invokes any of them. Confirmed no
+alternate invocation path.
+
+**Web:** same pattern — `STATUS_ACTIONS.filter(...).map(...)` is gated behind
+`recoveryCase.dispatchStatus !== 'pending' && ...`, so the whole `.map()` (and therefore every status-change
+`onClick`) is skipped, not conditionally styled, when a case is `'pending'`. The pool-mode Claim button is
+further gated `!recoveryCase.dispatchStatus && ...` so it cannot render for any dispatch-mode case, pending or
+accepted. The Release button requires `dispatchStatus === 'accepted'` specifically (the regression the
+`cto`/architect note flagged and the commit message calls out), and Accept/Decline are gated to render only
+when `dispatchStatus === 'pending'`. No handler is reachable from markup that isn't rendered; no alternate
+entry point (keyboard shortcut, context menu, dev tool) was found wired to any of these handlers.
+
+**Server side (unchanged, re-confirmed as still in force):** even if a client-side gate were bypassed
+entirely (e.g. a modified build, direct `fetch`), `accept`/`decline` both pre-read via
+`findByIdForPartnerOrgDispatch` scoped to `tier === 'offer'` (`security-cases.ts:432,507`) before any mutation,
+and `release`'s accepted-tier precondition is unchanged from §9/§10's prior review. A pending case cannot be
+status-PATCHed, released, or have its Accept re-run from a stale pending state by request forgery alone — the
+authoritative check is server-side, the UI gating is defense-in-depth on top of it, not the only control.
+
+### 11.5 Item 4 — manifest entries accurate
+
+`docs/organization/gates/stage8-manifest.json`'s `backend-security-cases` entry (id at line 215) carries the
+Step 1 append (the entry ending `"...§3.8 dispatchStatus field'."`, appended 2026-11-03) exactly as the
+`cto` disposition specified, correctly scoped to the backend field addition only, correctly citing the test
+name. Step 1's commit (`d6b7800`) is the only one of the three that touches this file — Step 2 (`9675415`,
+`7d40b71`, web/mobile UI) does not, which is consistent with the `cto` dispositon's own task list (only Step 1
+was asked to "update the stage8-manifest.json security-cases entry"; Step 2 and this Step 3 were not). No
+drift found: the manifest's stated scope ("a field addition on the already-waived router... does not itself
+require a dedicated code-level Stage 8 review beyond this note") matches what Step 1 actually shipped, and
+does not overclaim coverage of the Step 2 frontend work this section (§11) is itself providing the first
+code-level look at.
+
+**Minor, non-blocking note for whoever runs F2/Track B:** nothing in the manifest yet names this §11 entry as
+having reviewed the web/mobile operator UI changes at the code level — worth a short append to
+`web-security-cases` (manifest line ~1004) and the mobile operator entry once this document is read by that
+owner, for the same append-only reason this section itself was appended rather than editing §9/§10. Not
+required before F1; flagging so it doesn't get missed before Track B's B4.
+
+### 11.6 Item 5 — oracle uniformity on accept/decline (CS-8), re-confirmed
+
+Not modified by Step 1/2, but checked as part of this delta since the brief asked for it. `accept`
+(`security-cases.ts:431-437`) and `decline` (`:506-511`) both still return an identical `apiError('NOT_FOUND')`
+with no distinguishing body for every one of "case doesn't exist," "case was never dispatched," "case is
+dispatched to a different org," and "case is already accepted" — the code's own comment labels this `// CS-8
+oracle`. Same shape, same status code, same error code in all four cases; nothing in the Step 1/2 diffs
+changed either handler's error branch. Confirmed still holding.
+
+### 11.7 Checklist (this delta)
+
+- [x] No claimed-tier data kept client-side after decline/release (11.2).
+- [x] Enum-only reasons on both clients, no free-text path, server-side enum enforced regardless (11.3).
+- [x] No actions reachable while a case is pending, on either client; server-side precondition independently
+  enforced (11.4).
+- [x] Manifest entries accurate for the commits in scope (11.5).
+- [x] CS-8 oracle uniformity re-confirmed unchanged (11.6).
+- [ ] Not in scope for this delta, flagged only as a follow-up: web/mobile manifest entries noting this
+  section's own review (11.5's minor note) — recommended before Track B's B4, not blocking F1.
+
+**Signed:** `security-engineer`, 2026-11-03. **Result: Stage 8 delta PASS for OB-03 Step 1/Step 2. Clears the
+path to Gate F1** — next step is `qa-test-strategy`'s Stage 10 re-run per the `cto` disposition's Step 4,
+against QA Findings 1-4 in `qa-report-ob03-dispatch-tier-a.md`.
