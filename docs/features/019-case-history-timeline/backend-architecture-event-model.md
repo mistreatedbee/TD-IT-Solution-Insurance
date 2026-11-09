@@ -1044,4 +1044,61 @@ branch), and `backend/src/repositories/recovery-cases.ts` (`handBackAcceptedCase
 | `security-engineer` | Pending concurrence in a new section below this one |
 | `compliance-specialist` | **Not required.** §13.1 confirms that the RR-019-B purge applies by actor type and is event-type-agnostic, and that no new field or PII class is added. This holds only while SR-019-12(c)'s unchanged key-set snapshot holds |
 
+## 14. Stage 8 delta concurrence (`security-engineer`, 2026-11-09)
+
+**Appended section. §1–§13 are not modified.** Concurrence on the chair's §13 addendum, per
+`cto`'s A3 ruling (§12.2).
+
+I re-read the same four files §13.1 cites (`recovery-case-events.ts` in full,
+`recovery-case-event-actor-purge.ts`, `security-cases.ts` lines 664–747, and the relevant
+`recovery-cases.ts` methods: `handBackAcceptedCase` lines 1305–1324, `dispatchCase` lines
+1583–1608, `reDispatchToNull` lines 1615–1633, `reDispatchToOrgDirect` lines 1636–1660) rather
+than taking the chair's citations on faith.
+
+- **SR-019-11 — agree, and the race is real.** `handBackAcceptedCase`'s CAS filter is
+  `{ _id, partnerOrganizationId, dispatchStatus: 'accepted' }` — status plays no part in the
+  match or the `$set`. The route's pre-read (`existing.case.status`) and the post-write document
+  (`handedBack.status`) are two separate reads of the same document with an unguarded window
+  between them, and nothing in the write rejects a status that has changed in that window. A
+  concurrent `PATCH .../status` from a second operator session on the same org lands exactly in
+  that window today (I checked `updateStatusForPartnerOrgDispatch` has no interaction with
+  `dispatchStatus`, so it isn't blocked by the hand-back CAS either). §12.1(2)'s
+  `fromStatus === toStatus` equality refine would then reject a true event on a stale pair and
+  silently drop it — a correctness/audit-completeness regression (RR-019-A), not merely a
+  theoretical nit. Sourcing both fields from `handedBack` closes it with no new field and no
+  schema change. Concur as a build-blocking condition.
+- **SR-019-12 — agree.** (a)-(b) keep the branch consistent with every other discriminated-union
+  member and preserve compile-time narrowing; nothing here asks for an escape hatch on the
+  `.strict()` or the union shape. (c)'s test list is the right set for this branch specifically —
+  it mirrors the existing per-branch test pattern I already verified in §10 for the Stage 8
+  baseline, so I'm not asking for duplicates of tests the other branches already carry. (d) is a
+  genuine staleness: `recovery-case-events.ts` lines 54–59 still say hand-back/decline map onto
+  `case_released`, which §12.1(2) superseded for hand-back (decline still has no event, per the
+  same comment block's own prior note — only the hand-back half is stale). Concur as
+  build-blocking.
+- **F-019-S1 — agree it's real, agree it doesn't block A4.** Confirmed directly: the dispatch
+  hand-back branch's only precondition is `existing.tier !== 'claimed'` (line 697); the pool-mode
+  release path at the same call site additionally requires
+  `existing.case.status !== 'investigating' && !== 'tracking'` to fail (lines 740–743) — an
+  asymmetry between the two release-shaped paths that has no stated justification I could find in
+  `security-review-ob03-dispatch-location-grants.md`. `dispatchCase` and `reDispatchToOrgDirect`
+  confirmed to carry no status precondition either, so a terminal case handed back under this gap
+  is re-dispatchable to a second org exactly as §13.4 describes, and that org's accept grants it
+  claimed-tier read access (SR-019-7-adjacent exposure) to a closed theft case for no operational
+  reason. This is an OB-03 lifecycle gap, not a defect in the event model the A4 PR is shipping —
+  the event append would faithfully record whatever the route does, good or bad. No new control
+  is needed inside this delta to ship `case_handed_back` safely; I support routing it to `cto` for
+  scheduling against `backend-architect` and the OB-03 signatories, and flag it for tracking
+  against this role's own severity/SLA framework once scheduled (Medium, consistent with §13.4's
+  rating — PDM-1 widening with no payment/GPS/credential exposure, affecting partner-vs-partner
+  case access rather than customer data leaving the platform).
+
+**Verdict: CONCUR.** `case_handed_back` is covered by the existing Stage 8 baseline (§9–§11) as
+extended by §13. SR-019-11 and SR-019-12 stand as build-blocking conditions for A4. F-019-S1 is
+confirmed on the code and correctly scoped as a separate, not-yet-scheduled OB-03 issue.
+
+| Signatory | Status |
+|---|---|
+| `security-engineer` | **Concur**, 2026-11-09. SR-019-11 and SR-019-12 confirmed build-blocking; F-019-S1 confirmed real and correctly routed to `cto`/`backend-architect`, not blocking A4 |
+
 A4 may wire `case_handed_back` once `security-engineer` concurs.
