@@ -1101,4 +1101,157 @@ confirmed on the code and correctly scoped as a separate, not-yet-scheduled OB-0
 |---|---|
 | `security-engineer` | **Concur**, 2026-11-09. SR-019-11 and SR-019-12 confirmed build-blocking; F-019-S1 confirmed real and correctly routed to `cto`/`backend-architect`, not blocking A4 |
 
+---
+
+## 15. Stage 10 verification — `security-engineer` (2026-11-09)
+
+**Appended section. §1–§14 are not modified.** This is A5 from §12.2: Stage 10 (hard gate)
+verification of SR-019-1 through SR-019-8 against the now-fully-wired code (A1–A4, all committed),
+including §10.3.3 (failure log uses the DB id), followed by a `qa-engineer` pass per `cto`'s §12
+ruling.
+
+**Verdict: PASS. Phase A clears Stage 10.** No gaps found that block A1–A4. One real, non-blocking
+process gap found and recorded below (§15.5) so it does not get lost before the admin read path
+(SR-019-7/SR-019-10) is built.
+
+### 15.1 Build/test run
+
+- `cd backend && npx tsc --noEmit` — clean, no errors.
+- `cd backend && npm test` — **93 files / 1175 tests, all passing.** Matches the count `cto`'s A5
+  instruction expected.
+
+### 15.2 Files read for this pass
+
+`backend/src/lib/recovery-case-event-append.ts` (full), `backend/src/repositories/
+recovery-case-events.ts` (full), `backend/src/repositories/recovery-case-events.test.ts`,
+`backend/src/lib/recovery-case-event-append.test.ts`, `backend/src/routes/recovery.ts` (the
+`case_created` call site), `backend/src/routes/security-cases.ts` (every `appendRecoveryCaseEvent`
+call site: `claim`, `accept`, status `PATCH`, hand-back, `release`, `reassign`, `/messages`, and
+the `decline` non-append comment), `backend/src/db/mongo-bootstrap.ts`, `backend/src/db/
+catalog-verify.ts`, `backend/scripts/seed-demo-security-dashboard.ts`, `backend/src/config/env.ts`.
+
+### 15.3 SR-019-1 through SR-019-8 against the wired code
+
+- **SR-019-1 (trusted sources only).** Confirmed at all 8 call sites. `case_created` uses
+  `recoveryCase.id`/`.createdAt`, customer actor with nulls. `claim`/`accept` use `claimed.id`/
+  `accepted.id` and `.updatedAt`, operator actor from `req.auth`, `fromStatus`/`toPartnerOrganizationId`
+  literals matching the CAS precondition/result. `status_changed` uses `updated.id/.updatedAt/.status/
+  .closeReason`. `case_released` uses `released.id/.updatedAt`, `existing.case.status` for
+  `fromStatus` (pre-read, permitted — the mutation doesn't return a "from" value and the CAS already
+  matched on it). `case_reassigned` echoes `reassigned.partnerOrganizationId ?? targetPartnerOrganizationId`
+  — the one named exception, correctly implemented as "prefer the result, fall back to the validated
+  body value." `customer_contact_initiated` uses `existing.case.id`, no CAS mutation exists on this
+  path so there's nothing better than the pre-read. `case_handed_back` is covered in SR-019-11 below.
+  **No call site passes `req.params.caseId` or any other raw `req.body` field as an event field.**
+- **SR-019-2 (failure handling).** `appendRecoveryCaseEvent` wraps `append()` in try/catch, logs
+  exactly the 4 permitted fields (`caseId`, `eventType`, `auditRequestId`, `errorClass`), never
+  throws, confirmed by its own test (`recovery-case-event-append.test.ts:67`, asserts no `accountId`/
+  message text/`req.params` leakage). SR-019-2(b)/(c): `auditRequestId` flows from `req.auditRequestId`
+  at every call site; the partial unique dedupe index exists (`recoveryCaseEventsIndexes`,
+  `recovery_case_events_dedupe_partial`) and duplicate-key 11000 is treated as success in `append()`.
+  SR-019-2(d): RR-019-A reconciliation job is correctly absent (not required for this build) — not a
+  gap.
+- **SR-019-3 (`occurredAt` sourcing).** Every status-mutating call site uses the CAS result's own
+  `updatedAt`; `case_created` uses `recoveryCase.createdAt`; `customer_contact_initiated` captures one
+  `new Date()` in the handler, the documented exception (no mutation to source from). Confirmed
+  exactly as specified, no deviation found.
+- **SR-019-4 (structural exclusion).** `metadata` does not exist anywhere in the schema or the
+  `RecoveryCaseEventDocument`/`RecoveryCaseEventDbRow` types. Every branch of the discriminated union
+  is `.strict()`. `append()` builds the `insertOne` document field-by-field from `parsed.data`, never
+  by spreading `rawInput`. The forbidden-key test list (`recovery-case-events.test.ts:177-188`) covers
+  `latitude`, `longitude`, `lastLocation`, `notes`, `message`, `reason`, matching §9.3(c)'s list. The
+  key-set snapshot test exists (`Object.keys(docs[0]!).sort()`, line 158).
+- **SR-019-5 (actor allowlist, `customer_contact_initiated` naming/semantics).** `customerActorSchema`
+  only accepts `type: 'customer'`; every other branch requires `operatorActorSchema`. The event is
+  named `customer_contact_initiated` (not `customer_contacted`), the route returns 202, and dispatch
+  to `notifyCaseMessage` happens in the background via `scheduleCustomerRecoveryCaseMessage` — matches
+  SR-019-5(b) exactly. No message content or length is stored on the event.
+- **SR-019-6 (actor minimisation).** `case_created`'s `customerActorSchema` forces `accountId: z.null()`
+  structurally (not just by convention) — a non-null value would fail schema validation, not merely be
+  discouraged. Operator events store only the opaque Supabase UUID, no name/email/role.
+- **SR-019-7.** Correctly out of scope for this gate — the `GET /v1/admin/recovery-cases/:caseId/events`
+  read route does not exist in the codebase (confirmed by grep: no such route in `security-cases.ts`,
+  `recovery.ts`, or any admin route file). This is the right state, not a gap: §9.7/§12.2 only required
+  A1–A4 (writes) for this Stage 10 pass; SR-019-7/SR-019-10 (the read path and its Stage 8 manifest
+  entry) are gated to land together when the admin UI is built, per SR-019-7(f)'s env-flag plan.
+- **SR-019-8 (append-only, cascade).** `recovery-case-events.ts` exports exactly `append` and
+  `listForCase` (plus types/constants), confirmed both by reading the file and by the test at
+  line 370 (`Object.keys(repo).sort()` === `['append', 'listForCase']`). The demo-teardown cascade
+  exists at `seed-demo-security-dashboard.ts:169-180ish`, deleting `recovery_case_events` by
+  `caseId: { $in: <deleted case ids> } }` using a raw collection handle, not a new repository export —
+  matches the condition exactly.
+
+### 15.4 §10.3.3 — failure log uses the database id, never `req.params`, at every call site
+
+Verified directly, not inferred from the helper's own unit test. Every one of the 8
+`appendRecoveryCaseEvent(ctx, <id>, ...)` call sites in `recovery.ts` and `security-cases.ts` passes
+a document-derived id as the second argument — `recoveryCase.id`, `claimed.id`, `accepted.id`,
+`updated.id`, `handedBack.id`, `released.id`, `reassigned.id`, `existing.case.id` — never the local
+`caseId` variable that comes from `req.params`. Because the helper's failure log uses exactly that
+second argument (never `req.params` itself, confirmed in `recovery-case-event-append.ts`), the
+failure-path log is guaranteed to carry the DB id at every call site, not only in the helper's
+isolated test. This closes §10.3.3 as a cross-cutting property, not just a unit-level one.
+
+### 15.5 SR-019-11 / SR-019-12 (`case_handed_back`) re-verified in the final wired state
+
+- **SR-019-11.** Confirmed: the hand-back call site (`security-cases.ts:805`) sources both
+  `fromStatus` and `toStatus` from `handedBack.status` (the CAS result), not from the pre-read
+  (`existing.case.status`), with an explanatory comment at the call site matching the chair's
+  reasoning in §13.3 exactly. `fromPartnerOrganizationId` is the caller's `orgId`,
+  `toPartnerOrganizationId` is `null`, `closeReason` is `null`, `reason` from the request body is
+  never copied in.
+- **SR-019-12.** The `case_handed_back` branch is `.strict()`, uses `operatorActorSchema`,
+  `toPartnerOrganizationId: z.null()`, `closeReason: z.null()`. The `fromStatus === toStatus`
+  equality is enforced by a `superRefine` scoped to `eventType === 'case_handed_back'` on the union,
+  not by loosening any other branch — confirmed in `recovery-case-events.ts:349-360`. Tests at
+  `recovery-case-events.test.ts:262-281` cover the `case_handed_back` branch, and the forbidden-key
+  list (including `reason`) is tested against it along with every other branch. The stale header
+  comment flagged by SR-019-12(d) is fixed — the comment block at the top of the file (lines 54-65)
+  correctly states the current mapping (hand-back → `case_handed_back`, decline → no event) rather
+  than the superseded claim that both map to `case_released`.
+- **Decline** (`declineDispatchedCase` call site, `security-cases.ts:572-586`) correctly appends no
+  event, with a comment citing §12.1(3) and routing the future dispatch-lifecycle family question
+  there. No test was found asserting "decline appends nothing" as its own explicit assertion (as
+  §13.3(c) requested, "a test asserting that it appends nothing") — I checked
+  `security-cases.test.ts` (grep for `decline` + `recovery_case_events`/`appendRecoveryCaseEvent`
+  spy) and found decline-path tests asserting the 200 response and the `returned_to_queue` status,
+  but none asserting zero events were appended for that case. This is a minor test-coverage gap, not
+  a code gap — the code itself is correct (no call exists to append anything on this path) — so it
+  does **not** block Stage 10, but it should be closed before this file is next touched. Filed as
+  **F-019-S2** (Low), owner `backend-engineer`/`automation-qa-engineer`, not blocking.
+
+### 15.6 One real process gap found — not a build-blocker for A1–A4, but must not be lost
+
+> **VOID (corrected 2026-11-09, verified against the actual file by the next reviewer in this
+> chain — retained struck for audit trail, do not treat as a real finding):**
+>
+> ~~`db/mongo-bootstrap.ts` correctly calls `bootstrapRecoveryCaseEventsCollections`, satisfying
+> §12.2 A1(a)'s first half. **The second half of A1(a) — "add it to `db/catalog-verify.ts`" — was
+> not done.** `DECLARED_CATALOG` in `catalog-verify.ts` has no entry for
+> `RECOVERY_CASE_EVENTS_COLLECTION` / `recoveryCaseEventsIndexes`, unlike every other collection
+> this feature's design doc patterns itself on (`recovery_cases`, the Feature 004/notification
+> collections all have entries). Practical effect: `catalog-verify`'s index-drift detection does
+> not cover this collection, so a future manual index change or a bootstrap regression on
+> `recovery_case_events` would not be caught by that tool today. This does not weaken any of
+> SR-019-1 through SR-019-8 (none of them depend on catalog-verify), and it does not block this
+> A5/Stage 10 pass, which is scoped to the write path. Filed as **F-019-S3** (Low/Medium — a
+> monitoring-coverage gap, not an exploitable vulnerability), owner `backend-engineer`, to be
+> closed alongside or before SR-019-10's manifest entry when the admin read route is built.~~
+>
+> **Correction**: this finding is false. `catalog-verify.ts` DOES have a `DECLARED_CATALOG` entry
+> for `recovery-case-events` (module name, `collection: RECOVERY_CASE_EVENTS_COLLECTION`,
+> `indexes: recoveryCaseEventsIndexes`, with an inline comment explaining why no `$jsonSchema`
+> validator is asserted per SR-019-4(b)) — added correctly in A1 (commit `311f9f5`) and confirmed
+> present by direct `grep`/read of the file at commit time of this correction. **F-019-S3 is
+> withdrawn — there is no catalog-verify gap.** The implementing agent for A5 likely read a stale
+> cached view of the file or searched incorrectly; no action item remains for `backend-engineer`
+> on this point.
+
+### 15.7 Gate status (Stage 10)
+
+| Signatory | Status |
+|---|---|
+| `security-engineer` | **PASS**, 2026-11-09. SR-019-1 through SR-019-8 verified against the wired A1–A4 code; §10.3.3 confirmed at all 8 call sites; SR-019-11/SR-019-12 re-verified correct in final form. One low-severity, non-blocking finding filed: F-019-S2 (missing decline-appends-nothing test). F-019-S3 was raised as a second finding but withdrawn as false on review — see §15.6's correction. Hands off to `qa-engineer` per `cto`'s §12 ruling |
+| `qa-engineer` | Pending |
+
 A4 may wire `case_handed_back` once `security-engineer` concurs.
