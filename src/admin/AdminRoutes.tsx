@@ -20,6 +20,7 @@ import { AdminAuditLogPage } from './pages/AdminAuditLogPage';
 import { InviteStaffPage } from './pages/InviteStaffPage';
 import { ClaimDetailPage, ClaimsQueuePage } from './pages/AdminClaimsPages';
 import { PartnerOrganizationScorecardPage, PartnerOrganizationsListPage } from './pages/PartnerOrganizationPages';
+import { DispatchApprovalPage, DispatchCaseDetailPage, DispatchQueuePage } from './pages/AdminCaseDispatchPages';
 
 function AccountDetailRoute() {
   const { accountId } = useParams();
@@ -49,6 +50,18 @@ function PartnerOrganizationScorecardRoute() {
   const { partnerOrganizationId } = useParams();
   if (!partnerOrganizationId) return <Navigate to="/admin/partner-organizations" replace />;
   return <PartnerOrganizationScorecardPage partnerOrganizationId={partnerOrganizationId} />;
+}
+
+function DispatchCaseDetailRoute() {
+  const { caseId } = useParams();
+  if (!caseId) return <Navigate to="/admin/dispatch" replace />;
+  return <DispatchCaseDetailPage />;
+}
+
+function DispatchApprovalRoute() {
+  const { caseId, pendingApprovalId } = useParams();
+  if (!caseId || !pendingApprovalId) return <Navigate to="/admin/dispatch" replace />;
+  return <DispatchApprovalPage />;
 }
 
 export default function AdminRoutes() {
@@ -89,6 +102,9 @@ export default function AdminRoutes() {
             <Route path="audit-log" element={<AdminAuditLogPage />} />
             <Route path="claims" element={<ClaimsQueuePage />} />
             <Route path="claims/:claimId" element={<ClaimDetailRoute />} />
+            <Route path="dispatch" element={<DispatchQueuePage />} />
+            <Route path="dispatch/cases/:caseId" element={<DispatchCaseDetailRoute />} />
+            <Route path="dispatch/cases/:caseId/approve/:pendingApprovalId" element={<DispatchApprovalRoute />} />
             <Route path="partner-organizations" element={<PartnerOrganizationsListPage />} />
             <Route
               path="partner-organizations/:partnerOrganizationId/scorecard"
