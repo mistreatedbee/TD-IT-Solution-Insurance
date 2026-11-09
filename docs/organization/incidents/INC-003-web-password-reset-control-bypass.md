@@ -3544,6 +3544,46 @@ Severity stays **High**. INC-003 status is unchanged.
 
 ---
 
+## 40. `cto` ruling: Atlas service account for ADR-0017 R-4 scoped roles (2026-11-09)
+
+**Request.** The owner created an Atlas service account today (Client ID `mdb_sa_id_6a7c1dd4fa789c34da80f025`,
+expires in about 22 hours) so that the five ADR-0017 R-4 custom roles could be provisioned. The question
+was whether an agent may run that provisioning itself, as a one-off under §39.
+
+**Ruling: no agent execution. The owner runs the supplied script. §39 is unchanged.** Reasons:
+1. **A control-plane credential is not narrower than a data credential.** Atlas service accounts call
+   the Admin API only, not the data plane. But any project role that can manage custom roles can also
+   create a database user with any role (for example `readWriteAnyDatabase`) and so read or write all
+   customer data. If the service account holds Project Owner, it can also edit the IP access list and
+   delete clusters. That is at least as much reach as `MONGODB_URI`, not less. The difference is
+   auditability: Admin API calls show up in the Atlas activity feed. That is useful, but it does not
+   justify an exception.
+2. **The 22-hour expiry limits replay, not exposure.** For an agent to use the secret, it would have to
+   be pasted into the transcript. §21 forbids that. Expiry does not remove a secret from logs. The
+   deadline is also not real: a new service account takes minutes to create.
+3. **Only two of the five roles are complete enough to create.** R-4's table sets privileges on
+   `partner_location_share_grants`, `partner_location_preauthorizations` and `location_events` only.
+   P1 `api-runtime` as written would leave the API without access to the other collections it uses
+   (`policies`, `assets`, `recovery_cases`, `customer_profiles`, notifications, claims, and so on).
+   Attaching it would cause an outage. P3 `retention-purge` is incomplete in the same way (SG-11 also
+   deletes cases and writes `retention_job_runs`). P2 has no deployable yet (R-3 sweeper not built). Only
+   P5 `provisioner` (database-wide DDL with no document actions) and P4 `investigative-read` (as R-4
+   specifies it) are complete. P1, P2 and P3 go back to `database-architect` for a full per-collection
+   privilege inventory before they are created.
+4. **Creating a role grants nothing by itself.** No principal gets access until a user is attached. Nothing
+   here is urgent enough to justify agent custody of the credential.
+
+**Bound conditions:** the owner runs the script; the secret is entered only at a hidden prompt (never
+pasted into chat, never passed as a CLI argument); the script is deleted after the run; the service account
+is deleted in Atlas once the roles are confirmed, rather than left to expire; the result (role names
+created, HTTP status codes, and the activity-feed entries) is appended here by the owner or orchestrator.
+No database user is attached to any role in this step. Attaching users and changing the Render
+environment are CSA-R4-1/R4-2 work for `cloud-infrastructure-architect` + `devops-engineer`.
+
+**Signed:** `cto`, 2026-11-09.
+
+---
+
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
 prior sections in place with superseded text marked void; disagree with another role's section in a new
 section that cites it.*
