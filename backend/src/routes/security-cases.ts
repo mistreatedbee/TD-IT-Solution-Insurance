@@ -485,6 +485,29 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
           // (PARTNER_LOCATION_SHARING_ENABLED) — out of scope for this Tier A pass; no
           // call is made here (the design's own text: "consumes nothing yet").
 
+          // OB-04 (§12.2 A4, cto ruling §12.1(1)) — case-history append, post-CAS,
+          // pre-response. `fromPartnerOrganizationId` is deliberately `null`, not
+          // `orgId` — even though `partnerOrganizationId` was already set to this org
+          // while the case was pending-dispatch, this event records the START of a
+          // holding (the accept), not a field diff. `occurredAt` is the result's own
+          // `updatedAt` (SR-019-3).
+          await appendRecoveryCaseEvent(ctx, accepted.id, {
+            eventType: 'case_claimed',
+            caseId: accepted.id,
+            occurredAt: accepted.updatedAt,
+            actor: {
+              type: 'security_company_operator',
+              accountId: req.auth!.accountId,
+              partnerOrganizationId: orgId,
+            },
+            fromStatus: 'open',
+            toStatus: 'investigating',
+            fromPartnerOrganizationId: null,
+            toPartnerOrganizationId: orgId,
+            closeReason: null,
+            auditRequestId: req.auditRequestId ?? null,
+          });
+
           scheduleCustomerRecoveryCaseChange(ctx, {
             recoveryCase: accepted,
             previousStatus: 'open',
@@ -551,6 +574,13 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
             next(apiError('NOT_FOUND', { message: 'Case is not available to decline.' }));
             return;
           }
+
+          // OB-04 — no event is appended for `decline` (cto ruling §12.1(3) of the
+          // design doc). Deferred to a future dispatch-lifecycle event family that
+          // also needs an `admin` actor type (the pending period starts with an
+          // admin `dispatchCase`, which has no event type/actor today) and its own
+          // Stage 8 review of per-org decline-record visibility between competing
+          // partners. Deliberately no `appendRecoveryCaseEvent` call on this path.
 
           // [CO-OB03-6] customer-facing status reflects "returned to queue" / "no
           // partner currently assigned" immediately.
@@ -667,28 +697,26 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
           return;
         }
 
-        // OB-04 (§12.2 A2) — pool model only (dispatch-mode status changes are A4's
-        // scope). Post-CAS, pre-response (SR-019-1, SR-019-3): `occurredAt` is
+        // OB-04 (§12.2 A2/A4) — pool model and dispatch model both wired, same shape:
+        // post-CAS, pre-response (SR-019-1, SR-019-3): `occurredAt` is
         // `updated.updatedAt`, not a fresh `new Date()`. Org is unchanged by a status
         // change, so both from/to org are the caller's own `orgId`.
-        if (!dispatchMode) {
-          await appendRecoveryCaseEvent(ctx, updated.id, {
-            eventType: 'status_changed',
-            caseId: updated.id,
-            occurredAt: updated.updatedAt,
-            actor: {
-              type: 'security_company_operator',
-              accountId: req.auth!.accountId,
-              partnerOrganizationId: orgId,
-            },
-            fromStatus: expectedStatus,
-            toStatus: updated.status,
-            fromPartnerOrganizationId: orgId,
-            toPartnerOrganizationId: orgId,
-            closeReason: updated.closeReason ?? null,
-            auditRequestId: req.auditRequestId ?? null,
-          });
-        }
+        await appendRecoveryCaseEvent(ctx, updated.id, {
+          eventType: 'status_changed',
+          caseId: updated.id,
+          occurredAt: updated.updatedAt,
+          actor: {
+            type: 'security_company_operator',
+            accountId: req.auth!.accountId,
+            partnerOrganizationId: orgId,
+          },
+          fromStatus: expectedStatus,
+          toStatus: updated.status,
+          fromPartnerOrganizationId: orgId,
+          toPartnerOrganizationId: orgId,
+          closeReason: updated.closeReason ?? null,
+          auditRequestId: req.auditRequestId ?? null,
+        });
 
         // [CO-OB03-6] (dispatch mode) / pre-existing behaviour (pool mode) — the
         // customer-facing view/push reflects the new status immediately either way.
@@ -763,6 +791,33 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
             next(apiError('NOT_FOUND', { message: 'Case is not available to hand back.' }));
             return;
           }
+
+          // OB-04 (§12.2 A4) — `case_handed_back`, SR-019-11: `fromStatus` AND
+          // `toStatus` are BOTH sourced from the hand-back write's own returned
+          // result (`handedBack.status`), never from the earlier pre-read
+          // (`existing.case.status`). `handBackAcceptedCase`'s CAS matches on
+          // `partnerOrganizationId`/`dispatchStatus: 'accepted'` only, not on status,
+          // so a concurrent status PATCH landing between the pre-read and this write
+          // is a real race; sourcing from the pre-read would silently drop a true
+          // event when the two disagree. `fromPartnerOrganizationId` is the caller's
+          // org (the CAS matched on it); `toPartnerOrganizationId` is `null` per the
+          // branch schema. The hand-back body's `reason` is never copied in.
+          await appendRecoveryCaseEvent(ctx, handedBack.id, {
+            eventType: 'case_handed_back',
+            caseId: handedBack.id,
+            occurredAt: handedBack.updatedAt,
+            actor: {
+              type: 'security_company_operator',
+              accountId: req.auth!.accountId,
+              partnerOrganizationId: orgId,
+            },
+            fromStatus: handedBack.status,
+            toStatus: handedBack.status,
+            fromPartnerOrganizationId: orgId,
+            toPartnerOrganizationId: null,
+            closeReason: null,
+            auditRequestId: req.auditRequestId ?? null,
+          });
 
           // [CO-OB03-6] customer-facing status updates to "returned to queue" / "no
           // partner currently assigned" immediately.
@@ -1042,29 +1097,28 @@ export function createSecurityCasesRouter(ctx: AppContext): Router {
           reason: 'security_operator_contacted_customer',
         });
 
-        // OB-04 (§12.2 A2) — pool model only (dispatch-mode contact is A4's scope).
-        // Appended synchronously after the existing audit write and before the 202
-        // response (SR-019-5(b)). Not a status change, so from/to status and org are
-        // unchanged. No CAS mutation exists on this path, so `occurredAt` is one
-        // `new Date()` captured here, per SR-019-3's `customer_contact_initiated` rule.
-        if (!dispatchMode) {
-          await appendRecoveryCaseEvent(ctx, existing.case.id, {
-            eventType: 'customer_contact_initiated',
-            caseId: existing.case.id,
-            occurredAt: new Date(),
-            actor: {
-              type: 'security_company_operator',
-              accountId: req.auth!.accountId,
-              partnerOrganizationId: orgId,
-            },
-            fromStatus: existing.case.status,
-            toStatus: existing.case.status,
-            fromPartnerOrganizationId: orgId,
-            toPartnerOrganizationId: orgId,
-            closeReason: null,
-            auditRequestId: req.auditRequestId ?? null,
-          });
-        }
+        // OB-04 (§12.2 A2/A4) — pool model and dispatch model both wired, same
+        // shape. Appended synchronously after the existing audit write and before
+        // the 202 response (SR-019-5(b)). Not a status change, so from/to status
+        // and org are unchanged. No CAS mutation exists on this path, so
+        // `occurredAt` is one `new Date()` captured here, per SR-019-3's
+        // `customer_contact_initiated` rule.
+        await appendRecoveryCaseEvent(ctx, existing.case.id, {
+          eventType: 'customer_contact_initiated',
+          caseId: existing.case.id,
+          occurredAt: new Date(),
+          actor: {
+            type: 'security_company_operator',
+            accountId: req.auth!.accountId,
+            partnerOrganizationId: orgId,
+          },
+          fromStatus: existing.case.status,
+          toStatus: existing.case.status,
+          fromPartnerOrganizationId: orgId,
+          toPartnerOrganizationId: orgId,
+          closeReason: null,
+          auditRequestId: req.auditRequestId ?? null,
+        });
 
         // Dispatch in the background via the shared recovery-case notification path —
         // `notifyCaseMessage` -> `sendTheftEmailAndPush`, which already checks

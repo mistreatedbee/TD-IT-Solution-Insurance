@@ -257,6 +257,79 @@ describe('recoveryCaseEventsRepo.append — dedupe on the partial unique index (
   });
 });
 
+function caseHandedBackInput(overrides: Partial<NewRecoveryCaseEventInput> = {}): NewRecoveryCaseEventInput {
+  return {
+    eventType: 'case_handed_back',
+    caseId,
+    occurredAt: new Date('2026-11-09T01:00:00.000Z'),
+    actor: { type: 'security_company_operator', accountId: 'op-1', partnerOrganizationId: 'org-1' },
+    fromStatus: 'investigating',
+    toStatus: 'investigating',
+    fromPartnerOrganizationId: 'org-1',
+    toPartnerOrganizationId: null,
+    closeReason: null,
+    auditRequestId: 'req-1',
+    ...overrides,
+  } as NewRecoveryCaseEventInput;
+}
+
+describe('recoveryCaseEventsRepo.append — case_handed_back (SR-019-12)', () => {
+  it('accepts a well-formed hand-back event (fromStatus === toStatus)', async () => {
+    const { db, docs } = createFakeDb();
+    const repo = createRecoveryCaseEventsRepo(db);
+    const event = await repo.append(caseHandedBackInput());
+    expect(event.eventType).toBe('case_handed_back');
+    expect(docs).toHaveLength(1);
+  });
+
+  it('accepts a terminal-status hand-back (recovered -> recovered)', async () => {
+    const { db } = createFakeDb();
+    const repo = createRecoveryCaseEventsRepo(db);
+    const event = await repo.append(
+      caseHandedBackInput({ fromStatus: 'recovered', toStatus: 'recovered' }),
+    );
+    expect(event.fromStatus).toBe('recovered');
+    expect(event.toStatus).toBe('recovered');
+  });
+
+  it('rejects an unequal fromStatus/toStatus pair', async () => {
+    const { db } = createFakeDb();
+    const repo = createRecoveryCaseEventsRepo(db);
+    const bad = caseHandedBackInput({ fromStatus: 'investigating', toStatus: 'tracking' });
+    await expect(repo.append(bad)).rejects.toBeInstanceOf(InvalidRecoveryCaseEventError);
+  });
+
+  it('rejects a non-null toPartnerOrganizationId', async () => {
+    const { db } = createFakeDb();
+    const repo = createRecoveryCaseEventsRepo(db);
+    const bad = { ...caseHandedBackInput(), toPartnerOrganizationId: 'org-2' } as unknown as NewRecoveryCaseEventInput;
+    await expect(repo.append(bad)).rejects.toBeInstanceOf(InvalidRecoveryCaseEventError);
+  });
+
+  it('rejects a non-null closeReason', async () => {
+    const { db } = createFakeDb();
+    const repo = createRecoveryCaseEventsRepo(db);
+    const bad = { ...caseHandedBackInput(), closeReason: 'recovered-intact' } as unknown as NewRecoveryCaseEventInput;
+    await expect(repo.append(bad)).rejects.toBeInstanceOf(InvalidRecoveryCaseEventError);
+  });
+
+  it('rejects a customer actor', async () => {
+    const { db } = createFakeDb();
+    const repo = createRecoveryCaseEventsRepo(db);
+    const bad = caseHandedBackInput({
+      actor: { type: 'customer', accountId: null, partnerOrganizationId: null },
+    });
+    await expect(repo.append(bad)).rejects.toBeInstanceOf(InvalidRecoveryCaseEventError);
+  });
+
+  it('rejects an input carrying a reason key (the hand-back body reason must never be copied in)', async () => {
+    const { db } = createFakeDb();
+    const repo = createRecoveryCaseEventsRepo(db);
+    const bad = { ...caseHandedBackInput(), reason: 'unable_to_proceed' } as unknown as NewRecoveryCaseEventInput;
+    await expect(repo.append(bad)).rejects.toBeInstanceOf(InvalidRecoveryCaseEventError);
+  });
+});
+
 describe('recoveryCaseEventsRepo.listForCase', () => {
   it('returns only events for the requested case, newest first', async () => {
     const { db } = createFakeDb();

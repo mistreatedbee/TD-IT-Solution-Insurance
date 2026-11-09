@@ -51,12 +51,18 @@ export const RECOVERY_CASE_EVENTS_COLLECTION = 'recovery_case_events';
  *   - `police-report-retention.ts`'s field-purge `updateMany`.
  *   - The demo-teardown raw `deleteMany` in
  *     `scripts/seed-demo-security-dashboard.ts`.
- *   - OB-03 Tier A's dispatch-model `accept`/`decline` routes
- *     (`acceptDispatchedCase`/`declineDispatchedCase`) are mapped onto the SAME
- *     `case_claimed`/`case_released` event types as the pool model's
- *     `claim`/`release` (an accept is semantically "this org took the case", a
- *     decline is "this org never took the case" and is NOT appended at all — see
- *     the build report for why `decline` has no event).
+ *   - OB-03 Tier A's dispatch-model `accept` route (`acceptDispatchedCase`) is
+ *     mapped onto the SAME `case_claimed` event type as the pool model's `claim`
+ *     (an accept is semantically "this org took the case"). Dispatch-mode
+ *     `status_changed`/`customer_contact_initiated` reuse the same event types as
+ *     the pool model, for the same reasons. Hand-back (`handBackAcceptedCase`) is
+ *     a DIFFERENT transition from pool-mode `release` — it keeps status and
+ *     returns the case to the admin dispatch queue rather than the open pool — so
+ *     it gets its own event type, `case_handed_back` (cto ruling §12.1(2) of the
+ *     design doc). `decline` (`declineDispatchedCase`) is NOT appended at all in
+ *     this build (§12.1(3) — deferred to a future dispatch-lifecycle event family
+ *     with its own `admin` actor type; the decline call site carries a comment
+ *     pointing here).
  */
 export const RECOVERY_CASE_EVENT_TYPES = [
   'case_created',
@@ -65,6 +71,7 @@ export const RECOVERY_CASE_EVENT_TYPES = [
   'case_released',
   'case_reassigned',
   'customer_contact_initiated',
+  'case_handed_back',
 ] as const;
 export type RecoveryCaseEventType = (typeof RECOVERY_CASE_EVENT_TYPES)[number];
 
@@ -308,14 +315,49 @@ const customerContactInitiatedInputSchema = z
   })
   .strict();
 
-const newRecoveryCaseEventInputSchema = z.discriminatedUnion('eventType', [
-  caseCreatedInputSchema,
-  caseClaimedInputSchema,
-  statusChangedInputSchema,
-  caseReleasedInputSchema,
-  caseReassignedInputSchema,
-  customerContactInitiatedInputSchema,
-]);
+// §13.3 SR-019-12(a) — `case_handed_back`: operator actor, `toPartnerOrganizationId`
+// and `closeReason` always null (the hand-back body's `reason` is never copied in,
+// per §12.1(2)/SR-019-4(d) by analogy). `fromStatus`/`toStatus` equality is enforced
+// below by a union-level `superRefine` (SR-019-12(b)) rather than a `.refine` inside
+// this branch — zod v3 does not accept a refined object inside a discriminated
+// union member.
+const caseHandedBackInputSchema = z
+  .object({
+    eventType: z.literal('case_handed_back'),
+    caseId: caseIdSchema,
+    occurredAt: z.date(),
+    actor: operatorActorSchema,
+    fromStatus: statusEnum,
+    toStatus: statusEnum,
+    fromPartnerOrganizationId: z.string().min(1),
+    toPartnerOrganizationId: z.null(),
+    closeReason: z.null(),
+    auditRequestId: auditRequestIdSchema,
+  })
+  .strict();
+
+const newRecoveryCaseEventInputSchema = z
+  .discriminatedUnion('eventType', [
+    caseCreatedInputSchema,
+    caseClaimedInputSchema,
+    statusChangedInputSchema,
+    caseReleasedInputSchema,
+    caseReassignedInputSchema,
+    customerContactInitiatedInputSchema,
+    caseHandedBackInputSchema,
+  ])
+  // SR-019-12(b) — `case_handed_back`'s `fromStatus === toStatus` invariant
+  // (§12.1(2)). Scoped to this one event type via the `eventType` discriminant
+  // inside the refine; every other branch is untouched.
+  .superRefine((value, ctx) => {
+    if (value.eventType === 'case_handed_back' && value.fromStatus !== value.toStatus) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'case_handed_back requires fromStatus === toStatus',
+        path: ['toStatus'],
+      });
+    }
+  });
 
 export type NewRecoveryCaseEventInput = z.infer<typeof newRecoveryCaseEventInputSchema>;
 

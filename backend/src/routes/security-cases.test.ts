@@ -3009,7 +3009,7 @@ describe('routes/security-cases', () => {
       expect(harness.appendedEvents).toHaveLength(0);
     });
 
-    it('dispatch-mode status PATCH does not append a pool-model event (A2 scope boundary)', async () => {
+    it('dispatch-mode status PATCH appends a status_changed event too (A4 — no longer A2-only)', async () => {
       const caseId = '507f1f77bcf86cd799439011';
       const orgId = randomUUID();
       harness = createHarness({
@@ -3034,7 +3034,233 @@ describe('routes/security-cases', () => {
         body: JSON.stringify({ status: 'tracking' }),
       });
       expect(res.status).toBe(200);
+      expect(harness.appendedEvents).toHaveLength(1);
+      expect(harness.appendedEvents[0]).toMatchObject({
+        eventType: 'status_changed',
+        caseId,
+        fromStatus: 'investigating',
+        toStatus: 'tracking',
+        fromPartnerOrganizationId: orgId,
+        toPartnerOrganizationId: orgId,
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // OB-04 §12.2 A4 — dispatch-model event wiring: accept -> case_claimed,
+  // status PATCH -> status_changed (covered above), messages ->
+  // customer_contact_initiated, hand-back (release, repurposed) ->
+  // case_handed_back, decline -> no event.
+  // ---------------------------------------------------------------------
+  describe('OB-04 case-history events (§12.2 A4, dispatch model)', () => {
+    function pendingCaseFor(caseId: string, orgId: string, overrides: Partial<RecoveryCaseDocument> = {}) {
+      return sampleCase({
+        id: caseId,
+        accountId: randomUUID(),
+        assetId: randomUUID(),
+        partnerOrganizationId: orgId,
+        status: 'open',
+        dispatchStatus: 'pending',
+        dispatchedAt: new Date(),
+        dispatchedBy: randomUUID(),
+        firstDispatchedAt: new Date(),
+        dispatchCount: 1,
+        ...overrides,
+      });
+    }
+
+    function acceptedCaseFor(caseId: string, orgId: string, overrides: Partial<RecoveryCaseDocument> = {}) {
+      return sampleCase({
+        id: caseId,
+        accountId: randomUUID(),
+        assetId: randomUUID(),
+        partnerOrganizationId: orgId,
+        status: 'investigating',
+        dispatchStatus: 'accepted',
+        dispatchedAt: new Date(),
+        dispatchedBy: randomUUID(),
+        acceptedAt: new Date(),
+        firstDispatchedAt: new Date(),
+        dispatchCount: 1,
+        ...overrides,
+      });
+    }
+
+    it('accept appends a case_claimed event with fromPartnerOrganizationId: null (holding start, not a field diff)', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        directedDispatchEnabled: true,
+        cases: [pendingCaseFor(caseId, orgId)],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/accept`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(200);
+
+      expect(harness.appendedEvents).toHaveLength(1);
+      expect(harness.appendedEvents[0]).toMatchObject({
+        eventType: 'case_claimed',
+        caseId,
+        fromStatus: 'open',
+        toStatus: 'investigating',
+        fromPartnerOrganizationId: null,
+        toPartnerOrganizationId: orgId,
+        closeReason: null,
+        actor: { type: 'security_company_operator', accountId: harness.operatorId, partnerOrganizationId: orgId },
+      });
+    });
+
+    it('accept: an append failure does not turn the 200 into a 5xx', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        directedDispatchEnabled: true,
+        recoveryCaseEventAppendError: new TypeError('boom'),
+        cases: [pendingCaseFor(caseId, orgId)],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/accept`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('decline appends no event (§12.1(3) — deferred to Phase B)', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        directedDispatchEnabled: true,
+        cases: [pendingCaseFor(caseId, orgId)],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/decline`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: 'no_capacity' }),
+      });
+      expect(res.status).toBe(200);
       expect(harness.appendedEvents).toHaveLength(0);
+    });
+
+    it('messages (dispatch mode) appends a customer_contact_initiated event', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        directedDispatchEnabled: true,
+        cases: [acceptedCaseFor(caseId, orgId)],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/messages`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'Update on your case' }),
+      });
+      expect(res.status).toBe(202);
+
+      expect(harness.appendedEvents).toHaveLength(1);
+      expect(harness.appendedEvents[0]).toMatchObject({
+        eventType: 'customer_contact_initiated',
+        caseId,
+        fromStatus: 'investigating',
+        toStatus: 'investigating',
+        fromPartnerOrganizationId: orgId,
+        toPartnerOrganizationId: orgId,
+        closeReason: null,
+      });
+    });
+
+    it('hand-back (release, repurposed) appends a case_handed_back event sourced from the write result, not the pre-read', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        directedDispatchEnabled: true,
+        cases: [acceptedCaseFor(caseId, orgId)],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: 'unable_to_proceed' }),
+      });
+      expect(res.status).toBe(200);
+
+      expect(harness.appendedEvents).toHaveLength(1);
+      const event = harness.appendedEvents[0]!;
+      expect(event).toMatchObject({
+        eventType: 'case_handed_back',
+        caseId,
+        fromStatus: 'investigating',
+        toStatus: 'investigating',
+        fromPartnerOrganizationId: orgId,
+        toPartnerOrganizationId: null,
+        closeReason: null,
+        actor: { type: 'security_company_operator', accountId: harness.operatorId, partnerOrganizationId: orgId },
+      });
+      // SR-019-11 — the hand-back body's `reason` must never be copied onto the
+      // event (the event records fromStatus/toStatus/orgs only).
+      expect(event).not.toHaveProperty('reason');
+    });
+
+    it('hand-back on a terminal case (recovered -> recovered) still appends, per §13.2', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        directedDispatchEnabled: true,
+        cases: [
+          acceptedCaseFor(caseId, orgId, { status: 'recovered', closeReason: 'recovered-intact', closedAt: new Date() }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: 'recovered_independently' }),
+      });
+      expect(res.status).toBe(200);
+      expect(harness.appendedEvents).toHaveLength(1);
+      expect(harness.appendedEvents[0]).toMatchObject({
+        eventType: 'case_handed_back',
+        fromStatus: 'recovered',
+        toStatus: 'recovered',
+        closeReason: null,
+      });
+    });
+
+    it('hand-back: an append failure does not turn the 200 into a 5xx', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        directedDispatchEnabled: true,
+        recoveryCaseEventAppendError: new TypeError('boom'),
+        cases: [acceptedCaseFor(caseId, orgId)],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: 'unable_to_proceed' }),
+      });
+      expect(res.status).toBe(200);
     });
   });
 
