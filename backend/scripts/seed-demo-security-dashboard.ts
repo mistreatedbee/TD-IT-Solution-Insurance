@@ -166,7 +166,20 @@ function buildDeps(env: Env, db: Db): DemoSeedDeps {
       // exact accountIds passed in (the two fixed demo account ids), never broader.
       async deleteAllForAccounts(accountIds) {
         if (accountIds.length === 0) return 0;
+        // SR-019-8 — cascade delete recovery_case_events for every case being torn
+        // down, keyed by caseId, using this script's own raw-collection handle (same
+        // pattern as the admin_access_log handling below), not a repository export
+        // (recovery-case-events.ts intentionally exports no delete).
+        const caseDocs = await db
+          .collection('recovery_cases')
+          .find({ accountId: { $in: accountIds } }, { projection: { _id: 1 } })
+          .toArray();
         const result = await db.collection('recovery_cases').deleteMany({ accountId: { $in: accountIds } });
+        if (caseDocs.length > 0) {
+          await db
+            .collection('recovery_case_events')
+            .deleteMany({ caseId: { $in: caseDocs.map((c) => c._id) } });
+        }
         return result.deletedCount ?? 0;
       },
       async countForAccounts(accountIds) {

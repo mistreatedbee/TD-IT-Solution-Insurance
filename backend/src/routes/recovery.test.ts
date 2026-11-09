@@ -42,6 +42,7 @@ function fakeEnv(overrides?: Partial<Env>): Env {
     emailVerificationRedirectUrl: 'tditinsurance://verify-email',
     passwordResetRedirectUrl: 'tditinsurance://reset-password',
     invitationAcceptRedirectUrl: 'tditinsurance://invitations/accept',
+    recoveryCaseEventsEnabled: true,
     ...overrides,
   };
 }
@@ -186,6 +187,9 @@ function createHarness(opts: {
   /** [CO-OB03-1/2] the filing session's device id, as `ctx.sessions.findById` would
    * report it — `undefined` to exercise the "no sessions repo"/lookup-failure path. */
   sessionDeviceId?: string | null;
+  /** OB-04 — when set, `ctx.recoveryCaseEvents.append` throws this instead of
+   * recording the event, to exercise `appendRecoveryCaseEvent`'s fail-open path. */
+  recoveryCaseEventAppendError?: Error;
 }) {
   const env = fakeEnv(opts.envOverrides);
   const kv = new InMemoryKeyValueStore();
@@ -194,6 +198,7 @@ function createHarness(opts: {
   const assets = new Map((opts.assets ?? []).map((a) => [a.id, a]));
   const cases = [...(opts.cases ?? [])];
   const policy = opts.planCatalogId ? samplePolicy(accountId, opts.planCatalogId) : null;
+  const appendedEvents: Array<Record<string, unknown>> = [];
 
   const ctx = {
     env,
@@ -323,6 +328,13 @@ function createHarness(opts: {
         return { ok: true as const, case: updated };
       },
     },
+    recoveryCaseEvents: {
+      async append(input: Record<string, unknown>) {
+        if (opts.recoveryCaseEventAppendError) throw opts.recoveryCaseEventAppendError;
+        appendedEvents.push(input);
+        return { id: randomUUID(), ...input };
+      },
+    },
     idempotency: createInMemoryIdempotencyRepo(),
     recoveryNotifications: {
       async notifyTheftReportSubmitted() {
@@ -354,7 +366,7 @@ function createHarness(opts: {
   app.use(createRecoveryRouter(ctx));
   app.use(errorHandler);
 
-  return { app, accountId, sessionId, env, cases };
+  return { app, accountId, sessionId, env, cases, appendedEvents };
 }
 
 async function listen(app: Express): Promise<{ server: Server; baseUrl: string }> {
@@ -401,6 +413,95 @@ describe('routes/recovery', () => {
     expect(body.assetId).toBe(assetId);
     expect(body.status).toBe('open');
     expect(body.referenceNumber).toMatch(/^RC-/);
+  });
+
+  describe('OB-04 case_created event (backend-architecture-event-model.md §12.2 A1(e))', () => {
+    it('appends a case_created event with a customer actor, accountId null, caseId/occurredAt from the created case', async () => {
+      const assetId = '507f1f77bcf86cd799439021';
+      const acctId = randomUUID();
+      const { app, accountId, sessionId, env, appendedEvents } = createHarness({
+        accountId: acctId,
+        assets: [sampleAsset(acctId, assetId)],
+      });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+          'content-type': 'application/json',
+          'idempotency-key': randomUUID(),
+        },
+        body: JSON.stringify({ assetId, notes: 'Stolen yesterday' }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(appendedEvents).toHaveLength(1);
+      const event = appendedEvents[0]!;
+      expect(event.eventType).toBe('case_created');
+      expect(event.caseId).toBe(body.id);
+      expect(event.actor).toEqual({ type: 'customer', accountId: null, partnerOrganizationId: null });
+      expect(event.fromStatus).toBeNull();
+      expect(event.toStatus).toBeNull();
+      expect(event.fromPartnerOrganizationId).toBeNull();
+      expect(event.toPartnerOrganizationId).toBeNull();
+      expect(event.closeReason).toBeNull();
+      expect(typeof event.auditRequestId).toBe('string');
+      expect((event.occurredAt as Date).toISOString()).toBe(new Date('2026-08-01T12:00:00.000Z').toISOString());
+    });
+
+    it('does not append when RECOVERY_CASE_EVENTS_ENABLED-equivalent flag is off', async () => {
+      const assetId = '507f1f77bcf86cd799439021';
+      const acctId = randomUUID();
+      const { app, accountId, sessionId, env, appendedEvents } = createHarness({
+        accountId: acctId,
+        assets: [sampleAsset(acctId, assetId)],
+        envOverrides: { recoveryCaseEventsEnabled: false },
+      });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+          'content-type': 'application/json',
+          'idempotency-key': randomUUID(),
+        },
+        body: JSON.stringify({ assetId, notes: 'Stolen yesterday' }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(appendedEvents).toHaveLength(0);
+    });
+
+    it('does not 5xx the request when the append fails (SR-019-2(a) fail-open)', async () => {
+      const assetId = '507f1f77bcf86cd799439021';
+      const acctId = randomUUID();
+      const { app, accountId, sessionId, env } = createHarness({
+        accountId: acctId,
+        assets: [sampleAsset(acctId, assetId)],
+        recoveryCaseEventAppendError: new TypeError('boom'),
+      });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+          'content-type': 'application/json',
+          'idempotency-key': randomUUID(),
+        },
+        body: JSON.stringify({ assetId, notes: 'Stolen yesterday' }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(body.status).toBe('open');
+    });
   });
 
   it('PDM-5 (compliance-review-security-partner-data-minimisation.md F-7): never sends the customer-authored asset display name to the partner fan-out notification', async () => {

@@ -81,6 +81,10 @@ import {
   locationConsentEventsTtlIndex,
   locationConsentEventsJsonSchemaValidator,
 } from './location-consent-collections.js';
+import {
+  RECOVERY_CASE_EVENTS_COLLECTION,
+  recoveryCaseEventsIndexes,
+} from '../repositories/recovery-case-events.js';
 
 /** One declared collection, as the source-of-truth modules describe it. */
 interface DeclaredCollectionSpec {
@@ -95,7 +99,8 @@ interface DeclaredCollectionSpec {
     | 'alerts'
     | 'product-analytics'
     | 'support-cases'
-    | 'location-consent';
+    | 'location-consent'
+    | 'recovery-case-events';
   collection: string;
   /**
    * Validator this module applies via createCollection/collMod. `undefined`
@@ -217,6 +222,13 @@ const DECLARED_CATALOG: DeclaredCollectionSpec[] = [
     // report an index_option_mismatch-free PASS today, but the *value* of
     // expireAfterSeconds is a placeholder, not a verified-correct retention.
     indexes: [...locationConsentEventsIndexes, locationConsentEventsTtlIndex],
+  },
+  {
+    module: 'recovery-case-events',
+    collection: RECOVERY_CASE_EVENTS_COLLECTION,
+    // No `$jsonSchema` validator — `append()`'s `.strict()` zod schema is this
+    // collection's sole shape gate (SR-019-4(b)); see recovery-case-events.ts.
+    indexes: recoveryCaseEventsIndexes,
   },
 ];
 

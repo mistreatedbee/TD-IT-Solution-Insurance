@@ -16,6 +16,7 @@ import { createRateLimiter } from '../middleware/rate-limit.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
 import { assertPlanEntitlement } from '../lib/plan-entitlements.js';
 import { notifyInBackground } from '../lib/customer-notification-service.js';
+import { appendRecoveryCaseEvent } from '../lib/recovery-case-event-append.js';
 
 const createCaseSchema = z.object({
   assetId: z.string().regex(/^[0-9a-f]{24}$/i),
@@ -127,6 +128,23 @@ export function createRecoveryRouter(ctx: AppContext): Router {
           null,
           reportedFromDeviceId,
         );
+
+        // OB-04 §12.2 A1(e) — case_created, customer actor. accountId is null per the
+        // established no-customer-accountId-stored rule (SR-019-6(a)) — the case owner
+        // is already on `recovery_cases.accountId`. `occurredAt` is the created case's
+        // own `createdAt` (SR-019-3), not a fresh `new Date()`.
+        await appendRecoveryCaseEvent(ctx, recoveryCase.id, {
+          eventType: 'case_created',
+          caseId: recoveryCase.id,
+          occurredAt: recoveryCase.createdAt,
+          actor: { type: 'customer', accountId: null, partnerOrganizationId: null },
+          fromStatus: null,
+          toStatus: null,
+          fromPartnerOrganizationId: null,
+          toPartnerOrganizationId: null,
+          closeReason: null,
+          auditRequestId: req.auditRequestId ?? null,
+        });
 
         notifyInBackground(
           'recovery.case.created',

@@ -233,6 +233,22 @@ export interface Env {
    * pre-authorization routes) of the same document.
    */
   partnerLocationSharingEnabled?: boolean;
+
+  /**
+   * OB-04 (docs/features/019-case-history-timeline/backend-architecture-event-model.md
+   * §11.4 / §12.2 A1(b)) — kill switch for `recoveryCaseEvents.append(...)` calls
+   * (case-history event writes). Unlike `claimsApiEnabled`/`locationIngestionEnabled`,
+   * this flag's SAFE default is the opposite of theirs: those default OFF everywhere
+   * until explicitly turned on; this one defaults ON in dev/test and OFF in production,
+   * because SR-019-9/§11.4 blocks *production* writes of operator-identity PII into this
+   * collection until the retention-purge job is actually scheduled (not yet true per
+   * §12.4), while dev/test need the writes on by default so this feature's own test
+   * suite and local development exercise it without extra configuration. An explicit
+   * `RECOVERY_CASE_EVENTS_ENABLED` env var always wins over the environment default, but
+   * only the exact string `"true"` or `"false"` is recognized — anything else falls back
+   * to the environment default rather than guessing.
+   */
+  recoveryCaseEventsEnabled: boolean;
 }
 
 function requireEnv(name: string): string {
@@ -564,6 +580,25 @@ export function loadEnv(): Env {
     );
   }
 
+  // OB-04 §12.2 A1(b) — default ON in dev/test, OFF in production, overridable by an
+  // explicit "true"/"false" (anything else is ignored and the environment default
+  // applies). See the `Env.recoveryCaseEventsEnabled` doc comment for why the default
+  // is inverted relative to `claimsApiEnabled`/`locationIngestionEnabled`.
+  const recoveryCaseEventsEnabledRaw = process.env.RECOVERY_CASE_EVENTS_ENABLED;
+  let recoveryCaseEventsEnabled = !isProduction;
+  if (recoveryCaseEventsEnabledRaw === 'true') {
+    recoveryCaseEventsEnabled = true;
+  } else if (recoveryCaseEventsEnabledRaw === 'false') {
+    recoveryCaseEventsEnabled = false;
+  } else if (recoveryCaseEventsEnabledRaw !== undefined) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] RECOVERY_CASE_EVENTS_ENABLED is set to an unrecognized value ` +
+        `("${recoveryCaseEventsEnabledRaw}"). Falling back to the environment default ` +
+        `(${recoveryCaseEventsEnabled}). Set it to exactly "true" or "false".`,
+    );
+  }
+
   // SR-018-11 / CR-018-10: a placeholder notice value is harmless in
   // dev/test (nothing production-real can be issued), but in production,
   // with the claims API actually enabled, it means a real adverse decision
@@ -617,5 +652,6 @@ export function loadEnv(): Env {
     claimsApiEnabled,
     directedDispatchEnabled,
     partnerLocationSharingEnabled,
+    recoveryCaseEventsEnabled,
   };
 }
