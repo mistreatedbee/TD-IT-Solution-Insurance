@@ -3582,6 +3582,32 @@ environment are CSA-R4-1/R4-2 work for `cloud-infrastructure-architect` + `devop
 
 **Signed:** `cto`, 2026-11-09.
 
+### 40.1 Execution result (owner-run, 2026-11-09)
+
+The owner ran the script themselves, as ruled — no agent held or used the secret. Results:
+
+| Role | HTTP status (create) |
+|---|---|
+| `provisioner` (P5) | 202 |
+| `investigative-read` (P4) | 202 |
+
+Verify-list call (`GET .../customDBRoles/roles`) returned `HTTP 200` and confirmed both roles exist in
+project `6a75a59174243a18070ea272` with exactly the action sets specified in §40 — no drift between
+requested and stored definitions. No database user was attached to either role; neither role grants any
+access until a user is created and assigned to it, which stays out of scope here per §40's own note
+(CSA-R4-1/R4-2, owned by `cloud-infrastructure-architect`/`devops-engineer`).
+
+Owner confirmed cleanup: the provisioning script was deleted locally, and the service account is to be
+deleted in Atlas rather than left to expire.
+
+P1 `api-runtime`, P2 `grant-sweeper`, P3 `retention-purge` remain unprovisioned, per §40's finding that
+R-4's spec for those three is incomplete (missing privileges on the ~25 other collections the API
+actually touches) — still owned by `database-architect` for a full per-collection privilege list before
+any of the three are created.
+
+**Logged by:** this session's assistant, 2026-11-09, from the owner-supplied script output; no secret or
+access token is recorded anywhere in this entry.
+
 ---
 
 *Opened by `cybersecurity-architect`, 2026-09-23. This document is shared and append-only: correct your own
