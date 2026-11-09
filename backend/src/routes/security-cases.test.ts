@@ -226,11 +226,20 @@ function createHarness(opts: {
    * model (`ctx.env.directedDispatchEnabled`). Defaults to `false`/unset, matching
    * every pre-OB-03 test in this file. */
   directedDispatchEnabled?: boolean;
+  /** OB-04 (§12.2 A2) — `ctx.env.recoveryCaseEventsEnabled`. Defaults to `true` so
+   * every new test below exercises the append path unless it explicitly opts out. */
+  recoveryCaseEventsEnabled?: boolean;
+  /** OB-04 — when set, `ctx.recoveryCaseEvents.append` throws this instead of
+   * recording the event, to exercise `appendRecoveryCaseEvent`'s fail-open path. */
+  recoveryCaseEventAppendError?: Error;
 }) {
   const env = fakeEnv();
   if (opts.directedDispatchEnabled) {
     (env as unknown as { directedDispatchEnabled: boolean }).directedDispatchEnabled = true;
   }
+  (env as unknown as { recoveryCaseEventsEnabled: boolean }).recoveryCaseEventsEnabled =
+    opts.recoveryCaseEventsEnabled ?? true;
+  const appendedEvents: Array<Record<string, unknown>> = [];
   const kv = new InMemoryKeyValueStore();
   const operatorId = randomUUID();
   const sessionId = randomUUID();
@@ -581,6 +590,13 @@ function createHarness(opts: {
         return undefined;
       },
     },
+    recoveryCaseEvents: {
+      async append(input: Record<string, unknown>) {
+        if (opts.recoveryCaseEventAppendError) throw opts.recoveryCaseEventAppendError;
+        appendedEvents.push(input);
+        return { id: randomUUID(), ...input };
+      },
+    },
   } as unknown as AppContext;
 
   const app: Express = express();
@@ -601,6 +617,7 @@ function createHarness(opts: {
     accessLogCalls,
     mutationCalls,
     caseMessageCalls,
+    appendedEvents,
     token: operatorToken(env, operatorId, sessionId, partnerOrgId),
     async start() {
       await new Promise<void>((resolve) => {
@@ -2627,6 +2644,397 @@ describe('routes/security-cases', () => {
         body: JSON.stringify({ message: 'Hello' }),
       });
       expect(res.status).toBe(403);
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // OB-04 (backend-architecture-event-model.md §12.2 A2) — case-history event
+  // appends on the pool-model (`directedDispatchEnabled` off) paths only. The
+  // dispatch-mode equivalents (accept/decline/hand-back) are A4, tested separately.
+  // ---------------------------------------------------------------------
+  describe('OB-04 case-history events (§12.2 A2, pool model)', () => {
+    it('claim appends a case_claimed event with an operator actor and occurredAt from the result', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: null,
+            status: 'open',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/claim`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { updatedAt: string };
+
+      expect(harness.appendedEvents).toHaveLength(1);
+      const event = harness.appendedEvents[0]!;
+      expect(event).toMatchObject({
+        eventType: 'case_claimed',
+        caseId,
+        fromStatus: 'open',
+        toStatus: 'investigating',
+        fromPartnerOrganizationId: null,
+        toPartnerOrganizationId: orgId,
+        closeReason: null,
+        actor: { type: 'security_company_operator', accountId: harness.operatorId, partnerOrganizationId: orgId },
+      });
+      expect((event.occurredAt as Date).toISOString()).toBe(body.updatedAt);
+    });
+
+    it('claim: an append failure does not turn the 200 into a 5xx (SR-019-2(a))', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        recoveryCaseEventAppendError: new TypeError('boom'),
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: null,
+            status: 'open',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/claim`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('PATCH appends a status_changed event with fromStatus from the pre-read and occurredAt from the result', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'tracking' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { updatedAt: string };
+
+      expect(harness.appendedEvents).toHaveLength(1);
+      const event = harness.appendedEvents[0]!;
+      expect(event).toMatchObject({
+        eventType: 'status_changed',
+        caseId,
+        fromStatus: 'investigating',
+        toStatus: 'tracking',
+        fromPartnerOrganizationId: orgId,
+        toPartnerOrganizationId: orgId,
+        closeReason: null,
+        actor: { type: 'security_company_operator', accountId: harness.operatorId, partnerOrganizationId: orgId },
+      });
+      expect((event.occurredAt as Date).toISOString()).toBe(body.updatedAt);
+    });
+
+    it('PATCH: an append failure does not turn the 200 into a 5xx', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        recoveryCaseEventAppendError: new TypeError('boom'),
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'tracking' }),
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('release appends a case_released event, returning the case to the pool', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { updatedAt: string };
+
+      expect(harness.appendedEvents).toHaveLength(1);
+      const event = harness.appendedEvents[0]!;
+      expect(event).toMatchObject({
+        eventType: 'case_released',
+        caseId,
+        fromStatus: 'investigating',
+        toStatus: 'open',
+        fromPartnerOrganizationId: orgId,
+        toPartnerOrganizationId: null,
+        closeReason: null,
+        actor: { type: 'security_company_operator', accountId: harness.operatorId, partnerOrganizationId: orgId },
+      });
+      expect((event.occurredAt as Date).toISOString()).toBe(body.updatedAt);
+    });
+
+    it('release: an append failure does not turn the 200 into a 5xx', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        recoveryCaseEventAppendError: new TypeError('boom'),
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/release`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('reassign appends a case_reassigned event with toPartnerOrganizationId echoed from the result', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      const targetOrgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        partnerOrganizations: [{ id: targetOrgId, status: 'active' }],
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'tracking',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/reassign`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: targetOrgId }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { updatedAt: string };
+
+      expect(harness.appendedEvents).toHaveLength(1);
+      const event = harness.appendedEvents[0]!;
+      expect(event).toMatchObject({
+        eventType: 'case_reassigned',
+        caseId,
+        fromStatus: 'tracking',
+        toStatus: 'investigating',
+        fromPartnerOrganizationId: orgId,
+        toPartnerOrganizationId: targetOrgId,
+        closeReason: null,
+        actor: { type: 'security_company_operator', accountId: harness.operatorId, partnerOrganizationId: orgId },
+      });
+      expect((event.occurredAt as Date).toISOString()).toBe(body.updatedAt);
+    });
+
+    it('reassign: an append failure does not turn the 200 into a 5xx', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      const targetOrgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        partnerOrganizations: [{ id: targetOrgId, status: 'active' }],
+        recoveryCaseEventAppendError: new TypeError('boom'),
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'tracking',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/reassign`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ targetPartnerOrganizationId: targetOrgId }),
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('messages appends a customer_contact_initiated event, not a status change, after the audit write', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/messages`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'Please send a clearer photo.' }),
+      });
+      expect(res.status).toBe(202);
+
+      expect(harness.appendedEvents).toHaveLength(1);
+      const event = harness.appendedEvents[0]!;
+      expect(event).toMatchObject({
+        eventType: 'customer_contact_initiated',
+        caseId,
+        fromStatus: 'investigating',
+        toStatus: 'investigating',
+        fromPartnerOrganizationId: orgId,
+        toPartnerOrganizationId: orgId,
+        closeReason: null,
+        actor: { type: 'security_company_operator', accountId: harness.operatorId, partnerOrganizationId: orgId },
+      });
+      // No message content/length is ever carried on the event (SR-019-5(b)).
+      expect(JSON.stringify(event)).not.toContain('clearer photo');
+    });
+
+    it('messages: an append failure does not turn the 202 into a 5xx', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        recoveryCaseEventAppendError: new TypeError('boom'),
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/messages`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'Please send a clearer photo.' }),
+      });
+      expect(res.status).toBe(202);
+    });
+
+    it('does not append when recoveryCaseEventsEnabled is off', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        recoveryCaseEventsEnabled: false,
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: null,
+            status: 'open',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}/claim`), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      expect(harness.appendedEvents).toHaveLength(0);
+    });
+
+    it('dispatch-mode status PATCH does not append a pool-model event (A2 scope boundary)', async () => {
+      const caseId = '507f1f77bcf86cd799439011';
+      const orgId = randomUUID();
+      harness = createHarness({
+        partnerOrgId: orgId,
+        directedDispatchEnabled: true,
+        cases: [
+          sampleCase({
+            id: caseId,
+            accountId: randomUUID(),
+            assetId: '507f1f77bcf86cd799439021',
+            partnerOrganizationId: orgId,
+            status: 'investigating',
+            dispatchStatus: 'accepted',
+          }),
+        ],
+      });
+      await harness.start();
+
+      const res = await fetch(harness.url(`/security/cases/${caseId}`), {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${harness.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'tracking' }),
+      });
+      expect(res.status).toBe(200);
+      expect(harness.appendedEvents).toHaveLength(0);
     });
   });
 
