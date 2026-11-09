@@ -928,3 +928,120 @@ recorded" caveat. This adds to the RR-019-A caveat rather than replacing it.
 §11.4 still governs. One more fact recorded here: `backend/scripts/recovery-case-event-actor-purge.ts`
 exists, but `render.yaml` has no schedule for it, so §11.4(2) ("actually scheduled") is **not
 met**. Owner: `devops-engineer`.
+
+---
+
+## 13. Stage 8 delta — `case_handed_back` (`cybersecurity-architect`, chair, 2026-11-09)
+
+**Appended section. §1–§12 are not modified.** This is the A3 sub-task from §12.2: the chair
+addendum that §12.1(2) asks for. `security-engineer` concurrence is still needed in a new section
+below this one. The review is limited to the new event type. Anything not mentioned here is
+governed by §9–§11 as already signed.
+
+**Verdict: APPROVE WITH CONDITIONS (delta).** The existing Stage 8 approval covers this event
+type, subject to two build-blocking conditions (SR-019-11 and SR-019-12) for A4. One pre-existing
+OB-03 lifecycle finding came up during the check (F-019-S1). It does not block this event type
+and is routed separately.
+
+### 13.1 Checking the "no new field / actor / PII" claim against the code
+
+I read these on 2026-11-09: `backend/src/repositories/recovery-case-events.ts` (the whole file),
+`backend/src/lib/recovery-case-event-actor-purge.ts` (the base filter),
+`backend/src/routes/security-cases.ts` (lines 99–105 and 664–733, the dispatch-mode hand-back
+branch), and `backend/src/repositories/recovery-cases.ts` (`handBackAcceptedCase`,
+`dispatchClaimedCaseVisiblePredicate`, `dispatchCase`, `reDispatchToNull`).
+
+| Claim in §12.1(2) | Holds? | Evidence |
+|---|---|---|
+| No new field | **Yes** | Every field the event needs (`fromStatus`, `toStatus`, `from/toPartnerOrganizationId`, `closeReason`, `auditRequestId`) is already in `RecoveryCaseEventDbRow`, and `append()` builds the document field by field from that fixed set. The SR-019-4(c) key-set snapshot test should not change. If it has to change, the A4 PR has gone outside this delta. |
+| No new actor type | **Yes** | `operatorActorSchema` already exists and is strict (`accountId` and `partnerOrganizationId` non-empty strings). It is the same actor as `case_released`/`case_reassigned`. No `admin`, `support_agent` or `system` actor is involved. |
+| No new class of PII | **Yes** | The only personal data is `actor.accountId`, an opaque operator UUID, which SR-019-6(b) already covers. The customer is not identified on the event (SR-019-6(a) carries over unchanged). There is no location data and no free text. |
+| 12-month retention already covers it | **Yes, structurally** | `buildRecoveryCaseEventActorPurgeBaseFilter` selects on `actor.type: 'security_company_operator'` and `occurredAt`. It does **not** enumerate event types, so `case_handed_back` rows get cleared with no change to the job. This is why I agree that no new compliance signature is needed. |
+| `reason` never copied | **Yes, and it must stay that way** | `releaseBodySchema` is `z.enum(HAND_BACK_REASONS)` (`recovered_independently`, `unable_to_proceed`, `agreement_lapsed`, `other`). It is a closed enum, not free text, so copying it would not create a PII risk. It is still excluded, for two reasons. First, it would be a **new field**, which voids this delta. Second, a per-org hand-back reason is commercially sensitive between competing partners in the same way §12.1(3) treats decline records. The authoritative copy already exists in the `admin_access_log` row (`reason: 'case_handed_back:<code>'`). |
+
+### 13.2 Does "any status" create a new information-disclosure shape?
+
+**No, not on the only read path that exists or is authorised.**
+
+- *Admin reader (SR-019-7):* the `(fromStatus, toStatus)` pair on a hand-back is the case's status
+  at that moment. The admin can already see it on the case document, and it can be derived from
+  the case's own prior `case_claimed`/`status_changed` events. The event adds the fact and time of
+  the hand-back and which org handed it back. All three are already in Trail B, and the
+  disclosure-audited read covers them (SR-019-7(c)).
+- *Terminal statuses included:* `dispatchClaimedCaseVisiblePredicate` keeps `recovered`/`closed`
+  cases inside the PDM-4 wrap-up window `accepted`. `handBackAcceptedCase`'s CAS does not filter
+  on status, so a hand-back with `fromStatus === toStatus === 'recovered'` is a real, reachable
+  event. Recording it with `closeReason: null` is correct. `closeReason` describes the transition
+  *into* a terminal state, and that transition is recorded on the earlier `status_changed` event.
+  Copying the case's `closeReason` onto the hand-back event would duplicate it and would misstate
+  what this event records. It reveals nothing new to an admin.
+- *Future partner reader (§9.5):* this is the only place where any new shape appears, and §9.5 already
+  covers it with one clarification. **§9.5 item 1's "the single event that ended its holding" must
+  be read as including `case_handed_back`, alongside `case_released`, `case_reassigned` and a
+  terminal `status_changed`.** A later claimant org must not see an earlier org's hand-back. It is
+  outside the later org's holding interval, so item 1 already excludes it. It is also the same
+  kind of commercially sensitive cross-partner signal as a decline, so §11.3's "another
+  organisation" default applies. Whoever designs the partner path, and the Phase B Stage 8 (§12.3),
+  must take this as given and not reopen it.
+
+### 13.3 Build-blocking conditions for A4
+
+- **SR-019-11. Source both statuses from the CAS result, not the pre-read.** §12.1(2) requires
+  `fromStatus === toStatus`. SR-019-1 would ordinarily let `fromStatus` come from the pre-read
+  (`existing.case.status`). For this event, that produces a **race-induced silent gap**. The
+  dispatch hand-back CAS (`handBackAcceptedCase`) matches on `partnerOrganizationId` and
+  `dispatchStatus: 'accepted'` only, **not on status**. A concurrent dispatch-mode status `PATCH` by
+  another operator of the same org, landing between the pre-read and the CAS, gives a mismatched
+  pair. The union-level equality refine then rejects the append, and the timeline permanently
+  loses a real hand-back (RR-019-A). Hand-back does not change status by construction, so the
+  truthful value for both fields is the status on the returned document. Required sourcing:
+  `fromStatus` and `toStatus` = `handedBack.status`. `fromPartnerOrganizationId` = `req.auth`'s
+  org (the CAS matched on it). `toPartnerOrganizationId` = `handedBack.partnerOrganizationId`
+  (which must be `null`; the branch schema enforces this). `closeReason` = `null`. `occurredAt` =
+  `handedBack.updatedAt` (SR-019-3). `caseId` = `handedBack.id` (SR-019-1). The equality refine
+  stays in place as a guard against call-site regressions. It must not become the mechanism that
+  drops races. I am **not** asking for a status term to be added to `handBackAcceptedCase`'s CAS.
+  That would be a lifecycle change to an OB-03 transition, outside this delta (see F-019-S1).
+- **SR-019-12. Schema and test shape for the new branch.**
+  (a) The `case_handed_back` branch is `.strict()` like every other branch. It uses
+  `operatorActorSchema`, `fromStatus`/`toStatus: statusEnum`,
+  `fromPartnerOrganizationId: z.string().min(1)`, `toPartnerOrganizationId: z.null()`,
+  `closeReason: z.null()`, and `auditRequestId: auditRequestIdSchema`.
+  (b) The equality check is a refine on the union (`superRefine` on
+  `newRecoveryCaseEventInputSchema`, scoped to `eventType === 'case_handed_back'`), as §12.1(2)
+  rules. It must not be done by loosening any other branch. `NewRecoveryCaseEventInput` must still
+  infer as the discriminated union, so the call sites keep their compile-time narrowing.
+  (c) Tests: a hand-back with an unequal pair is rejected; one with a non-null
+  `toPartnerOrganizationId` or `closeReason` is rejected; a `customer` actor is rejected; a body
+  carrying `reason` (plus the full SR-019-4(c) forbidden-key list) is rejected; the
+  terminal-status case (`'recovered'`→`'recovered'`) is accepted. Add a route-level test that the
+  hand-back append is skipped when the CAS returns `null` (§4, post-CAS only), and one that a
+  thrown append still returns `200 returned_to_queue` (SR-019-2(a)). The module export-set test
+  and the inserted-document key-set snapshot stay **unchanged**.
+  (d) Update the stale header comment in `recovery-case-events.ts` (lines 54–59). It still says
+  hand-back/decline map onto `case_released`, which §12.1(2) has superseded.
+
+### 13.4 Finding raised during the check (not a blocker for this event type)
+
+- **F-019-S1 (Medium): a terminal case can be handed back and then re-dispatched to a new org.**
+  The dispatch-mode hand-back branch checks only `tier === 'claimed'`. The pool-mode `release` at
+  lines 740–747 also requires `investigating`/`tracking`; the dispatch branch has no such check.
+  `dispatchCase` and `reDispatchToOrgDirect` do not filter on status either. So a
+  `recovered`/`closed` case in its wrap-up window can be handed back to the admin queue and then
+  dispatched to a **second** partner org. On accept, that org gets claimed-tier access to a
+  customer's finished theft case. No purpose supports that, and it widens PDM-1 disclosure. I found
+  no ruling on this in `security-review-ob03-dispatch-location-grants.md`. SR-OB03-A5 rules on
+  carry-over of terminal cases, not on re-dispatching them. This is an OB-03 lifecycle question,
+  not an event-model one: the event correctly records whatever the route does. Owners:
+  `backend-architect` (decide whether hand-back and dispatch should reject terminal cases) and the
+  OB-03 Stage 8 signatories. It is routed to `cto` for scheduling. It does not block A4.
+
+### 13.5 Gate status (delta)
+
+| Signatory | Status |
+|---|---|
+| `cybersecurity-architect` | **Approve with conditions**, 2026-11-09. `case_handed_back` is covered by §9–§11. SR-019-11 and SR-019-12 are build-blocking for A4. F-019-S1 is filed against OB-03 |
+| `security-engineer` | Pending concurrence in a new section below this one |
+| `compliance-specialist` | **Not required.** §13.1 confirms that the RR-019-B purge applies by actor type and is event-type-agnostic, and that no new field or PII class is added. This holds only while SR-019-12(c)'s unchanged key-set snapshot holds |
+
+A4 may wire `case_handed_back` once `security-engineer` concurs.
