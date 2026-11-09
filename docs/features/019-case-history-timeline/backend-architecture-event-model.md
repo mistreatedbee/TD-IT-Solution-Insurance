@@ -834,3 +834,97 @@ pass found live in Feature 011 today, and two non-blocking implementation notes 
 
 **Does not discharge:** Stage 8 as a whole — `compliance-specialist`'s signature on SR-019-9 is
 still outstanding and is the third required signature. No code exists yet to verify at Stage 10.
+
+---
+
+## 12. `cto` ruling — OB-03 Tier A event mapping and wiring sequence (2026-11-09)
+
+**Appended section. §1–§11 are not modified.** This answers the open question recorded in the
+header comment of `backend/src/repositories/recovery-case-events.ts` (lines 54–59): how OB-03
+Tier A's `accept`, `decline` and hand-back routes map onto this event stream. I checked it against
+`recovery-cases.ts` (`acceptDispatchedCase`, `declineDispatchedCase`, `handBackAcceptedCase`, the
+admin dispatch methods) and `security-cases.ts` (lines 404–760) on 2026-11-09.
+
+### 12.1 Mapping rulings
+
+1. **`accept` maps to `case_claimed`. Approved.** The existing branch fits as written: the actor is
+   the operator, `fromStatus: 'open'` comes from the pre-read, `toStatus: 'investigating'` comes from
+   the result, `fromPartnerOrganizationId: null`, and `toPartnerOrganizationId` is the org. The
+   from-org is `null` even though `partnerOrganizationId` was already set while the case was
+   pending. That is deliberate, because the event records the start of a *holding*, not a field
+   diff. The call site must carry a comment saying so. `occurredAt` is the returned document's
+   `updatedAt` (SR-019-3). Because `acceptDispatchedCase` writes twice, a miss on the second
+   (status) CAS returns `status: 'open'`. The schema then rejects the append and SR-019-2(a) logs it.
+   That outcome is correct. Do not loosen the schema to absorb it.
+2. **Mapping hand-back to `case_released` is rejected.** `handBackAcceptedCase` keeps `status`, but
+   the `case_released` branch requires `toStatus: z.literal('open')`. Every hand-back append would
+   fail validation and become a permanent silent gap. Widening `case_released` would weaken the
+   pool-model invariant and merge two different transitions. Pool release goes to the open pool and
+   resets status. Hand-back goes to the admin dispatch queue and keeps status. **Ruling: add a new
+   event type, `case_handed_back`.** It uses the operator actor, `fromStatus === toStatus` (any
+   status, with equality enforced by a union-level refine), `fromPartnerOrganizationId` set to the
+   org, `toPartnerOrganizationId: null` and `closeReason: null`. The hand-back body's `reason` must
+   never be copied in (SR-019-4(d) applies by analogy).
+   This adds no field, no actor type and no new class of PII, so it needs a **Stage 8 delta from
+   `cybersecurity-architect`** (chair addendum plus `security-engineer` concurrence) before it is
+   built. It does not need a new compliance signature, because the retention position (RR-019-B)
+   does not change.
+3. **`decline` gets no event in this increment. I reject the reasoning but accept the
+   sequencing.** "The org never held the case, so there is nothing to record" is the wrong test.
+   This stream records case lifecycle transitions, and `declineDispatchedCase` is a real CAS
+   mutation (`partnerOrganizationId` org→null, `dispatchStatus` pending→null). Without that event,
+   a dispatch-mode timeline shows an unexplained gap between `case_created` and `case_claimed`, and
+   dispatch-to-accept latency and decline rate are exactly OB-03's response-time questions.
+   A decline event on its own would still be incoherent, though. The pending period starts with an
+   **admin** `dispatchCase`, and no event type or actor type exists for that today. The union has
+   `support_agent`, not `admin`. A per-org decline record is also commercially sensitive between
+   competing partners (§9.5 items 1–2). So decline is deferred into a **dispatch-lifecycle event
+   family** (Phase B, §12.3), not dropped. The decline call site gets a comment pointing here, plus a
+   test asserting that it appends nothing.
+
+### 12.2 Wiring sequence (Phase A, buildable now)
+
+Sub-tasks run in order, each its own `backend-engineer` dispatch and commit. A2 and A3 can run in
+parallel. A4 depends on A1, A2 and A3.
+
+- **A1. Plumbing and `case_created`.** (a) Call `bootstrapRecoveryCaseEventsCollections` from
+  `db/mongo-bootstrap.ts` and add it to `db/catalog-verify.ts`. It is not called today, so the
+  SR-019-2(c) dedupe index does not exist in any real database. (b) Add an env flag for appends:
+  default off in production, on in dev and test (SR-019-9 / §11.4). It does not exist yet.
+  (c) Add one shared helper that applies SR-019-2(a): check the flag, run `append` in its own
+  try/catch, emit the `recovery_case_event_append_failed` structured log containing only the DB
+  caseId, `eventType`, `auditRequestId` and the error class, increment a counter, and never throw.
+  (d) SR-019-8: add the cascade `deleteMany` to `scripts/seed-demo-security-dashboard.ts`. It is
+  missing today. (e) Wire `case_created` in `recovery.ts` (customer actor with `accountId: null`,
+  `occurredAt` set to `createdAt`).
+- **A2. Pool model (`directedDispatchEnabled` off) in `security-cases.ts`.** Wire `claim`,
+  status `PATCH`, `release`, `reassign` and `/messages` to the five existing types. Append after a
+  non-null CAS result and before the response (§4, SR-019-5(b)). Take every field per SR-019-1 and
+  SR-019-3.
+- **A3. `case_handed_back` Stage 8 delta.** A document-only `cybersecurity-architect` addendum to
+  this file, per §12.1(2).
+- **A4. Dispatch model (flag on) in `security-cases.ts`.** Add the `case_handed_back` schema branch
+  and its tests to `recovery-case-events.ts`. The export-set test stays unchanged. Then wire
+  `accept` to `case_claimed`, the dispatch status `PATCH` to `status_changed`, the dispatch-branch
+  `/messages` to `customer_contact_initiated`, and hand-back to `case_handed_back`. `decline`
+  appends nothing and gets a test asserting that.
+- **A5. Stage 10.** `security-engineer` verifies SR-019-1..8 against the wired code, plus §10.3.3
+  (the failure log uses the DB id), followed by a `qa-engineer` pass.
+
+### 12.3 Phase B (not dispatchable yet)
+
+The dispatch-lifecycle family is `case_dispatched`, `case_dispatch_declined`, `case_recalled`
+(`reDispatchToNull`) and `case_redispatched` (direct or approved). It also brings in an `admin`
+actor type. It needs three things: a `backend-architect` design delta; a full three-signature
+Stage 8 that rules on admin-identity retention and on whether decline records are visible to
+partners; and the `pendingApproval` request explicitly ruled as a non-event, since it does not
+change the holding.
+**Interim condition:** the SR-019-7 admin timeline read path must not present dispatch-mode cases
+as complete until Phase B lands. If it ships first, it must show a "dispatch/decline history not
+recorded" caveat. This adds to the RR-019-A caveat rather than replacing it.
+
+### 12.4 Production enablement (unchanged, restated)
+
+§11.4 still governs. One more fact recorded here: `backend/scripts/recovery-case-event-actor-purge.ts`
+exists, but `render.yaml` has no schedule for it, so §11.4(2) ("actually scheduled") is **not
+met**. Owner: `devops-engineer`.
