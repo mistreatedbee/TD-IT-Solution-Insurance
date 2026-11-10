@@ -1027,3 +1027,118 @@ changed either handler's error branch. Confirmed still holding.
 **Signed:** `security-engineer`, 2026-11-03. **Result: Stage 8 delta PASS for OB-03 Step 1/Step 2. Clears the
 path to Gate F1** — next step is `qa-test-strategy`'s Stage 10 re-run per the `cto` disposition's Step 4,
 against QA Findings 1-4 in `qa-report-ob03-dispatch-tier-a.md`.
+
+## B4 — Track B Stage 8 Delta
+
+**Scope:** OB-03 Track B admin-only dispatch-queue UI (5 screens) plus its backend route,
+`backend/src/routes/admin-case-dispatch.ts`, which had never had a code-level Stage 8 review before this
+delta. Files reviewed: `backend/src/routes/admin-case-dispatch.ts`, `backend/src/repositories/recovery-cases.ts`
+(dispatch/re-dispatch/approve methods), `src/admin/pages/AdminCaseDispatchPages.tsx`,
+`src/admin/api/admin-case-dispatch.ts`, `src/admin/AdminRoutes.tsx`, against the six items in the `cto`
+ruling. Location-display/audit-trail/POPIA angle is intentionally not covered here — flagged to
+`compliance-specialist` separately, per the dispatch instructions, not duplicated in this section.
+
+### B4.1 — Two-admin approval (item 1)
+
+Same-admin approval is rejected server-side in two independent places: the route
+(`admin-case-dispatch.ts:572`, `pending.requestedBy === req.auth!.accountId` → `CSA_SAME_ADMIN`, before any
+audit row) and, redundantly, inside `recoveryCases.approvePendingDispatch` itself
+(`recovery-cases.ts:1700`, `outcome: 'same_admin'`) — the repository does not trust the route's own check, so
+a future caller of the repository method directly still gets the rejection. The UI additionally disables the
+Approve button client-side (`AdminCaseDispatchPages.tsx:683-694`), but that is defense-in-depth, not the
+control. `backend/src/routes/admin-case-dispatch.test.ts` has coverage asserting `CSA_SAME_ADMIN`.
+
+Target org is shown to the approver before approval (Screen 5, `DetailGrid` row "Target org", resolved from
+`pending.requestedTargetOrgId`). **Reason is not** — `PendingDispatchApproval` (`recovery-cases.ts:111-120`)
+never persists the re-dispatch `reason` enum value the requesting admin supplied, so it is never returned by
+the API, and Screen 5's "Reason" row (`AdminCaseDispatchPages.tsx:679`) is hardcoded to render `'—'` for
+every pending approval, unconditionally. The requester's reason only survives in the Trail B audit-log
+`reason` string (`admin-case-dispatch.ts:515`, `redispatched_to_partner_org:...:${reason}` — written to the
+*requester's* audit row, not surfaced back through any route the approver's screen calls). **Finding
+(High, blocks nothing exploitable but fails the stated requirement):** the approving admin cannot see why a
+re-dispatch was requested before approving it, undermining the two-person control's intended insider-threat
+check — an approver is asked to rubber-stamp a target-org move with no visibility into the stated reason.
+Only the admin-only `dispatch` route (never-before-dispatched case, single-admin path) has no reason field at
+all by design, which is correct and separate; this finding is specifically about the re-dispatch pending-
+approval record dropping a reason it was given.
+
+**Remediation:** add `reason` to `PendingDispatchApproval`'s persisted shape, `createPendingDispatchApproval`'s
+input, `serializeAdminDispatchCase`'s `pendingApproval` block, and `AdminDispatchPendingApproval` on the web
+client; render it in place of the current literal `'—'`. Small, additive, no migration risk (field is only
+ever read from live in-flight approval records).
+
+### B4.2 — dispatchStatus state-machine consistency (item 2)
+
+Values and meanings match across surfaces: admin (`'undispatched' | 'pending' | 'accepted'`,
+`admin-case-dispatch.ts`) vs. partner (`SecurityCaseDispatchStatus = 'pending' | 'accepted'`, absent/null on
+the partner side standing in for admin's `'undispatched'`, `src/security/api/cases.ts:22-25`). Partner UI
+(`SecurityCasePages.tsx`) gates pool-mode vs. dispatch-mode UI on the same `'pending'`/`'accepted'`/absent
+three-way split admin's `DispatchStatusBadge` renders. No divergent interpretation found.
+
+### B4.3 — Race handling (item 3)
+
+Both paths are real, not just assumed in the design doc. 409 (`CONFLICT`): `dispatchCase` and
+`reDispatchToOrgDirect`/`approvePendingDispatch` all perform a pre-read then a conditional
+`findOneAndUpdate` scoped on the field(s) that must not have changed (`dispatchStatus: null` CAS for first
+dispatch at `recovery-cases.ts:1592-1593`; `pendingApproval.id` CAS for approval at `:1716`; snapshot
+equality check before that at `:1705-1712`) — a `null` result from any of these correctly produces `next(apiError('CONFLICT'))`
+in the route (e.g. `admin-case-dispatch.ts:366`, `:451`, `:491`). The UI surfaces this through the generic
+`mapUserFacingError` path (not swallowed) on dispatch/re-dispatch (`AdminCaseDispatchPages.tsx:252-253`,
+`:360-361`) and as a distinct, user-legible "case changed, refresh" message on approve
+(`:636-640`, keyed off `PENDING_APPROVAL_INVALID` — the approve route's TOCTOU-mismatch error, functionally
+the same race case, just not literally HTTP 409/`CONFLICT` coded — worth a naming-consistency note but not a
+defect). 202 (`pending_approval`): both `dispatch` and `re-dispatch` return `202` with a `pendingApprovalId`
+body on the cross-org/first-redispatch-after-dispatch branch, and the admin client's `DispatchResult` union
+(`admin-case-dispatch.ts:107-110`) forces callers to branch on it — the queue UI correctly shows an "awaiting
+a second admin's approval" banner rather than treating 202 as success-with-no-further-action. Confirmed real,
+not assumed.
+
+### B4.4 — Step-up auth (item 4)
+
+All three mutating routes (`dispatch`, `re-dispatch`, `re-dispatch/approve`) use the identical
+`requireStepUp(ctx, STEP_UP_WINDOW_SECONDS.invitationIssuance)` middleware other admin mutation routes use
+(same pattern as `admin-partner-organizations.ts`/`admin-claims.ts` per this file's own header comment) —
+not a Track-B-specific, weaker variant. Deep-linking cannot bypass it: step-up is enforced server-side on the
+POST route itself, not client-gated, so a direct link to `/admin/dispatch/cases/:id/approve/:pid` still hits
+`AdminAuthGate` for session auth (`AdminRoutes.tsx` — all `/admin/*` routes nest under the same
+`AdminLayout`/`AdminAuthGate`, no per-route exemption added for the three new Track B pages) and then the
+step-up challenge on the actual mutating call regardless of which screen initiated it.
+
+### B4.5 — Audit attribution (item 5)
+
+Every mutating route writes an `admin_access_log` (Trail B) `recordStateChange`/`recordDetail`/
+`recordBulkDisclosure` row naming `actorAccountId: req.auth!.accountId` before the mutation executes (§18.8
+ruling b, write-before-mutate), including the approval route, which names both admins explicitly in the audit
+`reason` string (`redispatch_approved:requestedBy=...:approvedBy=...:target=...`,
+`admin-case-dispatch.ts:611`) — correctly distinguishing requester from approver rather than only logging the
+actor. Consistent with Track A's own audit pattern in `security-cases.ts`. No attribution gap found.
+
+### B4.6 — List-view location leak (item 6)
+
+Confirmed closed by construction, not just convention. `serializeAdminDispatchListItem`
+(`admin-case-dispatch.ts:120-124`) explicitly destructures `lastLocation`/`lastLocationAt` off the full
+serializer's output before returning the list-item shape, rather than relying on the repository's list query
+simply never fetching those fields (defense in depth against a future repository-level fetch change silently
+reintroducing the leak). The `/admin/dispatch/cases/count` route returns only an integer, no case rows. No
+search parameter or secondary route in this router accepts or echoes location. The only route that returns
+`lastLocation` is the single-case detail read (2.5), consistent with `[A8]`'s intended scope, each with its
+own per-subject Trail B `recordDetail` row (not the bulk-disclosure row list/count use). No leak path found.
+
+### B4.7 Verdict
+
+**PASS-WITH-CONDITIONS.** Items 2 through 6 of the `cto` ruling are satisfied with no High/Critical
+findings. Item 1 is satisfied for its exploitable half (same-admin rejection is real, server-side, and
+redundantly enforced) but fails its second, explicitly-stated half: the approving admin is never shown the
+re-dispatch reason (B4.1), which this review rates **High** against the stated requirement — not an
+injection/IDOR/authZ bypass, but a direct miss on an insider-threat control the `cto` ruling named by name.
+
+**Condition for Gate F2:** `backend-engineer` adds `reason` to the persisted `PendingDispatchApproval` shape
+and both serializers (backend + `src/admin/api/admin-case-dispatch.ts`), and `AdminCaseDispatchPages.tsx`'s
+Screen 5 renders it instead of the current hardcoded `'—'`. Small, additive, no other change required. No
+other blocker identified in this delta.
+
+**Co-signatory needed:** `cybersecurity-architect` to co-sign the two-admin-approval insider-threat angle
+(B4.1) and the backend route's architecture (B4.2-B4.5), per the dispatch instructions. `compliance-specialist`
+to separately review the location-display/audit-trail/POPIA angle — not covered in this section.
+
+**Signed:** `security-engineer`, 2026-11-10.
