@@ -268,6 +268,13 @@ endpoints. Flipping without it is safe for operators but leaves customers' cases
 **Rule:** after F1, the flag may flip in a dev/demo environment where dispatch is driven by script.
 Any environment with real customer reports also needs **Gate F2**.
 
+> VOID — superseded by the `cto` disposition appended after B5 below. This sentence read as "F2
+> is sufficient for a real-reports flip," which was ambiguous; the intended meaning was F2 *on top
+> of* the non-engineering preconditions already recorded in Q4 below (SR-INC002B-S1/S2, a real
+> eligible org, R-1 lockstep on the operator surface, the migration script, rollback semantics) —
+> none of which are engineering-closeable the way F2 is. Struck here, not deleted, per house rule.
+> — `cto`, 2026-11-10
+
 Start it now as a parallel Track B, not on Track A's critical path. It is a new surface (queue
 list; detail with location per A8 / per-subject Trail B row; dispatch; re-dispatch; two-admin
 approve with `CSA_SAME_ADMIN` showing target org name and reason before approval), so it gets the
@@ -480,3 +487,68 @@ conditions, neither blocking, both time-boxed to before the next Track B UI chan
 
 **Gate F2: CLEARED**, conditions logged for `backend-engineer`/`frontend-engineer` follow-up, not
 gating.
+
+## `cto` disposition on a production flag flip (2026-11-10)
+
+### Ruling: NO-GO for a production flip of `DIRECTED_DISPATCH_ENABLED`. `PARTNER_LOCATION_SHARING_ENABLED` stays unset.
+
+Gate F2 is necessary, but it isn't enough. Q3's "Any environment with real customer reports also
+needs Gate F2" (struck above) was ambiguous — it meant F2 *on top of* the conditions already
+recorded in Q4, not F2 instead of them. Those conditions are not engineering items, and none are
+met yet.
+
+#### Hard preconditions before any production flip (all required)
+
+1. **SR-INC002B-S2: an executed partner data-sharing agreement.** Still BLOCKING in
+   `docs/organization/gates/stage8-manifest.json` (line 227). Owner/compliance action.
+2. **SR-INC002B-S1: the partner-account negative query.** Still BLOCKING (manifest line 226).
+3. **A real eligible org.** CO-OB03-4 allowlist / PDM-6 single-org equivalent with
+   `agreementReference` / `effectiveFrom` filled in from item 1. This is why the flip would cause
+   active harm right now, not just break a rule: with the flag on, CO-OB03-2 shuts off the
+   broadcast push, and with no eligible org, approval-time eligibility (B4.8.3,
+   `DISPATCH_TARGET_NOT_ELIGIBLE`) rejects every dispatch — real theft reports would then reach no
+   partner at all, which is worse than today's pool model.
+4. **A live partner-facing surface under its own gate.** `EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR`
+   is `"false"`. The dispatched org needs a working way to accept — either the web security
+   dashboard confirmed in scope for that org, or the operator app flag flipped under its own gate.
+   R-1 lockstep applies.
+5. **The migration runs before the flag.** `backend/scripts/ob03-dispatch-flag-flip-migration.ts`
+   must exit 0 against production. The boot guard
+   (`backend/src/lib/dispatch-migration-guard.ts`) refuses to start otherwise — that is the second
+   safety net, not the plan.
+6. **Written rollback semantics.** `backend-architect` + `devops-engineer` document what happens if
+   the flag is turned back to `false` after real dispatches exist: cases with `dispatchStatus`
+   set, pending two-admin approvals, and the fact that `claim`/`release`/`reassign` were removed
+   in lockstep under R-1, so "flag off" may not restore pool behaviour. A kill switch whose
+   off-state hasn't been worked out doesn't count as a rollback plan.
+7. **A recorded go from `cto` before the flip**, citing items 1-6 as evidenced — a short appended
+   note, not a new review.
+
+#### Not hard gates, close first anyway
+
+The two B5 follow-ups above don't block on their own merits — the flip is blocked for other
+reasons regardless — but close them before item 7 rather than carry them further.
+
+#### Phasing
+
+No separate canary mechanism is needed. The single-org allowlist is the canary: one eligible org,
+admin-driven, two-admin approval. Watch the first real dispatches end-to-end (queue → approve →
+accept → customer notification) before a second org is added to the allowlist.
+
+#### Who performs the flip
+
+- **The migration script is a production data write — owner-run under INC-003 §39/§40.** An agent
+  prepares the exact command and verification query and hands them over. It does not execute them.
+- **The Render env var change is also owner-only** — a production config change that must happen
+  strictly after a verified migration. One actor performing both in order avoids a split-custody
+  sequencing error, and having an agent hold a Render API key or dashboard session would be the
+  same custody problem §39/§40 already rejected. Agents may prepare the runbook (order: migration →
+  verify zero unmigrated → set `DIRECTED_DISPATCH_ENABLED=true` → confirm boot → confirm
+  `PARTNER_LOCATION_SHARING_ENABLED` unset); `devops-engineer` may review it. Agents may not run
+  any step against production.
+- `PARTNER_LOCATION_SHARING_ENABLED` stays out of scope, as before — separately blocked by
+  ADR-0017 §5 items 2-4 and 7 (CR-3, CS-3/CR-1-7, P-1-P-7 incl. counsel SG-12/13, its own
+  Stage 8/10). The CS-7 boot check in `backend/src/config/env.ts` (line 576) would refuse it
+  without dispatch on anyway.
+
+Signed: `cto`, 2026-11-10.
