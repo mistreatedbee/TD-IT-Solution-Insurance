@@ -151,6 +151,7 @@ describe('DispatchCaseDetailPage', () => {
           requestedTargetOrgId: 'org-2',
           requestedAt: '2026-11-02T09:14:00.000Z',
           expiresAt: '2026-11-03T09:14:00.000Z',
+          reason: 'partner_declined',
         },
       }),
     );
@@ -195,6 +196,7 @@ describe('DispatchApprovalPage', () => {
           requestedTargetOrgId: 'org-2',
           requestedAt: '2026-11-02T09:14:00.000Z',
           expiresAt: '2026-11-03T09:14:00.000Z',
+          reason: 'partner_declined',
         },
       }),
     );
@@ -210,6 +212,56 @@ describe('DispatchApprovalPage', () => {
       ).toBeInTheDocument(),
     );
     expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled();
+  });
+
+  it('[B4] renders the real reason given by the requesting admin, not a hardcoded placeholder', async () => {
+    vi.mocked(getAdminDispatchCase).mockResolvedValue(
+      dispatchCaseFixture({
+        dispatchStatus: 'accepted',
+        partnerOrganizationId: 'org-1',
+        pendingApproval: {
+          id: 'pa-1',
+          requestedBy: 'admin-2',
+          requestedTargetOrgId: 'org-2',
+          requestedAt: '2026-11-02T09:14:00.000Z',
+          expiresAt: '2026-11-03T09:14:00.000Z',
+          reason: 'partner_handed_back',
+        },
+      }),
+    );
+    vi.mocked(listPartnerOrganizations).mockResolvedValue({
+      data: [{ id: 'org-2', name: 'Beta Secure', status: 'active', contactEmail: 'b@beta.co', notes: null, createdAt: '', updatedAt: '' }],
+    });
+
+    renderApproval();
+
+    await waitFor(() => expect(screen.getByText('Partner handed back')).toBeInTheDocument());
+    expect(screen.queryByText('—')).not.toBeInTheDocument();
+  });
+
+  it('[B4] falls back to "—" when the pending approval has no reason (the plain-/dispatch two-admin path)', async () => {
+    vi.mocked(getAdminDispatchCase).mockResolvedValue(
+      dispatchCaseFixture({
+        dispatchStatus: 'accepted',
+        partnerOrganizationId: 'org-1',
+        pendingApproval: {
+          id: 'pa-1',
+          requestedBy: 'admin-2',
+          requestedTargetOrgId: 'org-2',
+          requestedAt: '2026-11-02T09:14:00.000Z',
+          expiresAt: '2026-11-03T09:14:00.000Z',
+          reason: null,
+        },
+      }),
+    );
+    vi.mocked(listPartnerOrganizations).mockResolvedValue({
+      data: [{ id: 'org-2', name: 'Beta Secure', status: 'active', contactEmail: 'b@beta.co', notes: null, createdAt: '', updatedAt: '' }],
+    });
+
+    renderApproval();
+
+    await waitFor(() => expect(screen.getByText('Reason')).toBeInTheDocument());
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 
   it('shows "no longer pending" when the case has no matching pendingApproval', async () => {
@@ -235,6 +287,7 @@ describe('DispatchApprovalPage', () => {
           requestedTargetOrgId: 'org-2',
           requestedAt: '2026-11-02T09:14:00.000Z',
           expiresAt: '2026-11-03T09:14:00.000Z',
+          reason: 'partner_declined',
         },
       }),
     );

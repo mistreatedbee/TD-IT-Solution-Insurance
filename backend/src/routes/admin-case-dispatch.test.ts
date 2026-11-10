@@ -766,6 +766,46 @@ describe('routes/admin-case-dispatch', () => {
       expect(res.status).toBe(202);
       const body = (await res.json()) as { data: { pendingApprovalId: string } };
       expect(typeof body.data.pendingApprovalId).toBe('string');
+
+      // [B4] — the requesting admin's stated reason must survive onto the
+      // persisted pendingApproval, so a second admin viewing the case detail
+      // sees it (not a hardcoded '—').
+      const detailRes = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}`, {
+        headers: { authorization: adminBearer },
+      });
+      expect(detailRes.status).toBe(200);
+      const detailBody = (await detailRes.json()) as {
+        data: { pendingApproval: { reason: string | null } | null };
+      };
+      expect(detailBody.data.pendingApproval?.reason).toBe('partner_declined');
+    });
+
+    it('[B4] the plain `/dispatch` pending-approval path (no reason field on its body) persists `reason: null`, not a fabricated value', async () => {
+      const org1 = sampleOrg();
+      const org2 = sampleOrg();
+      const kase = sampleCase({
+        dispatchStatus: null,
+        partnerOrganizationId: null,
+        firstDispatchedAt: new Date('2026-10-01T00:00:00.000Z'),
+      });
+      const { app, adminBearer } = createHarness({ cases: [kase], orgs: [org1, org2] });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}/dispatch`, {
+        method: 'POST',
+        headers: { authorization: adminBearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ partnerOrganizationId: org2.id }),
+      });
+      expect(res.status).toBe(202);
+
+      const detailRes = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${kase.id}`, {
+        headers: { authorization: adminBearer },
+      });
+      const detailBody = (await detailRes.json()) as {
+        data: { pendingApproval: { reason: string | null } | null };
+      };
+      expect(detailBody.data.pendingApproval?.reason).toBeNull();
     });
 
     it('[A4] null-then-dispatch bypass is closed: a null re-dispatch followed by a plain dispatch to a different org still requires approval via re-dispatch, not a plain dispatch call', async () => {
@@ -902,6 +942,7 @@ describe('routes/admin-case-dispatch', () => {
           requestedTargetOrgId: org.id,
           requestedAt: new Date(),
           expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+          reason: 'partner_declined',
           snapshot: { partnerOrganizationId: null, dispatchStatus: null, status: 'open' },
         },
       });
@@ -939,6 +980,7 @@ describe('routes/admin-case-dispatch', () => {
           requestedTargetOrgId: org.id,
           requestedAt: new Date(),
           expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+          reason: 'partner_declined',
           snapshot: { partnerOrganizationId: null, dispatchStatus: null, status: 'open' },
         },
       });
@@ -974,6 +1016,7 @@ describe('routes/admin-case-dispatch', () => {
           requestedTargetOrgId: org.id,
           requestedAt: new Date(),
           expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+          reason: 'partner_declined',
           snapshot: { partnerOrganizationId: null, dispatchStatus: null, status: 'open' },
         },
       });

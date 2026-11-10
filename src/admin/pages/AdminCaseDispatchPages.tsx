@@ -676,7 +676,7 @@ export function DispatchApprovalPage() {
           },
           { label: 'Requested at', value: formatDateTime(pending.requestedAt) },
           { label: 'Target org', value: targetOrgName },
-          { label: 'Reason', value: '—' },
+          { label: 'Reason', value: pending.reason ? REDISPATCH_REASON_LABELS[pending.reason] : '—' },
         ]}
       />
 

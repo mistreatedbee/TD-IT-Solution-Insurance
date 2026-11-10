@@ -114,6 +114,13 @@ export interface PendingDispatchApproval {
   requestedTargetOrgId: string;
   requestedAt: Date;
   expiresAt: Date;
+  /** OB-03 Track B / Stage 8 security-review B4 — the requesting admin's
+   * stated reason for the re-dispatch, so the approving admin can see it
+   * (previously only survived in the requester's own audit-log string).
+   * `null` for the plain-`/dispatch` pending-approval path (no reason field
+   * exists on that route's body at all — see admin-case-dispatch.ts), which
+   * is a legitimate state, not a missing value. */
+  reason: string | null;
   snapshot: {
     partnerOrganizationId: string | null;
     dispatchStatus: DispatchStatus | null;

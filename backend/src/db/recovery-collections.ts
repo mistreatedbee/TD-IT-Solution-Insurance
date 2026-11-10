@@ -79,6 +79,7 @@ export const recoveryCasesJsonSchemaValidator: Document = {
           requestedTargetOrgId: { bsonType: 'string' },
           requestedAt: { bsonType: 'date' },
           expiresAt: { bsonType: 'date' },
+          reason: { bsonType: ['string', 'null'] },
           snapshot: {
             bsonType: 'object',
             properties: {

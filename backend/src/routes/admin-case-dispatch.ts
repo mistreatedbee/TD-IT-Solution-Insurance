@@ -99,6 +99,8 @@ function serializeAdminDispatchCase(doc: RecoveryCaseDocument) {
           requestedTargetOrgId: doc.pendingApproval.requestedTargetOrgId,
           requestedAt: doc.pendingApproval.requestedAt.toISOString(),
           expiresAt: doc.pendingApproval.expiresAt.toISOString(),
+          // [B4] — null is legitimate (plain `/dispatch` pending-approval path).
+          reason: doc.pendingApproval.reason,
         }
       : null,
     createdAt: doc.createdAt.toISOString(),
@@ -325,6 +327,10 @@ export function createAdminCaseDispatchRouter(ctx: AppContext): Router {
             requestedTargetOrgId: partnerOrganizationId,
             requestedAt: now,
             expiresAt: new Date(now.getTime() + PENDING_APPROVAL_WINDOW_MS),
+            // Plain `/dispatch` body (`dispatchCaseBodySchema`) carries no
+            // reason field at all — `null` here is a legitimate state, not
+            // a missing value (see `PendingDispatchApproval.reason`).
+            reason: null,
             snapshot: {
               partnerOrganizationId: existing.partnerOrganizationId,
               dispatchStatus: existing.dispatchStatus,
@@ -520,6 +526,10 @@ export function createAdminCaseDispatchRouter(ctx: AppContext): Router {
           requestedTargetOrgId: targetPartnerOrganizationId,
           requestedAt: now,
           expiresAt: new Date(now.getTime() + PENDING_APPROVAL_WINDOW_MS),
+          // [B4] — the requesting admin's stated reason, so the approving
+          // admin can see it (previously only survived in the audit-log
+          // string above, never persisted on the pendingApproval itself).
+          reason,
           snapshot: {
             partnerOrganizationId: existing.partnerOrganizationId,
             dispatchStatus: existing.dispatchStatus,

@@ -68,6 +68,11 @@ export interface AdminDispatchPendingApproval {
   requestedTargetOrgId: string;
   requestedAt: string;
   expiresAt: string;
+  /** [B4] — the requesting admin's stated reason. `null` for the
+   * plain-`/dispatch` pending-approval path, which has no reason field on
+   * its request body at all — that is a legitimate state, not a missing
+   * value. */
+  reason: RedispatchReason | null;
 }
 
 export interface AdminDispatchCase {
