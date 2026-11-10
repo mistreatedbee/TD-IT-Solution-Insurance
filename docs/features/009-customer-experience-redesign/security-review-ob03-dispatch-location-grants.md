@@ -1142,3 +1142,197 @@ other blocker identified in this delta.
 to separately review the location-display/audit-trail/POPIA angle — not covered in this section.
 
 **Signed:** `security-engineer`, 2026-11-10.
+
+### B4.8 — `compliance-specialist`: location display, purpose limitation and Trail B (POPIA angle)
+
+**Scope:** only the item `security-engineer` left to me at B4 scope / B4.7: Screen 2's location display
+(`ui-design-ob03-admin-dispatch-queue.md` §2) checked against A8's purpose-limitation terms; whether the
+"logged" notice is really in the code; whether a real Trail B row is written for each detail view; and
+the list view's exclusion of location, looked at as a minimisation question. I did not re-review B4.1–B4.6.
+
+**Where A8 is written down (citation fix, not a defect).** The dispatch brief told me to look for A8's
+terms in ADR-0017. They are not there. The only place ADR-0017 mentions A8 is line 1295, and that is a
+back-reference. The binding text is **SR-OB03-A8** in this file (§3, the "minimise the admin queue" bullet),
+my own concurrence at §10 C2 ("A8: concur, on s10 grounds"), and `api-design-ob03-dispatch-location-grants.md`
+§2.5. A8 permits location on the detail route because *"a single-case decision may legitimately need it"*.
+That is a purpose tied to dispatch, and I tested against it.
+
+**1. List view never includes location: confirmed. Minimisation holds (s10).** Two layers keep it out.
+The repository projection `{ lastLocation: 0, lastLocationAt: 0 }` (`recovery-cases.ts:1549`) means the
+data is never fetched. `serializeAdminDispatchListItem` (`admin-case-dispatch.ts:120-124`) then strips the
+fields again. `/count` returns only an integer. Because the data is never fetched in the first place, this
+is real minimisation, not just hiding fields in the output. No finding.
+
+**2. "Viewing this location is logged" notice: implemented, not only specified.**
+`AdminCaseDispatchPages.tsx:511-513` renders it as muted text directly under the coordinate pair, and only
+when a location is present. The wording is accurate: the Trail B row is keyed on `actorAccountId`. This is
+a notice to staff about accountability, not a customer-facing notice. My §10 C2 position still stands: no
+new customer consent is needed, because an admin viewing an asset's location to dispatch its recovery is
+inside the purpose the customer reported the theft for. No finding.
+
+**3. Per-view Trail B row: real, server-side, written before disclosure, fails closed.** The detail route
+(`admin-case-dispatch.ts:242-252`) runs `await ctx.adminAccessLog.recordDetail(...)` before `res.json`. That
+inserts a `privileged_data_access` row into the Mongo `admin_access_log` collection
+(`repositories/admin-access-log.ts:189-210`). The row carries `actorAccountId`, `actorSessionId`,
+`auditRequestId`, `targetAccountId` (the customer), `resourceType: 'recovery_case'`, `resourceId`,
+`endpoint`, IP and user agent. If the insert throws, the error goes to `next(err)` and no response body is
+sent, so the location is never shown without a log row. It is one row per call and per subject, not the
+list's bulk row. That answers "who viewed this customer's location, when, from which session". The "why" is
+not stored as a free-text reason (`reason: null`). The endpoint is a dispatch-only route, so the endpoint
+itself stands in for the purpose. I accept that, **subject to C-B4-1 below**, because the proxy only holds
+if the route can only be used for dispatch. The 12-month retention (FU-A8, ADR-0006 §14.9) applies.
+
+**4. Finding C-B4-1 (Medium, purpose limitation, s13/s15 POPIA; GDPR Art. 5(1)(b) if it applies):
+the detail route discloses location for cases that are no longer being dispatched.**
+`findByIdForAdmin` (`recovery-cases.ts:1574-1578`) looks a case up by `_id` and applies no status filter.
+The route then returns `lastLocation` whatever the status is, including `recovered` and `closed`. Once a
+case is closed there is no dispatch decision left to make, and that decision is the only purpose A8 allows
+location for. So this route currently gives any admin a way to see the last known location of a customer's
+recovered or closed asset. That location may well be the customer's home. Because the route's name implies
+a dispatch purpose, the Trail B rows for those reads would record a purpose that did not actually exist.
+- **Condition (before Gate F2):** `backend-engineer` leaves out `lastLocation`/`lastLocationAt` from the
+  detail response when `status` is `recovered` or `closed`. The rest of the case detail can still be
+  returned, so the screen keeps working. Add a test for a closed case that asserts `lastLocation` is absent.
+  Screen 2 already shows `'—'` when there is no location, so the UI needs no change. If someone believes
+  admins legitimately need location on closed cases (for example a dispute or a claim), that goes through
+  a separate route with a stated purpose and a `reason` captured on the row. It does not go through the
+  dispatch route.
+
+**5. Note (Low, not a condition): test coverage of the audit row.** `admin-case-dispatch.test.ts:522`
+checks only that *some* `detail` row exists. It should also check `targetAccountId`/`resourceId` against
+the case, and it should check fail-closed behaviour: if `recordDetail` rejects, the response is not 200 and
+contains no `lastLocation`. Recommended alongside C-B4-1.
+
+**6. Note: the Trail B row does not record whether a location was actually disclosed.** A view of a case
+that had no location still writes the same row. When reconstructing "who saw this location", the result is
+therefore over-inclusive, never under-inclusive. That is acceptable, and I am not asking for a change.
+
+#### B4.8 Verdict (compliance)
+
+**PASS-WITH-CONDITIONS.** The list stays minimised. The logging notice is real. Each detail view writes a
+per-subject Trail B row before the data is disclosed, and fails closed. **C-B4-1 is a condition for
+Gate F2:** location must not be disclosed on `recovered`/`closed` cases through the dispatch detail route.
+It is not a block on Stage 8 sign-off. It is small and additive, and it sits alongside `security-engineer`'s
+B4.1 condition.
+
+Applicable regimes: POPIA (assumed SA data subjects, per the existing Feature 001 determination); GDPR
+only if EU data subjects are confirmed (not confirmed; no change from prior rulings); PCI-DSS not engaged
+(no payment data on this surface).
+
+**Signed:** `compliance-specialist`, 2026-11-10.
+
+### B4.8 — `cybersecurity-architect` co-signature (insider-threat + route architecture, 2026-11-10)
+
+**Scope:** (a) whether the two-admin control actually stops one rogue or compromised admin acting alone;
+(b) the route architecture of `admin-case-dispatch.ts`. I read `admin-case-dispatch.ts` in full,
+`recovery-cases.ts:105-122` and `:1580-1734`, and `AdminCaseDispatchPages.tsx:600-709`. I have not edited
+`security-engineer`'s text above.
+
+**Position:** I agree with B4.1's High finding and widen it (B4.8.1). I **do not** agree that items 2-5 have
+no further gaps. Two of the shared-transition repository methods do not enforce the state-keyed [A4] rule
+themselves, so one admin can get around the two-admin gate by sending concurrent requests (B4.8.2). The
+verdict stays **PASS-WITH-CONDITIONS**, but Gate F2 now has three conditions instead of one.
+
+#### B4.8.1 — B4.1 widened: the `dispatch` route's pending branch also drops a reason (High, joins B4.1)
+
+B4.1 says the `dispatch` route has no reason field by design. That holds for its single-admin path. It
+does not hold for its second branch (`admin-case-dispatch.ts:305-340`, `firstDispatchedAt !== null`), which
+creates a `PendingDispatchApproval` too, through the same Screen 5. This is the exact [A4]/SR-OB03-B3
+compositional-bypass path, and it is the one where the approver most needs context. **The remediation must
+cover both producers:** persist `reason` on every `PendingDispatchApproval`. For the `dispatch` branch,
+either accept an optional `reason` (the same `RE_DISPATCH_REASONS` enum) or write a fixed server value
+(for example `dispatch_after_prior_dispatch`). Screen 5 should also show the **current holder org**, so the
+approver sees "from X to Y" and not only "to Y". Since `'other'` is a valid enum value, the reason is only
+weak context. The stronger insider-threat signal is requester identity (already shown) plus the CS-2(iii)
+detective report (still undesigned, B11; carried, not new).
+
+#### B4.8.2 — the single-admin transitions are only protected by a pre-read in the route (High, new, Gate F2)
+
+§2.3 (SR-OB03-B3 fix) required the rule to live in the **shared dispatch transition, keyed on case state**.
+In the code it lives in the route's pre-read. The repository's write filters do not repeat it:
+
+- `reDispatchToOrgDirect` (`recovery-cases.ts:1645-1646`) filters on `{ _id }` **only**. It has no
+  compare-and-set at all. (B4.3 says this method performs a conditional `findOneAndUpdate`. For this method
+  that is not accurate.)
+- `dispatchCase` (`:1593`) filters on `{ _id, dispatchStatus: null }` but **not** `firstDispatchedAt: null`.
+
+**How one admin abuses this:** case C has never been dispatched. Admin A sends `dispatch(C → X)` and
+`re-dispatch(C → Y)` at the same moment. Both pre-reads see `firstDispatchedAt === null`, so both take the
+single-admin branch. `dispatchCase` wins the CAS. Then `reDispatchToOrgDirect` overwrites it with no
+condition. The recipient changes from X to Y with one admin and no 202. X has already received the
+`[CO-OB03-2]` push (reference number and asset category). A second version also works: `dispatch(C → Y)`
+is in flight, and A completes `dispatch(C → X)` and then `re-dispatch(C, null)`, which is unconditional.
+Y's CAS still sees `dispatchStatus: null` and lands, even though the case has now been dispatched before.
+The race window is a few DB round-trips (eligibility read plus the Trail B write), and one admin can hit it
+with a script. Under Tier A the payoff is disclosure of case existence to an org chosen by one admin. Under
+Tier B, with a live pre-authorisation, it is G-1 itself. The Trail B rows record all of it, so this is
+detectable after the fact. The preventive control can still be bypassed.
+
+**Fix (small):** in each single-admin repository write, add the state predicates the route's branch
+depended on to the write filter. That is `firstDispatchedAt: null` on `dispatchCase` and on
+`reDispatchToOrgDirect`, plus `dispatchStatus: null, partnerOrganizationId: null` on the latter. A miss
+returns `null`, which the route already maps to `CONFLICT`. Add a contract test that interleaves the two
+calls and asserts at most one 200 and no single-admin change of holder. **Gate F2 condition.** It is a hard
+Tier B precondition regardless.
+
+#### B4.8.3 — `approve` does not re-check target-org eligibility (Medium, new, Gate F2)
+
+`isTargetOrgEligible` runs only when the request is made. The approval window is 24 hours. If the target
+org's agreement is terminated inside that window, the request still matches its snapshot (the snapshot
+covers the case, not the org), and approval dispatches to a terminated org. **Fix:** call
+`isTargetOrgEligible(pending.requestedTargetOrgId)` in the approve route before the Trail B write, and
+reject with `DISPATCH_TARGET_NOT_ELIGIBLE`. **Gate F2 condition.**
+
+#### B4.8.4 — the pending-approval lifecycle does not match the §2.3/A4 specification (Medium, F2-recommended)
+
+§2.3 specified **one** pending approval per case **and an explicit cancel by the requester**.
+`createPendingDispatchApproval` (`:1672-1675`) overwrites whatever is there without a condition, and the
+router has no cancel route. Approval is bound to `pendingApprovalId`, so overwriting cannot redirect an
+approval already in progress. That is safe, and it is not a bypass. But any one admin can keep overwriting
+others' requests (a nuisance or availability problem), and a requester has no way to withdraw. **Fix:**
+reject the create when a pending approval exists that has not expired (filter
+`pendingApproval: null` or `pendingApproval.expiresAt < now`), and add a requester-only cancel that writes
+its own Trail B row. If F2 is not to be held for this, `cto` may defer it with a dated owner.
+
+#### B4.8.5 — Route architecture: what I confirm
+
+- **Trust boundary:** every route uses `authenticate` and `requireUserType('admin')`. No partner-org path
+  exists. The router is not mounted when the flag is off. Rate limits are keyed per account. The router
+  follows the same admin-tier pattern as `admin-partner-organizations.ts`/`admin-claims.ts`. Confirmed.
+- **Input validation:** the zod schemas (SE-1) cover query, params and body, and the enum filters close
+  operator injection. One minor point: `approveBodySchema.pendingApprovalId` is a bare `z.string()`. It
+  should be `z.string().uuid()` (Low, hardening only, not exploitable, because it is only compared for
+  equality).
+- **Step-up on all three mutations, write-before-mutate audit, approval row naming both admins:** I concur
+  with B4.4/B4.5. A note on the case document, not a defect: `dispatchedBy` on approval is set to the
+  **requester** (`:1722`). Trail B is the authoritative record of who approved. Any later dashboard that
+  reads `dispatchedBy` must not present it as the approver.
+- **Return-to-queue (`target: null`) is single-admin and has no compare-and-set.** I accept this as
+  designed. It can disrupt or delay a recovery but discloses nothing. With B4.8.2 fixed, it is no longer a
+  stepping stone to a single-admin re-dispatch. It belongs in the CS-2(iii)/B11 detective report.
+
+#### B4.8.6 — Is the request/approve split enough against a single rogue admin?
+
+**Not yet. It will be once B4.8.2 is fixed**, with these residuals on record:
+
+| Residual | Disposition |
+|---|---|
+| First-ever dispatch is single-admin | Accepted by design (CS-1). The only control is CS-2(iii) detection, still undesigned (B11), carried. |
+| One human holding two admin accounts defeats `CSA_SAME_ADMIN` | Already accepted (§2.3, ADR-0006 identity governance). Re-affirmed. |
+| Any admin can approve; no separate approver privilege tier | New observation, not a blocker. Recorded for `cto` and for the ADR-0006 role model before Tier B. |
+| Single-admin return-to-queue | Accepted (availability only). Should appear in the B11 report. |
+
+#### B4.8.7 — Co-signature
+
+**PASS-WITH-CONDITIONS, concurred.** The conditions for Gate F2 are:
+
+1. **B4.1 as widened by B4.8.1:** `reason` is persisted and rendered for pending approvals from both
+   producers. Screen 5 also shows the current holder org.
+2. **B4.8.2:** state predicates are added to the `dispatchCase`/`reDispatchToOrgDirect` write filters,
+   with an interleaving contract test.
+3. **B4.8.3:** org eligibility is re-checked on approve.
+
+B4.8.4 is recommended for F2 and can be deferred by `cto` with a dated owner. The `uuid()` tightening is
+Low. Owner for all of these: `backend-engineer`. `security-engineer` verifies the fixes.
+
+**Signed:** `cybersecurity-architect` (Stage 8 chair), 2026-11-10.
