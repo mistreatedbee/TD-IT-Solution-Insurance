@@ -1143,7 +1143,12 @@ to separately review the location-display/audit-trail/POPIA angle — not covere
 
 **Signed:** `security-engineer`, 2026-11-10.
 
-### B4.8 — `compliance-specialist`: location display, purpose limitation and Trail B (POPIA angle)
+### B4.9 — `compliance-specialist`: location display, purpose limitation and Trail B (POPIA angle)
+
+*Numbering note: `cybersecurity-architect` appended its B4.8 at the same time I appended this section, so
+this one sits above B4.8 in the file. I first headed it "B4.8" and renumbered my own heading to avoid the
+collision. Nothing else changed. Read this section as following B4.8. **Gate F2 therefore carries four
+conditions:** B4.8.7 items 1–3, plus C-B4-1 below.*
 
 **Scope:** only the item `security-engineer` left to me at B4 scope / B4.7: Screen 2's location display
 (`ui-design-ob03-admin-dispatch-queue.md` §2) checked against A8's purpose-limitation terms; whether the
@@ -1207,7 +1212,7 @@ contains no `lastLocation`. Recommended alongside C-B4-1.
 that had no location still writes the same row. When reconstructing "who saw this location", the result is
 therefore over-inclusive, never under-inclusive. That is acceptable, and I am not asking for a change.
 
-#### B4.8 Verdict (compliance)
+#### B4.9 Verdict (compliance)
 
 **PASS-WITH-CONDITIONS.** The list stays minimised. The logging notice is real. Each detail view writes a
 per-subject Trail B row before the data is disclosed, and fails closed. **C-B4-1 is a condition for
