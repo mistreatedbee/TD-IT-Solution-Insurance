@@ -27,11 +27,14 @@ export function LoadingState({ label = 'Loading…' }: { label?: string }) {
 
 export function StatusBadge({ value }: { value: string }) {
   const tone =
-    value === 'active' || value === 'recovered'
+    value === 'active' || value === 'recovered' || value === 'accepted'
       ? 'emerald'
       : value === 'suspended' || value === 'closed' || value === 'deactivated'
         ? 'neutral'
-        : value === 'open' || value === 'pending_verification' || value === 'investigating'
+        : value === 'open' ||
+            value === 'pending_verification' ||
+            value === 'investigating' ||
+            value === 'pending'
           ? 'gold'
           : 'neutral';
   return <Badge tone={tone}>{value.replace(/_/g, ' ')}</Badge>;
