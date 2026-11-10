@@ -593,15 +593,32 @@ export function createAdminCaseDispatchRouter(ctx: AppContext): Router {
           return;
         }
 
+        // [B4.8.3] Expiry is checked and reported separately from the rest of
+        // the TOCTOU snapshot so the UI can show "expired" rather than a
+        // generic failure.
+        if (pending.expiresAt.getTime() < Date.now()) {
+          next(apiError('PENDING_APPROVAL_EXPIRED'));
+          return;
+        }
+
         // TOCTOU snapshot check — the case must not have changed since the
-        // request, and the request must not have expired.
+        // request.
         const snapshotStillMatches =
-          pending.expiresAt.getTime() >= Date.now() &&
           pending.snapshot.partnerOrganizationId === existing.partnerOrganizationId &&
           pending.snapshot.dispatchStatus === existing.dispatchStatus &&
           pending.snapshot.status === existing.status;
         if (!snapshotStillMatches) {
           next(apiError('PENDING_APPROVAL_INVALID'));
+          return;
+        }
+
+        // [B4.8.3] Re-verify the target org is still eligible at approval
+        // time, not just at request time — the org's agreement state can
+        // change inside the 24h approval window, which the request-time
+        // snapshot (keyed on case state, not org state) cannot catch.
+        const stillEligible = await isTargetOrgEligible(pending.requestedTargetOrgId);
+        if (!stillEligible) {
+          next(apiError('DISPATCH_TARGET_NOT_ELIGIBLE'));
           return;
         }
 

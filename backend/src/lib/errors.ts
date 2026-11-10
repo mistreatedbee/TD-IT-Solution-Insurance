@@ -205,6 +205,13 @@ export const ERROR_CATALOG = {
     statusCode: 409,
     message: 'This re-dispatch approval request is no longer valid. It may have expired or the case may have changed.',
   },
+  // OB-03 B4.8.3 — distinct from PENDING_APPROVAL_INVALID so the UI can show
+  // "expired" rather than a generic failure. Raised only when the pending
+  // approval itself has aged past its 24h window at approval time.
+  PENDING_APPROVAL_EXPIRED: {
+    statusCode: 409,
+    message: 'This re-dispatch approval request has expired. The requester must submit it again.',
+  },
   INTERNAL_ERROR: { statusCode: 500, message: 'An internal error occurred.' },
 } as const satisfies Record<string, ErrorCatalogEntry>;
 

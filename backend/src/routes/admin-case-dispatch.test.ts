@@ -1046,6 +1046,84 @@ describe('routes/admin-case-dispatch', () => {
       });
       expect(res.status).toBe(409);
     });
+
+    // B4.8.3 — re-check target-org eligibility at approval time, not just at
+    // request time: the org's agreement can change inside the 24h window.
+    it('returns 422 DISPATCH_TARGET_NOT_ELIGIBLE when the target org became ineligible after the request was made', async () => {
+      const org = sampleOrg(); // eligible when the request was made
+      const pendingApprovalId = randomUUID();
+      const baseCase = sampleCase({
+        dispatchStatus: null,
+        partnerOrganizationId: null,
+        firstDispatchedAt: new Date('2026-10-01T00:00:00.000Z'),
+        status: 'open',
+      });
+      const harness = createHarness({ cases: [baseCase], orgs: [org] });
+      harness.cases.set(baseCase.id, {
+        ...baseCase,
+        pendingApproval: {
+          id: pendingApprovalId,
+          requestedBy: harness.adminId,
+          requestedTargetOrgId: org.id,
+          requestedAt: new Date(),
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+          reason: 'partner_declined',
+          snapshot: { partnerOrganizationId: null, dispatchStatus: null, status: 'open' },
+        },
+      });
+      // The org's agreement is terminated inside the approval window — this is
+      // the exact B4.8.3 scenario, not re-checked by the request-time snapshot
+      // (which covers case state, not org state).
+      harness.orgs.set(org.id, { ...org, terminatedAt: new Date(), agreementStatus: 'terminated' });
+      const listened = await listen(harness.app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${baseCase.id}/re-dispatch/approve`, {
+        method: 'POST',
+        headers: { authorization: harness.admin2Bearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ pendingApprovalId }),
+      });
+      expect(res.status).toBe(422);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('DISPATCH_TARGET_NOT_ELIGIBLE');
+    });
+
+    // B4.8.3 — enforce the 24h expiry as a distinct, UI-legible error rather
+    // than the generic snapshot-mismatch failure.
+    it('returns 409 PENDING_APPROVAL_EXPIRED (not the generic PENDING_APPROVAL_INVALID) for an expired pending approval', async () => {
+      const org = sampleOrg();
+      const pendingApprovalId = randomUUID();
+      const baseCase = sampleCase({
+        dispatchStatus: null,
+        partnerOrganizationId: null,
+        firstDispatchedAt: new Date('2026-10-01T00:00:00.000Z'),
+        status: 'open',
+      });
+      const harness = createHarness({ cases: [baseCase], orgs: [org] });
+      harness.cases.set(baseCase.id, {
+        ...baseCase,
+        pendingApproval: {
+          id: pendingApprovalId,
+          requestedBy: harness.adminId,
+          requestedTargetOrgId: org.id,
+          requestedAt: new Date(Date.now() - 1000 * 60 * 60 * 25),
+          expiresAt: new Date(Date.now() - 1000 * 60 * 60), // expired 1h ago
+          reason: 'partner_declined',
+          snapshot: { partnerOrganizationId: null, dispatchStatus: null, status: 'open' },
+        },
+      });
+      const listened = await listen(harness.app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/admin/dispatch/cases/${baseCase.id}/re-dispatch/approve`, {
+        method: 'POST',
+        headers: { authorization: harness.admin2Bearer, 'content-type': 'application/json' },
+        body: JSON.stringify({ pendingApprovalId }),
+      });
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('PENDING_APPROVAL_EXPIRED');
+    });
   });
 
   describe('oracle uniformity / RBAC (CS-8-adjacent)', () => {

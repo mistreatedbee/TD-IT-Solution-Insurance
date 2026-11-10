@@ -1348,3 +1348,121 @@ describe('OB-03 schema additions (§2.3/§2.4/§3.7(c)) — createForAccount def
     expect(found?.reportedFromDeviceId).toBeNull();
   });
 });
+
+describe('B4.8.2 — TOCTOU bypass of the two-admin rule (write-filter CAS, not just route pre-read)', () => {
+  it('dispatchCase vs reDispatchToOrgDirect fired concurrently: only one write lands, the other sees a CAS miss (null)', async () => {
+    const id = new ObjectId();
+    const { db, docs } = createFakeDb([
+      baseDoc({ _id: id, partnerOrganizationId: null, status: 'open' }),
+    ]);
+    const repo = createRecoveryCasesRepo(db);
+
+    // Simulates one admin racing `dispatch(C -> X)` against `re-dispatch(C -> Y)`
+    // for a case that has never been dispatched before — the exact [A4]
+    // compositional-bypass path B4.8.2 describes. Both pre-reads (inside each
+    // method) would see `firstDispatchedAt === null`; without the write-filter
+    // predicate, both writes could land.
+    const [dispatchResult, reDispatchResult] = await Promise.all([
+      repo.dispatchCase(id.toHexString(), { partnerOrganizationId: 'org-x', dispatchedBy: 'admin-a' }),
+      repo.reDispatchToOrgDirect(id.toHexString(), {
+        targetPartnerOrganizationId: 'org-y',
+        actorAccountId: 'admin-a',
+      }),
+    ]);
+
+    const results = [dispatchResult, reDispatchResult];
+    const succeeded = results.filter((r) => r !== null);
+    const failed = results.filter((r) => r === null);
+    expect(succeeded).toHaveLength(1);
+    expect(failed).toHaveLength(1);
+
+    // The document must end up with exactly one holder/state, never an
+    // overwrite of one admin's decision by the other's unconditioned write.
+    expect(['org-x', 'org-y']).toContain(docs[0]!.partnerOrganizationId);
+  });
+
+  it('dispatchCase write filter requires firstDispatchedAt: null — rejects once a case has been dispatched before', async () => {
+    const id = new ObjectId();
+    const now = new Date();
+    const { db } = createFakeDb([
+      baseDoc({
+        _id: id,
+        partnerOrganizationId: null,
+        dispatchStatus: null,
+        firstDispatchedAt: now,
+      }),
+    ]);
+    const repo = createRecoveryCasesRepo(db);
+
+    const result = await repo.dispatchCase(id.toHexString(), {
+      partnerOrganizationId: 'org-x',
+      dispatchedBy: 'admin-a',
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('reDispatchToOrgDirect write filter rejects once firstDispatchedAt/dispatchStatus/partnerOrganizationId are no longer all null', async () => {
+    const id = new ObjectId();
+    const now = new Date();
+    const { db } = createFakeDb([
+      baseDoc({
+        _id: id,
+        partnerOrganizationId: 'org-already-holding',
+        dispatchStatus: 'pending',
+        firstDispatchedAt: now,
+      }),
+    ]);
+    const repo = createRecoveryCasesRepo(db);
+
+    const result = await repo.reDispatchToOrgDirect(id.toHexString(), {
+      targetPartnerOrganizationId: 'org-y',
+      actorAccountId: 'admin-a',
+    });
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('C-B4-1 — detail read strips lastLocation/lastLocationAt for terminal-status cases', () => {
+  it('findByIdForAdmin returns lastLocation/lastLocationAt for a non-terminal (e.g. tracking) case', async () => {
+    const id = new ObjectId();
+    const { db } = createFakeDb([
+      baseDoc({
+        _id: id,
+        status: 'tracking',
+        lastLocation: { lat: -26.2, lng: 28.0 },
+        lastLocationAt: new Date('2026-08-05T00:00:00.000Z'),
+      }),
+    ]);
+    const repo = createRecoveryCasesRepo(db);
+
+    const found = await repo.findByIdForAdmin(id.toHexString());
+
+    expect(found).not.toBeNull();
+    expect(found!.lastLocation).toEqual({ lat: -26.2, lng: 28.0 });
+    expect(found!.lastLocationAt).not.toBeNull();
+  });
+
+  it.each(['recovered', 'closed'] as const)(
+    'findByIdForAdmin strips lastLocation/lastLocationAt when status is %s',
+    async (status) => {
+      const id = new ObjectId();
+      const { db } = createFakeDb([
+        baseDoc({
+          _id: id,
+          status,
+          lastLocation: { lat: -26.2, lng: 28.0 },
+          lastLocationAt: new Date('2026-08-05T00:00:00.000Z'),
+        }),
+      ]);
+      const repo = createRecoveryCasesRepo(db);
+
+      const found = await repo.findByIdForAdmin(id.toHexString());
+
+      expect(found).not.toBeNull();
+      expect(found!.lastLocation).toBeNull();
+      expect(found!.lastLocationAt).toBeNull();
+    },
+  );
+});

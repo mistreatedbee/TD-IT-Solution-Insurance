@@ -1577,16 +1577,32 @@ export function createRecoveryCasesRepo(db: Db) {
 
     /** [A8] Detail — unlike the list above, DOES include `lastLocation`/
      * `lastLocationAt` (a single-case decision may legitimately need it). The
-     * route writes its own per-subject Trail B row for this read. */
+     * route writes its own per-subject Trail B row for this read.
+     *
+     * [C-B4-1] A8's purpose ("a single-case decision may legitimately need
+     * it") only holds while a dispatch decision is still live. Once a case
+     * is `recovered`/`closed` there is no dispatch decision left to make, so
+     * location is stripped here, server-side, regardless of caller — not a
+     * client-side hide. */
     async findByIdForAdmin(caseId: string): Promise<RecoveryCaseDocument | null> {
       if (!ObjectId.isValid(caseId)) return null;
       const row = await collection().findOne({ _id: new ObjectId(caseId) });
-      return row ? toCase(row) : null;
+      if (!row) return null;
+      const doc = toCase(row);
+      if (doc.status === 'recovered' || doc.status === 'closed') {
+        return { ...doc, lastLocation: null, lastLocationAt: null };
+      }
+      return doc;
     },
 
     /** §2.3 — dispatch an undispatched case to exactly one org. Compare-and-set
-     * on `dispatchStatus: null` (C-A); a concurrent dispatch winning the race
-     * produces a CAS miss (`null` return), which the route reports as `409`. */
+     * on `dispatchStatus: null` AND `firstDispatchedAt: null` (C-A, widened
+     * per B4.8.2) — a concurrent dispatch, or a concurrent re-dispatch that
+     * has already set `firstDispatchedAt`, winning the race produces a CAS
+     * miss (`null` return), which the route reports as `409`. Without the
+     * `firstDispatchedAt` predicate, this method's write could land even
+     * after a concurrent request had already taken the case through the
+     * two-admin [A4] gate, silently bypassing it (B4.8.2). */
     async dispatchCase(
       caseId: string,
       input: { partnerOrganizationId: string; dispatchedBy: string },
@@ -1597,7 +1613,7 @@ export function createRecoveryCasesRepo(db: Db) {
       if (!existing) return null;
       const now = new Date();
       const result = await collection().findOneAndUpdate(
-        { _id, dispatchStatus: null },
+        { _id, dispatchStatus: null, firstDispatchedAt: null },
         {
           $set: {
             partnerOrganizationId: input.partnerOrganizationId,
@@ -1639,7 +1655,16 @@ export function createRecoveryCasesRepo(db: Db) {
     },
 
     /** §2.4 single-admin path — move directly to a different org (no second-
-     * admin gate required for this transition per [A4]'s state-keyed rule). */
+     * admin gate required for this transition per [A4]'s state-keyed rule).
+     * [B4.8.2] The route only reaches this method when its pre-read found
+     * `firstDispatchedAt === null` (never dispatched before) — that is the
+     * exact state the [A4] gate is keyed on. The write filter below was
+     * previously unconditioned (`{ _id }` only), so it had no compare-and-set
+     * at all: a concurrent `dispatch`/`re-dispatch` call that had already
+     * taken the case into the two-admin-gated state could still be
+     * overwritten by this one, with one admin and no 202. Repeating the same
+     * state predicates on the write closes that TOCTOU window; a miss
+     * returns `null`, which the route already maps to `409`. */
     async reDispatchToOrgDirect(
       caseId: string,
       input: { targetPartnerOrganizationId: string; actorAccountId: string },
@@ -1650,7 +1675,7 @@ export function createRecoveryCasesRepo(db: Db) {
       if (!existing) return null;
       const now = new Date();
       const result = await collection().findOneAndUpdate(
-        { _id },
+        { _id, firstDispatchedAt: null, dispatchStatus: null, partnerOrganizationId: null },
         {
           $set: {
             partnerOrganizationId: input.targetPartnerOrganizationId,
