@@ -404,3 +404,79 @@ exit-0).
   for `backend-engineer`/`automation-qa-engineer` to root-cause (order-dependence or timing); it
   is not an OB-03 regression and does not affect this gate.
 - Track B (Gate F2) has not been started in this session and remains fully open.
+
+## B5 — Track B Stage 10 (Gate F2)
+
+Independent Stage 10 verification of the three fix commits closing B4's security-review delta
+(`2768917`, `3f20852`), per B4.9's conditions. Not a design re-review — B4/B4.8/B4.9 already
+established what needed fixing; this checks it actually works.
+
+- **Backend suite**: re-ran myself, `cd backend && npm test` → **93 files / 1184 tests, all
+  passed**. No flake observed this run (the `admin-accounts.test.ts` flake noted in B-Gate-F1 did
+  not reproduce).
+- **Web typecheck**: `npm run typecheck` at repo root → clean, no errors.
+- **Track A regression**: `security-cases.test.ts` (partner-facing accept/decline/release,
+  shares `dispatchCase`/`reDispatchToOrgDirect` with the Track B fixes) → **115/115 passed**. No
+  regression from the CAS write-filter or expiry changes.
+- **B4.8.2 (TOCTOU) test review** — `backend/src/repositories/recovery-cases.test.ts:1352-1425`.
+  The "concurrent" test fires `dispatchCase`/`reDispatchToOrgDirect` via `Promise.all`, but the
+  fake-db's `findOneAndUpdate` (`recovery-cases.test.ts:162-183`) is a fully synchronous async
+  function body with no internal `await`. Because JS async functions run synchronously up to
+  their first `await`/`return`, the two calls do **not** actually interleave mid-write — the
+  first one to start runs to completion before the second's body executes. This is **not a true
+  race test**; it does not prove anything about behavior under genuine concurrent writes against
+  a real MongoDB instance. What it *does* correctly verify is the write-filter **predicate
+  logic** itself: the second call sees the first call's already-mutated document and is rejected
+  by the `firstDispatchedAt: null` / `dispatchStatus: null` / `partnerOrganizationId: null` CAS
+  filter (`recovery-cases.ts:1616`, `:1678`), exactly as it would after losing a real race, since
+  MongoDB's `findOneAndUpdate` provides atomicity natively — the application-level correctness
+  question is only "does the filter reject stale state," which this test does genuinely exercise.
+  The two supporting tests (filter rejects an already-dispatched / already-held case) are solid,
+  direct, non-flaky unit tests of the same predicate. **Verdict: fix is correct and tested, but
+  the first test's docstring/`describe` title overclaims "concurrently" — flag to
+  `backend-engineer` to rename or add a comment noting the fake db is synchronous, so a future
+  reader doesn't mistake this for a real race-condition regression test.**
+- **B4.8.3 (org eligibility + 24h expiry) test review** —
+  `backend/src/routes/admin-case-dispatch.test.ts:1052-1125`. Both new tests construct a
+  `pendingApproval` with `expiresAt` directly in the past/future on the stored fixture and hit
+  the approve route, correctly exercising `admin-case-dispatch.ts:599-621`'s expiry check and the
+  org-eligibility-at-approval-time check as distinct, correctly-ordered 409/422 codes. No
+  weakness found — these are real, deterministic tests, not date-mocking-fragile ones.
+- **C-B4-1 (location strip) test review** — `recovery-cases.test.ts:1427-1468`. Directly asserts
+  `findByIdForAdmin` nulls `lastLocation`/`lastLocationAt` for `recovered`/`closed` and preserves
+  them for `tracking`. Correct and sufficient.
+- **Reason persistence (commit `2768917`)**: both backend (`admin-case-dispatch.test.ts`, +43
+  lines) and UI (`AdminCaseDispatchPages.test.tsx`, +53 lines) tests added and passing; covers
+  both the `/dispatch` (explicit `null` reason) and `/re-dispatch` (enum reason) call sites and
+  the approval screen's render. No gap found.
+- **UI error-code surfacing (new gap check)** —
+  `src/admin/pages/AdminCaseDispatchPages.tsx` does not special-case `PENDING_APPROVAL_EXPIRED`
+  or `DISPATCH_TARGET_NOT_ELIGIBLE` in its catch blocks (only `PENDING_APPROVAL_INVALID` and
+  `CSA_SAME_ADMIN` are special-cased, `:636-646`), so both fall through to the shared
+  `mapUserFacingError` → `mapApiErrorByCode` default case
+  (`src/lib/user-facing-errors.ts`). Traced this through: the server-side messages for both codes
+  (`backend/src/lib/errors.ts:198-214`) are short, plain-English, non-stack-trace strings, so
+  `looksUserFacing()` passes them and they render verbatim — not a raw error dump, and the
+  copy is sensible ("This re-dispatch approval request has expired...", "...is not eligible to
+  receive a dispatched case."). **However, no UI test asserts this** —
+  `AdminCaseDispatchPages.test.tsx` has no test case naming either error code or its message, so
+  this correct behavior is currently unverified by automation and could regress silently (e.g.
+  if `mapApiErrorByCode` ever added a catch-all `default` returning `CONTEXT_FALLBACK` before the
+  `looksUserFacing` check). **Condition**: add a UI regression test asserting both messages
+  surface verbatim on their respective codes.
+
+### Verdict: **PASS-WITH-CONDITIONS**
+
+B4.1, B4.8.2, B4.8.3, and C-B4-1 are all functionally closed and correctly tested at the unit
+level, with Track A confirmed non-regressed and both backend and web green end-to-end. Two
+conditions, neither blocking, both time-boxed to before the next Track B UI change lands:
+
+1. Rename/annotate the B4.8.2 "concurrently" test
+   (`recovery-cases.test.ts:1352`) to stop implying it races real concurrent writes — it tests
+   the CAS predicate correctly but not under genuine interleaving.
+2. Add UI tests in `AdminCaseDispatchPages.test.tsx` covering `PENDING_APPROVAL_EXPIRED` and
+   `DISPATCH_TARGET_NOT_ELIGIBLE` message surfacing, since this currently relies on an untested
+   fallthrough path.
+
+**Gate F2: CLEARED**, conditions logged for `backend-engineer`/`frontend-engineer` follow-up, not
+gating.
