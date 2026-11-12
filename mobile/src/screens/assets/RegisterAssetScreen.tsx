@@ -274,8 +274,13 @@ export function RegisterAssetScreen() {
 
   return (
     <Screen>
-      <Text style={styles.title}>Register asset</Text>
-      <Text style={styles.progress}>
+      {/* Title comes from the stack header (assets/_layout.tsx) — don't repeat it here. */}
+      <Text
+        style={styles.progress}
+        accessibilityRole="header"
+        accessibilityLiveRegion="polite"
+        accessibilityLabel={`Step ${step + 1} of ${totalSteps}`}
+      >
         Step {step + 1} of {totalSteps}
       </Text>
 
@@ -329,9 +334,11 @@ export function RegisterAssetScreen() {
         </>
       ) : null}
 
-      {step === 1 && isVehicleFlow ? (
+      {step === 1 ? (
         <>
-          <Text style={styles.sectionLabel}>Vehicle details</Text>
+          <Text style={styles.sectionLabel} accessibilityRole="header">
+            {isVehicleFlow ? 'Vehicle details' : 'Details'}
+          </Text>
           {visibleFields.map((field) => (
             <Input
               key={field}
@@ -339,25 +346,17 @@ export function RegisterAssetScreen() {
               value={detailFields[field] ?? ''}
               onChangeText={(v) => updateDetail(field, v)}
               required={required.has(field)}
-              keyboardType={field === 'year' ? 'number-pad' : 'default'}
-              autoCapitalize="none"
-            />
-          ))}
-        </>
-      ) : null}
-
-      {step === 1 && !isVehicleFlow ? (
-        <>
-          <Text style={styles.sectionLabel}>Details</Text>
-          {visibleFields.map((field) => (
-            <Input
-              key={field}
-              label={labelForField(field)}
-              value={detailFields[field] ?? ''}
-              onChangeText={(v) => updateDetail(field, v)}
-              required={required.has(field)}
-              keyboardType={field === 'year' ? 'number-pad' : 'default'}
-              autoCapitalize="none"
+              keyboardType={
+                field === 'year' ? 'number-pad' : field === 'imei' ? 'number-pad' : 'default'
+              }
+              autoCapitalize={
+                field === 'vin' || field === 'licensePlate' || field === 'serialNumber'
+                  ? 'characters'
+                  : field === 'imei' || field === 'year'
+                    ? 'none'
+                    : 'words'
+              }
+              autoCorrect={false}
             />
           ))}
         </>
@@ -365,7 +364,9 @@ export function RegisterAssetScreen() {
 
       {step === 2 && isVehicleFlow ? (
         <>
-          <Text style={styles.sectionLabel}>GPS tracker</Text>
+          <Text style={styles.sectionLabel} accessibilityRole="header">
+            GPS tracker
+          </Text>
           <Text style={styles.sectionHint}>
             Vehicles recover faster with a GPS tracker. Register your device ID after registration
             — live hardware feed activates when our vendor partner goes live.
@@ -391,6 +392,7 @@ export function RegisterAssetScreen() {
 
       <Button
         fullWidth
+        style={styles.primaryAction}
         loading={createMutation.isPending}
         onPress={handleNext}
       >
@@ -410,12 +412,6 @@ export function RegisterAssetScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
   progress: {
     fontSize: typography.sizes.sm,
     color: colors.textSecondary,
@@ -445,6 +441,9 @@ const styles = StyleSheet.create({
   alertSpacing: {
     marginBottom: spacing.lg,
     gap: spacing.sm,
+  },
+  primaryAction: {
+    marginTop: spacing.md,
   },
   upgradeButton: {
     marginTop: spacing.sm,
