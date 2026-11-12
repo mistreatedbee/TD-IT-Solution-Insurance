@@ -42,14 +42,18 @@ export async function isLoginLocked(
   identifier: string,
   ip: string,
 ): Promise<LoginLockoutStatus> {
-  const idStatus = await peekRateLimit(store, identifierKey(identifier), {
-    attempts: LOGIN_LOCKOUT.perIdentifierAttempts,
-    windowSeconds: LOGIN_LOCKOUT.perIdentifierWindowSeconds,
-  });
-  const ipStatus = await peekRateLimit(store, ipKey(ip), {
-    attempts: LOGIN_LOCKOUT.perIpAttempts,
-    windowSeconds: LOGIN_LOCKOUT.perIpWindowSeconds,
-  });
+  // The two peeks are independent reads — issue them together (one store round trip of latency
+  // instead of two on the login hot path).
+  const [idStatus, ipStatus] = await Promise.all([
+    peekRateLimit(store, identifierKey(identifier), {
+      attempts: LOGIN_LOCKOUT.perIdentifierAttempts,
+      windowSeconds: LOGIN_LOCKOUT.perIdentifierWindowSeconds,
+    }),
+    peekRateLimit(store, ipKey(ip), {
+      attempts: LOGIN_LOCKOUT.perIpAttempts,
+      windowSeconds: LOGIN_LOCKOUT.perIpWindowSeconds,
+    }),
+  ]);
   const locked = !idStatus.allowed || !ipStatus.allowed;
   return {
     locked,

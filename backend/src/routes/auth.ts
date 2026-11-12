@@ -700,13 +700,17 @@ export function createAuthRouter(ctx: AppContext): Router {
         const normalizedEmail = email.trim().toLowerCase();
         const ip = clientIp(req);
 
-        const lockStatus = await isLoginLocked(ctx.kv, normalizedEmail, ip);
+        // The lockout check (key-value store) and the account lookup (database) are independent
+        // reads, so run them together. The lookup is read-only and its result is discarded when
+        // the login is locked, so lock behaviour is unchanged.
+        const [lockStatus, account] = await Promise.all([
+          isLoginLocked(ctx.kv, normalizedEmail, ip),
+          ctx.accounts.findByEmail(normalizedEmail),
+        ]);
         if (lockStatus.locked) {
           next(apiError('ACCOUNT_LOCKED', { attemptsRemaining: lockStatus.attemptsRemaining }, lockStatus.retryAfterSeconds));
           return;
         }
-
-        const account = await ctx.accounts.findByEmail(normalizedEmail);
 
         // Anti-enumeration (AC-5): the credential-verification call and the
         // failure-recording call happen identically whether or not `account`
