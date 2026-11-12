@@ -92,3 +92,20 @@ adverse decisions (fail-closed). Blocker 2 is therefore the real go-live gate.
 
 **Still OPEN:** blockers 1, 2, 3, 4, 5 and the payout-path decision. The payout decision (due
 2026-11-05) is overdue. No business or legal item is marked closed.
+
+## Status update 2026-11-12 (b)
+
+Recorded by `technical-writer`. Earlier text above is unchanged.
+
+**Correction to blocker 5.** The 2026-10-29 `compliance-specialist` statement that nothing writes to
+`deliveries[]` is **superseded**: the delivery path exists.
+
+- `backend/src/lib/claims-notification-service.ts` is called from `backend/src/routes/admin-claims.ts`
+  after the decision commits.
+- It sends only the three adverse notice kinds, to a verified address.
+- It records a `deliveries[]` entry for both success and failure. A send failure never reaches the
+  decision.
+- Tests: `backend/src/lib/claims-notification-service.test.ts` and `backend/src/routes/admin-claims.test.ts`.
+
+**Remaining for blocker 5:** (1) the owner's Resend production setup; (2) one missing test asserting
+that no email is dispatched while `TODO_OWNER_MUST_CONFIGURE` placeholders remain.

@@ -260,6 +260,7 @@ imply any gate passed.
 | 015 | Account deletion / erasure | Request (mailto) only | Stage 1 draft; cannot pass Stage 8 until Client instructions G-3/G-9. |
 | 016 | KYC identity verification | No (gating layer not built) | Stage 1 + `product-manager` scope decision 2026-09-21: Tier 1 data-only increment, no documents, build behind a flag. |
 | 017 | Privileged account self-service | **Yes — D-1 accept/MFA and invite-send UI** | Stage 1 BR + architecture scope note + UI design (draft). Accept route Stage 8 **waived pending review**; invite-send has no 017 Stage 8 record; D-2 Stage 8 blocked on ADR-0012 C-4/C-5; operator invites blocked on `partner_organizations`. |
+| 018 | Claims filing and adjudication | Yes (customer + admin claims routes, mobile claims screens) | Engineering-complete through Stage 8; launch blocked on non-engineering items (see `docs/features/018-claims-filing-and-adjudication/pre-launch-blockers.md`). |
 
 ---
 
@@ -401,3 +402,15 @@ Targeted correction; earlier sections are left as written except for inline "sta
 - Payments/billing still have no backend routes. Feature 018 is not added to the §7 table; add it on
   the next full refresh.
 - **Feature 009**: README status line is superseded by its 2026-11-12 status addendum.
+- **Update (later 2026-11-12):** Feature 018 row now added to the §7 table (the "not added" bullet above is superseded).
+
+### What changed today (2026-11-12)
+
+- **Login hot-path parallel reads**: commits `fa00053`, `8967991`, test `635cf9c`. **NOT pushed.**
+  Security note: `docs/features/001-authentication/security-note-login-parallel-reads.md`.
+- **Seed-script production guard**: `e97cd69` (`seed-test-accounts`).
+- **Staging blueprint + runbook**: `907ad4a`; `docs/organization/runbooks/staging-setup.md`.
+- **Register asset page fixes** (mobile; per-field validation errors, screen tests).
+- **APK preview build, version code 2**: flags all off, built before the Register asset page fixes; rebuild planned.
+- **Production is on Render's free plan**: expect cold starts.
+- **Feature 018 blocker 5 corrected**: notice delivery path exists; see `pre-launch-blockers.md` status update 2026-11-12 (b).
