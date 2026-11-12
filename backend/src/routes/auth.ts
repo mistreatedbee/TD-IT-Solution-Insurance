@@ -703,14 +703,20 @@ export function createAuthRouter(ctx: AppContext): Router {
         // The lockout check (key-value store) and the account lookup (database) are independent
         // reads, so run them together. The lookup is read-only and its result is discarded when
         // the login is locked, so lock behaviour is unchanged.
-        const [lockStatus, account] = await Promise.all([
+        // allSettled so a lookup fault can never mask a lock decision: lock result wins; a lock-check
+        // fault still fails closed (rethrown -> 5xx); a lookup fault only surfaces when not locked.
+        const [lockSettled, accountSettled] = await Promise.allSettled([
           isLoginLocked(ctx.kv, normalizedEmail, ip),
           ctx.accounts.findByEmail(normalizedEmail),
         ]);
+        if (lockSettled.status === 'rejected') throw lockSettled.reason;
+        const lockStatus = lockSettled.value;
         if (lockStatus.locked) {
           next(apiError('ACCOUNT_LOCKED', { attemptsRemaining: lockStatus.attemptsRemaining }, lockStatus.retryAfterSeconds));
           return;
         }
+        if (accountSettled.status === 'rejected') throw accountSettled.reason;
+        const account = accountSettled.value;
 
         // Anti-enumeration (AC-5): the credential-verification call and the
         // failure-recording call happen identically whether or not `account`
