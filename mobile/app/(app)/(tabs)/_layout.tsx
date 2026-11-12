@@ -6,7 +6,6 @@ import {
   FEATURE_LOCATION_TRACKING_ENABLED,
 } from '../../../src/config/features';
 import { TabBarInsetProvider } from '../../../src/navigation/TabBarInsetContext';
-import { DraggableAssistFab } from '../../../src/navigation/DraggableAssistFab';
 import { FloatingTabBar } from '../../../src/navigation/FloatingTabBar';
 import { useMapTabSceneStyle, useTabSceneStyle } from '../../../src/navigation/tabBarMetrics';
 
@@ -54,7 +53,9 @@ export default function AppTabsLayout() {
           />
           <Tabs.Screen name="account" options={{ title: 'Account', headerShown: false }} />
         </Tabs>
-        <DraggableAssistFab />
+        {/* AI assistant is not built (button only showed a "coming soon" alert, overlapped content and
+            offered nothing to a stressed user — mobile-ui-ux-review.md). Re-mount <DraggableAssistFab />
+            here only once a real assistant exists and has passed compliance review. */}
       </View>
     </TabBarInsetProvider>
   );
