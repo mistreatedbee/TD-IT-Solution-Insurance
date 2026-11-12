@@ -16,6 +16,8 @@ import { Alert, Button, Input, Screen } from '../../src/theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
 import type { ForcedLogoutReason } from '../../src/api/client';
 
+const WAKING_THRESHOLD_MS = 4000;
+
 export default function LoginScreen() {
   const router = useRouter();
   const { reason } = useLocalSearchParams<{ reason?: ForcedLogoutReason }>();
@@ -25,7 +27,17 @@ export default function LoginScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
   const [isLocked, setIsLocked] = useState(false);
+  const [isWaking, setIsWaking] = useState(false);
   const setSignedIn = useSessionStore((s) => s.setSignedIn);
+
+  useEffect(() => {
+    if (!isSubmitting) return;
+    const t = setTimeout(() => setIsWaking(true), WAKING_THRESHOLD_MS);
+    return () => {
+      clearTimeout(t);
+      setIsWaking(false);
+    };
+  }, [isSubmitting]);
 
   useEffect(() => {
     // Don't re-show the forced-logout banner if the user navigates away
@@ -130,6 +142,14 @@ export default function LoginScreen() {
         onChangeText={setPassword}
         editable={!isSubmitting && !isLocked}
       />
+
+      <View accessibilityLiveRegion="polite" style={isWaking ? styles.alertSpacing : undefined}>
+        {isWaking ? (
+          <Alert tone="info">
+            Waking up the secure server — this can take up to a minute the first time.
+          </Alert>
+        ) : null}
+      </View>
 
       <View style={styles.submitSpacing}>
         <Button

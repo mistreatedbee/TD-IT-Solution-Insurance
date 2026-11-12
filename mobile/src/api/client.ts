@@ -57,6 +57,24 @@ export interface RequestOptions {
   authenticated?: boolean;
   /** Internal — prevents infinite retry loops. Do not set from call sites. */
   _isRetry?: boolean;
+  /** Abort the attempt after this many ms (surfaces as NetworkUnavailableError). */
+  timeoutMs?: number;
+  /**
+   * Retry ONCE on network failure/timeout or 502/503/504 only (cold-start
+   * tolerance). Never retries any other status — 401/423/429 and every
+   * other response are returned as-is so lockout counters are not burned.
+   * Only set on calls that are safe to repeat (login); never MFA challenge.
+   */
+  retryTransientOnce?: boolean;
+}
+
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
+
+export function isTransientFailure(err: unknown): boolean {
+  return (
+    err instanceof NetworkUnavailableError ||
+    (err instanceof ApiError && TRANSIENT_STATUSES.has(err.status))
+  );
 }
 
 async function rawRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -75,14 +93,19 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
   }
 
   let response: Response;
+  const controller = options.timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), options.timeoutMs) : null;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers: finalHeaders,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      ...(controller ? { signal: controller.signal } : {}),
     });
   } catch (cause) {
     throw new NetworkUnavailableError(cause);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 
   if (response.status === 204) {
@@ -90,7 +113,18 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
   }
 
   const text = await response.text();
-  const json: unknown = text ? JSON.parse(text) : undefined;
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : undefined;
+  } catch {
+    // Proxy error pages (e.g. 502/503 HTML while the host wakes) are not JSON.
+    if (!response.ok) {
+      throw new ApiError(response.status, {
+        error: { code: 'UPSTREAM_ERROR', message: 'Upstream error', requestId: '' },
+      });
+    }
+    throw new NetworkUnavailableError(new Error('Malformed response body'));
+  }
 
   if (!response.ok) {
     throw new ApiError(response.status, json as ApiErrorBody);
@@ -192,6 +226,14 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   const { authenticated = true } = options;
 
   try {
+    if (options.retryTransientOnce) {
+      try {
+        return await rawRequest<T>(path, options);
+      } catch (first) {
+        if (!isTransientFailure(first)) throw first;
+        return await rawRequest<T>(path, options);
+      }
+    }
     return await rawRequest<T>(path, options);
   } catch (err) {
     const shouldAttemptRefresh =

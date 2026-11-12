@@ -10,6 +10,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { registerForcedLogoutHandler, refreshAccessToken } from '../src/api/client';
+import { warmUpBackend } from '../src/api/warmup';
 import { getOrCreateDeviceId } from '../src/auth/device';
 import { useSessionStore } from '../src/auth/session-store';
 import { useAppShellGate } from '../src/onboarding/useAppShellGate';
@@ -17,6 +18,9 @@ import { NetworkProvider, OfflineBanner } from '../src/network/NetworkProvider';
 import { asyncStoragePersister, queryClient, shouldPersistQuery } from '../src/query/queryClient';
 import { AnalyticsBootstrap } from '../src/analytics/AnalyticsBootstrap';
 import { ThemeProvider, useColors } from '../src/theme/ThemeProvider';
+
+// Start waking the backend as early as possible (module load, before bootstrap).
+warmUpBackend();
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // no-op — if this races with an already-hidden splash screen, that's fine.

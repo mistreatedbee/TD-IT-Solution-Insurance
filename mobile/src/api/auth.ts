@@ -71,11 +71,17 @@ export function isMfaChallenge(result: LoginResult): result is Schemas['MfaChall
   return 'mfaChallengeToken' in result;
 }
 
+const LOGIN_TIMEOUT_MS = 60_000;
+
 export function login(params: LoginParams) {
   return apiFetch<LoginResult>('/auth/login', {
     method: 'POST',
     body: params,
     authenticated: false,
+    // Cold-start tolerance (Render free plan): long timeout + one retry on
+    // transient failures only. MFA challenge deliberately gets neither.
+    timeoutMs: LOGIN_TIMEOUT_MS,
+    retryTransientOnce: true,
   });
 }
 
