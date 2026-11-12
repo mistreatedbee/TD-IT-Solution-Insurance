@@ -27,6 +27,8 @@
  *   npx tsx backend/scripts/seed-test-accounts.ts --force       # delete + recreate
  *   npx tsx backend/scripts/seed-test-accounts.ts --enroll-mfa  # auto-enroll, print secret
  */
+import fs from 'node:fs';
+import readline from 'node:readline/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
@@ -35,13 +37,42 @@ import { loadEnv, type Env } from '../src/config/env.js';
 import { getPgPool } from '../src/db/pg.js';
 import { getSupabaseAdmin } from '../src/db/supabase.js';
 import { createAccountsRepo, type UserType } from '../src/repositories/accounts.js';
+import { evaluateSeedGuard, SEED_CONFIRM_FLAG } from '../src/lib/seed-target-guard.js';
 import { generateTotpCode } from './lib/totp.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '../..');
-dotenv.config({ path: path.join(repoRoot, '.env') });
-dotenv.config({ path: path.join(repoRoot, '.env.local'), override: true });
+const shellKeys = new Set(Object.keys(process.env)); // exported before any file load
+// Never silently override variables already exported in the shell: a file value
+// only fills gaps; conflicts are warned (key names only) and the shell wins.
+for (const file of ['.env', '.env.local']) {
+  const full = path.join(repoRoot, file);
+  if (!fs.existsSync(full)) continue;
+  const parsed = dotenv.parse(fs.readFileSync(full));
+  for (const [k, v] of Object.entries(parsed)) {
+    if (process.env[k] === undefined) {
+      process.env[k] = v;
+    } else if (process.env[k] !== v && shellKeys.has(k)) {
+      // eslint-disable-next-line no-console
+      console.warn(`[seed-test-accounts] ${file} sets ${k} but it is already exported; keeping the exported value.`);
+    }
+  }
+}
+
+function enforceSeedGuard(): void {
+  const result = evaluateSeedGuard({ env: process.env, argv: process.argv.slice(2) });
+  // eslint-disable-next-line no-console
+  console.log(`[seed-test-accounts] Resolved target: ${result.targetLabel}`);
+  if (!result.ok) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[seed-test-accounts] REFUSING to run:\n  - ${result.reasons.join('\n  - ')}\n` +
+        `Local targets run freely. Non-local (staging) needs ${SEED_CONFIRM_FLAG} and the Supabase host in ALLOW_SEED_TARGET.`,
+    );
+    process.exit(1);
+  }
+}
 
 /** Seed script only needs Supabase + Postgres — not MongoDB or JWT signing keys. */
 function loadSeedEnv(): Env {
@@ -430,6 +461,7 @@ async function runTeardown(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  enforceSeedGuard();
   if (process.argv.includes('--teardown')) {
     await runTeardown();
     return;

@@ -35,3 +35,7 @@ Set `TEST_WEB_BASE_URL` when seeding if your web host differs (e.g. Render previ
 - These accounts are for **non-production** testing only. Do not use on production without explicit approval.
 - The security operator is linked to partner org `TD IT Solution Test Security Partner` (stable UUID in the seed script).
 - Customer password meets the 10-character minimum; privileged passwords meet the 14-character minimum.
+
+## Production guard (added 2026-11-12)
+
+`seed-test-accounts.ts` now refuses to run (exit 1) when `NODE_ENV=production`, when the Supabase host / Mongo host / Mongo DB name looks like production, or when a host is in the `PRODUCTION_TARGET_HOSTS` denylist. Local targets (localhost/127.0.0.1) run freely; any non-local target (e.g. staging) additionally needs `--i-understand-this-is-not-production` and its Supabase host listed in `ALLOW_SEED_TARGET`. The resolved target (hosts and DB name only, never credentials) is logged first. `.env`/`.env.local` no longer override variables already exported in the shell (a warning names the key). Logic: `backend/src/lib/seed-target-guard.ts`.
