@@ -119,3 +119,16 @@ describe('AccountHubScreen — account number (session.ts accountNumber field)',
     expect(screen.queryByText(/Account Number:/)).toBeNull();
   });
 });
+
+describe('AccountHubScreen — no dev rows, claims hidden when disabled', () => {
+  it('does not render the test-notification row or a claims row', async () => {
+    useAccountQuery.mockReturnValue({ data: undefined, isLoading: true });
+
+    await renderWithProviders(<AccountHubScreen />);
+
+    expect(screen.queryByText('Send test notification')).toBeNull();
+    expect(screen.queryByText('Claims')).toBeNull();
+    expect(screen.queryByText('Claims filing coming soon')).toBeNull();
+    expect(screen.getByText('Notification preferences')).toBeTruthy();
+  });
+});

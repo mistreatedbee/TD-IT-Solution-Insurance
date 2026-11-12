@@ -20,7 +20,6 @@ import {
 import React, { useState } from 'react';
 import { Alert, Linking, Text, View } from 'react-native';
 import { logout, logoutAll } from '../../api/auth';
-import { sendTestPushNotification } from '../../api/notifications';
 import { revokePushTokenFromBackend } from '../../notifications/push';
 import { clearRefreshToken } from '../../auth/secure-storage';
 import { useSessionStore } from '../../auth/session-store';
@@ -97,21 +96,6 @@ export function AccountHubScreen() {
   } = usePlanEntitlements();
   const setSignedOut = useSessionStore((s) => s.setSignedOut);
   const [isLoggingOutAll, setIsLoggingOutAll] = useState(false);
-  const [isSendingTestPush, setIsSendingTestPush] = useState(false);
-  const [testPushMessage, setTestPushMessage] = useState<string | null>(null);
-
-  async function handleTestPush() {
-    setIsSendingTestPush(true);
-    setTestPushMessage(null);
-    try {
-      const result = await sendTestPushNotification();
-      setTestPushMessage(result.message);
-    } catch {
-      setTestPushMessage('Could not send test notification. Check push permissions and try again.');
-    } finally {
-      setIsSendingTestPush(false);
-    }
-  }
 
   async function handleLogout() {
     revokePushTokenFromBackend().catch(() => {});
@@ -285,12 +269,14 @@ export function AccountHubScreen() {
               icon={PlusIcon}
               title="Register asset"
               subtitle="Add a vehicle, device, or equipment"
+              isLast={!FEATURE_ALERTS_ENABLED && !FEATURE_THEFT_REPORTING_ENABLED && !FEATURE_LOCATION_TRACKING_ENABLED && !FEATURE_CLAIMS_ENABLED}
               onPress={() => router.push('/assets/register' as Href)}
             />
             {FEATURE_ALERTS_ENABLED ? (
               <AccountMenuRow
                 icon={BellIcon}
                 title="Alerts"
+                isLast={!FEATURE_THEFT_REPORTING_ENABLED && !FEATURE_LOCATION_TRACKING_ENABLED && !FEATURE_CLAIMS_ENABLED}
                 subtitle={
                   alertCount === 0
                     ? 'No alerts need attention'
@@ -303,6 +289,7 @@ export function AccountHubScreen() {
               <AccountMenuRow
                 icon={AlertTriangleIcon}
                 title="Report theft"
+                isLast={!FEATURE_LOCATION_TRACKING_ENABLED && !FEATURE_CLAIMS_ENABLED}
                 subtitle={
                   openRecoveryCount > 0
                     ? `${openRecoveryCount} open recovery case${openRecoveryCount === 1 ? '' : 's'}`
@@ -315,21 +302,20 @@ export function AccountHubScreen() {
               <AccountMenuRow
                 icon={MapPinIcon}
                 title="Map & locations"
+                isLast={!FEATURE_CLAIMS_ENABLED}
                 subtitle="View protected assets on the map"
                 onPress={() => router.push('/map' as Href)}
               />
             ) : null}
-            <AccountMenuRow
-              icon={FileTextIcon}
-              title="Claims"
-              subtitle={
-                FEATURE_CLAIMS_ENABLED
-                  ? 'View and file insurance claims'
-                  : 'Claims filing coming soon'
-              }
-              isLast
-              onPress={() => router.push('/(app)/claims' as Href)}
-            />
+            {FEATURE_CLAIMS_ENABLED ? (
+              <AccountMenuRow
+                icon={FileTextIcon}
+                title="Claims"
+                subtitle="View and file insurance claims"
+                isLast
+                onPress={() => router.push('/(app)/claims' as Href)}
+              />
+            ) : null}
           </SurfaceGroup>
         </AccountSection>
 
@@ -382,16 +368,8 @@ export function AccountHubScreen() {
               icon={BellIcon}
               title="Notification preferences"
               subtitle="Choose which alerts you get, and how"
-              onPress={() => router.push('/(app)/notification-preferences' as Href)}
-            />
-            <AccountMenuRow
-              icon={BellIcon}
-              title={isSendingTestPush ? 'Sending test alert…' : 'Send test notification'}
-              subtitle={testPushMessage ?? 'Verify push delivery on this device'}
-              showChevron={false}
               isLast
-              disabled={isSendingTestPush}
-              onPress={handleTestPush}
+              onPress={() => router.push('/(app)/notification-preferences' as Href)}
             />
           </SurfaceGroup>
         </AccountSection>
@@ -444,7 +422,7 @@ export function AccountHubScreen() {
               icon={LogOutIcon}
               title="Log out"
               subtitle="Sign out on this device"
-              iconColor={colors.textSecondary}
+              iconColor={colors.glassTextSecondary}
               showChevron={false}
               onPress={handleLogout}
             />
