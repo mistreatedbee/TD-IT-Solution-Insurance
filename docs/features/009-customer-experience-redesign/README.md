@@ -35,3 +35,17 @@ Redesign the post-onboarding customer mobile experience into a **protection comm
 - Do **not** imply laptops/vehicles are self-trackable from the phone app
 - Reuse `src/components/*` and `mobile/src/theme/*` — no duplicate design systems
 - Wire UI to **real APIs**; use typed service interfaces + honest empty states where backend is missing
+
+---
+
+## Status addendum 2026-11-12 (`technical-writer`, per CTO ruling)
+
+The 2026-08-14 status line above ("Implementation not started") is superseded; it is left unaltered
+for audit. Implementation is well underway: home, alerts, assets, map, live-tracking, report-theft,
+device screens and the `(security-app)` operator portal exist under `mobile/app`.
+
+- The two High findings in `mobile-ui-ux-review.md` are fixed in code: tab badge via `badgeCount` in
+  `mobile/src/navigation/FloatingTabBar.tsx`; `mobile/src/screens/home/HomeHeroActions.tsx` placed
+  under the header in `ProtectionHomeScreen.tsx`. `AlertsScreen.tsx` uses `SurfaceGroup`.
+- **Still unverified:** Assets list grouped-surface polish (needs visual check); the moderated
+  5-participant usability test (none evidenced); real-device QA checklists.

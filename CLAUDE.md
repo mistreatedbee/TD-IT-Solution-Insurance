@@ -25,16 +25,19 @@ This is a real, multi-surface product now — not a design-system showcase:
   (self-device, phone-only location reporting per Feature 008 Phase 1 / ADR-0009) and
   `tracking-devices.ts` (provider-agnostic device registration/linking/installation-guide per
   Feature 009 Phase 4, gated through `resolveTrackingProfile()` so third-party hardware
-  capabilities stay honestly "pending" until a GPS vendor is chosen). **Claims and payments have
-  no backend routes** — no `claims.ts`/`payments.ts` exists. Test count moves every session —
+  capabilities stay honestly "pending" until a GPS vendor is chosen). **Claims have a backend**
+  (corrected 2026-11-12; Feature 018, `claims.ts` + `admin-claims.ts`, engineering-complete through
+  Stage 8 but launch-blocked on non-engineering items — see
+  `docs/features/018-claims-filing-and-adjudication/pre-launch-blockers.md`; approved claims stop
+  at `awaiting_payout`). **Payments have no backend routes** — no `payments.ts` exists. Test count moves every session —
   re-verify with `cd backend && npm test` before citing a number rather than trusting this file
   or HANDOFF.md's last-recorded figure.
 - **Mobile** (`mobile/app/`): Expo Router app — auth, onboarding, Policy/Assets, notification
   preferences, plus a substantially built-out Feature 009 surface: home, alerts, map, device
   locations, live-tracking, report-theft flow, device activation/health/installation-guide
   screens, and a separate security-company operator portal (`(security-app)/`). **Claims screens
-  exist in the UI (`app/(app)/claims/`) with no backend route behind them — still a stub against
-  what would 404 in production.** Re-verify test count with `cd mobile && npm test`.
+  (`app/(app)/claims/`) are wired to the Feature 018 claims API** (corrected 2026-11-12; the
+  earlier "stub that would 404" note is void). Re-verify test count with `cd mobile && npm test`.
 - **Supabase** (`supabase/`): linked project, `auth-send-email` Edge Function (Resend-backed
   branded auth email templates), config and migrations — real, not scaffolding.
 - **Databases**: Supabase Postgres (identity) + MongoDB Atlas (domain), per ADR-0002. Both live
@@ -45,7 +48,7 @@ This is a real, multi-surface product now — not a design-system showcase:
   008/009's tracking code is deliberately written vendor-agnostic (self-device today,
   capability-gated "pending hardware" placeholders for anything requiring a vendor), not a sign
   that a vendor has been chosen.
-- **Not built**: payments/billing, claims backend, GPS hardware-vendor integration, push
+- **Not built**: payments/billing (so claim payouts), GPS hardware-vendor integration, push
   notification event bus beyond the current partial adapter, staging environment, production
   email delivery confirmation (Resend owner action), object-storage/photo-upload vendor (MP-5).
 

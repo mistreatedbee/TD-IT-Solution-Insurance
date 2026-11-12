@@ -145,7 +145,7 @@ check) and fail **open** in local `expo start`/Jest. Web's only flag,
 | Analytics | `POST /analytics/events`, `GET /admin/analytics/dau` | North-star DAU instrumentation. |
 | Health | `/api/health*` | |
 
-**No route exists for:** claims, payments/billing/checkout, payment webhooks, account erasure, SMS,
+**No route exists for:** claims (**stale, see 2026-11-12 reconciliation at end of file: claims routes now exist**), payments/billing/checkout, payment webhooks, account erasure, SMS,
 GPS-vendor ingestion, partner-organisation registry, household members.
 
 Scripts of note: `backend/scripts/bootstrap-mongo-collections.ts`; `seed-test-accounts.ts`
@@ -178,7 +178,7 @@ run against production — ADR-0013 is Proposed).
   delete-account request), onboarding, tabs (home, assets list/register/detail, account hub/profile),
   policy list/create/detail/**change-plan**, notification preferences, MFA enrol, invitation accept.
 - **Behind flags (all `false` in every distributable profile):** claims `(app)/claims/*`
-  (`FEATURE_CLAIMS` — **UI only, no backend**; renders `ClaimsComingSoonScreen` when off),
+  (`FEATURE_CLAIMS` — **UI only, no backend** [stale, see 2026-11-12 reconciliation]; renders `ClaimsComingSoonScreen` when off),
   map/device-locations/live-tracking (`LOCATION_TRACKING`), verification/KYC (`KYC`), alerts tab
   (`ALERTS`), report-theft (`THEFT_REPORTING`), activate-tracker/device-health/installation-guide
   (`HARDWARE_TRACKING`), `(security-app)/` operator portal (`SECURITY_OPERATOR`).
@@ -192,7 +192,7 @@ run against production — ADR-0013 is Proposed).
 
 | Capability | Actual state |
 |---|---|
-| **Claims** | Mobile UI exists (`app/(app)/claims/index|new|[id]`), flag-gated off. **No backend route, no collection.** In a `development` build it would call endpoints that 404. |
+| **Claims** | Mobile UI exists (`app/(app)/claims/index|new|[id]`), flag-gated off. **No backend route, no collection.** In a `development` build it would call endpoints that 404. **(Stale: see 2026-11-12 reconciliation at end of file.)** |
 | **Payments / billing** | **Not built.** `subscription.ts` is a read-only snapshot. Policies are created `pending_activation` / `billingStatus: not_configured`. `POST /internal/policies/:id/activate` is a hook with no caller. Plan change (`PATCH /policies/:id/plan`) changes the record only. |
 | **Account deletion** | **Request flow only.** Web `/delete-account` and mobile `delete-account` → `delete-account-confirm` open a prefilled `mailto:` to the company inbox. **No erasure endpoint** (the only `router.delete` in `customer-profile.ts` is the profile picture). Fulfilment runbook `docs/organization/runbooks/account-deletion-request-runbook.md` is "Written. Partially executable." Feature 015 (real erasure) is Stage 1 and **cannot pass Stage 8 until Client instructions G-3/G-9 exist**. |
 | **KYC / identity verification** | **Manual queue.** Customer self-attests profile + last-4 of SA ID; admin reviews in `/admin/verification`. No document capture, no vendor check, no gating of asset creation (`KYC_VERIFICATION_REQUIRED` does not exist in code yet). Mobile KYC surface is flag-off. Feature 013/016 own the real thing. |
@@ -384,3 +384,20 @@ credential), FU-A13 purge scheduling (`app.purge_expired_audit_log()` has no cal
 assumption the code cannot assert. (SD-FU-05 — no audit trail on partner-operator reads — appears
 addressed in code: `security-cases.ts` now calls `adminAccessLog.recordCaseBulkDisclosure` /
 `recordDetail` / `recordStateChange`; I did not find a recorded formal closure.)
+
+---
+
+## 2026-11-12 reconciliation (`technical-writer`, per CTO ruling)
+
+Targeted correction; earlier sections are left as written except for inline "stale" pointers to here.
+
+- **Claims backend EXISTS.** `backend/src/routes/claims.ts` (customer) and
+  `backend/src/routes/admin-claims.ts` (admin adjudication). Statements above that claims has no
+  backend route or collection (§3 route list, §3 flags bullet, §4 Claims row) are stale.
+- **Feature 018** is engineering-complete through Stage 8; launch is blocked on non-engineering
+  items (Ombud/licence values, legal copy review, policy-wording disclosure, notice delivery
+  dependency on Resend, payout-path decision). See
+  `docs/features/018-claims-filing-and-adjudication/pre-launch-blockers.md` (status update 2026-11-12).
+- Payments/billing still have no backend routes. Feature 018 is not added to the §7 table; add it on
+  the next full refresh.
+- **Feature 009**: README status line is superseded by its 2026-11-12 status addendum.

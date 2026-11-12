@@ -71,3 +71,24 @@ realism before committing to Option A or B.
   chosen for the payout decision, the payment-expectation notice for full approvals (§12.3 N-8) is a
   compliance-reviewed notice and falls under item 3. My target date for items 2 and 3 depends on when the
   insurer's legal function engages. I have not committed to 2026-11-12 or 2026-11-19.
+
+## Status update 2026-11-12
+
+Recorded by `technical-writer` per CTO ruling 2026-11-12. Earlier text above is unchanged.
+
+**Item 6 sub-items are CLOSED in code** (row 6 above still reads OPEN as originally written):
+
+- **CR-018-10** CLOSED. `backend/src/lib/claim-decision-notice.ts` (~L157-176, prefix constant at L164)
+  treats `TODO_OWNER_MUST_CONFIGURE` as blank. `backend/src/routes/admin-claims.ts` returns
+  `CLAIM_NOTICE_CONFIG_INCOMPLETE` (~L397, L441). Tests: `backend/src/routes/admin-claims.test.ts`
+  (~L1195, L1243) and `backend/src/lib/claim-decision-notice.test.ts` (~L172-183).
+- **CR-018-11** CLOSED. `admin-claims.ts` L65 `OTHER_GROUND_MIN_REASON_LENGTH = 100`, enforced ~L128-131.
+- **CR-018-12** CLOSED. `mobile/src/screens/claims/ClaimDetailScreen.tsx` shows `decisionNotices` as
+  primary content plus `quantumReason` and `closeReason`; test in
+  `mobile/src/screens/claims/__tests__/ClaimDetailScreen.test.tsx`.
+
+**Consequence:** until blocker 2 (Ombud/licence values) is configured, every environment refuses
+adverse decisions (fail-closed). Blocker 2 is therefore the real go-live gate.
+
+**Still OPEN:** blockers 1, 2, 3, 4, 5 and the payout-path decision. The payout decision (due
+2026-11-05) is overdue. No business or legal item is marked closed.
