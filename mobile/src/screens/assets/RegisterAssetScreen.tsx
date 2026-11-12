@@ -166,6 +166,7 @@ export function RegisterAssetScreen() {
   const [trackerIntent, setTrackerIntent] = useState<TrackerIntent>('unsure');
   const [step, setStep] = useState(0);
   const [formError, setFormError] = useState<string | undefined>();
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const isVehicleFlow = assetType === 'vehicle';
   const totalSteps = vehicleStepCount(isVehicleFlow);
@@ -174,42 +175,51 @@ export function RegisterAssetScreen() {
 
   function updateDetail(field: string, value: string) {
     setDetailFields((prev) => ({ ...prev, [field]: value }));
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const { [field]: _removed, ...rest } = prev;
+      return rest;
+    });
   }
 
-  function validateCurrentStep(): string | undefined {
+  /** Same rules as before; errors are now keyed by field so they render beside it. */
+  function validateCurrentStep(): Record<string, string> {
+    const errors: Record<string, string> = {};
     if (step === 0) {
-      if (!displayName.trim()) return 'Enter a display name for this asset.';
-      return undefined;
+      if (!displayName.trim()) errors.displayName = 'Enter a display name for this asset.';
+      return errors;
     }
 
     if (isVehicleFlow && step === 1) {
       for (const field of required) {
         if (!detailFields[field]?.trim()) {
-          return `Enter ${labelForField(field).toLowerCase()}.`;
+          errors[field] = `Enter ${labelForField(field).toLowerCase()}.`;
         }
       }
-      const year = Number.parseInt(detailFields.year ?? '', 10);
-      if (Number.isNaN(year)) return 'Enter a valid year.';
-      return undefined;
+      if (!errors.year && Number.isNaN(Number.parseInt(detailFields.year ?? '', 10))) {
+        errors.year = 'Enter a valid year.';
+      }
+      return errors;
     }
 
     if (!isVehicleFlow) {
       for (const field of required) {
         if (!detailFields[field]?.trim()) {
-          return `Enter ${labelForField(field).toLowerCase()}.`;
+          errors[field] = `Enter ${labelForField(field).toLowerCase()}.`;
         }
       }
     }
 
-    return undefined;
+    return errors;
   }
 
   function handleNext() {
-    const err = validateCurrentStep();
-    if (err) {
-      setFormError(err);
+    const errors = validateCurrentStep();
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
+    setFieldErrors({});
     setFormError(undefined);
     if (step < totalSteps - 1) {
       setStep(step + 1);
@@ -219,17 +229,10 @@ export function RegisterAssetScreen() {
   }
 
   async function handleSubmit() {
-    const err = validateCurrentStep();
-    if (err) {
-      setFormError(err);
+    const errors = validateCurrentStep();
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
-    }
-
-    for (const field of required) {
-      if (!detailFields[field]?.trim()) {
-        setFormError(`Enter ${labelForField(field).toLowerCase()}.`);
-        return;
-      }
     }
 
     setFormError(undefined);
@@ -325,7 +328,11 @@ export function RegisterAssetScreen() {
           <Input
             label="Display name"
             value={displayName}
-            onChangeText={setDisplayName}
+            onChangeText={(v) => {
+              setDisplayName(v);
+              setFieldErrors((prev) => (prev.displayName ? {} : prev));
+            }}
+            error={fieldErrors.displayName}
             placeholder={
               assetType === 'vehicle' ? 'e.g. My Toyota Corolla' : 'e.g. Work laptop'
             }
@@ -346,6 +353,7 @@ export function RegisterAssetScreen() {
               value={detailFields[field] ?? ''}
               onChangeText={(v) => updateDetail(field, v)}
               required={required.has(field)}
+              error={fieldErrors[field]}
               keyboardType={
                 field === 'year' ? 'number-pad' : field === 'imei' ? 'number-pad' : 'default'
               }
