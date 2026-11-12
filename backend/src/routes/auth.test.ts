@@ -1283,6 +1283,83 @@ describe('POST /auth/login SR-14 forced-re-enrollment (api-design.md §11 Amendm
  * account-existence/enumeration oracle (the risk the ADR's own AE-1 section
  * flags as contingent on GoTrue's password-vs-confirmation check order).
  */
+describe('POST /auth/login — parallel reads: lock result wins over a lookup fault (commit 8967991)', () => {
+  const EMAIL = 'unverified-customer@example.com';
+  const post = (baseUrl: string) =>
+    fetch(`${baseUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: EMAIL, password: 'definitely-the-wrong-password' }),
+    });
+
+  function ctxWithFaultableLookup() {
+    const accounts = createFakeAccountsRepo({
+      id: randomUUID(),
+      email: EMAIL,
+      userType: 'customer',
+      accountState: 'active',
+      mfaRequired: false,
+      partnerOrganizationId: null,
+    });
+    const state = { lookupThrows: false };
+    const realFind = accounts.findByEmail.bind(accounts);
+    accounts.findByEmail = async (e: string) => {
+      if (state.lookupThrows) throw new Error('simulated accounts lookup fault');
+      return realFind(e);
+    };
+    const supabase = {
+      async verifyPassword() {
+        return null;
+      },
+    } as unknown as SupabaseAdmin;
+    const ctx = buildMinimalCtx({ accounts: accounts as unknown as AppContext['accounts'], supabase });
+    return { ctx, state };
+  }
+
+  it('returns ACCOUNT_LOCKED (423), not 5xx, when locked and findByEmail throws', async () => {
+    const { ctx, state } = ctxWithFaultableLookup();
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      for (let i = 0; i < 5; i++) expect((await post(baseUrl)).status).toBe(401);
+      state.lookupThrows = true;
+      const res = await post(baseUrl);
+      const body = (await res.json()) as { error?: { code: string } };
+      expect(res.status, JSON.stringify(body)).toBe(423);
+      expect(body.error?.code).toBe('ACCOUNT_LOCKED');
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('surfaces the lookup error (5xx) when NOT locked and findByEmail throws', async () => {
+    const { ctx, state } = ctxWithFaultableLookup();
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      state.lookupThrows = true;
+      const res = await post(baseUrl);
+      expect(res.status).toBeGreaterThanOrEqual(500);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+
+  it('fails closed (5xx, never a login) when the lock-check kv store faults', async () => {
+    const { ctx } = ctxWithFaultableLookup();
+    ctx.kv = new Proxy({}, {
+      get: () => async () => {
+        throw new Error('simulated kv fault');
+      },
+    }) as unknown as AppContext['kv'];
+    const { server, baseUrl } = await startTestServer(ctx);
+    try {
+      const res = await post(baseUrl);
+      expect(res.status).toBeGreaterThanOrEqual(500);
+    } finally {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+  });
+});
+
 describe('POST /auth/login — ADR-0014 AE-1 (email_not_confirmed vs invalid credentials)', () => {
   const accountId = randomUUID();
   const AE1_EMAIL = 'unverified-customer@example.com';
