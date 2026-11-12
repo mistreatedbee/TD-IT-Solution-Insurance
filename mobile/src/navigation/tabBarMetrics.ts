@@ -20,9 +20,18 @@ export const FLOATING_TAB_BAR_BAR_HEIGHT = 72;
 export const FLOATING_TAB_BAR_CLEARANCE = 96;
 
 /** Distance from the screen bottom to the top edge of the floating tab bar. */
+export function floatingTabBarBottomPadding(insetBottom: number): number {
+  return insetBottom + spacing.sm;
+}
+
+/** Total offset = bar bottom padding (system inset + gap) + bar height. */
+export function floatingTabBarOffset(insetBottom: number): number {
+  return floatingTabBarBottomPadding(insetBottom) + FLOATING_TAB_BAR_BAR_HEIGHT;
+}
+
 export function useFloatingTabBarOffset(): number {
   const insets = useSafeAreaInsets();
-  return Math.max(insets.bottom, spacing.sm) + FLOATING_TAB_BAR_BAR_HEIGHT;
+  return floatingTabBarOffset(insets.bottom);
 }
 
 /**

@@ -16,6 +16,7 @@ import {
 import { useProtectionDashboard } from '../tracking/useProtectionDashboard';
 import { useTheme } from '../theme/ThemeProvider';
 import { minTouchTarget, spacing } from '../theme/tokens';
+import { floatingTabBarBottomPadding } from './tabBarMetrics';
 import { GlassSurface } from './GlassSurface';
 import { useLiquidGlassChrome } from './useLiquidGlassChrome';
 
@@ -95,7 +96,7 @@ function TabButton({
     badgeCount > 0 ? `${label}, ${badgeCount} open alert${badgeCount === 1 ? '' : 's'}` : label;
 
   const iconColor = focused
-    ? colors.accentBlue
+    ? colors.glassAccentDeep
     : isDark
       ? colors.slate[400]
       : colors.textSecondary;
@@ -189,8 +190,10 @@ function createTabBarStyles(
         fontWeight: '600',
         color: isDark ? colors.slate[400] : colors.textSecondary,
       },
+      // glassAccentDeep is only ~3.9:1 on white — fine for the icon, too low for a 10px label (WCAG AA).
+      // The active tab is still signalled by the teal icon; the label uses the text-grade colour.
       tabLabelActive: {
-        color: colors.accentBlue,
+        color: colors.glassTextPrimary,
       },
     }),
   };
@@ -231,7 +234,7 @@ export function FloatingTabBar({ state, navigation, variant = 'customer' }: Floa
   }
 
   return (
-    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+    <View style={[styles.wrap, { paddingBottom: floatingTabBarBottomPadding(insets.bottom) }]}>
       <GlassSurface
         style={styles.bar}
         colorScheme={glass.colorScheme}
