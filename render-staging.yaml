@@ -1,8 +1,10 @@
 # Render Blueprint — Staging (MP-8)
 
 Separate API + web services for QA/staging. Uses the **same Atlas cluster** as production
-but a **different MongoDB database name** via `MONGODB_DB_NAME`. Supabase should be a
-separate project or branch — set those secrets in the Render dashboard when provisioning.
+but a **different MongoDB database name** via `MONGODB_DB_NAME`. Supabase MUST be a
+separate project (never the production project) — see
+docs/organization/runbooks/staging-setup.md. Every `sync: false` below is a placeholder the owner
+fills in the Render dashboard with STAGING-ONLY values; no production value belongs in this file.
 
 Apply as a second Blueprint instance, or duplicate the production services manually with
 these names and env values.
@@ -24,32 +26,57 @@ services:
         value: production
       - key: TRUST_PROXY_HOPS
         value: "1"
+      # STAGING-ONLY Atlas user, scoped readWrite to td_it_insurance_staging only (never the prod user).
       - key: MONGODB_URI
         sync: false
       - key: MONGODB_DB_NAME
         value: td_it_insurance_staging
+      # All SUPABASE_* below: the SEPARATE staging Supabase project only.
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: SUPABASE_DB_URL
         sync: false
+      # CA bundle is public, not a secret; verify it matches the staging project's chain.
       - key: SUPABASE_DB_CA_CERT_PATH
         value: certs/supabase-prod-ca-2021.crt
+      # Separate Redis instance (rediss://). Sharing prod Redis would share the session
+      # revocation set and rate-limit counters.
       - key: REDIS_URL
         sync: false
+      # Freshly generated, DIFFERENT from prod: a shared key makes prod tokens valid on staging.
       - key: SESSION_JWT_SIGNING_KEYS
         sync: false
       - key: SESSION_JWT_ACTIVE_KID
         sync: false
       - key: INTERNAL_SERVICE_KEYS
         sync: false
+      # Resend TEST/sandbox key only. Unset = no domain email sent (safe default).
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: TD IT Solution Insurance (STAGING)
+      - key: APP_PUBLIC_URL
+        value: https://td-it-insurance-web-staging.onrender.com
+      # Fail-closed kill switches pinned off. Enabling any on staging is a deliberate owner edit.
+      - key: LOCATION_INGESTION_ENABLED
+        value: "false"
+      - key: CLAIMS_API_ENABLED
+        value: "false"
+      - key: DIRECTED_DISPATCH_ENABLED
+        value: "false"
+      - key: PARTNER_LOCATION_SHARING_ENABLED
+        value: "false"
       - key: EMAIL_VERIFICATION_REDIRECT_URL
         value: tditinsurance://verify-email
       # INC-003 A-16 / ADR-0014 G-1: web signup/resend go through the backend
       # (client: 'web'). Declared WITHOUT a value: the project owner sets it to
       # this environment's web origin + /auth/callback?type=signup in the Render
       # dashboard AND adds that URL to Supabase Auth → URL configuration.
+      # NB: env.ts falls back to the PRODUCTION Vercel URL when this is unset - must be set.
       - key: EMAIL_VERIFICATION_REDIRECT_URL_WEB
         sync: false
       - key: PASSWORD_RESET_REDIRECT_URL
