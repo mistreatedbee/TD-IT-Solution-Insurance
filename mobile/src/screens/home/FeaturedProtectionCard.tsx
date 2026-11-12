@@ -121,11 +121,11 @@ function useProtectionCardStyles(
   isDark: boolean,
   layout: ProtectionCardLayout,
 ) {
-  const cardBorderColor = isDark ? 'rgba(96, 165, 250, 0.22)' : 'rgba(37, 99, 235, 0.14)';
+  const cardBorderColor = isDark ? colors.glassSurfaceBorder : colors.glassAccentTint;
 
   const cardElevation = Platform.select({
     ios: {
-      shadowColor: isDark ? '#000000' : colors.accentBlueDeep,
+      shadowColor: isDark ? colors.glassActionSecondaryText : colors.glassAccentDeep,
       shadowOffset: { width: 0, height: 6 },
       shadowOpacity: isDark ? 0.35 : 0.12,
       shadowRadius: 16,
@@ -138,7 +138,7 @@ function useProtectionCardStyles(
     () =>
       StyleSheet.create({
         card: {
-          backgroundColor: isDark ? colors.card : colors.accentBlueTint,
+          backgroundColor: isDark ? colors.card : colors.glassAccentTint,
           borderRadius: radius.cardLg,
           borderWidth: 1,
           borderColor: cardBorderColor,
@@ -153,7 +153,7 @@ function useProtectionCardStyles(
         eyebrow: {
           fontSize: typography.sizes.xs,
           fontWeight: '700',
-          color: isDark ? colors.accentBlue : colors.accentBlueDeep,
+          color: isDark ? colors.glassAccent : colors.glassAccentDeep,
           letterSpacing: 0.6,
           textTransform: 'uppercase',
           marginBottom: spacing.sm,
@@ -231,7 +231,7 @@ function useProtectionCardStyles(
           fontSize: layout.statValueCompactSize,
         },
         statValueHighlight: {
-          color: colors.accentBlueDeep,
+          color: colors.glassAccentDeep,
         },
         statLabel: {
           fontSize: layout.statLabelSize,

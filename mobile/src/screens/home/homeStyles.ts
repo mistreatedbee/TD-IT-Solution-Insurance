@@ -36,7 +36,7 @@ export function useHomeStyles() {
         sectionLink: {
           fontSize: typography.sizes.sm,
           fontWeight: '600',
-          color: colors.accentBlueDeep,
+          color: colors.glassAccentDeep,
         },
         pill: {
           alignSelf: 'flex-start',

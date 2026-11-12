@@ -104,7 +104,7 @@ export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
           width: 32,
           height: 32,
           borderRadius: 10,
-          backgroundColor: colors.accentBlueTint,
+          backgroundColor: colors.glassAccentTint,
           alignItems: 'center',
           justifyContent: 'center',
         },
@@ -242,7 +242,7 @@ export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
             {selected?.lastLocation ? (
               <View style={styles.locationSheet}>
                 <View style={styles.sheetIcon}>
-                  <MapPinIcon size={16} color={colors.accentBlueDeep} strokeWidth={2.4} />
+                  <MapPinIcon size={16} color={colors.glassAccentDeep} strokeWidth={2.4} />
                 </View>
                 <View style={styles.sheetCopy}>
                   <Text style={styles.sheetTitle} numberOfLines={1}>

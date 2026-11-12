@@ -72,7 +72,7 @@ export function HomeHeader({
           minWidth: 18,
           height: 18,
           borderRadius: 9,
-          backgroundColor: colors.accentBlue,
+          backgroundColor: colors.glassAccentDeep,
           alignItems: 'center',
           justifyContent: 'center',
           paddingHorizontal: 4,

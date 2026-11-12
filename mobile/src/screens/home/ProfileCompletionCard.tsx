@@ -45,7 +45,7 @@ export function ProfileCompletionCard({
           width: 44,
           height: 44,
           borderRadius: 12,
-          backgroundColor: colors.accentGoldTint,
+          backgroundColor: colors.glassAccentTint,
           alignItems: 'center',
           justifyContent: 'center',
         },
@@ -61,19 +61,19 @@ export function ProfileCompletionCard({
         percent: {
           fontSize: typography.sizes.sm,
           fontWeight: '600',
-          color: colors.accentGoldDeep,
+          color: colors.glassAccentDeep,
           marginBottom: spacing.sm,
         },
         barTrack: {
           height: 4,
-          backgroundColor: colors.accentGoldTint,
+          backgroundColor: colors.glassAccentTint,
           borderRadius: 2,
           overflow: 'hidden',
           marginBottom: spacing.sm,
         },
         barFill: {
           height: '100%',
-          backgroundColor: colors.accentGold,
+          backgroundColor: colors.glassAccent,
         },
         checkItem: {
           fontSize: typography.sizes.xs,
@@ -103,7 +103,7 @@ export function ProfileCompletionCard({
       onPress={handlePress}
     >
       <View style={styles.iconWrap}>
-        <UserCircle2Icon size={24} color={colors.accentGoldDeep} strokeWidth={2.2} />
+        <UserCircle2Icon size={24} color={colors.glassAccentDeep} strokeWidth={2.2} />
       </View>
 
       <View style={styles.copy}>

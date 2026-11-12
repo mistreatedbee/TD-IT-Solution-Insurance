@@ -33,47 +33,52 @@ const ASSET_IMAGES: Record<AssetType, ImageSourcePropType> = {
   other_electronics: require('../../../assets/asset-types/asset-other-electronics.png'),
 };
 
+// Per-category rainbow hues retired (owner palette feedback 2026-11-12): all
+// categories share the glass palette; the icon/photo carries the distinction.
+const CATEGORY_BG = colors.glassAccentTint;
+const CATEGORY_FG = colors.glassAccentDeep;
+
 const ASSET_VISUALS: Record<AssetType, AssetVisualSpec> = {
   vehicle: {
     Icon: Car,
-    background: '#E8EEF4',
-    foreground: '#1D4E89',
+    background: CATEGORY_BG,
+    foreground: CATEGORY_FG,
     image: ASSET_IMAGES.vehicle,
   },
   smartphone: {
     Icon: Smartphone,
-    background: '#EEF2FF',
-    foreground: '#4338CA',
+    background: CATEGORY_BG,
+    foreground: CATEGORY_FG,
     image: ASSET_IMAGES.smartphone,
   },
   laptop: {
     Icon: Laptop,
-    background: '#F5F0FF',
-    foreground: '#7C3AED',
+    background: CATEGORY_BG,
+    foreground: CATEGORY_FG,
     image: ASSET_IMAGES.laptop,
   },
   tablet: {
     Icon: Tablet,
-    background: '#ECFEFF',
-    foreground: '#0E7490',
+    background: CATEGORY_BG,
+    foreground: CATEGORY_FG,
     image: ASSET_IMAGES.tablet,
   },
   tv: {
     Icon: Tv,
-    background: '#FFF1F2',
-    foreground: '#BE123C',
+    background: CATEGORY_BG,
+    foreground: CATEGORY_FG,
     image: ASSET_IMAGES.tv,
   },
   desktop: {
     Icon: Monitor,
-    background: '#F0FDF4',
-    foreground: '#15803D',
+    background: CATEGORY_BG,
+    foreground: CATEGORY_FG,
     image: ASSET_IMAGES.desktop,
   },
   business_equipment: {
     Icon: Briefcase,
-    background: '#FFFBEB',
-    foreground: '#B45309',
+    background: CATEGORY_BG,
+    foreground: CATEGORY_FG,
     image: ASSET_IMAGES.business_equipment,
   },
   other_electronics: {
@@ -152,7 +157,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   imageWrapLightShadow: {
-    shadowColor: '#2C3E50',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 6,

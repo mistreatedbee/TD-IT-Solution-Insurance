@@ -81,7 +81,7 @@ export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) 
         ctaText: {
           fontSize: typography.sizes.sm,
           fontWeight: '700',
-          color: colors.accentBlueDeep,
+          color: colors.glassAccentDeep,
         },
         titleRow: {
           flexDirection: 'row',
@@ -128,7 +128,7 @@ export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) 
           backgroundColor: colors.slate[300],
         },
         stepDotDone: {
-          backgroundColor: colors.accentBlue,
+          backgroundColor: colors.glassAccent,
         },
         stepLine: {
           position: 'absolute',
@@ -139,7 +139,7 @@ export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) 
           top: 4,
         },
         stepLineDone: {
-          backgroundColor: colors.accentBlueDeep,
+          backgroundColor: colors.glassAccentDeep,
         },
         stepLabel: {
           fontSize: 10,
@@ -178,7 +178,7 @@ export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) 
           </Text>
           <View style={styles.ctaRow}>
             <Text style={styles.ctaText}>Add your first asset</Text>
-            <ChevronRightIcon size={18} color={colors.accentBlueDeep} />
+            <ChevronRightIcon size={18} color={colors.glassAccentDeep} />
           </View>
         </View>
         <AssetHeroImage assetType="other_electronics" />

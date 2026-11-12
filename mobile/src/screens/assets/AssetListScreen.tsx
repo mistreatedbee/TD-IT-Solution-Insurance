@@ -50,6 +50,7 @@ export function AssetListScreen() {
           flexDirection: 'row',
           alignItems: 'flex-start',
           gap: spacing.md,
+          marginBottom: spacing.lg,
         },
         titleCopy: {
           flex: 1,

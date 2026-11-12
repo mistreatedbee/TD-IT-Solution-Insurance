@@ -30,7 +30,7 @@ export function AccountMenuRow({
 }: AccountMenuRowProps) {
   const colors = useColors();
   const surfaceStyles = useSurfaceStyles();
-  const resolvedIconColor = iconColor ?? colors.primary;
+  const resolvedIconColor = iconColor ?? colors.glassAccentDeep;
   const resolvedTitleColor = titleColor ?? colors.textPrimary;
 
   const styles = useMemo(

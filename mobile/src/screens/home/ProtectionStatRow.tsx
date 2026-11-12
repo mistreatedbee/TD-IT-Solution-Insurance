@@ -57,8 +57,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   itemAccent: {
-    borderColor: colors.accentGold,
-    backgroundColor: colors.accentGoldTint,
+    borderColor: colors.glassAccent,
+    backgroundColor: colors.glassAccentTint,
   },
   value: {
     fontSize: typography.sizes.lg,
@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   valueAccent: {
-    color: colors.accentGoldDeep,
+    color: colors.glassAccentDeep,
   },
   label: {
     fontSize: typography.sizes.xs,

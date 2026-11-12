@@ -39,7 +39,7 @@ function useHeroActionStyles() {
           marginBottom: spacing.sm,
         },
         iconAccent: {
-          backgroundColor: colors.accentGoldTint,
+          backgroundColor: colors.glassAccentTint,
         },
         iconNeutral: {
           backgroundColor: colors.slate[100],
@@ -109,7 +109,7 @@ export function HomeHeroActions({
         onPress={() => router.push('/assets/register' as Href)}
       >
         <View style={[styles.iconWrap, styles.iconAccent]}>
-          <PackagePlusIcon size={24} color={colors.accentGoldDeep} strokeWidth={2.2} />
+          <PackagePlusIcon size={24} color={colors.glassAccentDeep} strokeWidth={2.2} />
         </View>
         <Text style={styles.title}>Add asset</Text>
         <Text style={styles.body}>Register a device or vehicle</Text>
@@ -131,7 +131,7 @@ export function HomeHeroActions({
             >
               <ShieldAlertIcon
                 size={24}
-                color={theftReportingLocked ? colors.accentGoldDeep : colors.primary}
+                color={theftReportingLocked ? colors.glassAccentDeep : colors.primary}
                 strokeWidth={2.2}
               />
             </View>
