@@ -106,6 +106,8 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             <AlertCircleIcon size={14} color={colors.fieldErrorText} />
           ) : null}
           <Text
+            accessibilityLiveRegion={hasError ? 'polite' : undefined}
+            accessibilityRole={hasError ? 'alert' : undefined}
             style={[styles.message, hasError ? styles.messageError : undefined]}
           >
             {message}
