@@ -6,8 +6,8 @@ export default function InstallationGuideRoute() {
   if (!FEATURE_HARDWARE_TRACKING_ENABLED) {
     return (
       <FeatureUnavailableScreen
-        headline="Installation guide is coming soon."
-        body="Hardware installation instructions are not available in this build yet."
+        headline="The installation guide is not available in this build."
+        body="Your registered assets and policy are still available from the Assets tab."
       />
     );
   }

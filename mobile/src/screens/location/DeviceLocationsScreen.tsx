@@ -20,7 +20,7 @@ function isSelfReportable(type: string): boolean {
 }
 
 function hardwareTrackingMessage(type: string): string {
-  return `${formatAssetType(type as AssetLocationSummaryItem['assetType'])} tracking requires a GPS tracker — hardware tracking coming soon.`;
+  return `${formatAssetType(type as AssetLocationSummaryItem['assetType'])} tracking requires a GPS tracker, and hardware trackers can't be connected in the app yet.`;
 }
 
 export function DeviceLocationsScreen() {

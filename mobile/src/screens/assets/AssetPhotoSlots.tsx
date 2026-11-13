@@ -19,8 +19,8 @@ export function AssetPhotoSlots({ assetType }: { assetType: string }) {
         <Text style={styles.title}>Asset photos</Text>
       </View>
       <Text style={styles.hint}>
-        Photo upload is coming soon. These slots show what you&apos;ll be able to add for recovery
-        and claims support.
+        Photos can&apos;t be uploaded in the app yet. Keep clear photos of these items on your own
+        phone so you have them if you ever need to support a recovery or claim.
       </Text>
       <View style={styles.grid}>
         {slots.map((label) => (

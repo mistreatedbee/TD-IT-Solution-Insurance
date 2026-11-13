@@ -10,8 +10,8 @@ export default function AccountVerificationRoute() {
   if (!FEATURE_KYC_ENABLED) {
     return (
       <FeatureUnavailableScreen
-        headline="Identity verification is coming soon."
-        body="ID verification is not available in this build yet. You can still manage your protection plan and registered assets."
+        headline="Identity verification is not available in this build."
+        body="You can still manage your protection plan and registered assets."
       />
     );
   }

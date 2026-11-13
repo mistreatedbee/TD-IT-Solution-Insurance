@@ -9,8 +9,8 @@ export default function AccountProfileRoute() {
   if (!FEATURE_KYC_ENABLED) {
     return (
       <FeatureUnavailableScreen
-        headline="Profile editing is coming soon."
-        body="Identity and profile updates are not available in this build yet. Your account email and protection plan are still visible from the Account tab."
+        headline="Profile editing is not available in this build."
+        body="Your account email and protection plan are still visible from the Account tab."
       />
     );
   }

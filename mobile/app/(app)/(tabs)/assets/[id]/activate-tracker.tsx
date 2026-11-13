@@ -6,8 +6,8 @@ export default function ActivateTrackerRoute() {
   if (!FEATURE_HARDWARE_TRACKING_ENABLED) {
     return (
       <FeatureUnavailableScreen
-        headline="Tracker setup is coming soon."
-        body="GPS hardware activation is not available in this build yet. Your asset is still registered and visible from the Assets tab."
+        headline="Tracker setup is not available in this build."
+        body="Your asset is still registered and visible from the Assets tab."
       />
     );
   }

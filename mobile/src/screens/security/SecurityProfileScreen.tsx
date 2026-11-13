@@ -6,7 +6,6 @@ import { BellIcon, LogOutIcon } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { logout, logoutAll } from '../../api/auth';
-import { sendTestPushNotification } from '../../api/notifications';
 import { revokePushTokenFromBackend } from '../../notifications/push';
 import { clearRefreshToken } from '../../auth/secure-storage';
 import { useSessionStore } from '../../auth/session-store';
@@ -21,21 +20,6 @@ export function SecurityProfileScreen() {
   const { data: account, isLoading } = useAccountQuery();
   const setSignedOut = useSessionStore((s) => s.setSignedOut);
   const [isLoggingOutAll, setIsLoggingOutAll] = useState(false);
-  const [isSendingTestPush, setIsSendingTestPush] = useState(false);
-  const [testPushMessage, setTestPushMessage] = useState<string | null>(null);
-
-  async function handleTestPush() {
-    setIsSendingTestPush(true);
-    setTestPushMessage(null);
-    try {
-      const result = await sendTestPushNotification();
-      setTestPushMessage(result.message);
-    } catch {
-      setTestPushMessage('Could not send test notification. Check push permissions and try again.');
-    } finally {
-      setIsSendingTestPush(false);
-    }
-  }
 
   async function handleLogout() {
     revokePushTokenFromBackend().catch(() => {});
@@ -117,21 +101,6 @@ export function SecurityProfileScreen() {
         <View style={styles.rowTextColumn}>
           <Text style={styles.rowTitle}>Notification preferences</Text>
           <Text style={styles.rowSubtitle}>Choose which case alerts you receive</Text>
-        </View>
-      </Pressable>
-
-      <Pressable
-        style={styles.row}
-        onPress={handleTestPush}
-        accessibilityRole="button"
-        disabled={isSendingTestPush}
-      >
-        <BellIcon size={20} color={colors.primary} />
-        <View style={styles.rowTextColumn}>
-          <Text style={styles.rowTitle}>
-            {isSendingTestPush ? 'Sending test alert…' : 'Send test notification'}
-          </Text>
-          {testPushMessage ? <Text style={styles.rowSubtitle}>{testPushMessage}</Text> : null}
         </View>
       </Pressable>
 
