@@ -2,84 +2,15 @@ import { useRouter, type Href } from 'expo-router';
 import { MapPinIcon, PackagePlusIcon, ShieldAlertIcon } from 'lucide-react-native';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SurfaceGroup } from '../../components/SurfaceGroup';
-import { useColors } from '../../theme/ThemeProvider';
-import { spacing, typography } from '../../theme/tokens';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens } from '../../theme/designTheme';
+import { useHomeStyles } from './homeStyles';
 
-function useHeroActionStyles() {
-  const colors = useColors();
-  return useMemo(
-    () =>
-      StyleSheet.create({
-        group: {
-          flexDirection: 'row',
-        },
-        cell: {
-          flex: 1,
-          padding: spacing.lg,
-          minHeight: 120,
-          alignItems: 'flex-start',
-        },
-        cellRow: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: spacing.md,
-        },
-        columnDivider: {
-          width: StyleSheet.hairlineWidth,
-          backgroundColor: colors.hairline,
-          marginVertical: spacing.md,
-        },
-        iconWrap: {
-          width: 48,
-          height: 48,
-          borderRadius: 16,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: spacing.sm,
-        },
-        iconAccent: {
-          backgroundColor: colors.glassAccentTint,
-        },
-        iconNeutral: {
-          backgroundColor: colors.slate[100],
-        },
-        iconWrapSmall: {
-          width: 40,
-          height: 40,
-          borderRadius: 12,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        title: {
-          fontSize: typography.sizes.base,
-          fontWeight: '700',
-          color: colors.textPrimary,
-          marginBottom: spacing.xs,
-        },
-        body: {
-          fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
-          lineHeight: typography.sizes.xs * 1.45,
-        },
-        smallCopy: {
-          flex: 1,
-        },
-        smallTitle: {
-          fontSize: typography.sizes.sm,
-          fontWeight: '700',
-          color: colors.textPrimary,
-        },
-        smallBody: {
-          fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
-          marginTop: 2,
-        },
-      }),
-    [colors],
-  );
-}
-
+/**
+ * Hero actions — R5.2. Report theft is the one primary action; everything else
+ * is a glass button. Buttons carry their own fill, so they sit directly on the
+ * ground (no card) and the old helper lines live on as accessibility hints.
+ */
 export function HomeHeroActions({
   showTheftReporting = true,
   theftReportingLocked = false,
@@ -90,8 +21,8 @@ export function HomeHeroActions({
   onReportTheft?: () => void;
 }) {
   const router = useRouter();
-  const colors = useColors();
-  const styles = useHeroActionStyles();
+  const t = useDesignTokens();
+  const styles = useMemo(() => StyleSheet.create({ stack: { gap: t.spacing.s3 } }), [t]);
 
   function handleReportTheft() {
     if (onReportTheft) {
@@ -102,77 +33,54 @@ export function HomeHeroActions({
   }
 
   return (
-    <SurfaceGroup style={styles.group}>
-      <Pressable
-        style={styles.cell}
-        accessibilityRole="button"
-        onPress={() => router.push('/assets/register' as Href)}
-      >
-        <View style={[styles.iconWrap, styles.iconAccent]}>
-          <PackagePlusIcon size={24} color={colors.glassAccentDeep} strokeWidth={2.2} />
-        </View>
-        <Text style={styles.title}>Add asset</Text>
-        <Text style={styles.body}>Register a device or vehicle</Text>
-      </Pressable>
-
+    <View style={styles.stack}>
       {showTheftReporting ? (
-        <>
-          <View style={styles.columnDivider} />
-          <Pressable
-            style={styles.cell}
-            accessibilityRole="button"
-            onPress={handleReportTheft}
-          >
-            <View
-              style={[
-                styles.iconWrap,
-                theftReportingLocked ? styles.iconAccent : styles.iconNeutral,
-              ]}
-            >
-              <ShieldAlertIcon
-                size={24}
-                color={theftReportingLocked ? colors.glassAccentDeep : colors.primary}
-                strokeWidth={2.2}
-              />
-            </View>
-            <Text style={styles.title}>
-              {theftReportingLocked ? 'Upgrade for theft' : 'Report theft'}
-            </Text>
-            <Text style={styles.body}>
-              {theftReportingLocked
-                ? 'Included from Plus plan'
-                : 'Start recovery immediately'}
-            </Text>
-          </Pressable>
-        </>
+        <Button
+          variant="primary"
+          label={theftReportingLocked ? 'Upgrade for theft' : 'Report theft'}
+          accessibilityHint={theftReportingLocked ? 'Included from Plus plan' : 'Start recovery immediately'}
+          icon={<ShieldAlertIcon size={20} color={t.colors.onActionPrimary} strokeWidth={1.75} />}
+          onPress={handleReportTheft}
+        />
       ) : null}
-    </SurfaceGroup>
+      <Button
+        variant="glass"
+        label="Add asset"
+        accessibilityHint="Register a device or vehicle"
+        icon={<PackagePlusIcon size={20} color={t.colors.ink} strokeWidth={1.75} />}
+        onPress={() => router.push('/assets/register' as Href)}
+      />
+    </View>
   );
 }
 
-/** Secondary pair — map + alerts shortcuts. */
+/** Secondary pair — map shortcut. */
 export function HomeSecondaryActions({ hasMapPins }: { hasMapPins: boolean }) {
   const router = useRouter();
-  const colors = useColors();
-  const styles = useHeroActionStyles();
+  const t = useDesignTokens();
+  const home = useHomeStyles();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        row: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.s3, minHeight: 48 },
+        copy: { flex: 1 },
+      }),
+    [t],
+  );
 
   return (
-    <SurfaceGroup style={styles.group}>
-      <Pressable
-        style={[styles.cell, styles.cellRow]}
-        accessibilityRole="button"
-        onPress={() => router.push('/map' as Href)}
-      >
-        <View style={[styles.iconWrapSmall, styles.iconNeutral]}>
-          <MapPinIcon size={20} color={colors.primary} strokeWidth={2.2} />
+    <GlassCard>
+      <Pressable style={styles.row} accessibilityRole="button" onPress={() => router.push('/map' as Href)}>
+        <View style={home.iconTileSm}>
+          <MapPinIcon size={20} color={t.colors.ink} strokeWidth={1.75} />
         </View>
-        <View style={styles.smallCopy}>
-          <Text style={styles.smallTitle}>Live map</Text>
-          <Text style={styles.smallBody}>
+        <View style={styles.copy}>
+          <Text style={home.title}>Live map</Text>
+          <Text style={home.textBodySm}>
             {hasMapPins ? 'View last known locations' : 'Enable tracking to see pins'}
           </Text>
         </View>
       </Pressable>
-    </SurfaceGroup>
+    </GlassCard>
   );
 }

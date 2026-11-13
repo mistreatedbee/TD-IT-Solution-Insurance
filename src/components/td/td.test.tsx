@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { TdButton, TdGlassCard, TdTextField, TdStatusBadge, TdAssetCard, TdNavBar, TD_STATUSES, lastFour } from './index';
 
 describe('TdButton', () => {
@@ -151,6 +152,39 @@ describe('TdNavBar', () => {
     await userEvent.tab();
     expect(screen.getByRole('link', { name: 'Home' })).toHaveFocus();
     expect(screen.getByRole('navigation').className).toContain('bg-td-bg-raised');
+  });
+  it('renderLink lets a router Link take over while keeping aria-current and the active classes', async () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <TdNavBar
+          items={items}
+          currentHref="/"
+          renderLink={({ href, ...rest }) => <Link to={href} data-router-link="true" {...rest} />}
+        />
+        <Routes>
+          <Route path="/" element={<p>home page</p>} />
+          <Route path="/assets" element={<p>assets page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const home = screen.getByRole('link', { name: 'Home' });
+    expect(home).toHaveAttribute('data-router-link', 'true');
+    expect(home).toHaveAttribute('aria-current', 'page');
+    expect(home.className).toContain('bg-td-action-primary');
+    expect(screen.getByRole('link', { name: 'Assets' })).not.toHaveAttribute('aria-current');
+    await userEvent.click(screen.getByRole('link', { name: 'Assets' }));
+    expect(screen.getByText('assets page')).toBeInTheDocument(); // in-SPA navigation, no reload
+  });
+});
+
+describe('TdAssetCard static mode', () => {
+  it('renders a non-interactive summary with no badge when neither href nor onSelect nor status is given', () => {
+    render(<TdAssetCard type="desktop" name="Office PC" identifier="PC-0042" footer="Desktop · removed" />);
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByText('Serial ending 0042')).toBeInTheDocument();
+    for (const s of TD_STATUSES) expect(screen.queryByText(s)).toBeNull();
+    expect(document.querySelector('[data-asset-card="static"]')?.className).not.toContain('focus-visible');
   });
 });
 

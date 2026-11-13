@@ -12,8 +12,8 @@ import {
 import React from 'react';
 import { Image, ImageSourcePropType, StyleSheet, View } from 'react-native';
 import type { AssetType } from '../../api/assets';
-import { useTheme } from '../../theme/ThemeProvider';
-import { colors, radius } from '../../theme/tokens';
+import { useDesignTokens } from '../../theme/designTheme';
+import { designColorsDay } from '../../theme/designTokens.generated';
 
 export interface AssetVisualSpec {
   Icon: LucideIcon;
@@ -34,9 +34,11 @@ const ASSET_IMAGES: Record<AssetType, ImageSourcePropType> = {
 };
 
 // Per-category rainbow hues retired (owner palette feedback 2026-11-12): all
-// categories share the glass palette; the icon/photo carries the distinction.
-const CATEGORY_BG = colors.glassAccentTint;
-const CATEGORY_FG = colors.glassAccentDeep;
+// categories share one palette; the icon/photo carries the distinction.
+// R5.2: static day tokens here for the spec record only — AssetTypeImage reads
+// the live Day/Night tokens via useDesignTokens.
+const CATEGORY_BG = designColorsDay.bgSunken;
+const CATEGORY_FG = designColorsDay.ink;
 
 const ASSET_VISUALS: Record<AssetType, AssetVisualSpec> = {
   vehicle: {
@@ -83,8 +85,8 @@ const ASSET_VISUALS: Record<AssetType, AssetVisualSpec> = {
   },
   other_electronics: {
     Icon: Package,
-    background: colors.slate[100],
-    foreground: colors.primary,
+    background: CATEGORY_BG,
+    foreground: CATEGORY_FG,
     image: ASSET_IMAGES.other_electronics,
   },
 };
@@ -100,25 +102,24 @@ export function AssetTypeImage({
   assetType: string;
   size?: 'sm' | 'md' | 'lg' | 'hero';
 }) {
-  const { colors: themeColors, isDark, elevationSoft } = useTheme();
+  const t = useDesignTokens();
   const visual = getAssetVisual(assetType);
   const dim =
     size === 'hero' ? 128 : size === 'lg' ? 92 : size === 'sm' ? 56 : 72;
   const borderRadius =
-    size === 'hero' ? radius.cardLg : size === 'lg' ? radius.card : radius.input + 8;
+    size === 'hero' ? t.radius.xl : size === 'lg' ? t.radius.lg : t.radius.md;
   const padding = size === 'hero' ? 12 : size === 'sm' ? 6 : 8;
 
   return (
     <View
       style={[
         styles.imageWrap,
-        isDark ? elevationSoft : styles.imageWrapLightShadow,
         {
           width: dim,
           height: dim,
           borderRadius,
-          backgroundColor: isDark ? themeColors.card : visual.background,
-          borderColor: themeColors.hairline,
+          backgroundColor: t.colors.bgSunken,
+          borderColor: t.colors.borderSubtle,
           padding,
         },
       ]}
@@ -155,13 +156,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-  },
-  imageWrapLightShadow: {
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
   },
   image: {
     width: '100%',

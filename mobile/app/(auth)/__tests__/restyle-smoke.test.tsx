@@ -5,10 +5,10 @@
  * card, in both Day and Night, and keeps the labels/links behaviour relies on.
  */
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ThemeProvider } from '../../../src/theme/ThemeProvider';
+import { renderWithProviders } from '../../../src/test/renderWithProviders';
 import WelcomeScreen from '../welcome';
 import ForgotPasswordScreen from '../forgot-password';
 import MfaChallengeScreen from '../mfa-challenge';
@@ -41,16 +41,14 @@ jest.mock('../../../src/auth/device', () => ({
 }));
 jest.mock('../../../src/auth/secure-storage', () => ({ setRefreshToken: jest.fn(async () => {}) }));
 
-const metrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
 const HID = { includeHiddenElements: true };
+const metrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
 
 async function renderIn(mode: 'light' | 'dark', ui: React.ReactElement) {
   (useColorScheme as jest.Mock).mockReturnValue(mode);
-  const view = render(
-    <SafeAreaProvider initialMetrics={metrics}>
-      <ThemeProvider>{ui}</ThemeProvider>
-    </SafeAreaProvider>,
-  );
+  // Standard project wrapper (as login-waking.test uses). A hand-rolled SafeAreaProvider with initialMetrics
+  // re-mounted the screen after each state change and wiped typed input.
+  const view = await renderWithProviders(ui);
   await act(async () => {});
   return view;
 }
@@ -63,17 +61,24 @@ beforeEach(() => {
 
 describe.each(['light', 'dark'] as const)('auth restyle smoke (%s)', (mode) => {
   it('welcome: hero copy on glass over a chevron backdrop; actions navigate as before', async () => {
-    await renderIn(mode, <WelcomeScreen />);
+    // Welcome reads the safe-area insets directly, so it needs a provider; it has no text input, so the
+    // re-mount that affected typing screens (see renderIn) does not matter here.
+    await renderIn(
+      mode,
+      <SafeAreaProvider initialMetrics={metrics}>
+        <WelcomeScreen />
+      </SafeAreaProvider>,
+    );
     expect(screen.getByTestId('auth-page')).toBeTruthy();
     expect(screen.getByTestId('td-backdrop-pattern-chevron', HID)).toBeTruthy();
     expect(screen.getByTestId('welcome-hero-card')).toBeTruthy();
     expect(screen.getByText('Protect what matters most.')).toBeTruthy();
 
-    fireEvent.press(screen.getByText('Get started'));
+    await fireEvent.press(screen.getByText('Get started'));
     expect(mockPush).toHaveBeenLastCalledWith('/(auth)/intro');
-    fireEvent.press(screen.getByText('Log in'));
+    await fireEvent.press(screen.getByText('Log in'));
     expect(mockPush).toHaveBeenLastCalledWith('/(auth)/login');
-    fireEvent.press(screen.getByText('Explore first'));
+    await fireEvent.press(screen.getByText('Explore first'));
     expect(mockPush).toHaveBeenLastCalledWith('/(auth)/intro');
   });
 
@@ -83,15 +88,14 @@ describe.each(['light', 'dark'] as const)('auth restyle smoke (%s)', (mode) => {
     expect(screen.getByTestId('td-backdrop-gradient', HID)).toBeTruthy();
     expect(screen.queryByTestId('td-backdrop-pattern-chevron', HID)).toBeNull();
 
-    fireEvent.changeText(screen.getByTestId('input-email'), 'a@b.co');
-    await act(async () => {
-      fireEvent.press(screen.getByText('Send reset link'));
-    });
+    await fireEvent.changeText(screen.getByTestId('input-email'), 'a@b.co');
+    await fireEvent.press(screen.getByText('Send reset link'));
+    await act(async () => {});
     expect(mockResetRequest).toHaveBeenCalledWith('a@b.co');
     expect(screen.getByText('Check your email.')).toBeTruthy();
     expect(screen.getByTestId('forgot-password-sent-card')).toBeTruthy();
 
-    fireEvent.press(screen.getByText('Back to log in'));
+    await fireEvent.press(screen.getByText('Back to log in'));
     expect(mockReplace).toHaveBeenCalledWith('/(auth)/login');
   });
 
@@ -110,7 +114,7 @@ describe.each(['light', 'dark'] as const)('auth restyle smoke (%s)', (mode) => {
     expect(screen.getByText('Continue')).toBeTruthy();
     expect(screen.getByText('Resend email')).toBeTruthy();
 
-    fireEvent.press(screen.getByText('Wrong email? Go back'));
+    await fireEvent.press(screen.getByText('Wrong email? Go back'));
     expect(mockReplace).toHaveBeenCalledWith({ pathname: '/(auth)/signup' });
   });
 });

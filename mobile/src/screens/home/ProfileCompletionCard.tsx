@@ -1,15 +1,16 @@
 import { useRouter, type Href } from 'expo-router';
-import { ChevronRightIcon, UserCircle2Icon } from 'lucide-react-native';
+import { ChevronRightIcon, CircleIcon, UserCircle2Icon } from 'lucide-react-native';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useColors } from '../../theme/ThemeProvider';
-import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
-import { spacing, typography } from '../../theme/tokens';
+import { GlassCard } from '../../design';
+import { useDesignTokens } from '../../theme/designTheme';
+import { useHomeStyles } from './homeStyles';
 
 export interface ProfileCompletionCardProps {
   percent: number;
   checklist: { id: string; label: string; done: boolean }[];
   onPress?: () => void;
+  /** When true the caller supplies the card; content renders bare. */
   inset?: boolean;
 }
 
@@ -20,68 +21,30 @@ export function ProfileCompletionCard({
   inset = false,
 }: ProfileCompletionCardProps) {
   const router = useRouter();
-  const colors = useColors();
-  const surfaceStyles = useSurfaceStyles();
+  const t = useDesignTokens();
+  const home = useHomeStyles();
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        card: {
+        row: {
           flexDirection: 'row',
           alignItems: 'center',
-          gap: spacing.md,
-          backgroundColor: colors.background,
-          borderRadius: 16,
-          padding: spacing.lg,
-          marginBottom: spacing.lg,
+          gap: t.spacing.s3,
+          minHeight: 48,
         },
-        cardInset: {
-          borderRadius: 0,
-          borderWidth: 0,
-          marginBottom: 0,
-          ...surfaceStyles.insetRow,
-          paddingVertical: spacing.md,
-        },
-        iconWrap: {
-          width: 44,
-          height: 44,
-          borderRadius: 12,
-          backgroundColor: colors.glassAccentTint,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        copy: {
-          flex: 1,
-        },
-        title: {
-          fontSize: typography.sizes.base,
-          fontWeight: '700',
-          color: colors.textPrimary,
-          marginBottom: 2,
-        },
-        percent: {
-          fontSize: typography.sizes.sm,
-          fontWeight: '600',
-          color: colors.glassAccentDeep,
-          marginBottom: spacing.sm,
-        },
+        copy: { flex: 1 },
+        percent: { ...t.type.label, color: t.colors.accentText, marginTop: 2, marginBottom: t.spacing.s2 },
         barTrack: {
           height: 4,
-          backgroundColor: colors.glassAccentTint,
-          borderRadius: 2,
+          backgroundColor: t.colors.borderSubtle,
+          borderRadius: t.radius.pill,
           overflow: 'hidden',
-          marginBottom: spacing.sm,
+          marginBottom: t.spacing.s2,
         },
-        barFill: {
-          height: '100%',
-          backgroundColor: colors.glassAccent,
-        },
-        checkItem: {
-          fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
-          marginBottom: 2,
-        },
+        barFill: { height: '100%', backgroundColor: t.colors.actionPrimary },
+        checkItem: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.s2, marginTop: 2 },
       }),
-    [colors, surfaceStyles],
+    [t],
   );
 
   if (percent >= 100) return null;
@@ -96,30 +59,30 @@ export function ProfileCompletionCard({
     router.push('/account/profile' as Href);
   }
 
-  return (
-    <Pressable
-      style={[styles.card, inset ? styles.cardInset : null]}
-      accessibilityRole="button"
-      onPress={handlePress}
-    >
-      <View style={styles.iconWrap}>
-        <UserCircle2Icon size={24} color={colors.glassAccentDeep} strokeWidth={2.2} />
+  const content = (
+    <Pressable style={styles.row} accessibilityRole="button" onPress={handlePress}>
+      <View style={home.iconTile}>
+        <UserCircle2Icon size={24} color={t.colors.ink} strokeWidth={1.75} />
       </View>
 
       <View style={styles.copy}>
-        <Text style={styles.title}>Complete your profile</Text>
+        <Text style={home.title}>Complete your profile</Text>
         <Text style={styles.percent}>{percent}% complete</Text>
         <View style={styles.barTrack}>
           <View style={[styles.barFill, { width: `${percent}%` }]} />
         </View>
         {pending.map((item) => (
-          <Text key={item.id} style={styles.checkItem}>
-            ○ {item.label}
-          </Text>
+          <View key={item.id} style={styles.checkItem}>
+            <CircleIcon size={16} color={t.colors.inkMuted} strokeWidth={1.75} />
+            <Text style={home.textBodySm}>{item.label}</Text>
+          </View>
         ))}
       </View>
 
-      <ChevronRightIcon size={20} color={colors.slate[400]} />
+      <ChevronRightIcon size={20} color={t.colors.inkMuted} strokeWidth={1.75} />
     </Pressable>
   );
+
+  if (inset) return content;
+  return <GlassCard>{content}</GlassCard>;
 }

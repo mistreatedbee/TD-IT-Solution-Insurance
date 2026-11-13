@@ -2,10 +2,10 @@ import { useRouter, type Href } from 'expo-router';
 import { MapPinIcon } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { GlassCard } from '../../design';
 import { formatRelativeTime } from '../../location/formatRelativeTime';
 import { useProtectionMapAssets } from '../../tracking/useProtectionMapAssets';
-import { useTheme } from '../../theme/ThemeProvider';
-import { radius, spacing, typography } from '../../theme/tokens';
+import { useDesignTokens } from '../../theme/designTheme';
 import { ProtectionMapView } from './ProtectionMapView';
 import { useHomeStyles } from './homeStyles';
 
@@ -13,163 +13,91 @@ export interface HomeMapPreviewProps {
   variant?: 'hero' | 'compact';
 }
 
+/**
+ * R5.2: header, hint and chips moved onto glass; the map shell itself is left
+ * for the map restyle (ProtectionMapView is out of scope here).
+ */
 export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
   const router = useRouter();
-  const { colors } = useTheme();
-  const homeStyles = useHomeStyles();
+  const t = useDesignTokens();
+  const home = useHomeStyles();
   const { mappableAssets, isLoading, locationUnavailable } = useProtectionMapAssets('on_map');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        wrap: {
-          marginBottom: spacing.lg,
-        },
-        titleRow: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: spacing.sm,
-          flex: 1,
-        },
-        titleCopy: {
-          flex: 1,
-        },
-        mapIcon: {
-          width: 36,
-          height: 36,
-          borderRadius: 12,
-          backgroundColor: colors.slate[100],
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        subtitle: {
-          fontSize: typography.sizes.xs,
-          color: colors.slate[500],
-          marginTop: 2,
-        },
+        wrap: { gap: t.spacing.s3 },
+        titleRow: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.s3, flex: 1 },
+        titleCopy: { flex: 1 },
         mapShell: {
-          borderRadius: radius.cardLg,
+          borderRadius: t.radius.xl,
           overflow: 'hidden',
           borderWidth: 1,
-          borderColor: colors.border,
-          ...homeStyles.homeShadow,
+          borderColor: t.colors.glassBorder,
+          ...t.shadows.glass,
         },
         loadingShell: {
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: colors.slate[100],
+          backgroundColor: t.colors.bgSunken,
         },
         emptyOverlay: {
           position: 'absolute',
-          left: spacing.md,
-          right: spacing.md,
+          left: t.spacing.s3,
+          right: t.spacing.s3,
           top: '32%',
-          backgroundColor: colors.background,
-          opacity: 0.94,
-          borderRadius: radius.card,
+          backgroundColor: t.colors.bgRaised,
+          borderRadius: t.radius.lg,
           borderWidth: 1,
-          borderColor: colors.border,
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm,
+          borderColor: t.colors.borderSubtle,
+          paddingHorizontal: t.spacing.s3,
+          paddingVertical: t.spacing.s2,
         },
-        emptyOverlayText: {
-          fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
-          textAlign: 'center',
-          lineHeight: 18,
-        },
-        locationHint: {
-          marginTop: spacing.sm,
-          fontSize: typography.sizes.xs,
-          color: colors.slate[500],
-          lineHeight: 18,
-        },
+        emptyOverlayText: { ...t.type.bodySm, color: t.colors.inkMuted, textAlign: 'center' },
         locationSheet: {
           position: 'absolute',
-          left: spacing.md,
-          right: spacing.md,
-          bottom: spacing.md,
+          left: t.spacing.s3,
+          right: t.spacing.s3,
+          bottom: t.spacing.s3,
           flexDirection: 'row',
           alignItems: 'flex-start',
-          gap: spacing.sm,
-          backgroundColor: colors.background,
-          opacity: 0.96,
-          borderRadius: radius.card,
-          padding: spacing.md,
+          gap: t.spacing.s2,
+          backgroundColor: t.colors.bgRaised,
+          borderRadius: t.radius.lg,
+          padding: t.spacing.s3,
           borderWidth: 1,
-          borderColor: colors.border,
+          borderColor: t.colors.borderSubtle,
         },
-        sheetIcon: {
-          width: 32,
-          height: 32,
-          borderRadius: 10,
-          backgroundColor: colors.glassAccentTint,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        sheetCopy: {
-          flex: 1,
-          minWidth: 0,
-        },
-        sheetTitle: {
-          fontSize: typography.sizes.sm,
-          fontWeight: '700',
-          color: colors.textPrimary,
-          marginBottom: 2,
-        },
-        sheetCoords: {
-          fontSize: typography.sizes.xs,
-          fontFamily: 'monospace',
-          color: colors.textSecondary,
-          marginBottom: 2,
-        },
-        sheetMeta: {
-          fontSize: typography.sizes.xs,
-          color: colors.slate[500],
-        },
+        sheetCopy: { flex: 1, minWidth: 0 },
+        sheetTitle: { ...t.type.label, color: t.colors.ink, marginBottom: 2 },
+        sheetCoords: { ...t.type.bodySm, fontFamily: 'monospace', color: t.colors.inkMuted, marginBottom: 2 },
+        sheetMeta: { ...t.type.bodySm, color: t.colors.inkMuted },
         pinBadge: {
           position: 'absolute',
-          top: spacing.md,
-          right: spacing.md,
-          backgroundColor: colors.slate[900],
-          borderRadius: 999,
-          paddingHorizontal: spacing.sm + 2,
-          paddingVertical: spacing.xs,
+          top: t.spacing.s3,
+          right: t.spacing.s3,
+          backgroundColor: t.colors.brandNavy,
+          borderRadius: t.radius.pill,
+          paddingHorizontal: t.spacing.s3,
+          paddingVertical: t.spacing.s1,
         },
-        pinBadgeText: {
-          fontSize: typography.sizes.xs,
-          fontWeight: '700',
-          color: colors.textInverse,
-        },
-        chips: {
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          gap: spacing.sm,
-          marginTop: spacing.sm,
-        },
+        pinBadgeText: { ...t.type.labelSm, color: t.colors.onNavy, textTransform: 'uppercase' },
+        chips: { flexDirection: 'row', flexWrap: 'wrap', gap: t.spacing.s2 },
         chip: {
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.xs,
-          borderRadius: 999,
+          minHeight: 48,
+          justifyContent: 'center',
+          paddingHorizontal: t.spacing.s3,
+          borderRadius: t.radius.pill,
           borderWidth: 1,
-          borderColor: colors.border,
-          backgroundColor: colors.background,
+          borderColor: t.colors.borderControl,
+          backgroundColor: t.colors.bgRaised,
         },
-        chipActive: {
-          borderColor: colors.primary,
-          backgroundColor: colors.slate[100],
-        },
-        chipText: {
-          fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
-          fontWeight: '600',
-        },
-        chipTextActive: {
-          color: colors.primary,
-        },
+        chipActive: { borderColor: t.colors.link, borderWidth: 2 },
+        chipText: { ...t.type.label, color: t.colors.inkMuted },
+        chipTextActive: { color: t.colors.link },
       }),
-    [colors, homeStyles.homeShadow],
+    [t],
   );
 
   const selected = useMemo(() => {
@@ -195,29 +123,37 @@ export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
 
   return (
     <View style={styles.wrap}>
-      <View style={homeStyles.sectionHeader}>
-        <View style={styles.titleRow}>
-          <View style={styles.mapIcon}>
-            <MapPinIcon size={18} color={colors.primary} strokeWidth={2.2} />
+      <GlassCard>
+        <View style={home.sectionHeader}>
+          <View style={styles.titleRow}>
+            <View style={home.iconTileSm}>
+              <MapPinIcon size={20} color={t.colors.ink} strokeWidth={1.75} />
+            </View>
+            <View style={styles.titleCopy}>
+              <Text style={home.sectionTitle} accessibilityRole="header">
+                Live protection map
+              </Text>
+              <Text style={home.sectionSubtitle}>
+                {pinCount > 0
+                  ? `${pinCount} device${pinCount === 1 ? '' : 's'} · last known locations`
+                  : 'Last known locations when tracking is enabled'}
+              </Text>
+            </View>
           </View>
-          <View style={styles.titleCopy}>
-            <Text style={homeStyles.sectionTitle}>Live protection map</Text>
-            <Text style={styles.subtitle}>
-              {pinCount > 0
-                ? `${pinCount} device${pinCount === 1 ? '' : 's'} · last known locations`
-                : 'Last known locations when tracking is enabled'}
-            </Text>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            style={home.linkTarget}
+            onPress={() => router.push('/map' as Href)}
+          >
+            <Text style={home.sectionLink}>Full map</Text>
+          </Pressable>
         </View>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/map' as Href)}>
-          <Text style={homeStyles.sectionLink}>Full map</Text>
-        </Pressable>
-      </View>
+      </GlassCard>
 
       <View style={[styles.mapShell, { minHeight: mapHeight }]}>
         {isLoading ? (
           <View style={[styles.loadingShell, { height: mapHeight }]}>
-            <ActivityIndicator size="small" color={colors.primary} />
+            <ActivityIndicator size="small" color={t.colors.ink} />
           </View>
         ) : (
           <>
@@ -241,8 +177,8 @@ export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
 
             {selected?.lastLocation ? (
               <View style={styles.locationSheet}>
-                <View style={styles.sheetIcon}>
-                  <MapPinIcon size={16} color={colors.glassAccentDeep} strokeWidth={2.4} />
+                <View style={home.iconTileSm}>
+                  <MapPinIcon size={16} color={t.colors.ink} strokeWidth={1.75} />
                 </View>
                 <View style={styles.sheetCopy}>
                   <Text style={styles.sheetTitle} numberOfLines={1}>
@@ -270,9 +206,11 @@ export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
       </View>
 
       {locationUnavailable && !isLoading ? (
-        <Text style={styles.locationHint}>
-          Location summary is temporarily unavailable — open the full map to refresh.
-        </Text>
+        <GlassCard>
+          <Text style={home.textBodySm}>
+            Location summary is temporarily unavailable — open the full map to refresh.
+          </Text>
+        </GlassCard>
       ) : null}
 
       {mappableAssets.length > 1 ? (
@@ -280,6 +218,8 @@ export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
           {mappableAssets.map((asset) => (
             <Pressable
               key={asset.assetId}
+              accessibilityRole="button"
+              accessibilityState={{ selected: selectedId === asset.assetId }}
               onPress={() => setSelectedId(asset.assetId)}
               style={[styles.chip, selectedId === asset.assetId ? styles.chipActive : null]}
             >
@@ -295,4 +235,3 @@ export function HomeMapPreview({ variant = 'hero' }: HomeMapPreviewProps) {
     </View>
   );
 }
-

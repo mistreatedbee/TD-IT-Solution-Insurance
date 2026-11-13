@@ -1,10 +1,25 @@
-import { Laptop, Car, Smartphone, Tv, type LucideIcon } from 'lucide-react';
+import { Laptop, Car, Smartphone, Tv, Tablet, Monitor, Briefcase, Package, type LucideIcon } from 'lucide-react';
 import { cx, TD_FOCUS } from './cx';
 import { TdStatusBadge, type TdStatus } from './TdStatusBadge';
 
-export type TdAssetType = 'laptop' | 'car' | 'smartphone' | 'tv';
+/**
+ * Icon per asset category. The design-system reference names laptop/car/smartphone/tv; the
+ * remaining four cover the API's other asset categories (tablet, desktop, business equipment,
+ * other electronics) with the matching Lucide line icon rather than borrowing a wrong one.
+ * Flagged to design-system-manager for inclusion in the reference set.
+ */
+export type TdAssetType = 'laptop' | 'car' | 'smartphone' | 'tv' | 'tablet' | 'desktop' | 'equipment' | 'other';
 
-const ICONS: Record<TdAssetType, LucideIcon> = { laptop: Laptop, car: Car, smartphone: Smartphone, tv: Tv };
+const ICONS: Record<TdAssetType, LucideIcon> = {
+  laptop: Laptop,
+  car: Car,
+  smartphone: Smartphone,
+  tv: Tv,
+  tablet: Tablet,
+  desktop: Monitor,
+  equipment: Briefcase,
+  other: Package,
+};
 
 /** Returns only the last four characters of a serial or ID (whitespace stripped, upper-cased). */
 export function lastFour(value: string): string {
@@ -18,10 +33,11 @@ export interface TdAssetCardProps {
   detailLabel?: string;
   /** Full serial/ID. Only the last four characters are ever rendered. */
   identifier: string;
-  status: TdStatus;
+  /** Fixed status vocabulary. Omit when the source status has no honest mapping: no badge is shown. */
+  status?: TdStatus;
   /** One line of last-seen or case information; for open cases name the next step. */
   footer: string;
-  /** Renders the card as a link to the asset detail. Provide href or onSelect. */
+  /** Renders the card as a link to the asset detail. Provide href or onSelect; with neither the card is a static summary. */
   href?: string;
   onSelect?: () => void;
   forceSolid?: boolean;
@@ -47,7 +63,8 @@ export function TdAssetCard({
   className,
 }: TdAssetCardProps) {
   const Icon = ICONS[type];
-  const cls = cx(SURFACE, forceSolid ? SOLID : GLASS, 'w-full', TD_FOCUS, className);
+  const interactive = Boolean(href || onSelect);
+  const cls = cx(SURFACE, forceSolid ? SOLID : GLASS, 'w-full', interactive && TD_FOCUS, className);
   const body = (
     <>
       <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-td-md bg-td-info-bg text-td-link">
@@ -59,7 +76,7 @@ export function TdAssetCard({
           {detailLabel} {lastFour(identifier)}
         </span>
       </span>
-      <TdStatusBadge status={status} />
+      {status ? <TdStatusBadge status={status} /> : <span aria-hidden="true" />}
       <span className="col-span-full border-t border-td-border-subtle pt-td-3 font-td-sans text-[13px] leading-[18px] text-td-ink-muted">
         {footer}
       </span>
@@ -72,9 +89,16 @@ export function TdAssetCard({
       </a>
     );
   }
+  if (onSelect) {
+    return (
+      <button type="button" onClick={onSelect} className={cls}>
+        {body}
+      </button>
+    );
+  }
   return (
-    <button type="button" onClick={onSelect} className={cls}>
+    <article data-asset-card="static" className={cls}>
       {body}
-    </button>
+    </article>
   );
 }

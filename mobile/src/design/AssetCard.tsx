@@ -1,4 +1,4 @@
-import { Car, Laptop, Smartphone, Tv, type LucideIcon } from 'lucide-react-native';
+import { Briefcase, Car, Laptop, Monitor, Package, Smartphone, Tablet, Tv, type LucideIcon } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useDesignTokens } from '../theme/designTheme';
@@ -6,9 +6,30 @@ import { GlassCard } from './GlassCard';
 import { usePressScale } from './hooks';
 import { StatusBadge, type StatusBadgeStatus } from './StatusBadge';
 
-export type AssetCardType = 'laptop' | 'car' | 'smartphone' | 'tv';
+/**
+ * The reference spec names laptop/car/smartphone/tv; the extra four cover the
+ * remaining API asset types (R5.2, additive — pending design-system-manager sign-off).
+ */
+export type AssetCardType =
+  | 'laptop'
+  | 'car'
+  | 'smartphone'
+  | 'tv'
+  | 'tablet'
+  | 'desktop'
+  | 'business_equipment'
+  | 'other_electronics';
 
-const TYPE_ICON: Record<AssetCardType, LucideIcon> = { laptop: Laptop, car: Car, smartphone: Smartphone, tv: Tv };
+const TYPE_ICON: Record<AssetCardType, LucideIcon> = {
+  laptop: Laptop,
+  car: Car,
+  smartphone: Smartphone,
+  tv: Tv,
+  tablet: Tablet,
+  desktop: Monitor,
+  business_equipment: Briefcase,
+  other_electronics: Package,
+};
 
 /** Lists show only the last four characters of a serial/ID/registration. */
 export function maskIdentifier(value: string): string {
@@ -21,9 +42,10 @@ export function maskIdentifier(value: string): string {
 export interface AssetCardProps {
   type: AssetCardType;
   name: string;
-  /** Raw serial or registration; masked here, never rendered in full. */
+  /** Raw serial or registration; masked here, never rendered in full. Empty hides the line. */
   identifier: string;
-  status: StatusBadgeStatus;
+  /** Fixed vocabulary only; pass null when no word is honest and no badge renders. */
+  status: StatusBadgeStatus | null;
   /** Last-seen or case line; for open cases name the next step. */
   footer: string;
   onPress?: () => void;
@@ -42,7 +64,7 @@ export function AssetCard({ type, name, identifier, status, footer, onPress, tes
       <Pressable
         testID={testID}
         accessibilityRole="button"
-        accessibilityLabel={`${name}, ${masked ? `identifier ending ${identifier.trim().slice(-4)}, ` : ''}${status.toLowerCase()}. ${footer}`}
+        accessibilityLabel={`${name}, ${masked ? `identifier ending ${identifier.trim().slice(-4)}, ` : ''}${status ? `${status.toLowerCase()}. ` : ''}${footer}`}
         onPress={onPress}
         onPressIn={press.onPressIn}
         onPressOut={press.onPressOut}
@@ -64,14 +86,18 @@ export function AssetCard({ type, name, identifier, status, footer, onPress, tes
               <Text style={[t.type.title, { color: t.colors.ink }]} numberOfLines={1}>
                 {name}
               </Text>
-              <Text testID="asset-identifier" style={[t.type.bodySm, { color: t.colors.inkMuted }]}>
-                {masked}
-              </Text>
+              {masked ? (
+                <Text testID="asset-identifier" style={[t.type.bodySm, { color: t.colors.inkMuted }]}>
+                  {masked}
+                </Text>
+              ) : null}
             </View>
           </View>
-          <View style={{ marginTop: t.spacing.s3 }}>
-            <StatusBadge status={status} />
-          </View>
+          {status ? (
+            <View style={{ marginTop: t.spacing.s3 }}>
+              <StatusBadge status={status} />
+            </View>
+          ) : null}
           <Text style={[t.type.bodySm, { color: t.colors.inkMuted, marginTop: t.spacing.s3 }]}>{footer}</Text>
         </GlassCard>
       </Pressable>

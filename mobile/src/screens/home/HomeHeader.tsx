@@ -4,8 +4,8 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
 import { FEATURE_ALERTS_ENABLED } from '../../config/features';
-import { useTheme } from '../../theme/ThemeProvider';
-import { minTouchTarget, spacing, typography } from '../../theme/tokens';
+import { GlassCard } from '../../design';
+import { useDesignTokens } from '../../theme/designTheme';
 
 export interface HomeHeaderProps {
   greeting: string;
@@ -25,98 +25,99 @@ export function HomeHeader({
   profilePictureUrl,
 }: HomeHeaderProps) {
   const router = useRouter();
-  const { colors, elevationSoft } = useTheme();
+  const t = useDesignTokens();
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
         wrap: {
           flexDirection: 'row',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           justifyContent: 'space-between',
-          gap: spacing.md,
+          gap: t.spacing.s3,
         },
         profileRow: {
           flex: 1,
           flexDirection: 'row',
           alignItems: 'center',
-          gap: spacing.md,
+          gap: t.spacing.s3,
+          minHeight: 48,
         },
         copy: {
           flex: 1,
         },
         greeting: {
-          fontSize: typography.sizes.xl,
-          fontWeight: '700',
-          color: colors.textPrimary,
-          marginBottom: 2,
+          ...t.type.displayMd,
+          color: t.colors.ink,
         },
         subtitle: {
-          fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
-          lineHeight: typography.sizes.sm * 1.35,
+          ...t.type.body,
+          color: t.colors.inkMuted,
+          marginTop: t.spacing.s1,
         },
         bell: {
-          width: minTouchTarget,
-          height: minTouchTarget,
-          borderRadius: minTouchTarget / 2,
-          backgroundColor: colors.background,
+          width: 48,
+          height: 48,
+          borderRadius: t.radius.pill,
+          backgroundColor: t.colors.bgSunken,
+          borderWidth: 1,
+          borderColor: t.colors.borderControl,
           alignItems: 'center',
           justifyContent: 'center',
-          ...elevationSoft,
         },
         badge: {
           position: 'absolute',
-          top: 6,
-          right: 6,
-          minWidth: 18,
-          height: 18,
-          borderRadius: 9,
-          backgroundColor: colors.glassAccentDeep,
+          top: 4,
+          right: 4,
+          minWidth: 20,
+          height: 20,
+          borderRadius: t.radius.pill,
+          backgroundColor: t.colors.actionPrimary,
           alignItems: 'center',
           justifyContent: 'center',
-          paddingHorizontal: 4,
+          paddingHorizontal: t.spacing.s1,
         },
         badgeText: {
-          fontSize: 10,
-          fontWeight: '800',
-          color: colors.textInverse,
+          ...t.type.labelSm,
+          color: t.colors.onActionPrimary,
         },
       }),
-    [colors, elevationSoft],
+    [t],
   );
 
   return (
-    <View style={styles.wrap}>
-      <Pressable
-        style={styles.profileRow}
-        accessibilityRole="button"
-        onPress={() => router.push('/account' as Href)}
-      >
-        <ProfileAvatar initials={initials} profilePictureUrl={profilePictureUrl} size="md" />
-        <View style={styles.copy}>
-          <Text style={styles.greeting}>
-            {greeting}, {name}
-          </Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
-        </View>
-      </Pressable>
-
-      {FEATURE_ALERTS_ENABLED ? (
+    <GlassCard>
+      <View style={styles.wrap}>
         <Pressable
-          style={styles.bell}
+          style={styles.profileRow}
           accessibilityRole="button"
-          accessibilityLabel={`Alerts${alertCount > 0 ? `, ${alertCount} open` : ''}`}
-          onPress={() => router.push('/alerts' as Href)}
+          onPress={() => router.push('/account' as Href)}
         >
-          <BellIcon size={22} color={colors.primary} strokeWidth={2.2} />
-          {alertCount > 0 ? (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{alertCount > 9 ? '9+' : alertCount}</Text>
-            </View>
-          ) : null}
+          <ProfileAvatar initials={initials} profilePictureUrl={profilePictureUrl} size="md" />
+          <View style={styles.copy}>
+            <Text style={styles.greeting} accessibilityRole="header">
+              {greeting}, {name}
+            </Text>
+            {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+          </View>
         </Pressable>
-      ) : null}
-    </View>
+
+        {FEATURE_ALERTS_ENABLED ? (
+          <Pressable
+            style={styles.bell}
+            accessibilityRole="button"
+            accessibilityLabel={`Alerts${alertCount > 0 ? `, ${alertCount} open` : ''}`}
+            onPress={() => router.push('/alerts' as Href)}
+          >
+            <BellIcon size={24} color={t.colors.ink} strokeWidth={1.75} />
+            {alertCount > 0 ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{alertCount > 9 ? '9+' : alertCount}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        ) : null}
+      </View>
+    </GlassCard>
   );
 }

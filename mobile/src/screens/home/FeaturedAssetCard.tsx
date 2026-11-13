@@ -1,12 +1,13 @@
 import { useRouter, type Href } from 'expo-router';
-import { ChevronRightIcon } from 'lucide-react-native';
+import { ChevronRightIcon, PackageIcon } from 'lucide-react-native';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { GlassCard, StatusBadge } from '../../design';
 import { formatAssetType } from '../../lib/asset-labels';
 import type { AssetTrackingView } from '../../tracking/types';
-import { useTheme } from '../../theme/ThemeProvider';
-import { radius, spacing, typography } from '../../theme/tokens';
-import { AssetHeroImage, AssetTypeImage } from './assetVisuals';
+import { useDesignTokens } from '../../theme/designTheme';
+import { assetStatusBadge } from './assetStatus';
+import { getAssetVisual } from './assetVisuals';
 import { useHomeStyles } from './homeStyles';
 
 function protectionSteps(item: AssetTrackingView): { label: string; done: boolean }[] {
@@ -28,188 +29,93 @@ export interface FeaturedAssetCardProps {
 
 export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) {
   const router = useRouter();
-  const { colors } = useTheme();
-  const homeStyles = useHomeStyles();
+  const t = useDesignTokens();
+  const home = useHomeStyles();
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        card: {
-          flexDirection: 'row',
-          backgroundColor: colors.background,
-          borderRadius: radius.cardLg,
-          overflow: 'hidden',
-          minHeight: 168,
-          ...homeStyles.homeShadow,
-        },
-        emptyCard: {
-          alignItems: 'center',
-          padding: spacing.lg,
-        },
-        content: {
-          flex: 1,
-          padding: spacing.lg,
-          paddingRight: spacing.sm,
-        },
-        emptyCopy: {
-          flex: 1,
-          paddingRight: spacing.md,
-        },
-        sectionLabel: {
-          fontSize: typography.sizes.xs,
-          fontWeight: '700',
-          color: colors.textSecondary,
-          textTransform: 'uppercase',
-          letterSpacing: 0.8,
-          marginBottom: spacing.sm,
-        },
-        emptyTitle: {
-          fontSize: typography.sizes.lg,
-          fontWeight: '700',
-          color: colors.textPrimary,
-        },
-        emptyBody: {
-          fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
-          lineHeight: typography.sizes.sm * 1.45,
-          marginBottom: spacing.md,
-        },
-        ctaRow: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: spacing.xs,
-        },
-        ctaText: {
-          fontSize: typography.sizes.sm,
-          fontWeight: '700',
-          color: colors.glassAccentDeep,
-        },
-        titleRow: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: spacing.md,
-          marginBottom: spacing.sm,
-        },
-        titleCopy: {
-          flex: 1,
-        },
-        assetName: {
-          fontSize: typography.sizes.lg,
-          fontWeight: '700',
-          color: colors.textPrimary,
-        },
-        assetMeta: {
-          fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
-          marginTop: 2,
-        },
-        statusPill: {
-          marginBottom: spacing.md,
-        },
-        steps: {
-          flexDirection: 'row',
-          gap: spacing.md,
-          marginBottom: spacing.sm,
-        },
-        stepItem: {
-          alignItems: 'center',
-          flex: 1,
-        },
+        emptyRow: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.s4 },
+        emptyCopy: { flex: 1 },
+        emptyTitle: { ...t.type.displayMd, color: t.colors.ink },
+        emptyBody: { ...t.type.body, color: t.colors.inkMuted, marginTop: t.spacing.s2, marginBottom: t.spacing.s3 },
+        ctaRow: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.s1, minHeight: 48 },
+        ctaText: { ...t.type.label, color: t.colors.link },
+        titleRow: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.s3, marginBottom: t.spacing.s3 },
+        titleCopy: { flex: 1 },
+        assetName: { ...t.type.title, color: t.colors.ink },
+        assetMeta: { ...t.type.bodySm, color: t.colors.inkMuted, marginTop: 2 },
+        stateLine: { ...t.type.label, color: t.colors.inkMuted },
+        statusWrap: { marginBottom: t.spacing.s4 },
+        steps: { flexDirection: 'row', gap: t.spacing.s3, marginBottom: t.spacing.s2 },
+        stepItem: { alignItems: 'center', flex: 1 },
         stepTrack: {
           flexDirection: 'row',
           alignItems: 'center',
           width: '100%',
           justifyContent: 'center',
-          marginBottom: spacing.xs,
+          marginBottom: t.spacing.s1,
         },
-        stepDot: {
-          width: 10,
-          height: 10,
-          borderRadius: 5,
-          backgroundColor: colors.slate[300],
-        },
-        stepDotDone: {
-          backgroundColor: colors.glassAccent,
-        },
+        stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: t.colors.borderControl },
+        stepDotDone: { backgroundColor: t.colors.success },
         stepLine: {
           position: 'absolute',
           left: '55%',
           right: '-45%',
           height: 2,
-          backgroundColor: colors.slate[300],
+          backgroundColor: t.colors.borderControl,
           top: 4,
         },
-        stepLineDone: {
-          backgroundColor: colors.glassAccentDeep,
-        },
-        stepLabel: {
-          fontSize: 10,
-          color: colors.slate[500],
-          fontWeight: '600',
-          textAlign: 'center',
-        },
-        stepLabelDone: {
-          color: colors.textPrimary,
-        },
-        location: {
-          fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
-        },
-        decorWrap: {
-          justifyContent: 'center',
-          paddingRight: spacing.sm,
-          overflow: 'hidden',
-        },
+        stepLineDone: { backgroundColor: t.colors.success },
+        stepLabel: { ...t.type.labelSm, color: t.colors.inkMuted, textAlign: 'center', textTransform: 'uppercase' },
+        stepLabelDone: { color: t.colors.ink },
+        location: { ...t.type.bodySm, color: t.colors.inkMuted },
       }),
-    [colors, homeStyles.homeShadow],
+    [t],
   );
 
   if (!item) {
     return (
-      <Pressable
-        style={[styles.card, styles.emptyCard]}
-        accessibilityRole="button"
-        onPress={onAddAsset}
-      >
-        <View style={styles.emptyCopy}>
-          <Text style={styles.sectionLabel}>Current protection</Text>
-          <Text style={styles.emptyTitle}>No assets registered yet</Text>
-          <Text style={styles.emptyBody}>
-            Add your first device or vehicle to start building your protection vault.
-          </Text>
-          <View style={styles.ctaRow}>
-            <Text style={styles.ctaText}>Add your first asset</Text>
-            <ChevronRightIcon size={18} color={colors.glassAccentDeep} />
+      <Pressable accessibilityRole="button" onPress={onAddAsset}>
+        <GlassCard radius="xl">
+          <View style={styles.emptyRow}>
+          <View style={styles.emptyCopy}>
+            <Text style={home.eyebrow}>Current protection</Text>
+            <Text style={styles.emptyTitle} accessibilityRole="header">
+              No assets registered yet
+            </Text>
+            <Text style={styles.emptyBody}>
+              Add your first device or vehicle to start building your protection vault.
+            </Text>
+            <View style={styles.ctaRow}>
+              <Text style={styles.ctaText}>Add your first asset</Text>
+              <ChevronRightIcon size={20} color={t.colors.link} strokeWidth={1.75} />
+            </View>
           </View>
-        </View>
-        <AssetHeroImage assetType="other_electronics" />
+          <View style={home.iconTile}>
+            <PackageIcon size={24} color={t.colors.ink} strokeWidth={1.75} />
+          </View>
+          </View>
+        </GlassCard>
       </Pressable>
     );
   }
 
   const steps = protectionSteps(item);
-  const pillStyle =
-    item.trackingStatus === 'online'
-      ? homeStyles.pillSuccess
-      : item.trackingStatus === 'last_known' || item.trackingStatus === 'offline'
-        ? homeStyles.pillWarning
-        : null;
-  const pillTextStyle =
-    item.trackingStatus === 'online'
-      ? homeStyles.pillSuccessText
-      : item.trackingStatus === 'last_known' || item.trackingStatus === 'offline'
-        ? homeStyles.pillWarningText
-        : null;
+  const status = assetStatusBadge(item);
+  const TypeIcon = getAssetVisual(item.assetType).Icon;
 
   return (
     <Pressable
-      style={styles.card}
       accessibilityRole="button"
+      accessibilityLabel={`${item.displayName}, ${item.trackingLabel}`}
       onPress={() => router.push(`/(app)/assets/${item.assetId}` as Href)}
     >
-      <View style={styles.content}>
-        <Text style={styles.sectionLabel}>Current protection</Text>
+      <GlassCard radius="xl">
+        <Text style={home.eyebrow}>Current protection</Text>
         <View style={styles.titleRow}>
-          <AssetTypeImage assetType={item.assetType} size="sm" />
+          <View style={home.iconTile}>
+            <TypeIcon size={24} color={t.colors.ink} strokeWidth={1.75} />
+          </View>
           <View style={styles.titleCopy}>
             <Text style={styles.assetName} numberOfLines={1}>
               {item.displayName}
@@ -218,8 +124,8 @@ export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) 
           </View>
         </View>
 
-        <View style={[homeStyles.pill, pillStyle, styles.statusPill]}>
-          <Text style={[homeStyles.pillText, pillTextStyle]}>{item.trackingLabel}</Text>
+        <View style={styles.statusWrap}>
+          {status ? <StatusBadge status={status} /> : <Text style={styles.stateLine}>{item.trackingLabel}</Text>}
         </View>
 
         <View style={styles.steps}>
@@ -231,22 +137,13 @@ export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) 
                   <View style={[styles.stepLine, step.done ? styles.stepLineDone : null]} />
                 ) : null}
               </View>
-              <Text style={[styles.stepLabel, step.done ? styles.stepLabelDone : null]}>
-                {step.label}
-              </Text>
+              <Text style={[styles.stepLabel, step.done ? styles.stepLabelDone : null]}>{step.label}</Text>
             </View>
           ))}
         </View>
 
-        {item.locationLabel ? (
-          <Text style={styles.location}>Updated {item.locationLabel}</Text>
-        ) : null}
-      </View>
-
-      <View style={styles.decorWrap}>
-        <AssetHeroImage assetType={item.assetType} />
-      </View>
+        {item.locationLabel ? <Text style={styles.location}>Updated {item.locationLabel}</Text> : null}
+      </GlassCard>
     </Pressable>
   );
 }
-

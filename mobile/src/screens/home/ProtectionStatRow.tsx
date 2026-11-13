@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { GlassCard } from '../../design';
+import { useDesignTokens } from '../../theme/designTheme';
 
 export interface StatItemProps {
   value: string | number;
@@ -9,10 +10,21 @@ export interface StatItemProps {
 }
 
 function StatItem({ value, label, accent }: StatItemProps) {
+  const t = useDesignTokens();
+  const styles = useStatStyles();
   return (
-    <View style={[styles.item, accent ? styles.itemAccent : null]}>
-      <Text style={[styles.value, accent ? styles.valueAccent : null]}>{value}</Text>
-      <Text style={styles.label}>{label}</Text>
+    <View style={styles.item}>
+      <Text
+        style={[styles.value, accent ? { color: t.colors.accentText } : null]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.6}
+      >
+        {value}
+      </Text>
+      <Text style={styles.label} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -30,51 +42,35 @@ export function ProtectionStatRow({
   alertCount,
   profilePercent,
 }: ProtectionStatRowProps) {
+  const styles = useStatStyles();
   return (
-    <View style={styles.row}>
-      <StatItem value={assetCount} label="Assets" accent />
-      <StatItem value={trackingOnline} label="Tracking" />
-      <StatItem value={alertCount} label="Alerts" />
-      <StatItem value={`${profilePercent}%`} label="Profile" />
-    </View>
+    <GlassCard>
+      <View style={styles.row}>
+        <StatItem value={assetCount} label="Assets" accent />
+        <StatItem value={trackingOnline} label="Tracking" />
+        <StatItem value={alertCount} label="Alerts" />
+        <StatItem value={`${profilePercent}%`} label="Profile" />
+      </View>
+    </GlassCard>
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  item: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-  },
-  itemAccent: {
-    borderColor: colors.glassAccent,
-    backgroundColor: colors.glassAccentTint,
-  },
-  value: {
-    fontSize: typography.sizes.lg,
-    fontWeight: '700',
-    color: colors.primary,
-    marginBottom: spacing.xs,
-  },
-  valueAccent: {
-    color: colors.glassAccentDeep,
-  },
-  label: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-});
+function useStatStyles() {
+  const t = useDesignTokens();
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        row: { flexDirection: 'row', gap: t.spacing.s2 },
+        item: { flex: 1, alignItems: 'center', minWidth: 0 },
+        value: { ...t.type.figure, color: t.colors.ink, fontVariant: ['tabular-nums'] },
+        label: {
+          ...t.type.labelSm,
+          color: t.colors.inkMuted,
+          textAlign: 'center',
+          textTransform: 'uppercase',
+          marginTop: t.spacing.s1,
+        },
+      }),
+    [t],
+  );
+}

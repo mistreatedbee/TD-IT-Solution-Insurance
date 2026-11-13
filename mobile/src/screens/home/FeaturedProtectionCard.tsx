@@ -1,8 +1,9 @@
+import { ShieldCheckIcon, TriangleAlertIcon } from 'lucide-react-native';
 import React, { useMemo } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
-import { useTheme } from '../../theme/ThemeProvider';
-import { radius, spacing, typography } from '../../theme/tokens';
-import { useProtectionCardLayout, type ProtectionCardLayout } from './useProtectionCardLayout';
+import { StyleSheet, Text, View } from 'react-native';
+import { GlassCard } from '../../design';
+import { useDesignTokens } from '../../theme/designTheme';
+import { useProtectionCardLayout } from './useProtectionCardLayout';
 
 export interface FeaturedProtectionCardProps {
   assetProtected: number;
@@ -18,20 +19,15 @@ interface StatCellProps {
   value: string | number;
   label: string;
   highlight?: boolean;
-  compactValue?: boolean;
   minimumFontScale: number;
   styles: ReturnType<typeof useProtectionCardStyles>;
 }
 
-function StatCell({ value, label, highlight, compactValue, minimumFontScale, styles }: StatCellProps) {
+function StatCell({ value, label, highlight, minimumFontScale, styles }: StatCellProps) {
   return (
     <View style={styles.statCell}>
       <Text
-        style={[
-          styles.statValue,
-          compactValue ? styles.statValueCompact : null,
-          highlight ? styles.statValueHighlight : null,
-        ]}
+        style={[styles.statValue, highlight ? styles.statValueHighlight : null]}
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={minimumFontScale}
@@ -55,8 +51,8 @@ export function FeaturedProtectionCard({
   operational,
 }: FeaturedProtectionCardProps) {
   const layout = useProtectionCardLayout();
-  const { colors, elevation, isDark } = useTheme();
-  const styles = useProtectionCardStyles(colors, elevation, isDark, layout);
+  const t = useDesignTokens();
+  const styles = useProtectionCardStyles();
 
   const statusLabel = operational
     ? 'All clear'
@@ -69,185 +65,111 @@ export function FeaturedProtectionCard({
     trackingActive > 0 ? `${trackingOnline} tracker${trackingOnline === 1 ? '' : 's'} online` : null,
   ].filter(Boolean);
 
+  const StatusIcon = operational ? ShieldCheckIcon : TriangleAlertIcon;
+  const statusFg = operational ? t.colors.success : t.colors.warning;
+  const statusBg = operational ? t.colors.successBg : t.colors.warningBg;
+
   return (
-    <View style={styles.card}>
-      <View style={styles.cardBody}>
-        <Text style={styles.eyebrow}>Protection status</Text>
+    <GlassCard radius="xl">
+      <Text style={styles.eyebrow}>Protection status</Text>
 
-        <View style={styles.statusRow}>
-          <View style={[styles.statusPill, operational ? styles.statusPillOk : styles.statusPillWarn]}>
-            <View style={[styles.statusDot, operational ? styles.statusDotOk : styles.statusDotWarn]} />
-            <Text style={[styles.statusText, operational ? styles.statusTextOk : styles.statusTextWarn]}>
-              {statusLabel}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.statsPanel}>
-          <View style={styles.statsRow}>
-            <StatCell value={assetTotal} label="Assets" minimumFontScale={layout.statMinimumFontScale} styles={styles} />
-            <View style={styles.statDivider} />
-            <StatCell value={trackingOnline} label="Online" minimumFontScale={layout.statMinimumFontScale} styles={styles} />
-            <View style={styles.statDivider} />
-            <StatCell
-              value={alertCount}
-              label="Alerts"
-              highlight={alertCount > 0}
-              minimumFontScale={layout.statMinimumFontScale}
-              styles={styles}
-            />
-            <View style={styles.statDivider} />
-            <StatCell
-              value={`${profilePercent}%`}
-              label="Profile"
-              compactValue
-              minimumFontScale={layout.statMinimumFontScale}
-              styles={styles}
-            />
-          </View>
-        </View>
-
-        <View style={styles.footer}>
-          <Text style={styles.caption}>{captionParts.join(' · ')}</Text>
+      <View style={styles.statusRow}>
+        <View style={[styles.statusPill, { backgroundColor: statusBg }]}>
+          <StatusIcon size={16} color={statusFg} strokeWidth={1.75} />
+          <Text style={[styles.statusText, { color: statusFg }]}>{statusLabel}</Text>
         </View>
       </View>
-    </View>
+
+      <View style={styles.statsRow}>
+        <StatCell value={assetTotal} label="Assets" minimumFontScale={layout.statMinimumFontScale} styles={styles} />
+        <View style={styles.statDivider} />
+        <StatCell value={trackingOnline} label="Online" minimumFontScale={layout.statMinimumFontScale} styles={styles} />
+        <View style={styles.statDivider} />
+        <StatCell
+          value={alertCount}
+          label="Alerts"
+          highlight={alertCount > 0}
+          minimumFontScale={layout.statMinimumFontScale}
+          styles={styles}
+        />
+        <View style={styles.statDivider} />
+        <StatCell
+          value={`${profilePercent}%`}
+          label="Profile"
+          minimumFontScale={layout.statMinimumFontScale}
+          styles={styles}
+        />
+      </View>
+
+      <Text style={styles.caption}>{captionParts.join(' · ')}</Text>
+    </GlassCard>
   );
 }
 
-function useProtectionCardStyles(
-  colors: ReturnType<typeof useTheme>['colors'],
-  elevation: ReturnType<typeof useTheme>['elevation'],
-  isDark: boolean,
-  layout: ProtectionCardLayout,
-) {
-  const cardBorderColor = isDark ? colors.glassSurfaceBorder : colors.glassAccentTint;
-
-  const cardElevation = Platform.select({
-    ios: {
-      shadowColor: isDark ? colors.glassActionSecondaryText : colors.glassAccentDeep,
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: isDark ? 0.35 : 0.12,
-      shadowRadius: 16,
-    },
-    android: { elevation: 4 },
-    default: {},
-  });
-
+function useProtectionCardStyles() {
+  const t = useDesignTokens();
   return useMemo(
     () =>
       StyleSheet.create({
-        card: {
-          backgroundColor: isDark ? colors.card : colors.glassAccentTint,
-          borderRadius: radius.cardLg,
-          borderWidth: 1,
-          borderColor: cardBorderColor,
-          overflow: 'hidden',
-          ...cardElevation,
-        },
-        cardBody: {
-          paddingHorizontal: layout.bodyPaddingHorizontal,
-          paddingTop: layout.bodyPaddingTop,
-          paddingBottom: layout.bodyPaddingBottom,
-        },
         eyebrow: {
-          fontSize: typography.sizes.xs,
-          fontWeight: '700',
-          color: isDark ? colors.glassAccent : colors.glassAccentDeep,
-          letterSpacing: 0.6,
+          ...t.type.labelSm,
+          color: t.colors.accentText,
           textTransform: 'uppercase',
-          marginBottom: spacing.sm,
+          marginBottom: t.spacing.s2,
         },
         statusRow: {
-          marginBottom: layout.statusRowMarginBottom,
+          marginBottom: t.spacing.s4,
         },
         statusPill: {
           alignSelf: 'flex-start',
           flexDirection: 'row',
           alignItems: 'center',
-          gap: spacing.sm,
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.xs + 2,
-          borderRadius: radius.full,
-        },
-        statusPillOk: {
-          backgroundColor: colors.background,
-        },
-        statusPillWarn: {
-          backgroundColor: colors.background,
-        },
-        statusDot: {
-          width: 7,
-          height: 7,
-          borderRadius: 4,
-        },
-        statusDotOk: {
-          backgroundColor: colors.tones.success.icon,
-        },
-        statusDotWarn: {
-          backgroundColor: colors.tones.warning.icon,
+          gap: t.spacing.s2,
+          paddingHorizontal: t.spacing.s3,
+          paddingVertical: t.spacing.s1,
+          borderRadius: t.radius.pill,
         },
         statusText: {
-          fontSize: typography.sizes.sm,
-          fontWeight: '600',
-        },
-        statusTextOk: {
-          color: colors.tones.success.text,
-        },
-        statusTextWarn: {
-          color: colors.tones.warning.text,
-        },
-        statsPanel: {
-          backgroundColor: colors.background,
-          borderRadius: radius.card,
-          paddingVertical: layout.statsPanelPaddingVertical,
-          paddingHorizontal: layout.statsPanelPaddingHorizontal,
-          ...elevation,
+          ...t.type.labelSm,
+          textTransform: 'uppercase',
         },
         statsRow: {
           flexDirection: 'row',
           alignItems: 'center',
+          paddingVertical: t.spacing.s2,
         },
         statDivider: {
           width: StyleSheet.hairlineWidth,
           alignSelf: 'stretch',
-          backgroundColor: colors.hairline,
-          marginVertical: spacing.xs,
+          backgroundColor: t.colors.borderSubtle,
+          marginVertical: t.spacing.s1,
         },
         statCell: {
           flex: 1,
           alignItems: 'center',
           minWidth: 0,
+          paddingHorizontal: t.spacing.s1,
         },
         statValue: {
-          fontSize: layout.statValueSize,
-          fontWeight: '700',
-          color: colors.textPrimary,
+          ...t.type.figure,
+          color: t.colors.ink,
           fontVariant: ['tabular-nums'],
-          letterSpacing: -0.3,
-          marginBottom: 2,
-        },
-        statValueCompact: {
-          fontSize: layout.statValueCompactSize,
         },
         statValueHighlight: {
-          color: colors.glassAccentDeep,
+          color: t.colors.accentText,
         },
         statLabel: {
-          fontSize: layout.statLabelSize,
-          color: colors.textSecondary,
-          fontWeight: '500',
-        },
-        footer: {
-          marginTop: layout.footerMarginTop,
-          paddingTop: layout.footerPaddingTop,
+          ...t.type.labelSm,
+          color: t.colors.inkMuted,
+          textTransform: 'uppercase',
+          marginTop: t.spacing.s1,
         },
         caption: {
-          fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
-          lineHeight: typography.sizes.xs * 1.45,
+          ...t.type.bodySm,
+          color: t.colors.inkMuted,
+          marginTop: t.spacing.s3,
         },
       }),
-    [cardBorderColor, cardElevation, colors, elevation, isDark, layout],
+    [t],
   );
 }

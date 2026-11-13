@@ -1,10 +1,9 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { ChecklistAction, ProtectionChecklistView } from '../../api/protectionChecklist';
+import { GlassCard } from '../../design';
 import { Badge, Button } from '../../theme/primitives';
-import { Card } from '../../theme/primitives/Card';
-import { useColors } from '../../theme/ThemeProvider';
-import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
+import { useDesignTokens } from '../../theme/designTheme';
 
 export interface ProtectionStatusCardProps {
   mode?: 'status';
@@ -28,9 +27,51 @@ export interface ProtectionChecklistCardProps {
 
 export type ProtectionHealthCardProps = ProtectionStatusCardProps | ProtectionChecklistCardProps;
 
+/** R5.2: container restyled to the design GlassCard; checklist logic and copy unchanged. */
 export function ProtectionHealthCard(props: ProtectionHealthCardProps) {
   if (props.mode === 'checklist') return <ProtectionChecklistCard {...props} />;
   return <ProtectionStatusCard {...props} />;
+}
+
+function useHealthStyles() {
+  const t = useDesignTokens();
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        title: { ...t.type.title, color: t.colors.ink },
+        count: { ...t.type.bodySm, color: t.colors.inkMuted, marginTop: t.spacing.s1 },
+        item: { paddingVertical: t.spacing.s3, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.colors.borderSubtle },
+        itemHead: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.s2 },
+        mark: { ...t.type.body, color: t.colors.success, width: 20 },
+        markOpen: { color: t.colors.inkMuted },
+        itemTitle: { ...t.type.label, flex: 1, color: t.colors.ink },
+        benefit: { ...t.type.bodySm, color: t.colors.inkMuted, marginTop: t.spacing.s1, marginLeft: 28 },
+        cta: { marginTop: t.spacing.s2, marginLeft: 28, alignSelf: 'flex-start', minHeight: 48 },
+        disclosure: { ...t.type.bodySm, color: t.colors.inkMuted, marginTop: t.spacing.s3 },
+        heading: { ...t.type.labelSm, color: t.colors.accentText, textTransform: 'uppercase', marginBottom: t.spacing.s2 },
+        statusRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: t.spacing.s2,
+          marginBottom: t.spacing.s3,
+          flexWrap: 'wrap',
+        },
+        statusDot: { ...t.type.bodySm, color: t.colors.success },
+        statusText: { ...t.type.label, flex: 1, color: t.colors.ink },
+        metrics: { gap: t.spacing.s2 },
+        metricRow: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingVertical: t.spacing.s1,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: t.colors.borderSubtle,
+        },
+        metricLabel: { ...t.type.bodySm, color: t.colors.inkMuted },
+        metricValue: { ...t.type.label, color: t.colors.ink, textAlign: 'right', flexShrink: 1, marginLeft: t.spacing.s3 },
+      }),
+    [t],
+  );
 }
 
 function ProtectionChecklistCard({
@@ -38,27 +79,10 @@ function ProtectionChecklistCard({
   onAction,
   isActionAvailable,
 }: ProtectionChecklistCardProps) {
-  const c = useColors();
-  const cs = useMemo(
-    () =>
-      StyleSheet.create({
-        card: { backgroundColor: c.glassSurfaceOpaque, borderColor: c.glassSurfaceBorder, borderWidth: 1 },
-        title: { fontSize: typography.sizes.base, fontWeight: '700', color: c.glassTextPrimary },
-        count: { fontSize: typography.sizes.sm, color: c.glassTextSecondary, marginTop: spacing.xs },
-        item: { paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: c.glassSurfaceBorder },
-        itemHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-        mark: { fontSize: typography.sizes.base, color: c.glassStatusPositive, width: 20 },
-        markOpen: { color: c.glassTextSecondary },
-        itemTitle: { flex: 1, fontSize: typography.sizes.sm, fontWeight: '600', color: c.glassTextPrimary },
-        benefit: { fontSize: typography.sizes.xs, color: c.glassTextSecondary, marginTop: spacing.xs, marginLeft: 28 },
-        cta: { marginTop: spacing.sm, marginLeft: 28, alignSelf: 'flex-start', minHeight: minTouchTarget },
-        disclosure: { fontSize: typography.sizes.xs, color: c.glassTextSecondary, marginTop: spacing.md },
-      }),
-    [c],
-  );
+  const cs = useHealthStyles();
 
   return (
-    <Card style={[styles.card, cs.card]} padding="md">
+    <GlassCard>
       <Text style={cs.title} accessibilityRole="header">
         Protection checklist
       </Text>
@@ -102,7 +126,7 @@ function ProtectionChecklistCard({
         );
       })}
       <Text style={cs.disclosure}>{checklist.disclosure}</Text>
-    </Card>
+    </GlassCard>
   );
 }
 
@@ -116,8 +140,9 @@ function ProtectionStatusCard({
   profilePercent,
   operational,
 }: ProtectionStatusCardProps) {
+  const styles = useHealthStyles();
   return (
-    <Card style={styles.card} padding="md">
+    <GlassCard>
       <Text style={styles.heading}>PROTECTION STATUS</Text>
       <View style={styles.statusRow}>
         <Text style={styles.statusDot}>{operational ? '●' : '◐'}</Text>
@@ -128,7 +153,7 @@ function ProtectionStatusCard({
       </View>
 
       <View style={styles.metrics}>
-        <Metric label="Assets" value={`${assetProtected} / ${assetTotal} protected`} />
+        <Metric label="Assets" value={`${assetProtected} / ${assetTotal} protected`} styles={styles} />
         <Metric
           label="Tracking"
           value={
@@ -136,15 +161,24 @@ function ProtectionStatusCard({
               ? `${trackingOnline} online · ${Math.max(0, trackingActive - trackingOnline)} other`
               : 'No active trackers'
           }
+          styles={styles}
         />
-        <Metric label="Alerts" value={alertCount === 0 ? '0 critical' : `${alertCount} open`} />
-        <Metric label="Profile" value={`${profilePercent}% complete`} />
+        <Metric label="Alerts" value={alertCount === 0 ? '0 critical' : `${alertCount} open`} styles={styles} />
+        <Metric label="Profile" value={`${profilePercent}% complete`} styles={styles} />
       </View>
-    </Card>
+    </GlassCard>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({
+  label,
+  value,
+  styles,
+}: {
+  label: string;
+  value: string;
+  styles: ReturnType<typeof useHealthStyles>;
+}) {
   return (
     <View style={styles.metricRow}>
       <Text style={styles.metricLabel}>{label}</Text>
@@ -152,57 +186,3 @@ function Metric({ label, value }: { label: string; value: string }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.lg,
-    backgroundColor: colors.slate[50],
-  },
-  heading: {
-    fontSize: typography.sizes.xs,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    letterSpacing: 1,
-    marginBottom: spacing.sm,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-    flexWrap: 'wrap',
-  },
-  statusDot: {
-    fontSize: typography.sizes.sm,
-    color: colors.success,
-  },
-  statusText: {
-    flex: 1,
-    fontSize: typography.sizes.base,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  metrics: {
-    gap: spacing.sm,
-  },
-  metricRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  metricLabel: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-  },
-  metricValue: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    textAlign: 'right',
-    flexShrink: 1,
-    marginLeft: spacing.md,
-  },
-});

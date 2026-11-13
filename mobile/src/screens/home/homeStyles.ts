@@ -1,71 +1,73 @@
+/**
+ * Shared home-screen styles — Design System rollout R5.2.
+ *
+ * Page ground is the design Backdrop; every block of text sits on a GlassCard.
+ * Gutter is space-4, gap between cards is space-6 (design-system/reference/README.md).
+ */
 import { useMemo } from 'react';
 import { StyleSheet } from 'react-native';
-import { elevation, elevationSoft } from '../../theme/surfaces';
-import { useTheme } from '../../theme/ThemeProvider';
-import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
-import { radius, spacing, typography } from '../../theme/tokens';
-
-/** @deprecated Use `useHomeStyles().homeShadow` for theme-aware elevation. */
-export const homeShadow = elevationSoft;
-
-/** @deprecated Use `useHomeStyles().homeShadowStrong` for theme-aware elevation. */
-export const homeShadowStrong = elevation;
+import { useDesignTokens } from '../../theme/designTheme';
 
 export function useHomeStyles() {
-  const { colors, elevation: themeElevation, elevationSoft: themeElevationSoft } = useTheme();
-  const surfaceStyles = useSurfaceStyles();
+  const t = useDesignTokens();
 
   return useMemo(
     () =>
       StyleSheet.create({
+        fill: { flex: 1 },
+        transparent: { backgroundColor: 'transparent' },
         body: {
-          paddingHorizontal: spacing.xl,
-          paddingTop: spacing.xl,
-          paddingBottom: spacing.xl,
-          gap: spacing.lg,
+          paddingHorizontal: t.spacing.s4,
+          paddingTop: t.spacing.s4,
+          paddingBottom: t.spacing.s6,
+          gap: t.spacing.s6,
         },
+        /** Title row inside a glass card (title + optional action link). */
         sectionHeader: {
           flexDirection: 'row',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: spacing.sm,
-          marginTop: spacing.xs,
-          paddingHorizontal: spacing.xs,
+          gap: t.spacing.s3,
         },
-        sectionTitle: surfaceStyles.sectionTitle,
-        sectionLink: {
-          fontSize: typography.sizes.sm,
-          fontWeight: '600',
-          color: colors.glassAccentDeep,
+        sectionTitle: { ...t.type.displayMd, color: t.colors.ink, flexShrink: 1 },
+        sectionSubtitle: { ...t.type.bodySm, color: t.colors.inkMuted, marginTop: t.spacing.s1 },
+        sectionLink: { ...t.type.label, color: t.colors.link },
+        /** 48dp tap target for inline text actions. */
+        linkTarget: { minHeight: 48, justifyContent: 'center', paddingHorizontal: t.spacing.s2 },
+        /** Hairline between header and content within one card. */
+        divider: {
+          height: StyleSheet.hairlineWidth,
+          backgroundColor: t.colors.borderSubtle,
+          marginVertical: t.spacing.s3,
         },
-        pill: {
-          alignSelf: 'flex-start',
-          paddingHorizontal: spacing.sm + 2,
-          paddingVertical: spacing.xs,
-          borderRadius: radius.full,
-          backgroundColor: colors.slate[100],
+        /** Space between sibling cards that share one section heading. */
+        stack: { gap: t.spacing.s3 },
+        iconTile: {
+          width: 48,
+          height: 48,
+          borderRadius: t.radius.md,
+          backgroundColor: t.colors.bgSunken,
+          alignItems: 'center',
+          justifyContent: 'center',
         },
-        pillText: {
-          fontSize: typography.sizes.xs,
-          fontWeight: '700',
-          color: colors.slate[700],
-          textTransform: 'capitalize',
+        iconTileSm: {
+          width: 36,
+          height: 36,
+          borderRadius: t.radius.md,
+          backgroundColor: t.colors.bgSunken,
+          alignItems: 'center',
+          justifyContent: 'center',
         },
-        pillSuccess: {
-          backgroundColor: colors.tones.success.background,
+        eyebrow: {
+          ...t.type.labelSm,
+          color: t.colors.accentText,
+          textTransform: 'uppercase',
+          marginBottom: t.spacing.s2,
         },
-        pillSuccessText: {
-          color: colors.tones.success.text,
-        },
-        pillWarning: {
-          backgroundColor: colors.tones.warning.background,
-        },
-        pillWarningText: {
-          color: colors.tones.warning.text,
-        },
-        homeShadow: themeElevationSoft,
-        homeShadowStrong: themeElevation,
+        title: { ...t.type.title, color: t.colors.ink },
+        textBody: { ...t.type.body, color: t.colors.inkMuted },
+        textBodySm: { ...t.type.bodySm, color: t.colors.inkMuted },
       }),
-    [colors, themeElevation, themeElevationSoft, surfaceStyles.sectionTitle],
+    [t],
   );
 }

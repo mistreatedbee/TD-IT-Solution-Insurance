@@ -1,8 +1,12 @@
 /**
  * Protection Command Centre — premium home dashboard (Feature 009).
+ *
+ * Design System rollout R5.2: page ground is the design Backdrop (gradient,
+ * no pattern) behind a transparent Screen; every block of text sits on a
+ * GlassCard. Behaviour, hooks, flags and navigation targets are unchanged.
  */
 import { useRouter, type Href } from 'expo-router';
-import { AlertTriangleIcon } from 'lucide-react-native';
+import { TriangleAlertIcon } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
 import {
   Linking,
@@ -24,8 +28,8 @@ import {
   FEATURE_PROTECTION_CHECKLIST_ENABLED,
   FEATURE_THEFT_REPORTING_ENABLED,
 } from '../../config/features';
+import { Backdrop, Button, GlassCard } from '../../design';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { AppScreenSection, InsetDivider, SurfaceGroup } from '../../components/SurfaceGroup';
 import { AssetPreviewRow } from './AssetPreviewRow';
 import { FeaturedAssetCard } from './FeaturedAssetCard';
 import { FeaturedProtectionCard } from './FeaturedProtectionCard';
@@ -37,10 +41,8 @@ import { checklistActionHref, isChecklistActionAvailable } from './checklistActi
 import { ProfileCompletionCard } from './ProfileCompletionCard';
 import { useProtectionDashboard } from '../../tracking/useProtectionDashboard';
 import type { DashboardAlert } from '../../tracking/types';
-import { Alert, Button, Screen, Skeleton } from '../../theme/primitives';
-import { useColors } from '../../theme/ThemeProvider';
-import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
-import { minTouchTarget, radius, spacing, typography } from '../../theme/tokens';
+import { Alert, Screen, Skeleton } from '../../theme/primitives';
+import { useDesignTokens } from '../../theme/designTheme';
 import { useHomeStyles } from './homeStyles';
 
 function initialsFromName(name: string, email?: string): string {
@@ -52,6 +54,44 @@ function initialsFromName(name: string, email?: string): string {
   return (email?.slice(0, 2) ?? 'TD').toUpperCase();
 }
 
+/** Section heading row (title + optional action) — always rendered inside a GlassCard. */
+function SectionHeader({
+  title,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  const home = useHomeStyles();
+  return (
+    <View style={home.sectionHeader}>
+      <Text style={home.sectionTitle} accessibilityRole="header">
+        {title}
+      </Text>
+      {actionLabel && onAction ? (
+        <Pressable accessibilityRole="button" style={home.linkTarget} onPress={onAction}>
+          <Text style={home.sectionLink}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/** Backdrop + transparent Screen; the only place Screen's canvas is made transparent. */
+function HomePage({ children, ...screenProps }: React.ComponentProps<typeof Screen>) {
+  const home = useHomeStyles();
+  return (
+    <View style={home.fill} testID="home-page">
+      <Backdrop variant="gradient" />
+      <Screen {...screenProps} style={home.transparent}>
+        {children}
+      </Screen>
+    </View>
+  );
+}
+
 function HomeAlertsPreview({
   alerts,
   onOpenAlerts,
@@ -59,43 +99,31 @@ function HomeAlertsPreview({
   alerts: DashboardAlert[];
   onOpenAlerts: () => void;
 }) {
-  const colors = useColors();
+  const t = useDesignTokens();
+  const home = useHomeStyles();
   const styles = useMemo(
     () =>
       StyleSheet.create({
         alertRow: {
           flexDirection: 'row',
           alignItems: 'center',
-          gap: spacing.md,
-          minHeight: minTouchTarget + spacing.sm,
-          paddingHorizontal: spacing.lg,
-          paddingVertical: spacing.md,
-          backgroundColor: colors.background,
+          gap: t.spacing.s3,
+          minHeight: 48,
+          paddingVertical: t.spacing.s2,
         },
         alertIcon: {
           width: 36,
           height: 36,
-          borderRadius: 12,
-          backgroundColor: colors.tones.warning.background,
+          borderRadius: t.radius.md,
+          backgroundColor: t.colors.warningBg,
           alignItems: 'center',
           justifyContent: 'center',
         },
-        alertCopy: {
-          flex: 1,
-        },
-        alertTitle: {
-          fontSize: typography.sizes.sm,
-          fontWeight: '700',
-          color: colors.textPrimary,
-          marginBottom: spacing.xs,
-        },
-        alertBody: {
-          fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
-          lineHeight: typography.sizes.xs * 1.45,
-        },
+        alertCopy: { flex: 1 },
+        alertTitle: { ...t.type.label, color: t.colors.ink, marginBottom: 2 },
+        alertBody: { ...t.type.bodySm, color: t.colors.inkMuted },
       }),
-    [colors],
+    [t],
   );
 
   if (alerts.length === 0) return null;
@@ -103,139 +131,81 @@ function HomeAlertsPreview({
   const preview = alerts.slice(0, 2);
 
   return (
-    <AppScreenSection title="Needs attention" actionLabel="View all" onAction={onOpenAlerts}>
-      <SurfaceGroup>
-        {preview.map((item, index) => (
-          <React.Fragment key={item.id}>
-            {index > 0 ? <InsetDivider inset={spacing.lg + 36 + spacing.md} /> : null}
-            <Pressable
-              style={styles.alertRow}
-              accessibilityRole="button"
-              onPress={onOpenAlerts}
-            >
-              <View style={styles.alertIcon}>
-                <AlertTriangleIcon size={18} color={colors.tones.warning.icon} strokeWidth={2.2} />
-              </View>
-              <View style={styles.alertCopy}>
-                <Text style={styles.alertTitle}>{item.title}</Text>
-                <Text style={styles.alertBody}>{item.body}</Text>
-              </View>
-            </Pressable>
-          </React.Fragment>
-        ))}
-      </SurfaceGroup>
-    </AppScreenSection>
+    <GlassCard>
+      <SectionHeader title="Needs attention" actionLabel="View all" onAction={onOpenAlerts} />
+      <View style={home.divider} />
+      {preview.map((item, index) => (
+        <React.Fragment key={item.id}>
+          {index > 0 ? <View style={home.divider} /> : null}
+          <Pressable style={styles.alertRow} accessibilityRole="button" onPress={onOpenAlerts}>
+            <View style={styles.alertIcon}>
+              <TriangleAlertIcon size={20} color={t.colors.warning} strokeWidth={1.75} />
+            </View>
+            <View style={styles.alertCopy}>
+              <Text style={styles.alertTitle}>{item.title}</Text>
+              <Text style={styles.alertBody}>{item.body}</Text>
+            </View>
+          </Pressable>
+        </React.Fragment>
+      ))}
+    </GlassCard>
   );
 }
 
 /** Feature 020: never blocks home; own loading/error states. Flag-gated by caller. */
 function ProtectionChecklistSection() {
   const router = useRouter();
+  const t = useDesignTokens();
+  const home = useHomeStyles();
   const { data, isLoading, isError, refetch } = useProtectionChecklistQuery();
-  const gap = useMemo(
-    () => StyleSheet.create({ wrap: { marginHorizontal: spacing.xl, gap: spacing.md } }),
-    [],
-  );
 
   if (isLoading) {
     return (
-      <View style={gap.wrap} accessibilityLabel="Loading your protection checklist">
-        <Skeleton height={160} radius={radius.glassCard} />
+      <View accessibilityLabel="Loading your protection checklist">
+        <Skeleton height={160} radius={t.radius.lg} />
       </View>
     );
   }
   if (isError || !data) {
     return (
-      <View style={gap.wrap}>
+      <View style={home.stack}>
         <Alert tone="info">Your protection checklist is unavailable right now.</Alert>
-        <Button variant="secondary" size="sm" onPress={() => void refetch()}>
-          Try again
-        </Button>
+        <Button variant="glass" label="Try again" onPress={() => void refetch()} />
       </View>
     );
   }
   return (
-    <View style={gap.wrap}>
-      <ProtectionHealthCard
-        mode="checklist"
-        checklist={data}
-        isActionAvailable={isChecklistActionAvailable}
-        onAction={(action) => router.push(checklistActionHref(action))}
-      />
-    </View>
+    <ProtectionHealthCard
+      mode="checklist"
+      checklist={data}
+      isActionAvailable={isChecklistActionAvailable}
+      onAction={(action) => router.push(checklistActionHref(action))}
+    />
   );
 }
 
 export function ProtectionHomeScreen() {
   const router = useRouter();
-  const colors = useColors();
-  const homeStyles = useHomeStyles();
+  const t = useDesignTokens();
+  const home = useHomeStyles();
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        centered: {
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: spacing.md,
-        },
-        loadingText: {
-          fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
-        },
         skeletonBody: {
-          paddingHorizontal: spacing.xl,
-          paddingTop: spacing.xl,
-          gap: spacing.lg,
+          paddingHorizontal: t.spacing.s4,
+          paddingTop: t.spacing.s4,
+          gap: t.spacing.s6,
         },
-        skeletonSpacing: {
-          marginTop: spacing.sm,
-        },
-        skeletonRow: {
-          flexDirection: 'row',
-          gap: spacing.md,
-        },
-        skeletonFlex: {
-          flex: 1,
-        },
-        errorTitle: {
-          fontSize: typography.sizes['2xl'],
-          fontWeight: '700',
-          color: colors.textPrimary,
-          marginBottom: spacing.lg,
-        },
-        bannerSpacing: {},
-        recoveryTitle: {
-          fontSize: typography.sizes.base,
-          fontWeight: '700',
-          color: colors.textPrimary,
-          marginBottom: spacing.xs,
-        },
-        recoveryBody: {
-          fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
-          lineHeight: typography.sizes.sm * 1.4,
-        },
-        retry: {
-          marginTop: spacing.lg,
-        },
-        resendLink: {
-          fontSize: typography.sizes.xs,
-          fontWeight: '700',
-          textDecorationLine: 'underline',
-        },
-        support: {
-          fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
-          textAlign: 'center',
-        },
-        supportLink: {
-          // OB-17: migrated onto the single --glass-accent* token.
-          color: colors.glassAccentDeep,
-          fontWeight: '600',
-        },
+        skeletonRow: { flexDirection: 'row', gap: t.spacing.s3 },
+        skeletonFlex: { flex: 1 },
+        errorBody: { paddingHorizontal: t.spacing.s4, paddingTop: t.spacing.s4, gap: t.spacing.s4 },
+        errorTitle: { ...t.type.displayMd, color: t.colors.ink, marginBottom: t.spacing.s3 },
+        resendLink: { ...t.type.labelSm, textDecorationLine: 'underline' },
+        recoveryBody: { ...t.type.body, color: t.colors.inkMuted, marginTop: t.spacing.s1 },
+        support: { ...t.type.body, color: t.colors.inkMuted, textAlign: 'center' },
+        supportLink: { ...t.type.label, fontSize: t.type.body.fontSize, color: t.colors.link },
       }),
-    [colors],
+    [t],
   );
   const { data: account } = useAccountQuery();
   const profileSummaryQuery = useProfileSummaryQuery();
@@ -254,30 +224,31 @@ export function ProtectionHomeScreen() {
   }
 
   if (isLoading && !data) {
-    // OB-17: skeleton shapes matching the hero + quick-action card geometry
-    // (screens doc §2.1) replace the spinner, so layout doesn't jump on resolve.
+    // OB-17: skeleton shapes matching the hero + action geometry replace the
+    // spinner, so layout doesn't jump on resolve.
     return (
-      <Screen scroll={false} safeAreaEdges={['top']} contentContainerStyle={styles.skeletonBody}>
-        <Skeleton width="55%" height={22} />
-        <Skeleton height={140} radius={radius.glassCardLg} style={styles.skeletonSpacing} />
+      <HomePage scroll={false} padded={false} safeAreaEdges={['top']} contentContainerStyle={styles.skeletonBody}>
+        <Skeleton height={88} radius={t.radius.lg} />
+        <Skeleton height={200} radius={t.radius.xl} />
         <View style={styles.skeletonRow}>
-          <Skeleton height={88} radius={radius.glassCard} style={styles.skeletonFlex} />
-          <Skeleton height={88} radius={radius.glassCard} style={styles.skeletonFlex} />
-          <Skeleton height={88} radius={radius.glassCard} style={styles.skeletonFlex} />
+          <Skeleton height={48} radius={t.radius.pill} style={styles.skeletonFlex} />
         </View>
-      </Screen>
+        <Skeleton height={48} radius={t.radius.pill} />
+      </HomePage>
     );
   }
 
   if (isError || !data) {
     return (
-      <Screen safeAreaEdges={['top']}>
-        <Text style={styles.errorTitle}>Protection centre</Text>
-        <Alert tone="danger">{mapUserFacingError(error, { context: 'generic' })}</Alert>
-        <Button variant="primary" onPress={() => void refetchAll()} style={styles.retry}>
-          Try again
-        </Button>
-      </Screen>
+      <HomePage padded={false} safeAreaEdges={['top']} contentContainerStyle={styles.errorBody}>
+        <GlassCard variant="solid">
+          <Text style={styles.errorTitle} accessibilityRole="header">
+            Protection centre
+          </Text>
+          <Alert tone="danger">{mapUserFacingError(error, { context: 'generic' })}</Alert>
+        </GlassCard>
+        <Button variant="primary" label="Try again" onPress={() => void refetchAll()} />
+      </HomePage>
     );
   }
 
@@ -292,36 +263,34 @@ export function ProtectionHomeScreen() {
   const recentAssets = data.assetPreviews.slice(featuredAsset ? 1 : 0);
 
   return (
-    <Screen
+    <HomePage
       padded={false}
       safeAreaEdges={['top']}
-      contentContainerStyle={homeStyles.body}
+      contentContainerStyle={home.body}
       refreshControl={
-        <RefreshControl refreshing={isRefetching} onRefresh={() => void refetchAll()} />
+        <RefreshControl refreshing={isRefetching} onRefresh={() => void refetchAll()} tintColor={t.colors.ink} />
       }
     >
       {data.isPendingVerification && !bannerDismissed ? (
-        <View style={styles.bannerSpacing}>
-          <Alert
-            tone="info"
-            title="Verify your email to unlock full access."
-            dismissible
-            onDismiss={() => setBannerDismissed(true)}
-            action={
-              <Text
-                accessibilityRole="link"
-                style={styles.resendLink}
-                onPress={() => {
-                  if (account?.email) void handleResend(account.email);
-                }}
-              >
-                {isResending ? 'Sending…' : 'Resend verification email'}
-              </Text>
-            }
-          >
-            Check your inbox and spam folder.
-          </Alert>
-        </View>
+        <Alert
+          tone="info"
+          title="Verify your email to unlock full access."
+          dismissible
+          onDismiss={() => setBannerDismissed(true)}
+          action={
+            <Text
+              accessibilityRole="link"
+              style={styles.resendLink}
+              onPress={() => {
+                if (account?.email) void handleResend(account.email);
+              }}
+            >
+              {isResending ? 'Sending…' : 'Resend verification email'}
+            </Text>
+          }
+        >
+          Check your inbox and spam folder.
+        </Alert>
       ) : null}
 
       <HomeHeader
@@ -372,66 +341,62 @@ export function ProtectionHomeScreen() {
       ) : null}
 
       {recentAssets.length > 0 ? (
-        <AppScreenSection
-          title="Current protection"
-          actionLabel="View all"
-          onAction={() => router.push('/assets' as Href)}
-        >
-          <SurfaceGroup>
-            {recentAssets.map((item, index) => (
-              <AssetPreviewRow
-                key={item.assetId}
-                item={item}
-                compact
-                inset
-                isLast={index === recentAssets.length - 1}
-              />
-            ))}
-          </SurfaceGroup>
-        </AppScreenSection>
+        <View style={home.stack}>
+          <GlassCard>
+            <SectionHeader
+              title="Current protection"
+              actionLabel="View all"
+              onAction={() => router.push('/assets' as Href)}
+            />
+          </GlassCard>
+          {recentAssets.map((item) => (
+            <AssetPreviewRow key={item.assetId} item={item} />
+          ))}
+        </View>
       ) : null}
 
       {FEATURE_KYC_ENABLED ? (
-        <AppScreenSection title="Your profile">
-          <SurfaceGroup>
-            <ProfileCompletionCard
-              percent={data.profilePercent}
-              checklist={data.profileChecklist}
-              inset
-              onPress={() => router.push('/account/profile' as Href)}
-            />
-          </SurfaceGroup>
-        </AppScreenSection>
+        <GlassCard>
+          <SectionHeader title="Your profile" />
+          <View style={home.divider} />
+          <ProfileCompletionCard
+            percent={data.profilePercent}
+            checklist={data.profileChecklist}
+            inset
+            onPress={() => router.push('/account/profile' as Href)}
+          />
+        </GlassCard>
       ) : null}
 
       {FEATURE_LOCATION_TRACKING_ENABLED && data.openRecoveryCount > 0 ? (
-        <AppScreenSection title="Recovery">
-          <SurfaceGroup padded>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push('/(app)/live-tracking' as Href)}
-            >
-              <Text style={styles.recoveryTitle}>Open recovery cases</Text>
-              <Text style={styles.recoveryBody}>
-                {data.openRecoveryCount} active case{data.openRecoveryCount === 1 ? '' : 's'} — tap to
-                track progress and last known locations.
-              </Text>
-            </Pressable>
-          </SurfaceGroup>
-        </AppScreenSection>
+        <GlassCard>
+          <SectionHeader title="Recovery" />
+          <View style={home.divider} />
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/(app)/live-tracking' as Href)}
+          >
+            <Text style={home.title}>Open recovery cases</Text>
+            <Text style={styles.recoveryBody}>
+              {data.openRecoveryCount} active case{data.openRecoveryCount === 1 ? '' : 's'} — tap to
+              track progress and last known locations.
+            </Text>
+          </Pressable>
+        </GlassCard>
       ) : null}
 
-      <Text style={styles.support}>
-        Need help?{' '}
-        <Text
-          style={styles.supportLink}
-          accessibilityRole="link"
-          onPress={() => void Linking.openURL('mailto:support@tditsolutionsinsurance.co.za')}
-        >
-          Contact support
+      <GlassCard>
+        <Text style={styles.support}>
+          Need help?{' '}
+          <Text
+            style={styles.supportLink}
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL('mailto:support@tditsolutionsinsurance.co.za')}
+          >
+            Contact support
+          </Text>
         </Text>
-      </Text>
-    </Screen>
+      </GlassCard>
+    </HomePage>
   );
 }
-
