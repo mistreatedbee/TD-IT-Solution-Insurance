@@ -59,7 +59,7 @@ function createFakeDb(seed: RawDoc[] = []): { db: Db; docs: RawDoc[] } {
       );
     },
     find(filter: Record<string, unknown>) {
-      let results = docs.filter((d) => String(d.caseId) === String(filter.caseId));
+      const results = docs.filter((d) => String(d.caseId) === String(filter.caseId));
       let sortSpec: Record<string, 1 | -1> | null = null;
       let limitN: number | null = null;
       const cursor = {

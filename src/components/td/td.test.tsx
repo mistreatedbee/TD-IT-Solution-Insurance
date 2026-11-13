@@ -134,7 +134,7 @@ describe('TdAssetCard', () => {
     expect(screen.getByRole('button').className).toContain('bg-td-bg-raised');
   });
   it('supports the smartphone type', () => {
-    render(<TdAssetCard type="smartphone" name="Phone" identifier="1234567" status="LOST" footer="x" onSelect={() => {}} />);
+    render(<TdAssetCard type="smartphone" name="Phone" identifier="1234567" status="LOST" footer="x" onSelect={vi.fn()} />);
     expect(screen.getByText('Serial ending 4567')).toBeInTheDocument();
   });
 });

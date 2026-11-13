@@ -150,7 +150,7 @@ export async function runRecoveryCaseEventActorPurge(
   const { id: runId, error: startLogError } = await insertRunLogStart(db, now, options.dryRun);
 
   let candidateIds: string[] = [];
-  let legalHoldSkippedIds: string[] = [];
+  const legalHoldSkippedIds: string[] = [];
   let cleared = 0;
   let error: string | null = null;
 
