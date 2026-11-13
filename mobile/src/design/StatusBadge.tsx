@@ -1,4 +1,4 @@
-import { Clock, FileText, MapPin, RotateCcw, Search, ShieldCheck, TriangleAlert, type LucideIcon } from 'lucide-react-native';
+import { CircleCheck, Clock, FileText, MapPin, MapPinOff, ShieldCheck, TriangleAlert, type LucideIcon } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useDesignTokens } from '../theme/designTheme';
@@ -18,9 +18,9 @@ const STATUS_META: Record<StatusBadgeStatus, { tone: Tone; Icon: LucideIcon }> =
   PROTECTED: { tone: 'success', Icon: ShieldCheck },
   TRACKING: { tone: 'info', Icon: MapPin },
   'PENDING VERIFICATION': { tone: 'warning', Icon: Clock },
-  LOST: { tone: 'warning', Icon: Search },
+  LOST: { tone: 'danger', Icon: MapPinOff },
   STOLEN: { tone: 'danger', Icon: TriangleAlert },
-  RECOVERED: { tone: 'success', Icon: RotateCcw },
+  RECOVERED: { tone: 'success', Icon: CircleCheck },
   'CLAIM OPEN': { tone: 'info', Icon: FileText },
 };
 

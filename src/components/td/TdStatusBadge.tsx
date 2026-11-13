@@ -1,4 +1,4 @@
-import { ShieldCheck, Radar, Clock, MapPinOff, TriangleAlert, BadgeCheck, FileText, type LucideIcon } from 'lucide-react';
+import { ShieldCheck, MapPin, Clock, MapPinOff, TriangleAlert, CircleCheck, FileText, type LucideIcon } from 'lucide-react';
 import { cx } from './cx';
 
 export type TdStatus =
@@ -22,11 +22,11 @@ export const TD_STATUSES: readonly TdStatus[] = [
 
 const MAP: Record<TdStatus, { tone: string; Icon: LucideIcon }> = {
   PROTECTED: { tone: 'bg-td-success-bg text-td-success', Icon: ShieldCheck },
-  TRACKING: { tone: 'bg-td-info-bg text-td-link', Icon: Radar },
+  TRACKING: { tone: 'bg-td-info-bg text-td-link', Icon: MapPin },
   'PENDING VERIFICATION': { tone: 'bg-td-warning-bg text-td-warning', Icon: Clock },
   LOST: { tone: 'bg-td-danger-bg text-td-danger', Icon: MapPinOff },
   STOLEN: { tone: 'bg-td-danger-bg text-td-danger', Icon: TriangleAlert },
-  RECOVERED: { tone: 'bg-td-success-bg text-td-success', Icon: BadgeCheck },
+  RECOVERED: { tone: 'bg-td-success-bg text-td-success', Icon: CircleCheck },
   'CLAIM OPEN': { tone: 'bg-td-info-bg text-td-link', Icon: FileText },
 };
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { useDesignTokens } from '../theme/designTheme';
+import { useDesignTokens, useReducedTransparency } from '../theme/designTheme';
 import { usePressScale } from './hooks';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'glass' | 'danger';
@@ -31,13 +31,14 @@ export function Button({
 }: ButtonProps) {
   const t = useDesignTokens();
   const press = usePressScale();
+  const { blurEnabled } = useReducedTransparency();
   const [focused, setFocused] = useState(false);
   const inactive = disabled || loading;
 
   const palette = {
     primary: { bg: t.colors.actionPrimary, fg: t.colors.onActionPrimary, border: 'transparent' },
     secondary: { bg: t.colors.actionSecondary, fg: t.colors.onActionSecondary, border: 'transparent' },
-    glass: { bg: t.colors.glassFill, fg: t.colors.ink, border: t.colors.glassBorder },
+    glass: { bg: blurEnabled ? t.colors.glassFill : t.colors.bgRaised, fg: t.colors.ink, border: t.colors.glassBorder },
     danger: { bg: t.colors.danger, fg: t.mode === 'night' ? t.colors.onActionPrimary : t.colors.onNavy, border: 'transparent' },
   }[variant];
 
