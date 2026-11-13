@@ -153,3 +153,30 @@ describe('TdNavBar', () => {
     expect(screen.getByRole('navigation').className).toContain('bg-td-bg-raised');
   });
 });
+
+import { TdBackdrop } from './index';
+describe('TdBackdrop', () => {
+  it.each([['chevron', 80], ['rings', 200], ['dots', 24]] as const)('renders %s pattern with one decorative layer', (p, size) => {
+    const { container } = render(<TdBackdrop pattern={p}>content</TdBackdrop>);
+    const layers = container.querySelectorAll('[data-td-layer="pattern"]');
+    expect(layers).toHaveLength(1);
+    expect(layers[0].getAttribute('aria-hidden')).toBe('true');
+    const css = container.querySelector('style')!.textContent!;
+    expect(css).toContain(`pattern-${p}-light.svg`);
+    expect(css).toContain(`[data-theme="night"] .td-bd-${p}{background-image:url(/images/design/pattern-${p}-dark.svg)}`);
+    expect(css).toContain(`${size}px ${size}px`);
+    expect(css.match(/pattern-/g)!.length).toBe(2);
+  });
+  it('selects day/night image in image mode and keeps content accessible', () => {
+    const { container } = render(<TdBackdrop image>hello</TdBackdrop>);
+    const css = container.querySelector('style')!.textContent!;
+    expect(css).toContain('bg-day-1920x1080.svg');
+    expect(css).toContain('[data-theme="night"] .td-bd-img{background-image:url(/images/design/bg-night-1920x1080.svg)}');
+    expect(screen.getByText('hello')).toBeTruthy();
+    expect(container.querySelector('[data-td-layer="ground"]')!.getAttribute('aria-hidden')).toBe('true');
+  });
+  it('renders no pattern layer by default', () => {
+    const { container } = render(<TdBackdrop />);
+    expect(container.querySelector('[data-td-layer="pattern"]')).toBeNull();
+  });
+});

@@ -10,3 +10,5 @@ export { TdAssetCard, lastFour } from './TdAssetCard';
 export type { TdAssetCardProps, TdAssetType } from './TdAssetCard';
 export { TdNavBar } from './TdNavBar';
 export type { TdNavBarProps, TdNavItem } from './TdNavBar';
+export { TdBackdrop } from './TdBackdrop';
+export type { TdBackdropProps, TdBackdropPattern } from './TdBackdrop';
