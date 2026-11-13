@@ -12,8 +12,10 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { markMarketingIntroComplete } from '../onboardingStorage';
-import { Button, Screen } from '../../theme/primitives';
-import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
+import { Button, GlassCard } from '../../design';
+import { AuthPage } from '../../screens/auth/AuthScaffold';
+import { useDesignTokens } from '../../theme/designTheme';
+import { minTouchTarget, spacing } from '../../theme/tokens';
 import { AssetTypeGrid } from './components/AssetTypeGrid';
 import { BrandLogo } from './components/BrandLogo';
 import { FullDashboardMock } from './components/FullDashboardMock';
@@ -52,7 +54,7 @@ const SLIDES: Slide[] = [
     title: 'Meet TD IT Solution Insurance',
     subtitle:
       'We combine insurance and technology to help you protect the valuable assets that matter to you.',
-    footerLabel: 'See how it works',
+    footerLabel: 'Next',
   },
   {
     id: 'protect',
@@ -85,7 +87,7 @@ const SLIDES: Slide[] = [
     id: 'steps',
     title: 'Protecting your assets is simple',
     subtitle: 'Three straightforward steps to get started.',
-    footerLabel: "Let's get started",
+    footerLabel: 'Get started',
   },
   {
     id: 'plans',
@@ -135,7 +137,8 @@ export function MarketingOnboardingFlow() {
   const listRef = useRef<FlatList<Slide>>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const plans = usePublicPlans();
-  const { buttonSize, isCompact } = useOnboardingLayout();
+  const { isCompact } = useOnboardingLayout();
+  const t = useDesignTokens();
 
   const goToSlide = useCallback((index: number) => {
     listRef.current?.scrollToIndex({ index, animated: true });
@@ -171,12 +174,8 @@ export function MarketingOnboardingFlow() {
             footerHidden
             inlineActions={
               <>
-                <Button size={buttonSize} fullWidth onPress={() => void finishIntro('signup')}>
-                  Create account
-                </Button>
-                <Button variant="secondary" size={buttonSize} fullWidth onPress={() => void finishIntro('login')}>
-                  I already have an account
-                </Button>
+                <Button label="Create account" onPress={() => void finishIntro('signup')} />
+                <Button variant="secondary" label="Log in" onPress={() => void finishIntro('login')} />
               </>
             }
           />
@@ -186,19 +185,18 @@ export function MarketingOnboardingFlow() {
             subtitle={item.subtitle}
             footerLabel={item.footerLabel}
             onFooterPress={() => goToSlide(index + 1)}
-            buttonSize={buttonSize}
           >
             {slideContent(item, plans)}
           </MarketingSlideShell>
         )}
       </View>
     ),
-    [buttonSize, finishIntro, goToSlide, plans],
+    [finishIntro, goToSlide, plans],
   );
 
   return (
-    <Screen scroll={false} padded={false} style={styles.screen} contentContainerStyle={styles.screenBody}>
-      <View style={styles.header}>
+    <AuthPage pattern="chevron" scroll={false} padded={false} contentContainerStyle={styles.screenBody}>
+      <GlassCard style={styles.header} testID="intro-header-card">
         <View style={styles.headerTop}>
           {activeIndex < SLIDES.length - 1 ? (
             <Pressable
@@ -208,7 +206,7 @@ export function MarketingOnboardingFlow() {
               hitSlop={8}
               style={styles.headerSide}
             >
-              <Text style={styles.skipText}>Skip</Text>
+              <Text style={[t.type.label, { color: t.colors.inkMuted }]}>Skip</Text>
             </Pressable>
           ) : (
             <View style={styles.headerSide} />
@@ -226,7 +224,7 @@ export function MarketingOnboardingFlow() {
               hitSlop={8}
               style={[styles.headerSide, styles.headerSideRight]}
             >
-              <Text style={styles.backText}>Back</Text>
+              <Text style={[t.type.label, { color: t.colors.link }]}>Back</Text>
             </Pressable>
           ) : (
             <View style={styles.headerSide} />
@@ -234,7 +232,7 @@ export function MarketingOnboardingFlow() {
         </View>
 
         <ProgressDots count={SLIDES.length} activeIndex={activeIndex} compact={isCompact} />
-      </View>
+      </GlassCard>
 
       <FlatList
         ref={listRef}
@@ -252,21 +250,18 @@ export function MarketingOnboardingFlow() {
         })}
         style={styles.list}
       />
-    </Screen>
+    </AuthPage>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingHorizontal: 0 },
   screenBody: {
     flex: 1,
   },
   header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.hairline,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
   },
   headerTop: {
     flexDirection: 'row',
@@ -286,16 +281,6 @@ const styles = StyleSheet.create({
   },
   headerSideRight: {
     alignItems: 'flex-end',
-  },
-  skipText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  backText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '600',
-    color: colors.primary,
   },
   list: {
     flex: 1,

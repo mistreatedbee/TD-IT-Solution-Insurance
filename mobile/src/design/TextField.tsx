@@ -14,11 +14,13 @@ export interface TextFieldProps
   onBlur?: () => void;
   onFocus?: () => void;
   testID?: string;
+  /** Optional trailing control inside the field (e.g. a show/hide password toggle). */
+  trailing?: React.ReactNode;
 }
 
 const FIELD_HEIGHT = 56;
 
-export function TextField({ label, value, onChangeText, error, onBlur, onFocus, testID, ...rest }: TextFieldProps) {
+export function TextField({ label, value, onChangeText, error, onBlur, onFocus, testID, trailing, ...rest }: TextFieldProps) {
   const t = useDesignTokens();
   const reduce = useReduceMotion();
   const [focused, setFocused] = useState(false);
@@ -91,6 +93,7 @@ export function TextField({ label, value, onChangeText, error, onBlur, onFocus, 
           style={[t.type.body, styles.input, { color: t.colors.ink, paddingTop: 18 }]}
           {...rest}
         />
+        {trailing ? <View style={{ marginLeft: t.spacing.s2 }}>{trailing}</View> : null}
       </View>
       {error ? (
         <View
@@ -108,7 +111,7 @@ export function TextField({ label, value, onChangeText, error, onBlur, onFocus, 
 }
 
 const styles = StyleSheet.create({
-  field: { justifyContent: 'center' },
-  input: { flex: 1, padding: 0 },
+  field: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  input: { flex: 1, alignSelf: 'stretch', padding: 0 },
   help: { flexDirection: 'row', alignItems: 'flex-start' },
 });

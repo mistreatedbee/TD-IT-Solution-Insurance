@@ -1,9 +1,6 @@
 import { FormEvent, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Button, Input, SectionHeading } from '../components';
-import { ArrowLink } from '../components/ArrowLink';
-import { InlineAlert } from '../dashboard/components/ui';
-import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
+import { TdButton, TdTextField } from '../components/td';
+import { AuthAlert, AuthLink, MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { resetPasswordRequest } from '../customer/api/auth';
 import { mapUserFacingError } from '../lib/user-facing-errors';
 
@@ -46,24 +43,21 @@ export function CustomerForgotPasswordPage() {
   if (submitted) {
     return (
       <MarketingAuthShell>
-        <SectionHeading as="h1" title="Check your email" size="md" className="mb-2" />
-        <p className="text-base text-text-secondary">
+        <h1 className="display-md mb-td-2 text-td-ink">Check your email</h1>
+        <p className="body-lg text-td-ink-muted">
           If an account exists for this email, we sent a password reset link. Open it on this
           device to choose a new password.
         </p>
-        <Button
+        <TdButton
           variant="secondary"
-          fullWidth
-          className="mt-6"
+          className="mt-td-6 w-full"
           disabled={cooldown}
           onClick={() => void onResend()}
         >
-          {cooldown ? 'Resend available shortly' : 'Resend'}
-        </Button>
-        <p className="mt-6 text-center">
-          <ArrowLink href="/login" size="sm" reverse>
-            Back to log in
-          </ArrowLink>
+          {cooldown ? 'Resend shortly' : 'Resend'}
+        </TdButton>
+        <p className="body-sm mt-td-6 text-center">
+          <AuthLink to="/login">Back to log in</AuthLink>
         </p>
       </MarketingAuthShell>
     );
@@ -71,15 +65,15 @@ export function CustomerForgotPasswordPage() {
 
   return (
     <MarketingAuthShell>
-      <SectionHeading as="h1" title="Reset your password" size="md" className="mb-2" />
-      <p className="mb-6 text-sm text-text-secondary">
+      <h1 className="display-md mb-td-2 text-td-ink">Reset your password</h1>
+      <p className="body mb-td-6 text-td-ink-muted">
         Enter the email on your account and we will send you a reset link.
       </p>
 
-      {networkError ? <InlineAlert tone="danger">{networkError}</InlineAlert> : null}
+      {networkError ? <AuthAlert tone="danger">{networkError}</AuthAlert> : null}
 
-      <form className="mt-4 space-y-4" onSubmit={onSubmit}>
-        <Input floatingLabel
+      <form className="mt-td-4 space-y-td-4" onSubmit={onSubmit}>
+        <TdTextField
           label="Email"
           type="email"
           value={email}
@@ -87,15 +81,15 @@ export function CustomerForgotPasswordPage() {
           autoComplete="username"
           required
         />
-        <Button type="submit" fullWidth loading={loading}>
+        <TdButton type="submit" className="w-full" loading={loading}>
           Send reset link
-        </Button>
+        </TdButton>
       </form>
 
-      <p className="mt-6 text-center">
-        <Link to="/login" className="text-sm text-text-secondary hover:text-text-primary">
+      <p className="body-sm mt-td-6 text-center">
+        <AuthLink to="/login" className="font-normal text-td-ink-muted hover:text-td-ink">
           Back to log in
-        </Link>
+        </AuthLink>
       </p>
     </MarketingAuthShell>
   );

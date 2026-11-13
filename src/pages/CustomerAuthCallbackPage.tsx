@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Badge, Button, SectionHeading } from '../components';
-import { InlineAlert } from '../dashboard/components/ui';
-import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
+import { TdButton } from '../components/td';
+import { TD_FOCUS } from '../components/td/cx';
+import { AuthAlert, AuthEyebrow, MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import {
   ALLOWED_EMAIL_LINK_TYPES,
   handleAlreadyVerifiedEmail,
@@ -188,22 +188,22 @@ export function CustomerAuthCallbackPage() {
   if (state === 'error') {
     return (
       <MarketingAuthShell>
-        <InlineAlert tone="danger">{error ?? 'Verification failed.'}</InlineAlert>
-        <SectionHeading as="h1" title="Link problem" size="md" className="mt-4 mb-2" />
-        <p className="text-sm text-text-secondary">
+        <AuthAlert tone="danger">{error ?? 'Verification failed.'}</AuthAlert>
+        <h1 className="display-md mb-td-2 mt-td-4 text-td-ink">Link problem</h1>
+        <p className="body text-td-ink-muted">
           Request a new verification email from the sign-up page, or try logging in if you already
           verified.
         </p>
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Link to="/get-started" className="flex-1">
-            <Button variant="secondary" fullWidth>
-              Back to sign up
-            </Button>
+        <div className="mt-td-6 flex flex-col gap-td-3 sm:flex-row">
+          <Link to="/get-started" className={`flex-1 rounded-td-pill ${TD_FOCUS}`}>
+            <TdButton variant="secondary" className="w-full" tabIndex={-1}>
+              Sign up instead
+            </TdButton>
           </Link>
-          <Link to="/login" className="flex-1">
-            <Button variant="primary" fullWidth>
+          <Link to="/login" className={`flex-1 rounded-td-pill ${TD_FOCUS}`}>
+            <TdButton variant="primary" className="w-full" tabIndex={-1}>
               Log in
-            </Button>
+            </TdButton>
           </Link>
         </div>
       </MarketingAuthShell>
@@ -212,9 +212,11 @@ export function CustomerAuthCallbackPage() {
 
   return (
     <MarketingAuthShell>
-      <Badge tone="gold">Supabase Auth</Badge>
-      <SectionHeading as="h1" title="Completing sign-in…" size="md" className="mt-4" />
-      <p className="text-sm text-text-secondary">Finishing email verification.</p>
+      <AuthEyebrow>Supabase Auth</AuthEyebrow>
+      <h1 className="display-md mb-td-2 text-td-ink" aria-live="polite">
+        Completing sign-in…
+      </h1>
+      <p className="body text-td-ink-muted">Finishing email verification.</p>
     </MarketingAuthShell>
   );
 }

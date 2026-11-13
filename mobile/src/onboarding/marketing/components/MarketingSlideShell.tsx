@@ -9,8 +9,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, type ButtonSize } from '../../../theme/primitives';
-import { colors, spacing, typography } from '../../../theme/tokens';
+import { Button, GlassCard } from '../../../design';
+import { useDesignTokens } from '../../../theme/designTheme';
+import { spacing } from '../../../theme/tokens';
 import { useOnboardingLayout } from '../hooks/useOnboardingLayout';
 
 interface MarketingSlideShellProps {
@@ -24,9 +25,12 @@ interface MarketingSlideShellProps {
   inlineActions?: React.ReactNode;
   titleStyle?: StyleProp<TextStyle>;
   contentStyle?: StyleProp<ViewStyle>;
-  buttonSize?: ButtonSize;
 }
 
+/**
+ * One marketing slide: title + subtitle on a glass card (never on the ground),
+ * slide content below, optional footer CTA (design Button, 48dp).
+ */
 export function MarketingSlideShell({
   title,
   subtitle,
@@ -37,11 +41,10 @@ export function MarketingSlideShell({
   inlineActions,
   titleStyle,
   contentStyle,
-  buttonSize,
 }: MarketingSlideShellProps) {
   const insets = useSafeAreaInsets();
-  const { titleSize, subtitleSize, buttonSize: layoutButtonSize } = useOnboardingLayout();
-  const ctaSize = buttonSize ?? layoutButtonSize;
+  const t = useDesignTokens();
+  const { isCompact } = useOnboardingLayout();
 
   return (
     <View style={styles.root}>
@@ -52,17 +55,22 @@ export function MarketingSlideShell({
         keyboardShouldPersistTaps="handled"
         bounces={false}
       >
-        <Text style={[styles.title, { fontSize: titleSize }, titleStyle]}>{title}</Text>
-        <Text style={[styles.subtitle, { fontSize: subtitleSize }]}>{subtitle}</Text>
+        <GlassCard radius="xl" style={{ marginBottom: spacing.sm }}>
+          <Text
+            accessibilityRole="header"
+            style={[isCompact ? t.type.title : t.type.displayMd, { color: t.colors.ink }, titleStyle]}
+          >
+            {title}
+          </Text>
+          <Text style={[t.type.body, { color: t.colors.inkMuted, marginTop: t.spacing.s2 }]}>{subtitle}</Text>
+          {inlineActions ? <View style={[styles.inlineActions, { marginTop: t.spacing.s6 }]}>{inlineActions}</View> : null}
+        </GlassCard>
         {children}
-        {inlineActions ? <View style={styles.inlineActions}>{inlineActions}</View> : null}
       </ScrollView>
 
       {!footerHidden && footerLabel && onFooterPress ? (
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-          <Button size={ctaSize} fullWidth onPress={onFooterPress}>
-            {footerLabel}
-          </Button>
+          <Button label={footerLabel} onPress={onFooterPress} />
         </View>
       ) : null}
     </View>
@@ -81,23 +89,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     flexGrow: 1,
   },
-  title: {
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  subtitle: {
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-    marginBottom: spacing.sm,
-  },
   inlineActions: {
     gap: spacing.sm,
-    marginTop: spacing.lg,
   },
   footer: {
     paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.hairline,
   },
 });

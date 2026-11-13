@@ -1,6 +1,7 @@
 /**
  * ui-design.md §4.3 Screen C (New Password Form) + Screen D (Success), plus
- * the TOTP second step (INC-003 A-20 / A-25(i)).
+ * the TOTP second step (INC-003 A-20 / A-25(i)). Restyled to the design
+ * system (R5.1); token handling, validation and error mapping unchanged.
  *
  * Reached via the password-reset deep link the Send Email Hook builds:
  * `tditinsurance://reset-password?token_hash=…&type=recovery&email=…`
@@ -20,7 +21,7 @@
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { View } from 'react-native';
 import { isMfaVerificationRequired, resetPasswordConfirm, resetPasswordMfaVerify } from '../../src/api/auth';
 import { ApiError } from '../../src/api/errors';
 import {
@@ -32,8 +33,10 @@ import {
   type ResetPasswordCredential,
 } from '../../src/auth/email-link-params';
 import { mapUserFacingError } from '../../src/lib/user-facing-errors';
-import { Alert, Button, Input, OtpInput, Screen } from '../../src/theme/primitives';
-import { colors, spacing, typography } from '../../src/theme/tokens';
+import { Button } from '../../src/design';
+import { AuthCard, AuthHeading, AuthPage, AuthText, FieldGap, PasswordField } from '../../src/screens/auth/AuthScaffold';
+import { Alert, OtpInput } from '../../src/theme/primitives';
+import { useDesignTokens } from '../../src/theme/designTheme';
 
 /**
  * Customer minimum (`PASSWORD_MIN_LENGTH.customer`, backend/src/lib/policy.ts).
@@ -61,6 +64,7 @@ type Step = 'password' | 'mfa' | 'success' | 'expired';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
+  const t = useDesignTokens();
   const params = useLocalSearchParams<EmailLinkRawParams & Record<string, string | string[]>>();
 
   // The only state that ever holds the link token. Nulled once redeemed.
@@ -106,9 +110,9 @@ export default function ResetPasswordScreen() {
   useEffect(() => {
     if (step !== 'mfa' || mfaDeadline === null) return;
     const id = setInterval(() => {
-      const t = Date.now();
-      setNow(t);
-      if (t >= mfaDeadline) setMfaVerificationToken(null);
+      const tick = Date.now();
+      setNow(tick);
+      if (tick >= mfaDeadline) setMfaVerificationToken(null);
     }, 1000);
     return () => clearInterval(id);
   }, [step, mfaDeadline]);
@@ -208,153 +212,120 @@ export default function ResetPasswordScreen() {
     }
   }
 
+  const gap = { marginBottom: t.spacing.s4 };
+  const submitGap = { marginTop: t.spacing.s6 };
+
   if (step === 'success') {
     return (
-      <Screen>
-        <Alert tone="success">
-          Password updated. You&rsquo;ve been logged out of all other devices for your
-          security. Log in again with your new password wherever you use this account.
-        </Alert>
-        <View style={styles.submitSpacing}>
-          <Button variant="primary" fullWidth onPress={() => router.replace('/(auth)/login')}>
-            Log in
-          </Button>
-        </View>
-      </Screen>
+      <AuthPage>
+        <AuthCard testID="reset-password-success-card">
+          <Alert tone="success">
+            Password updated. You&rsquo;ve been logged out of all other devices for your
+            security. Log in again with your new password wherever you use this account.
+          </Alert>
+          <Button label="Log in" onPress={() => router.replace('/(auth)/login')} style={submitGap} />
+        </AuthCard>
+      </AuthPage>
     );
   }
 
   if (step === 'expired') {
     return (
-      <Screen>
-        <Text style={styles.title}>This link has expired</Text>
-        <Text style={styles.subtitle}>
-          For your security, password reset links only work once and expire quickly. Request a
-          new one.
-        </Text>
-        <Button
-          variant="primary"
-          fullWidth
-          onPress={() => router.replace('/(auth)/forgot-password')}
-        >
-          Request a new link
-        </Button>
-      </Screen>
+      <AuthPage>
+        <AuthCard testID="reset-password-expired-card">
+          <AuthHeading
+            title="This link has expired"
+            subtitle="For your security, password reset links only work once and expire quickly. Request a new one."
+          />
+          <Button label="Request a new link" onPress={() => router.replace('/(auth)/forgot-password')} style={{ marginTop: t.spacing.s2 }} />
+        </AuthCard>
+      </AuthPage>
     );
   }
 
   if (step === 'mfa') {
     return (
-      <Screen>
-        <Text style={styles.title}>Verify it&rsquo;s you</Text>
-        <Text style={styles.subtitle}>
-          Your account uses two-factor authentication. Enter the 6-digit code from your
-          authenticator app to finish resetting your password.
-        </Text>
+      <AuthPage>
+        <AuthCard testID="reset-password-mfa-card">
+          <AuthHeading
+            title="Verify it’s you"
+            subtitle="Your account uses two-factor authentication. Enter the 6-digit code from your authenticator app to finish resetting your password."
+          />
 
-        {mfaExpired ? (
-          <>
-            <View style={styles.alertSpacing}>
-              <Alert tone="warning" announceAssertively>
-                {MFA_EXPIRED_MESSAGE}
-              </Alert>
-            </View>
-            <Button
-              variant="primary"
-              fullWidth
-              onPress={() => router.replace('/(auth)/forgot-password')}
-            >
-              Request a new link
-            </Button>
-          </>
-        ) : (
-          <>
-            {mfaError ? (
-              <View style={styles.alertSpacing}>
-                <Alert tone="danger" announceAssertively>
-                  {mfaError}
+          {mfaExpired ? (
+            <>
+              <View style={gap}>
+                <Alert tone="warning" announceAssertively>
+                  {MFA_EXPIRED_MESSAGE}
                 </Alert>
               </View>
-            ) : null}
-            <OtpInput
-              label="6-digit verification code"
-              value={mfaCode}
-              onChange={setMfaCode}
-              onComplete={handleMfaComplete}
-              status={mfaError ? 'error' : 'idle'}
-              loading={isVerifyingMfa}
-              autoFocus
-            />
-            {mfaSecondsRemaining !== null ? (
-              <Text style={styles.countdown}>
-                This code entry expires in {Math.floor(mfaSecondsRemaining / 60)}:
-                {String(mfaSecondsRemaining % 60).padStart(2, '0')}.
-              </Text>
-            ) : null}
-          </>
-        )}
-      </Screen>
+              <Button label="Request a new link" onPress={() => router.replace('/(auth)/forgot-password')} />
+            </>
+          ) : (
+            <>
+              {mfaError ? (
+                <View style={gap}>
+                  <Alert tone="danger" announceAssertively>
+                    {mfaError}
+                  </Alert>
+                </View>
+              ) : null}
+              <OtpInput
+                label="6-digit verification code"
+                value={mfaCode}
+                onChange={setMfaCode}
+                onComplete={handleMfaComplete}
+                status={mfaError ? 'error' : 'idle'}
+                loading={isVerifyingMfa}
+                autoFocus
+              />
+              {mfaSecondsRemaining !== null ? (
+                <AuthText small align="center" style={{ marginTop: t.spacing.s4 }}>
+                  This code entry expires in {Math.floor(mfaSecondsRemaining / 60)}:
+                  {String(mfaSecondsRemaining % 60).padStart(2, '0')}.
+                </AuthText>
+              ) : null}
+            </>
+          )}
+        </AuthCard>
+      </AuthPage>
     );
   }
 
   return (
-    <Screen>
-      <Text style={styles.title}>Set a new password</Text>
+    <AuthPage>
+      <AuthCard testID="reset-password-card">
+        <AuthHeading title="Set a new password" />
 
-      {passwordError ? (
-        <View style={styles.alertSpacing}>
-          <Alert tone="danger" announceAssertively>
-            {passwordError}
-          </Alert>
-        </View>
-      ) : null}
+        {passwordError ? (
+          <View style={gap}>
+            <Alert tone="danger" announceAssertively>
+              {passwordError}
+            </Alert>
+          </View>
+        ) : null}
 
-      <Input
-        label="New password"
-        type="password"
-        value={newPassword}
-        onChangeText={setNewPassword}
-        hint={`At least ${RESET_PASSWORD_MIN_LENGTH} characters. Security partner accounts need at least ${PRIVILEGED_PASSWORD_MIN_LENGTH}.`}
-      />
-      <Input
-        label="Confirm new password"
-        type="password"
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-      />
+        <PasswordField
+          label="New password"
+          testID="input-new-password"
+          value={newPassword}
+          onChangeText={setNewPassword}
+          textContentType="newPassword"
+        />
+        <AuthText small style={{ marginTop: t.spacing.s1, paddingHorizontal: t.spacing.s2 }}>
+          {`At least ${RESET_PASSWORD_MIN_LENGTH} characters. Security partner accounts need at least ${PRIVILEGED_PASSWORD_MIN_LENGTH}.`}
+        </AuthText>
+        <FieldGap />
+        <PasswordField
+          label="Confirm new password"
+          testID="input-confirm-new-password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          textContentType="newPassword"
+        />
 
-      <View style={styles.submitSpacing}>
-        <Button variant="primary" fullWidth loading={isSubmitting} onPress={handleSubmit}>
-          Reset password
-        </Button>
-      </View>
-    </Screen>
+        <Button label="Reset password" loading={isSubmitting} onPress={handleSubmit} style={submitGap} />
+      </AuthCard>
+    </AuthPage>
   );
 }
-
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-    lineHeight: typography.sizes.base * 1.4,
-  },
-  countdown: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.md,
-    textAlign: 'center',
-  },
-  alertSpacing: {
-    marginBottom: spacing.lg,
-  },
-  submitSpacing: {
-    marginTop: spacing.lg,
-  },
-});

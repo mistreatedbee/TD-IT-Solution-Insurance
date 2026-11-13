@@ -1,5 +1,6 @@
 /**
  * ui-design.md §4.1 Screen C — "Check Your Email" Confirmation.
+ * Restyled to the design system (R5.1); polling, resend and cooldown unchanged.
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -18,13 +19,15 @@ import {
 import { getOrCreateDeviceId } from '../../src/auth/device';
 import { setRefreshToken } from '../../src/auth/secure-storage';
 import { useSessionStore } from '../../src/auth/session-store';
-import { Button, Screen } from '../../src/theme/primitives';
-import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
+import { Button } from '../../src/design';
+import { AuthCard, AuthHeading, AuthLink, AuthPage, AuthText } from '../../src/screens/auth/AuthScaffold';
+import { useDesignTokens } from '../../src/theme/designTheme';
 
 const POLL_INTERVAL_MS = 10_000;
 
 export default function VerifyPendingScreen() {
   const router = useRouter();
+  const t = useDesignTokens();
   const { email: emailParam } = useLocalSearchParams<{ email?: string }>();
   const setSignedIn = useSessionStore((s) => s.setSignedIn);
 
@@ -133,127 +136,64 @@ export default function VerifyPendingScreen() {
   const cooldownLabel = `Resend available in ${minutes}:${String(seconds).padStart(2, '0')}`;
 
   return (
-    <Screen>
-      <Text style={styles.title}>Check your email</Text>
-      <Text style={styles.subtitle}>
-        We&rsquo;ve sent a verification link to{' '}
-        <Text style={styles.emailText}>{displayEmail}</Text>. It usually arrives within a couple
-        of minutes.
-      </Text>
+    <AuthPage>
+      <AuthCard testID="verify-pending-card">
+        <AuthHeading title="Check your email" />
+        <AuthText style={{ marginBottom: t.spacing.s3 }}>
+          We&rsquo;ve sent a verification link to{' '}
+          <Text style={[t.type.body, { color: t.colors.ink, fontFamily: t.type.label.fontFamily }]}>{displayEmail}</Text>. It usually arrives within a couple
+          of minutes.
+        </AuthText>
 
-      <Text style={styles.spamHint}>
-        Can&rsquo;t find it? Check your spam or promotions folder — verification emails from a new
-        domain sometimes land there at first.
-      </Text>
+        <AuthText small style={{ marginBottom: t.spacing.s4 }}>
+          Can&rsquo;t find it? Check your spam or promotions folder — verification emails from a new
+          domain sometimes land there at first.
+        </AuthText>
 
-      {isChecking ? (
-        <View style={styles.checkingRow}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={styles.checkingText}>Checking whether you are verified&hellip;</Text>
-        </View>
-      ) : (
-        <Text style={styles.autoPollHint}>
-          We&rsquo;ll sign you in automatically once you open the verification link — no need to
-          refresh your inbox.
-        </Text>
-      )}
+        {isChecking ? (
+          <View style={[styles.checkingRow, { gap: t.spacing.s2, marginBottom: t.spacing.s4 }]}>
+            <ActivityIndicator size="small" color={t.colors.link} />
+            <AuthText small>Checking whether you are verified&hellip;</AuthText>
+          </View>
+        ) : (
+          <AuthText small style={{ marginBottom: t.spacing.s4 }}>
+            We&rsquo;ll sign you in automatically once you open the verification link — no need to
+            refresh your inbox.
+          </AuthText>
+        )}
 
-      {pollHint ? <Text style={styles.pollHint}>{pollHint}</Text> : null}
+        {pollHint ? (
+          <AuthText small tone="body" style={{ marginBottom: t.spacing.s4 }}>
+            {pollHint}
+          </AuthText>
+        ) : null}
 
-      <Button variant="primary" fullWidth onPress={() => void handleContinue()}>
-        I&apos;ve verified — continue
-      </Button>
+        <Button label="Continue" onPress={() => void handleContinue()} />
 
-      <Button
-        variant="secondary"
-        fullWidth
-        loading={isResending}
-        disabled={cooldownSeconds > 0}
-        onPress={() => void handleResend()}
-        style={styles.resendButton}
-      >
-        {cooldownSeconds > 0 ? cooldownLabel : 'Resend email'}
-      </Button>
-      {resendSuccess && cooldownSeconds > 0 ? (
-        <Text style={styles.successText}>Email sent again.</Text>
-      ) : null}
+        <Button
+          variant="secondary"
+          label={cooldownSeconds > 0 ? cooldownLabel : 'Resend email'}
+          loading={isResending}
+          disabled={cooldownSeconds > 0}
+          onPress={() => void handleResend()}
+          style={{ marginTop: t.spacing.s3 }}
+        />
+        {resendSuccess && cooldownSeconds > 0 ? (
+          <AuthText small tone="success" align="center" style={{ marginTop: t.spacing.s2 }}>
+            Email sent again.
+          </AuthText>
+        ) : null}
 
-      <View style={styles.backRow}>
-        <Text
-          accessibilityRole="link"
+        <AuthLink
+          label="Wrong email? Go back"
           onPress={() => router.replace({ pathname: '/(auth)/signup' })}
-          style={styles.backLink}
-        >
-          Wrong email? Go back
-        </Text>
-      </View>
-    </Screen>
+          style={{ marginTop: t.spacing.s4 }}
+        />
+      </AuthCard>
+    </AuthPage>
   );
 }
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-    marginBottom: spacing.md,
-  },
-  emailText: {
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  spamHint: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.45,
-    marginBottom: spacing.lg,
-  },
-  checkingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  checkingText: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-  },
-  autoPollHint: {
-    fontSize: typography.sizes.sm,
-    color: colors.slate[500],
-    marginBottom: spacing.lg,
-    lineHeight: typography.sizes.sm * 1.45,
-  },
-  pollHint: {
-    fontSize: typography.sizes.sm,
-    color: colors.slate[600],
-    marginBottom: spacing.lg,
-    lineHeight: typography.sizes.sm * 1.45,
-  },
-  resendButton: {
-    marginTop: spacing.md,
-  },
-  successText: {
-    marginTop: spacing.sm,
-    fontSize: typography.sizes.xs,
-    color: colors.success,
-    textAlign: 'center',
-  },
-  backRow: {
-    marginTop: spacing.xl,
-    minHeight: minTouchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backLink: {
-    fontSize: typography.sizes.sm,
-    color: colors.slate[600],
-    textDecorationLine: 'underline',
-  },
+  checkingRow: { flexDirection: 'row', alignItems: 'center' },
 });

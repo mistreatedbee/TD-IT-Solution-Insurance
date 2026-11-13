@@ -2,20 +2,24 @@
  * ui-design.md §4.3 Screens A (Request) and B (Confirmation).
  * Both live in one route (local state toggle) since B has no address of
  * its own to deep-link to — only Screen C (reset-password.tsx) does.
+ * Restyled to the design system (R5.1); behaviour unchanged.
  */
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { View } from 'react-native';
 import { resetPasswordRequest } from '../../src/api/auth';
 import { NetworkUnavailableError } from '../../src/api/errors';
 import { mapUserFacingError } from '../../src/lib/user-facing-errors';
 import { SubpageHeader } from '../../src/navigation/SubpageHeader';
 import { AuthMasthead } from '../../src/navigation/AuthMasthead';
-import { Alert, Button, Input, Screen } from '../../src/theme/primitives';
-import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
+import { Button } from '../../src/design';
+import { AuthCard, AuthLink, AuthPage, EmailField } from '../../src/screens/auth/AuthScaffold';
+import { Alert } from '../../src/theme/primitives';
+import { useDesignTokens } from '../../src/theme/designTheme';
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
+  const t = useDesignTokens();
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -55,80 +59,52 @@ export default function ForgotPasswordScreen() {
 
   if (submitted) {
     return (
-      <Screen>
+      <AuthPage>
         <SubpageHeader compact />
-        <AuthMasthead
-          title="Check your email."
-          subtitle="If an account exists for this email, we've sent a link to reset your password."
-          showDivider={false}
-        />
-        <Button variant="secondary" fullWidth disabled={cooldown} onPress={handleResend}>
-          {cooldown ? 'Resend available shortly' : 'Resend'}
-        </Button>
-        <View style={styles.backRow}>
-          <Text
-            accessibilityRole="link"
-            style={styles.backLink}
-            onPress={() => router.replace('/(auth)/login')}
-          >
-            Back to log in
-          </Text>
-        </View>
-      </Screen>
+        <AuthCard testID="forgot-password-sent-card">
+          <AuthMasthead
+            title="Check your email."
+            subtitle="If an account exists for this email, we've sent a link to reset your password."
+            showDivider={false}
+          />
+          <Button
+            variant="secondary"
+            label={cooldown ? 'Resend available shortly' : 'Resend'}
+            disabled={cooldown}
+            onPress={handleResend}
+          />
+          <AuthLink label="Back to log in" onPress={() => router.replace('/(auth)/login')} style={{ marginTop: t.spacing.s4 }} />
+        </AuthCard>
+      </AuthPage>
     );
   }
 
   return (
-    <Screen>
+    <AuthPage>
       <SubpageHeader compact />
-      <AuthMasthead
-        title="Reset your password"
-        subtitle="Enter the email on your account and we'll send you a link."
-      />
+      <AuthCard testID="forgot-password-card">
+        <AuthMasthead
+          title="Reset your password"
+          subtitle="Enter the email on your account and we'll send you a link."
+        />
 
-      {networkError ? (
-        <View style={styles.alertSpacing}>
-          <Alert tone="danger">{networkError}</Alert>
-        </View>
-      ) : null}
+        {networkError ? (
+          <View style={{ marginBottom: t.spacing.s4 }}>
+            <Alert tone="danger">{networkError}</Alert>
+          </View>
+        ) : null}
 
-      <Input label="Email" type="email" value={email} onChangeText={setEmail} />
+        <EmailField label="Email" testID="input-email" value={email} onChangeText={setEmail} />
 
-      <View style={styles.submitSpacing}>
-        <Button variant="primary" fullWidth loading={isSubmitting} onPress={handleSubmit}>
-          Send reset link
-        </Button>
-      </View>
+        <Button
+          label="Send reset link"
+          loading={isSubmitting}
+          onPress={handleSubmit}
+          style={{ marginTop: t.spacing.s6 }}
+        />
 
-      <View style={styles.backRow}>
-        <Text
-          accessibilityRole="link"
-          style={styles.backLink}
-          onPress={() => router.replace('/(auth)/login')}
-        >
-          Back to log in
-        </Text>
-      </View>
-    </Screen>
+        <AuthLink label="Back to log in" onPress={() => router.replace('/(auth)/login')} style={{ marginTop: t.spacing.s4 }} />
+      </AuthCard>
+    </AuthPage>
   );
 }
-
-const styles = StyleSheet.create({
-  alertSpacing: {
-    marginBottom: spacing.lg,
-  },
-  submitSpacing: {
-    marginTop: spacing.sm,
-  },
-  backRow: {
-    marginTop: spacing.xl,
-    minHeight: minTouchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backLink: {
-    fontSize: typography.sizes.sm,
-    color: colors.slate[600],
-    textDecorationLine: 'underline',
-  },
-});

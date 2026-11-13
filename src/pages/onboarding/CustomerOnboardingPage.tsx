@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   BriefcaseIcon,
   CrownIcon,
@@ -7,11 +7,11 @@ import {
   SparklesIcon,
   type LucideIcon,
 } from 'lucide-react';
-import { Button, Badge, Card, Input, SectionHeading } from '../../components';
+import { TdButton, TdGlassCard, TdTextField } from '../../components/td';
+import { TD_FOCUS } from '../../components/td/cx';
 import { PlanMarketingCard } from '../../components/PlanMarketingCard';
-import { ArrowLink } from '../../components/ArrowLink';
 import { AssetBadge, type AssetType as BadgeAssetType } from '../../components/AssetBadge';
-import { InlineAlert } from '../../dashboard/components/ui';
+import { AuthAlert, AuthEyebrow, AuthLink } from '../../customer/components/MarketingAuthShell';
 import { createAsset, listAssets, type Asset, type AssetType } from '../../customer/api/assets';
 import { ApiError } from '../../customer/api/errors';
 import { createPolicy, listPolicies, type Policy } from '../../customer/api/policies';
@@ -42,6 +42,10 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 10;
 
 const POLL_INTERVAL_MS = 10_000;
+
+/** Plain text button used for the "back to email and password" escape hatch under MFA forms. */
+const LINK_BUTTON =
+  'body-sm min-h-[48px] w-full rounded-td-md text-td-ink-muted hover:text-td-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-td-focus-ring';
 
 /** Pre-INC-003-A-14 builds stored `{ email, password }` here. Never written now. */
 const LEGACY_PENDING_SIGNUP_AUTH_KEY = 'td_signup_pending_auth';
@@ -402,113 +406,107 @@ export function CustomerOnboardingPage() {
     <OnboardingShell>
       <OnboardingProgress step={step} />
 
-      {error ? (
-        <div className="mb-6">
-          <InlineAlert tone="danger">{error}</InlineAlert>
-        </div>
-      ) : null}
+      {error ? <AuthAlert tone="danger" className="mb-td-6">{error}</AuthAlert> : null}
 
       {step === 'welcome' ? (
         <>
-          <SectionHeading
-            as="h1"
-            align="left"
-            title="Welcome to TD IT Solution Insurance"
-            subtitle="Protect your valuable assets with flexible insurance and intelligent asset protection."
-          />
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Button size="lg" onClick={() => setStep('account-type')}>
-              Get Started
-            </Button>
-            <Button variant="secondary" size="lg" onClick={() => setStep('signup')}>
+          <h1 className="display-lg text-td-ink">Welcome to TD IT Solution Insurance</h1>
+          <p className="body-lg mt-td-3 text-td-ink-muted">
+            Protect your valuable assets with flexible insurance and intelligent asset protection.
+          </p>
+          <div className="mt-td-8 flex flex-col gap-td-3 sm:flex-row">
+            <TdButton onClick={() => setStep('account-type')}>Get started</TdButton>
+            <TdButton variant="secondary" onClick={() => setStep('signup')}>
               I already have an account
-            </Button>
+            </TdButton>
           </div>
         </>
       ) : null}
 
       {step === 'account-type' ? (
         <>
-          <SectionHeading as="h1" align="left" title="Who is this account for?" size="md" />
-          <div className="mt-8 grid gap-4 sm:grid-cols-2">
+          <h1 className="display-md text-td-ink">Who is this account for?</h1>
+          <div className="mt-td-8 grid gap-td-4 sm:grid-cols-2">
             {(['individual', 'business'] as const).map((type) => (
-              <Card
-                key={type}
-                interactive
-                className={`cursor-pointer p-6 ${accountType === type ? 'ring-2 ring-primary' : ''}`}
-                onClick={() => {
-                  setAccountType(type);
-                  saveAccountType(type);
-                }}
-              >
-                <p className="text-lg font-bold text-text-primary capitalize">{type}</p>
-                <p className="mt-2 text-sm text-text-secondary">
-                  {type === 'individual'
-                    ? 'Protect your own vehicles, devices and equipment.'
-                    : 'Protect company assets — Business plans available for larger fleets and teams.'}
-                </p>
-              </Card>
+              <TdGlassCard key={type} variant="solid" selected={accountType === type} className="!p-0">
+                <button
+                  type="button"
+                  aria-pressed={accountType === type}
+                  className={`block h-full w-full rounded-td-lg p-td-5 text-left ${TD_FOCUS}`}
+                  onClick={() => {
+                    setAccountType(type);
+                    saveAccountType(type);
+                  }}
+                >
+                  <span className="title block capitalize text-td-ink">{type}</span>
+                  <span className="body mt-td-2 block text-td-ink-muted">
+                    {type === 'individual'
+                      ? 'Protect your own vehicles, devices and equipment.'
+                      : 'Protect company assets — Business plans available for larger fleets and teams.'}
+                  </span>
+                </button>
+              </TdGlassCard>
             ))}
           </div>
-          <div className="mt-8 flex gap-3">
-            <Button variant="secondary" onClick={() => setStep('welcome')}>
-              Back
-            </Button>
-            <Button disabled={!accountType} onClick={() => setStep('signup')}>
+          <div className="mt-td-8 flex gap-td-3">
+            <TdButton variant="secondary" onClick={() => setStep('welcome')}>
+              Go back
+            </TdButton>
+            <TdButton disabled={!accountType} onClick={() => setStep('signup')}>
               Continue
-            </Button>
+            </TdButton>
           </div>
         </>
       ) : null}
 
       {step === 'signup' ? (
         <>
-          <SectionHeading as="h1" align="left" title="Create your account" size="md" />
-          <p className="mb-6 text-sm text-text-secondary">
+          <h1 className="display-md text-td-ink">Create your account</h1>
+          <p className="body mb-td-6 mt-td-2 text-td-ink-muted">
             {accountType === 'business' ? 'Tell us about your business — ' : 'Tell us about yourself — '}
             start with email and password. Additional profile fields will be collected in a later step.
           </p>
-          <form className="space-y-4" onSubmit={handleSignup} noValidate>
-            <Input floatingLabel label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Input floatingLabel
+          <form className="space-y-td-4" onSubmit={handleSignup} noValidate>
+            <TdTextField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <TdTextField
               label="Password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              hint={`At least ${PASSWORD_MIN_LENGTH} characters.`}
+              help={`At least ${PASSWORD_MIN_LENGTH} characters.`}
               required
             />
-            <Input floatingLabel
+            <TdTextField
               label="Confirm password"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
             />
-            <label className="flex items-start gap-3 text-sm text-text-secondary">
+            <label className="body flex items-start gap-td-3 text-td-ink-muted">
               <input
                 type="checkbox"
-                className="mt-1"
+                className={`mt-px h-5 w-5 flex-none rounded-td-sm border-td-border-control accent-td-action-primary ${TD_FOCUS}`}
                 checked={consentAccepted}
                 onChange={(e) => setConsentAccepted(e.target.checked)}
               />
               <span>
-                I agree to the <ArrowLink href="/terms">Terms</ArrowLink> and{' '}
-                <ArrowLink href="/privacy">Privacy Policy</ArrowLink>.
+                I agree to the <AuthLink to="/terms">Terms</AuthLink> and{' '}
+                <AuthLink to="/privacy">Privacy Policy</AuthLink>.
               </span>
             </label>
-            <Button type="submit" fullWidth loading={loading}>
+            <TdButton type="submit" className="w-full" loading={loading}>
               Create account
-            </Button>
+            </TdButton>
           </form>
-          <div className="mt-8 border-t border-border pt-6">
-            <p className="mb-4 text-sm font-semibold text-text-primary">Already registered?</p>
+          <div className="mt-td-8 border-t border-td-border-subtle pt-td-6">
+            <p className="title mb-td-4 text-td-ink">Already registered?</p>
             {mfaChallengeToken && mfaOrigin === 'login' ? (
-              <form className="space-y-3" onSubmit={handleMfaSubmit} noValidate>
-                <p className="text-sm text-text-secondary">
+              <form className="space-y-td-3" onSubmit={handleMfaSubmit} noValidate>
+                <p className="body text-td-ink-muted">
                   Enter the 6-digit code from your authenticator app.
                 </p>
-                <Input floatingLabel
+                <TdTextField
                   label="Authentication code"
                   value={mfaCode}
                   onChange={(e) => setMfaCode(e.target.value)}
@@ -517,29 +515,25 @@ export function CustomerOnboardingPage() {
                   maxLength={6}
                   required
                 />
-                <Button type="submit" variant="secondary" fullWidth loading={loading}>
+                <TdButton type="submit" variant="secondary" className="w-full" loading={loading}>
                   Verify
-                </Button>
-                <button
-                  type="button"
-                  className="w-full text-sm text-text-secondary hover:text-text-primary"
-                  onClick={cancelMfa}
-                >
+                </TdButton>
+                <button type="button" className={LINK_BUTTON} onClick={cancelMfa}>
                   Back to email and password
                 </button>
               </form>
             ) : (
-              <form className="space-y-3" onSubmit={handleLogin} noValidate>
-                <Input floatingLabel label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
-                <Input floatingLabel
+              <form className="space-y-td-3" onSubmit={handleLogin} noValidate>
+                <TdTextField label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
+                <TdTextField
                   label="Password"
                   type="password"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                 />
-                <Button type="submit" variant="secondary" fullWidth loading={loading}>
+                <TdButton type="submit" variant="secondary" className="w-full" loading={loading}>
                   Log in
-                </Button>
+                </TdButton>
               </form>
             )}
           </div>
@@ -548,20 +542,17 @@ export function CustomerOnboardingPage() {
 
       {step === 'verify' ? (
         <>
-          <Badge tone="gold">Verify your email</Badge>
-          <SectionHeading
-            as="h1"
-            title="Check your inbox"
-            size="md"
-            className="mt-4"
-            subtitle="Open the verification link we sent you, then sign in below to continue."
-          />
-          <p className="mt-3 text-sm text-text-secondary">
+          <AuthEyebrow>Verify your email</AuthEyebrow>
+          <h1 className="display-md text-td-ink">Check your inbox</h1>
+          <p className="body mt-td-2 text-td-ink-muted">
+            Open the verification link we sent you, then sign in below to continue.
+          </p>
+          <p className="body mt-td-3 text-td-ink-muted">
             Can&apos;t find it? Check your spam or promotions folder. Verification emails from a new
             domain sometimes land there at first.
           </p>
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Button
+          <div className="mt-td-6 flex flex-col gap-td-3 sm:flex-row">
+            <TdButton
               variant="secondary"
               loading={loading}
               onClick={async () => {
@@ -577,12 +568,12 @@ export function CustomerOnboardingPage() {
               }}
             >
               Resend email
-            </Button>
+            </TdButton>
           </div>
           {mfaChallengeToken && mfaOrigin === 'verify' ? (
-            <form className="mt-6 space-y-3" onSubmit={handleMfaSubmit} noValidate>
-              <p className="text-sm font-semibold text-text-primary">Enter your authenticator code</p>
-              <Input floatingLabel
+            <form className="mt-td-6 space-y-td-3" onSubmit={handleMfaSubmit} noValidate>
+              <p className="title text-td-ink">Enter your authenticator code</p>
+              <TdTextField
                 label="Authentication code"
                 value={mfaCode}
                 onChange={(e) => setMfaCode(e.target.value)}
@@ -591,50 +582,34 @@ export function CustomerOnboardingPage() {
                 maxLength={6}
                 required
               />
-              <Button type="submit" fullWidth loading={loading}>
+              <TdButton type="submit" className="w-full" loading={loading}>
                 Verify
-              </Button>
-              <button
-                type="button"
-                className="w-full text-sm text-text-secondary hover:text-text-primary"
-                onClick={cancelMfa}
-              >
+              </TdButton>
+              <button type="button" className={LINK_BUTTON} onClick={cancelMfa}>
                 Back to email and password
               </button>
             </form>
           ) : (
-            <form className="mt-6 space-y-3" onSubmit={handleVerifiedSignIn} noValidate>
-              <p className="text-sm font-semibold text-text-primary">Verified? Sign in to continue</p>
-              <Input floatingLabel label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
-              <Input floatingLabel
+            <form className="mt-td-6 space-y-td-3" onSubmit={handleVerifiedSignIn} noValidate>
+              <p className="title text-td-ink">Verified? Sign in to continue</p>
+              <TdTextField label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
+              <TdTextField
                 label="Password"
                 type="password"
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
               />
-              <Button type="submit" fullWidth loading={loading}>
+              <TdButton type="submit" className="w-full" loading={loading}>
                 I&apos;ve verified — continue
-              </Button>
+              </TdButton>
             </form>
           )}
-          {error ? (
-            <div className="mt-4">
-              <InlineAlert tone="warning">{error}</InlineAlert>
-            </div>
-          ) : null}
-          <p className="mt-6 text-sm text-text-secondary">
-            Already verified?{' '}
-            <Link to="/login" className="font-semibold text-primary hover:underline">
-              Sign in
-            </Link>{' '}
-            or{' '}
-            <Link
-              to="/auth/email-verified"
-              className="font-semibold text-primary hover:underline"
-              state={{ email: email.trim() || auth.account?.email }}
-            >
+          {error ? <AuthAlert tone="warning" className="mt-td-4">{error}</AuthAlert> : null}
+          <p className="body mt-td-6 text-td-ink-muted">
+            Already verified? <AuthLink to="/login">Sign in</AuthLink> or{' '}
+            <AuthLink to="/auth/email-verified" state={{ email: email.trim() || auth.account?.email }}>
               open the confirmation page
-            </Link>
+            </AuthLink>
             .
           </p>
         </>
@@ -642,14 +617,12 @@ export function CustomerOnboardingPage() {
 
       {step === 'plan' ? (
         <>
-          <SectionHeading
-            as="h1"
-            align="left"
-            title="Choose an insurance plan"
-            subtitle="Select the plan that matches how many devices you want to protect. Prices are shown for planning — payment is configured in a later step."
-          />
-          {plansLoading ? <p className="text-sm text-text-secondary">Loading plans…</p> : null}
-          <div className="mt-8 grid items-end gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <h1 className="display-lg text-td-ink">Choose an insurance plan</h1>
+          <p className="body-lg mt-td-3 text-td-ink-muted">
+            Select the plan that matches how many devices you want to protect. Prices are shown for planning — payment is configured in a later step.
+          </p>
+          {plansLoading ? <p className="body mt-td-4 text-td-ink-muted">Loading plans…</p> : null}
+          <div className="mt-td-8 grid items-end gap-td-5 sm:grid-cols-2 lg:grid-cols-4">
             {visiblePlans.map((plan) => (
               <PlanMarketingCard
                 key={plan.id}
@@ -666,13 +639,11 @@ export function CustomerOnboardingPage() {
 
       {step === 'asset-category' ? (
         <>
-          <SectionHeading
-            as="h1"
-            align="left"
-            title="What would you like to protect?"
-            subtitle="Pick a category to register your first asset. You can add more after this step."
-          />
-          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <h1 className="display-lg text-td-ink">What would you like to protect?</h1>
+          <p className="body-lg mt-td-3 text-td-ink-muted">
+            Pick a category to register your first asset. You can add more after this step.
+          </p>
+          <div className="mt-td-8 grid grid-cols-2 gap-td-4 sm:grid-cols-4">
             {ASSET_CATEGORY_OPTIONS.map((opt) => (
               <AssetBadge
                 key={opt.api}
@@ -687,10 +658,10 @@ export function CustomerOnboardingPage() {
             ))}
           </div>
           {assets.length > 0 ? (
-            <div className="mt-8">
-              <Button variant="secondary" onClick={() => setStep('review')}>
+            <div className="mt-td-8">
+              <TdButton variant="secondary" onClick={() => setStep('review')}>
                 Skip to review ({assets.length} asset{assets.length === 1 ? '' : 's'})
-              </Button>
+              </TdButton>
             </div>
           ) : null}
         </>
@@ -698,17 +669,17 @@ export function CustomerOnboardingPage() {
 
       {step === 'asset-form' && selectedAssetType ? (
         <>
-          <SectionHeading as="h1" align="left" title="Register your asset" size="md" />
-          <form className="mt-6 space-y-4" onSubmit={handleRegisterAsset} noValidate>
-            <Input floatingLabel
+          <h1 className="display-md text-td-ink">Register your asset</h1>
+          <form className="mt-td-6 space-y-td-4" onSubmit={handleRegisterAsset} noValidate>
+            <TdTextField
               label="Asset name"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="e.g. MacBook Pro, Toyota Corolla"
+              help="e.g. MacBook Pro, Toyota Corolla"
               required
             />
             {requiredFieldsForType(selectedAssetType).map((key) => (
-              <Input floatingLabel
+              <TdTextField
                 key={key}
                 label={fieldLabel(key)}
                 value={assetFields[key] ?? ''}
@@ -720,18 +691,18 @@ export function CustomerOnboardingPage() {
                 required
               />
             ))}
-            <Input floatingLabel
+            <TdTextField
               label="Estimated value (ZAR, optional)"
               value={estimatedValue}
               onChange={(e) => setEstimatedValue(e.target.value)}
             />
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button type="button" variant="secondary" onClick={() => setStep('asset-category')}>
-                Back
-              </Button>
-              <Button type="submit" loading={loading}>
+            <div className="flex flex-col gap-td-3 sm:flex-row">
+              <TdButton type="button" variant="secondary" onClick={() => setStep('asset-category')}>
+                Go back
+              </TdButton>
+              <TdButton type="submit" loading={loading}>
                 Save asset
-              </Button>
+              </TdButton>
             </div>
           </form>
         </>
@@ -739,67 +710,64 @@ export function CustomerOnboardingPage() {
 
       {step === 'review' ? (
         <>
-          <SectionHeading as="h1" align="left" title="Your protection summary" size="md" />
-          <Card className="mt-6 space-y-4 p-6">
+          <h1 className="display-md text-td-ink">Your protection summary</h1>
+          <TdGlassCard variant="solid" className="mt-td-6 space-y-td-4 border-td-border-subtle bg-td-bg-sunken shadow-none">
             <div>
-              <p className="text-xs font-semibold uppercase text-text-secondary">Account</p>
-              <p className="text-text-primary">{auth.account?.email ?? email}</p>
+              <p className="body-sm font-bold uppercase tracking-wide text-td-ink-muted">Account</p>
+              <p className="body text-td-ink">{auth.account?.email ?? email}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase text-text-secondary">Plan</p>
-              <p className="text-text-primary">
+              <p className="body-sm font-bold uppercase tracking-wide text-td-ink-muted">Plan</p>
+              <p className="body text-td-ink">
                 {selectedPlan?.name ?? policy?.planTier ?? '—'}{' '}
                 {selectedPlan ? `(${formatPlanPrice(selectedPlan)})` : null}
               </p>
-              <Badge tone="gold" className="mt-2">
+              <p className="body-sm mt-td-2 font-semibold text-td-accent-text">
                 Pending activation — payment not configured yet
-              </Badge>
+              </p>
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase text-text-secondary">Protected assets</p>
+              <p className="body-sm font-bold uppercase tracking-wide text-td-ink-muted">Protected assets</p>
               {assets.length === 0 ? (
-                <p className="text-sm text-text-secondary">No assets registered yet.</p>
+                <p className="body text-td-ink-muted">No assets registered yet.</p>
               ) : (
-                <ul className="mt-2 space-y-1 text-sm">
+                <ul className="body mt-td-2 space-y-td-1 text-td-ink">
                   {assets.map((a) => (
                     <li key={a.id}>
-                      {a.displayName} <span className="text-text-secondary">({a.assetType.replace(/_/g, ' ')})</span>
+                      {a.displayName} <span className="text-td-ink-muted">({a.assetType.replace(/_/g, ' ')})</span>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
-          </Card>
-          <div className="mt-6">
-            <InlineAlert tone="info">
-              Insurance activation and monthly billing will be completed once payment integration is live. Your
-              assets are registered and linked to your account.
-            </InlineAlert>
-          </div>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Button onClick={() => setStep('asset-category')}>Add another asset</Button>
-            <Button variant="primary" onClick={() => setStep('complete')}>
+          </TdGlassCard>
+          <AuthAlert tone="info" className="mt-td-6">
+            Insurance activation and monthly billing will be completed once payment integration is live. Your
+            assets are registered and linked to your account.
+          </AuthAlert>
+          <div className="mt-td-8 flex flex-wrap gap-td-3">
+            <TdButton variant="secondary" onClick={() => setStep('asset-category')}>
+              Add another asset
+            </TdButton>
+            <TdButton variant="primary" onClick={() => setStep('complete')}>
               Continue
-            </Button>
+            </TdButton>
           </div>
         </>
       ) : null}
 
       {step === 'complete' ? (
         <>
-          <Badge tone="emerald">Onboarding complete</Badge>
-          <SectionHeading
-            as="h1"
-            title="You're set up"
-            size="md"
-            className="mt-4"
-            subtitle="Your account, plan and assets are saved. Download the mobile app for theft reporting and recovery tools on the go."
-          />
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Button onClick={() => navigate('/dashboard')}>Go to dashboard</Button>
-            <Button variant="secondary" onClick={() => navigate('/#mobile-app')}>
-              Get the mobile app
-            </Button>
+          <AuthEyebrow>Onboarding complete</AuthEyebrow>
+          <h1 className="display-md text-td-ink">You&apos;re set up</h1>
+          <p className="body mt-td-2 text-td-ink-muted">
+            Your account, plan and assets are saved. Download the mobile app for theft reporting and recovery tools on the go.
+          </p>
+          <div className="mt-td-8 flex flex-col gap-td-3 sm:flex-row">
+            <TdButton onClick={() => navigate('/dashboard')}>Go to dashboard</TdButton>
+            <TdButton variant="secondary" onClick={() => navigate('/#mobile-app')}>
+              Get the app
+            </TdButton>
           </div>
         </>
       ) : null}

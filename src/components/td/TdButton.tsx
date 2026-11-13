@@ -1,4 +1,5 @@
 import React from 'react';
+import { LoaderCircle } from 'lucide-react';
 import { cx, TD_FOCUS } from './cx';
 
 export type TdButtonVariant = 'primary' | 'secondary' | 'glass' | 'danger';
@@ -10,6 +11,12 @@ export interface TdButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElem
   icon?: React.ReactNode;
   /** Verb-first label, one to three words, sentence case. */
   children: React.ReactNode;
+  /**
+   * Busy state for submit actions: disables the button, sets aria-busy and swaps the icon
+   * slot for a spinner (still when the user prefers reduced motion). The label stays put so
+   * the control keeps its accessible name.
+   */
+  loading?: boolean;
 }
 
 const VARIANT: Record<TdButtonVariant, string> = {
@@ -21,13 +28,20 @@ const VARIANT: Record<TdButtonVariant, string> = {
 };
 
 export const TdButton = React.forwardRef<HTMLButtonElement, TdButtonProps>(function TdButton(
-  { variant = 'primary', icon, className, type = 'button', children, ...rest },
+  { variant = 'primary', icon, loading = false, disabled, className, type = 'button', children, ...rest },
   ref,
 ) {
+  const slot = loading ? (
+    <LoaderCircle strokeWidth={1.75} className="motion-safe:animate-spin" />
+  ) : (
+    icon
+  );
   return (
     <button
       ref={ref}
       type={type}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={cx(
         'inline-flex min-h-[48px] items-center justify-center gap-td-2 rounded-td-pill border-[1.5px] border-transparent px-td-6',
         'font-td-sans text-[14px] font-semibold leading-[18px] transition duration-200',
@@ -39,9 +53,9 @@ export const TdButton = React.forwardRef<HTMLButtonElement, TdButtonProps>(funct
       )}
       {...rest}
     >
-      {icon ? (
+      {slot ? (
         <span aria-hidden="true" className="inline-flex h-5 w-5 flex-none items-center justify-center [&>svg]:h-5 [&>svg]:w-5">
-          {icon}
+          {slot}
         </span>
       ) : null}
       {children}

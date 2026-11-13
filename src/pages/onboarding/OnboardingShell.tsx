@@ -1,14 +1,12 @@
 import type { ReactNode } from 'react';
-import { LandingHeader } from '../LandingHeader';
-import { Section } from '../../components/Section';
+import { MarketingAuthShell } from '../../customer/components/MarketingAuthShell';
 
+/**
+ * Onboarding wizard chrome. Design System R5.1: the same TdBackdrop "dots"
+ * ground + solid form card as the other auth pages, just wider for the plan
+ * and asset grids. The marketing LandingHeader is no longer mounted here (it
+ * belongs to the marketing site, which is restyled in a later round).
+ */
 export function OnboardingShell({ children }: { children: ReactNode }) {
-  return (
-    <>
-      <LandingHeader />
-      <Section background="warm" width="default" className="min-h-[70vh] pb-20 pt-10">
-        <div className="mx-auto max-w-3xl">{children}</div>
-      </Section>
-    </>
-  );
+  return <MarketingAuthShell wide>{children}</MarketingAuthShell>;
 }

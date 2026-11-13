@@ -1,9 +1,10 @@
 /**
- * ui-design.md §4.2 Screen A — Log In.
+ * ui-design.md §4.2 Screen A — Log In. Restyled to the design system (R5.1);
+ * behaviour, validation and error mapping unchanged.
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { isMfaChallenge, login } from '../../src/api/auth';
 import { setRefreshToken } from '../../src/auth/secure-storage';
 import { getDeviceName, getOrCreateDeviceId } from '../../src/auth/device';
@@ -12,14 +13,17 @@ import { ApiError } from '../../src/api/errors';
 import { mapUserFacingError } from '../../src/lib/user-facing-errors';
 import { SubpageHeader } from '../../src/navigation/SubpageHeader';
 import { AuthMasthead } from '../../src/navigation/AuthMasthead';
-import { Alert, Button, Input, Screen } from '../../src/theme/primitives';
-import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
+import { Button } from '../../src/design';
+import { AuthCard, AuthLink, AuthPage, AuthText, EmailField, FieldGap, PasswordField } from '../../src/screens/auth/AuthScaffold';
+import { Alert } from '../../src/theme/primitives';
+import { useDesignTokens } from '../../src/theme/designTheme';
 import type { ForcedLogoutReason } from '../../src/api/client';
 
 const WAKING_THRESHOLD_MS = 4000;
 
 export default function LoginScreen() {
   const router = useRouter();
+  const t = useDesignTokens();
   const { reason } = useLocalSearchParams<{ reason?: ForcedLogoutReason }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,9 +36,9 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (!isSubmitting) return;
-    const t = setTimeout(() => setIsWaking(true), WAKING_THRESHOLD_MS);
+    const timer = setTimeout(() => setIsWaking(true), WAKING_THRESHOLD_MS);
     return () => {
-      clearTimeout(t);
+      clearTimeout(timer);
       setIsWaking(false);
     };
   }, [isSubmitting]);
@@ -85,146 +89,95 @@ export default function LoginScreen() {
     }
   }
 
+  const gap = { marginBottom: t.spacing.s4 };
+
   return (
-    <Screen>
+    <AuthPage>
       <SubpageHeader compact />
-      <AuthMasthead title="Log in" />
-      <Text style={styles.partnerHint}>
-        Security partners: sign in with your operator account.
-      </Text>
+      <AuthCard testID="login-card">
+        <AuthMasthead title="Log in" />
+        <AuthText small style={gap}>
+          Security partners: sign in with your operator account.
+        </AuthText>
 
-      {reason === 'account-suspended' ? (
-        <View style={styles.alertSpacing}>
-          <Alert tone="danger">
-            Your account has been suspended. Contact support for help getting back in.
-          </Alert>
-        </View>
-      ) : reason === 'session-invalid' ? (
-        <View style={styles.alertSpacing}>
-          <Alert tone="info">You were logged out. Log in again to continue.</Alert>
-        </View>
-      ) : null}
-
-      {isLocked ? (
-        <View style={styles.alertSpacing}>
-          <Alert tone="danger" announceAssertively>
-            For your security, we&rsquo;ve paused login attempts on this account. This is
-            temporary and clears automatically. You can reset your password right now to get
-            back in immediately.
-          </Alert>
-        </View>
-      ) : attemptsRemaining !== null && attemptsRemaining <= 1 ? (
-        <View style={styles.alertSpacing}>
-          <Alert tone="warning" announceAssertively>
-            One more incorrect attempt will temporarily lock this account. Reset your password
-            now instead?
-          </Alert>
-        </View>
-      ) : errorMessage ? (
-        <View style={styles.alertSpacing}>
-          <Alert tone="danger" announceAssertively>
-            {errorMessage}
-          </Alert>
-        </View>
-      ) : null}
-
-      <Input
-        label="Email"
-        type="email"
-        value={email}
-        onChangeText={setEmail}
-        editable={!isSubmitting && !isLocked}
-      />
-      <Input
-        label="Password"
-        type="password"
-        value={password}
-        onChangeText={setPassword}
-        editable={!isSubmitting && !isLocked}
-      />
-
-      <View accessibilityLiveRegion="polite" style={isWaking ? styles.alertSpacing : undefined}>
-        {isWaking ? (
-          <Alert tone="info">
-            Waking up the secure server — this can take up to a minute the first time.
-          </Alert>
+        {reason === 'account-suspended' ? (
+          <View style={gap}>
+            <Alert tone="danger">
+              Your account has been suspended. Contact support for help getting back in.
+            </Alert>
+          </View>
+        ) : reason === 'session-invalid' ? (
+          <View style={gap}>
+            <Alert tone="info">You were logged out. Log in again to continue.</Alert>
+          </View>
         ) : null}
-      </View>
 
-      <View style={styles.submitSpacing}>
+        {isLocked ? (
+          <View style={gap}>
+            <Alert tone="danger" announceAssertively>
+              For your security, we&rsquo;ve paused login attempts on this account. This is
+              temporary and clears automatically. You can reset your password right now to get
+              back in immediately.
+            </Alert>
+          </View>
+        ) : attemptsRemaining !== null && attemptsRemaining <= 1 ? (
+          <View style={gap}>
+            <Alert tone="warning" announceAssertively>
+              One more incorrect attempt will temporarily lock this account. Reset your password
+              now instead?
+            </Alert>
+          </View>
+        ) : errorMessage ? (
+          <View style={gap}>
+            <Alert tone="danger" announceAssertively>
+              {errorMessage}
+            </Alert>
+          </View>
+        ) : null}
+
+        <EmailField
+          label="Email"
+          testID="input-email"
+          value={email}
+          onChangeText={setEmail}
+          editable={!isSubmitting && !isLocked}
+        />
+        <FieldGap />
+        <PasswordField
+          label="Password"
+          testID="input-password"
+          value={password}
+          onChangeText={setPassword}
+          editable={!isSubmitting && !isLocked}
+        />
+
+        {/* "Waking server" notice — same trigger and timing as before; only the container is restyled. */}
+        <View accessibilityLiveRegion="polite" style={isWaking ? { marginTop: t.spacing.s4 } : undefined}>
+          {isWaking ? (
+            <Alert tone="info">
+              Waking up the secure server — this can take up to a minute the first time.
+            </Alert>
+          ) : null}
+        </View>
+
         <Button
-          variant="primary"
-          fullWidth
+          label="Log in"
+          testID="login-submit"
           loading={isSubmitting}
           disabled={isLocked || !email || !password}
           onPress={handleSubmit}
-        >
-          Log in
-        </Button>
-      </View>
+          style={{ marginTop: t.spacing.s6 }}
+        />
 
-      <View style={styles.linkRow}>
-        <Text
-          accessibilityRole="link"
-          style={styles.link}
-          onPress={() => router.push('/(auth)/forgot-password')}
-        >
-          Forgot password?
-        </Text>
-      </View>
+        <AuthLink align="right" label="Forgot password?" onPress={() => router.push('/(auth)/forgot-password')} />
 
-      <View style={styles.footerRow}>
-        <Text style={styles.footerText}>New here? </Text>
-        <Text
-          accessibilityRole="link"
-          style={styles.footerLink}
-          onPress={() => router.push('/(auth)/signup')}
-        >
-          Create account
-        </Text>
-      </View>
-    </Screen>
+        <View style={[styles.divider, { borderTopColor: t.colors.borderSubtle }]} />
+        <AuthLink prefix="New here? " label="Create account" onPress={() => router.push('/(auth)/signup')} />
+      </AuthCard>
+    </AuthPage>
   );
 }
 
 const styles = StyleSheet.create({
-  partnerHint: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-    lineHeight: typography.sizes.sm * 1.4,
-  },
-  alertSpacing: {
-    marginBottom: spacing.lg,
-  },
-  submitSpacing: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  linkRow: {
-    alignItems: 'flex-end',
-    minHeight: minTouchTarget,
-    justifyContent: 'center',
-    marginBottom: spacing.lg,
-  },
-  link: {
-    fontSize: typography.sizes.sm,
-    color: colors.glassAccentDeep,
-    fontWeight: '600',
-  },
-  footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    minHeight: minTouchTarget,
-    alignItems: 'center',
-  },
-  footerText: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-  },
-  footerLink: {
-    fontSize: typography.sizes.sm,
-    color: colors.glassAccentDeep,
-    fontWeight: '600',
-  },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth },
 });

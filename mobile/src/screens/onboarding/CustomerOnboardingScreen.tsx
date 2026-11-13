@@ -15,6 +15,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type TextStyle,
 } from 'react-native';
 import { createAsset, listAssets, type Asset, type AssetType } from '../../api/assets';
 import { login, resendVerification, signup, isMfaChallenge } from '../../api/auth';
@@ -56,7 +57,10 @@ import {
   type AccountType,
   type OnboardingStep,
 } from '../../onboarding/onboardingStorage';
-import { Alert, Badge, Button, Card, Input, Screen } from '../../theme/primitives';
+import { Button, GlassCard, TextField } from '../../design';
+import { AuthCard, AuthPage, AuthText, EmailField, FieldGap, PasswordField } from '../auth/AuthScaffold';
+import { useDesignTokens } from '../../theme/designTheme';
+import { Alert, Badge, Card } from '../../theme/primitives';
 import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -88,6 +92,7 @@ export function CustomerOnboardingScreen({
   skipWelcome = false,
 }: CustomerOnboardingScreenProps) {
   const router = useRouter();
+  const t = useDesignTokens();
   const sessionStatus = useSessionStore((s) => s.status);
   const setSignedIn = useSessionStore((s) => s.setSignedIn);
   const signedIn = signedInProp ?? sessionStatus === 'signed-in';
@@ -367,10 +372,20 @@ export function CustomerOnboardingScreen({
     router.replace('/(app)/(tabs)' as Href);
   }
 
-  return (
-    <Screen>
-      <OnboardingProgress step={step} />
+  // Design-system text styles (R5.1): titles in the slab display face, body in the sans face.
+  const ts: Record<'title' | 'subtitle' | 'hint', TextStyle[]> = {
+    title: [t.type.displayMd, { color: t.colors.ink, marginBottom: t.spacing.s2 }],
+    subtitle: [t.type.body, { color: t.colors.inkMuted, marginBottom: t.spacing.s4 }],
+    hint: [t.type.bodySm, { color: t.colors.inkMuted, marginBottom: t.spacing.s3 }],
+  };
 
+  return (
+    <AuthPage>
+      <GlassCard style={styles.progressCard} testID="onboarding-progress-card">
+        <OnboardingProgress step={step} />
+      </GlassCard>
+
+      <AuthCard testID="onboarding-card">
       {error ? (
         <View style={styles.alertSpacing}>
           <Alert tone="danger">{error}</Alert>
@@ -379,25 +394,21 @@ export function CustomerOnboardingScreen({
 
       {step === 'welcome' ? (
         <>
-          <Text style={styles.title}>Welcome to TD IT Solution Insurance</Text>
-          <Text style={styles.subtitle}>
+          <Text style={ts.title}>Welcome to TD IT Solution Insurance</Text>
+          <Text style={ts.subtitle}>
             Protect your valuable assets with flexible insurance and intelligent asset protection.
           </Text>
           <View style={styles.actions}>
-            <Button size="lg" fullWidth onPress={() => setStep('account-type')}>
-              Get Started
-            </Button>
-            <Button variant="secondary" size="lg" fullWidth onPress={() => router.push('/(auth)/login')}>
-              I already have an account
-            </Button>
+            <Button label="Get started" onPress={() => setStep('account-type')} />
+            <Button variant="secondary" label="Log in" onPress={() => router.push('/(auth)/login')} />
           </View>
         </>
       ) : null}
 
       {step === 'account-type' ? (
         <>
-          <Text style={styles.titleMd}>Who are you protecting?</Text>
-          <Text style={styles.subtitle}>Choose the account type that best describes you.</Text>
+          <Text style={ts.title}>Who are you protecting?</Text>
+          <Text style={ts.subtitle}>Choose the account type that best describes you.</Text>
           <View style={styles.cardGrid}>
             {(
               [
@@ -436,12 +447,8 @@ export function CustomerOnboardingScreen({
             ))}
           </View>
           <View style={styles.rowActions}>
-            <Button variant="secondary" onPress={() => (skipWelcome ? router.back() : setStep('welcome'))}>
-              Back
-            </Button>
-            <Button disabled={!accountType} onPress={() => setStep('signup')}>
-              Continue
-            </Button>
+            <Button variant="glass" label="Back" style={styles.rowButton} onPress={() => (skipWelcome ? router.back() : setStep('welcome'))} />
+            <Button label="Continue" style={styles.rowButton} disabled={!accountType} onPress={() => setStep('signup')} />
           </View>
         </>
       ) : null}
@@ -450,12 +457,14 @@ export function CustomerOnboardingScreen({
         <>
           {signupSubStep === 'name' ? (
             <>
-              <Text style={styles.titleMd}>Let&apos;s get to know you</Text>
-              <Text style={styles.hint}>We&apos;ll use your name to personalise your protection experience.</Text>
-              <Input label="First name" value={firstName} onChangeText={setFirstName} required autoCapitalize="words" />
-              <Input label="Last name" value={lastName} onChangeText={setLastName} required autoCapitalize="words" />
+              <Text style={ts.title}>Let&apos;s get to know you</Text>
+              <Text style={ts.hint}>We&apos;ll use your name to personalise your protection experience.</Text>
+              <TextField label="First name" value={firstName} onChangeText={setFirstName} autoCapitalize="words" />
+              <FieldGap />
+              <TextField label="Last name" value={lastName} onChangeText={setLastName} autoCapitalize="words" />
               <Button
-                fullWidth
+                label="Continue"
+                style={styles.mtLg}
                 onPress={() => {
                   if (!firstName.trim() || !lastName.trim()) {
                     setError('Enter your first and last name.');
@@ -469,22 +478,22 @@ export function CustomerOnboardingScreen({
                   });
                   setSignupSubStep('contact');
                 }}
-              >
-                Continue
-              </Button>
+              />
             </>
           ) : null}
           {signupSubStep === 'contact' ? (
             <>
-              <Text style={styles.titleMd}>How can we reach you?</Text>
-              <Text style={styles.hint}>We&apos;ll send verification and important alerts to your email.</Text>
-              <Input label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" required />
-              <Input label="Mobile number" value={mobile} onChangeText={setMobile} keyboardType="phone-pad" hint="Optional — for future SMS alerts." />
+              <Text style={ts.title}>How can we reach you?</Text>
+              <Text style={ts.hint}>We&apos;ll send verification and important alerts to your email.</Text>
+              <EmailField label="Email" value={email} onChangeText={setEmail} />
+              <FieldGap />
+              <TextField label="Mobile number" value={mobile} onChangeText={setMobile} keyboardType="phone-pad" />
+              <AuthText small style={styles.fieldHint}>Optional — for future SMS alerts.</AuthText>
               <View style={styles.rowActions}>
-                <Button variant="secondary" onPress={() => setSignupSubStep('name')}>
-                  Back
-                </Button>
+                <Button variant="glass" label="Back" style={styles.rowButton} onPress={() => setSignupSubStep('name')} />
                 <Button
+                  label="Continue"
+                  style={styles.rowButton}
                   onPress={() => {
                     if (!EMAIL_PATTERN.test(email.trim())) {
                       setError('Enter a valid email address.');
@@ -497,17 +506,16 @@ export function CustomerOnboardingScreen({
                     setError(null);
                     setSignupSubStep('password');
                   }}
-                >
-                  Continue
-                </Button>
+                />
               </View>
             </>
           ) : null}
           {signupSubStep === 'password' ? (
             <>
-              <Text style={styles.titleMd}>Secure your account</Text>
-              <Input label="Password" value={password} onChangeText={setPassword} type="password" hint={`At least ${PASSWORD_MIN_LENGTH} characters.`} required />
-              <Input label="Confirm password" value={confirmPassword} onChangeText={setConfirmPassword} type="password" required />
+              <Text style={ts.title}>Secure your account</Text>
+              <PasswordField label="Password" value={password} onChangeText={setPassword} textContentType="newPassword" />
+              <AuthText small style={styles.fieldHint}>{`At least ${PASSWORD_MIN_LENGTH} characters.`}</AuthText>
+              <PasswordField label="Confirm password" value={confirmPassword} onChangeText={setConfirmPassword} textContentType="newPassword" />
               <Pressable
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: consentAccepted }}
@@ -520,37 +528,32 @@ export function CustomerOnboardingScreen({
                 <Text style={styles.consentText}>I agree to the Terms and Privacy Policy.</Text>
               </Pressable>
               <View style={styles.rowActions}>
-                <Button variant="secondary" onPress={() => setSignupSubStep('contact')}>
-                  Back
-                </Button>
-                <Button loading={loading} onPress={() => void handleSignup()}>
-                  Create account
-                </Button>
+                <Button variant="glass" label="Back" style={styles.rowButton} onPress={() => setSignupSubStep('contact')} />
+                <Button label="Create account" style={styles.rowButton} loading={loading} onPress={() => void handleSignup()} />
               </View>
             </>
           ) : null}
 
           <Text style={styles.sectionDivider}>Already registered?</Text>
-          <Button variant="tertiary" fullWidth onPress={() => router.push('/(auth)/login')}>
-            Log in instead
-          </Button>
+          <Button variant="glass" label="Log in instead" onPress={() => router.push('/(auth)/login')} />
         </>
       ) : null}
 
       {step === 'verify' ? (
         <>
           <Badge tone="warning">Verify your account</Badge>
-          <Text style={[styles.titleMd, styles.mtMd]}>
+          <Text style={[ts.title, styles.mtMd]}>
             {firstName.trim()
               ? `Almost there, ${firstName.trim()}`
               : 'Check your inbox'}
           </Text>
-          <Text style={styles.subtitle}>
+          <Text style={ts.subtitle}>
             Open the verification link we sent to your email, then continue below.
           </Text>
           <View style={styles.actions}>
             <Button
               variant="secondary"
+              label="Resend email"
               loading={loading}
               onPress={async () => {
                 setLoading(true);
@@ -562,11 +565,10 @@ export function CustomerOnboardingScreen({
                   setLoading(false);
                 }
               }}
-            >
-              Resend email
-            </Button>
+            />
             {signedIn ? (
               <Button
+                label="Continue"
                 onPress={async () => {
                   await refreshData();
                   try {
@@ -577,19 +579,16 @@ export function CustomerOnboardingScreen({
                     setError('Could not verify account status. Try again.');
                   }
                 }}
-              >
-                I&apos;ve verified — continue
-              </Button>
+              />
             ) : null}
           </View>
           {!signedIn ? (
             <>
               <Text style={styles.sectionDivider}>Already verified? Log in to continue</Text>
-              <Input label="Email" value={loginEmail} onChangeText={setLoginEmail} keyboardType="email-address" autoCapitalize="none" />
-              <Input label="Password" value={loginPassword} onChangeText={setLoginPassword} type="password" />
-              <Button fullWidth loading={loading} onPress={() => void handleLogin()}>
-                Log in and continue
-              </Button>
+              <EmailField label="Email" value={loginEmail} onChangeText={setLoginEmail} />
+              <FieldGap />
+              <PasswordField label="Password" value={loginPassword} onChangeText={setLoginPassword} />
+              <Button label="Log in" style={styles.mtLg} loading={loading} onPress={() => void handleLogin()} />
             </>
           ) : null}
         </>
@@ -597,11 +596,11 @@ export function CustomerOnboardingScreen({
 
       {step === 'plan' ? (
         <>
-          <Text style={styles.titleMd}>Choose an insurance plan</Text>
-          <Text style={styles.subtitle}>
+          <Text style={ts.title}>Choose an insurance plan</Text>
+          <Text style={ts.subtitle}>
             Select the plan that matches how many devices you want to protect. Payment is configured in a later step.
           </Text>
-          {step === 'plan' && !plansLoaded ? <Text style={styles.hint}>Loading plans…</Text> : null}
+          {step === 'plan' && !plansLoaded ? <Text style={ts.hint}>Loading plans…</Text> : null}
           {plans.length > 0 ? (
             <PlanCatalogPicker
               plans={plans}
@@ -617,8 +616,8 @@ export function CustomerOnboardingScreen({
 
       {step === 'asset-category' ? (
         <>
-          <Text style={styles.titleMd}>Let&apos;s protect your first asset</Text>
-          <Text style={styles.subtitle}>What would you like to protect?</Text>
+          <Text style={ts.title}>Let&apos;s protect your first asset</Text>
+          <Text style={ts.subtitle}>What would you like to protect?</Text>
           <View style={styles.categoryGrid}>
             {ASSET_CATEGORY_OPTIONS.map((opt) => (
               <Pressable
@@ -639,29 +638,26 @@ export function CustomerOnboardingScreen({
             ))}
           </View>
           {assets.length > 0 ? (
-            <Button variant="secondary" onPress={() => setStep('review')}>
-              {`Skip to review (${assets.length} asset${assets.length === 1 ? '' : 's'})`}
-            </Button>
+            <Button variant="secondary" label="Skip to review" onPress={() => setStep('review')} />
           ) : null}
         </>
       ) : null}
 
       {step === 'asset-form' && selectedAssetType ? (
         <>
-          <Text style={styles.titleMd}>
+          <Text style={ts.title}>
             {ASSET_CATEGORY_OPTIONS.find((o) => o.api === selectedAssetType)?.prompt ??
               'Register your asset'}
           </Text>
-          <Input
+          <TextField
             label="Asset name"
             value={displayName}
             onChangeText={setDisplayName}
-            placeholder="e.g. MacBook Pro, Toyota Corolla"
-            required
           />
+          <AuthText small style={styles.fieldHint}>For example MacBook Pro or Toyota Corolla.</AuthText>
           {requiredFieldsForType(selectedAssetType).map((key) => (
-            <Input
-              key={key}
+            <View key={key} style={styles.fieldGap}>
+            <TextField
               label={fieldLabel(key)}
               value={assetFields[key] ?? ''}
               onChangeText={(v) => {
@@ -669,22 +665,23 @@ export function CustomerOnboardingScreen({
                 setAssetFields(next);
                 void saveAssetDraft(next);
               }}
-              required
               keyboardType={key === 'year' ? 'number-pad' : 'default'}
               autoCapitalize="none"
             />
+            </View>
           ))}
-          <Input
+          <FieldGap />
+          <TextField
             label="Estimated value (ZAR, optional)"
             value={estimatedValue}
             onChangeText={setEstimatedValue}
             keyboardType="decimal-pad"
           />
           <View style={styles.rowActions}>
-            <Button variant="secondary" onPress={() => setStep('asset-category')}>
-              Back
-            </Button>
+            <Button variant="glass" label="Back" style={styles.rowButton} onPress={() => setStep('asset-category')} />
             <Button
+              label="Continue"
+              style={styles.rowButton}
               onPress={() => {
                 if (!displayName.trim()) {
                   setError('Enter a name for this asset.');
@@ -700,38 +697,32 @@ export function CustomerOnboardingScreen({
                 setError(null);
                 setStep('tracking-info');
               }}
-            >
-              Continue
-            </Button>
+            />
           </View>
         </>
       ) : null}
 
       {step === 'tracking-info' ? (
         <>
-          <Text style={styles.titleMd}>Connect your protection</Text>
-          <Text style={styles.subtitle}>
+          <Text style={ts.title}>Connect your protection</Text>
+          <Text style={ts.subtitle}>
             Some assets can be paired with a compatible tracking device for additional protection.
           </Text>
           <TrackingConnectionDiagram />
-          <Text style={styles.hint}>
+          <Text style={ts.hint}>
             Tracking depends on compatible hardware, device assignment and connectivity. Not every insured asset
             includes tracking.
           </Text>
           <View style={styles.rowActions}>
-            <Button variant="secondary" onPress={() => setStep('asset-form')}>
-              Back
-            </Button>
-            <Button loading={loading} onPress={() => void handleRegisterAsset()}>
-              Register asset
-            </Button>
+            <Button variant="glass" label="Back" style={styles.rowButton} onPress={() => setStep('asset-form')} />
+            <Button label="Register asset" style={styles.rowButton} loading={loading} onPress={() => void handleRegisterAsset()} />
           </View>
         </>
       ) : null}
 
       {step === 'review' ? (
         <>
-          <Text style={styles.titleMd}>Your protection summary</Text>
+          <Text style={ts.title}>Your protection summary</Text>
           <Card padding="md" style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Account</Text>
             <Text style={styles.summaryValue}>{account?.email ?? email}</Text>
@@ -741,7 +732,7 @@ export function CustomerOnboardingScreen({
               {selectedPlan ? ` (${formatPlanPrice(selectedPlan)})` : ''}
             </Text>
             {selectedPlan?.maxAssets != null ? (
-              <Text style={styles.hint}>
+              <Text style={ts.hint}>
                 Asset allowance: {formatAssetUsage(assets.length, selectedPlan.maxAssets)}
               </Text>
             ) : null}
@@ -750,12 +741,12 @@ export function CustomerOnboardingScreen({
             </View>
             <Text style={[styles.summaryLabel, styles.mtMd]}>Protected assets</Text>
             {assets.length === 0 ? (
-              <Text style={styles.hint}>No assets registered yet.</Text>
+              <Text style={ts.hint}>No assets registered yet.</Text>
             ) : (
               assets.map((a) => (
                 <Text key={a.id} style={styles.assetLine}>
                   {a.displayName}{' '}
-                  <Text style={styles.hint}>({a.assetType ? formatAssetType(a.assetType) : 'asset'})</Text>
+                  <Text style={[t.type.bodySm, { color: t.colors.inkMuted }]}>({a.assetType ? formatAssetType(a.assetType) : 'asset'})</Text>
                 </Text>
               ))
             )}
@@ -770,16 +761,12 @@ export function CustomerOnboardingScreen({
                   {assetLimitUpgradeMessage(selectedPlan)} View upgrade options from your plan tab
                   after setup.
                 </Alert>
-                <Button variant="secondary" onPress={() => router.push('/(app)/policy' as Href)}>
-                  View upgrade options
-                </Button>
+                <Button variant="secondary" label="View upgrade options" onPress={() => router.push('/(app)/policy' as Href)} />
               </>
             ) : (
-              <Button variant="secondary" onPress={() => setStep('asset-category')}>
-                Add another asset
-              </Button>
+              <Button variant="secondary" label="Add another asset" onPress={() => setStep('asset-category')} />
             )}
-            <Button onPress={() => void handleFinish()}>Continue</Button>
+            <Button label="Continue" onPress={() => void handleFinish()} />
           </View>
         </>
       ) : null}
@@ -790,10 +777,10 @@ export function CustomerOnboardingScreen({
             <ShieldCheckIcon size={40} color={colors.success} />
           </View>
           <Badge tone="emerald">You&apos;re protected</Badge>
-          <Text style={[styles.titleMd, styles.mtMd]}>
+          <Text style={[ts.title, styles.mtMd]}>
             {firstName.trim() ? `Welcome, ${firstName.trim()}` : 'Welcome to TD IT Solution Insurance'}
           </Text>
-          <Text style={styles.subtitle}>
+          <Text style={ts.subtitle}>
             Your asset has been successfully added to your account. Manage your protection from the app.
           </Text>
           <Card padding="md" style={styles.summaryCard}>
@@ -801,12 +788,11 @@ export function CustomerOnboardingScreen({
             <SuccessRow label="Asset" value="Registered" done />
             <SuccessRow label="Tracking" value="Pending setup" pending />
           </Card>
-          <Button fullWidth onPress={() => void handleGoToApp()}>
-            Go to my protection
-          </Button>
+          <Button label="Go to protection" onPress={() => void handleGoToApp()} />
         </>
       ) : null}
-    </Screen>
+      </AuthCard>
+    </AuthPage>
   );
 }
 
@@ -868,28 +854,19 @@ const successRowStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  titleMd: {
-    fontSize: typography.sizes.xl,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-    marginBottom: spacing.lg,
-  },
-  hint: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
+  progressCard: {
     marginBottom: spacing.md,
+  },
+  rowButton: {
+    flex: 1,
+    minWidth: 140,
+  },
+  mtLg: { marginTop: spacing.lg },
+  fieldGap: { marginTop: spacing.md },
+  fieldHint: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.sm,
   },
   actions: {
     gap: spacing.md,

@@ -1,9 +1,8 @@
 import { FormEvent, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge, Button, Input, SectionHeading } from '../components';
-import { ArrowLink } from '../components/ArrowLink';
-import { InlineAlert } from '../dashboard/components/ui';
-import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
+import { TdButton, TdTextField } from '../components/td';
+import { TD_FOCUS } from '../components/td/cx';
+import { AuthAlert, AuthEyebrow, AuthLink, MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { SupabaseAuthConfigNotice } from '../customer/components/SupabaseAuthConfigNotice';
 import { resendVerificationEmail, signup } from '../customer/api/auth';
 import { mapUserFacingError } from '../lib/user-facing-errors';
@@ -76,34 +75,25 @@ export function CustomerSignupPage() {
     return (
       <MarketingAuthShell>
         <SupabaseAuthConfigNotice />
-        <Badge tone="emerald">Check your email</Badge>
-        <SectionHeading
-          as="h1"
-          title="Verify your email"
-          size="md"
-          className="mt-4 mb-2"
-        />
-        <p className="text-base text-text-secondary">
+        <AuthEyebrow>Check your email</AuthEyebrow>
+        <h1 className="display-md mb-td-2 text-td-ink">Verify your email</h1>
+        <p className="body-lg text-td-ink-muted">
           Supabase Auth sent a verification link to{' '}
-          <span className="font-medium text-text-primary">{email.trim()}</span>. Open it on this
+          <span className="font-semibold text-td-ink">{email.trim()}</span>. Open it on this
           device to activate your account, then log in here.
         </p>
-        <p className="mt-4 text-sm text-text-secondary">
+        <p className="body mt-td-4 text-td-ink-muted">
           Didn&apos;t receive it? Check spam, or resend below.
         </p>
-        {formError ? (
-          <div className="mt-4">
-            <InlineAlert tone="danger">{formError}</InlineAlert>
-          </div>
-        ) : null}
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Button variant="secondary" fullWidth loading={loading} onClick={() => void onResend()}>
+        {formError ? <AuthAlert tone="danger" className="mt-td-4">{formError}</AuthAlert> : null}
+        <div className="mt-td-6 flex flex-col gap-td-3 sm:flex-row">
+          <TdButton variant="secondary" className="flex-1" loading={loading} onClick={() => void onResend()}>
             Resend verification email
-          </Button>
-          <Link to="/login" className="flex-1">
-            <Button variant="primary" fullWidth>
+          </TdButton>
+          <Link to="/login" className={`flex-1 rounded-td-pill ${TD_FOCUS}`}>
+            <TdButton variant="primary" className="w-full" tabIndex={-1}>
               Log in
-            </Button>
+            </TdButton>
           </Link>
         </div>
       </MarketingAuthShell>
@@ -112,14 +102,14 @@ export function CustomerSignupPage() {
 
   return (
     <MarketingAuthShell>
-      <SectionHeading as="h1" title="Create your account" size="md" className="mb-1" />
-      <p className="mb-6 text-sm text-text-secondary">Takes about a minute. Secured by Supabase Auth.</p>
+      <h1 className="display-md mb-td-1 text-td-ink">Create your account</h1>
+      <p className="body mb-td-6 text-td-ink-muted">Takes about a minute. Secured by Supabase Auth.</p>
 
-      {formError ? <InlineAlert tone="danger">{formError}</InlineAlert> : null}
+      {formError ? <AuthAlert tone="danger">{formError}</AuthAlert> : null}
       <SupabaseAuthConfigNotice />
 
-      <form className="mt-4 space-y-4" onSubmit={onSubmit} noValidate>
-        <Input floatingLabel
+      <form className="mt-td-4 space-y-td-4" onSubmit={onSubmit} noValidate>
+        <TdTextField
           label="Email"
           type="email"
           value={email}
@@ -128,16 +118,16 @@ export function CustomerSignupPage() {
           autoComplete="email"
           required
         />
-        <Input floatingLabel
+        <TdTextField
           label="Password"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
-          hint={`At least ${PASSWORD_MIN_LENGTH} characters.`}
+          help={`At least ${PASSWORD_MIN_LENGTH} characters.`}
           required
         />
-        <Input floatingLabel
+        <TdTextField
           label="Confirm password"
           type="password"
           value={confirmPassword}
@@ -147,36 +137,26 @@ export function CustomerSignupPage() {
           required
         />
 
-        <label className="flex cursor-pointer items-start gap-3 text-sm text-text-secondary">
+        <label className="body flex cursor-pointer items-start gap-td-3 text-td-ink-muted">
           <input
             type="checkbox"
-            className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-accent-gold-deep"
+            className={`mt-px h-5 w-5 flex-none rounded-td-sm border-td-border-control accent-td-action-primary ${TD_FOCUS}`}
             checked={consentAccepted}
             onChange={(e) => setConsentAccepted(e.target.checked)}
           />
           <span>
-            I agree to the{' '}
-            <ArrowLink href="/terms" size="sm">
-              Terms of Service
-            </ArrowLink>{' '}
-            and{' '}
-            <ArrowLink href="/privacy" size="sm">
-              Privacy Policy
-            </ArrowLink>
-            .
+            I agree to the <AuthLink to="/terms">Terms of Service</AuthLink> and{' '}
+            <AuthLink to="/privacy">Privacy Policy</AuthLink>.
           </span>
         </label>
 
-        <Button type="submit" fullWidth loading={loading}>
+        <TdButton type="submit" className="w-full" loading={loading}>
           Sign up
-        </Button>
+        </TdButton>
       </form>
 
-      <p className="mt-6 text-center text-sm text-text-secondary">
-        Already have an account?{' '}
-        <ArrowLink href="/login" size="sm">
-          Log in
-        </ArrowLink>
+      <p className="body-sm mt-td-6 text-center text-td-ink-muted">
+        Already have an account? <AuthLink to="/login">Log in</AuthLink>
       </p>
     </MarketingAuthShell>
   );

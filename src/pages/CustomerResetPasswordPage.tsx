@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Button, Input, SectionHeading } from '../components';
-import { InlineAlert } from '../dashboard/components/ui';
-import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
+import { TdButton, TdTextField } from '../components/td';
+import { TD_FOCUS } from '../components/td/cx';
+import { AuthAlert, MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { resetPasswordConfirm, resetPasswordMfaVerify, type ResetCredential } from '../customer/api/auth';
 import { ApiError } from '../customer/api/errors';
 import { mapUserFacingError } from '../lib/user-facing-errors';
@@ -247,7 +247,7 @@ export function CustomerResetPasswordPage() {
   if (step === 'loading') {
     return (
       <MarketingAuthShell>
-        <SectionHeading as="h1" title="Loading…" size="md" className="mb-2" />
+        <h1 className="display-md mb-td-2 text-td-ink">Loading…</h1>
       </MarketingAuthShell>
     );
   }
@@ -255,12 +255,12 @@ export function CustomerResetPasswordPage() {
   if (step === 'no-session') {
     return (
       <MarketingAuthShell>
-        <SectionHeading as="h1" title="Reset link required" size="md" className="mb-2" />
-        <p className="text-sm text-text-secondary">
+        <h1 className="display-md mb-td-2 text-td-ink">Reset link required</h1>
+        <p className="body text-td-ink-muted">
           Open the password reset link from your email on this device first.
         </p>
-        <Link to="/forgot-password" className="mt-6 inline-block">
-          <Button variant="primary">Request a new link</Button>
+        <Link to="/forgot-password" className={`mt-td-6 inline-block rounded-td-pill ${TD_FOCUS}`}>
+          <TdButton variant="primary" tabIndex={-1}>Request new link</TdButton>
         </Link>
       </MarketingAuthShell>
     );
@@ -269,8 +269,8 @@ export function CustomerResetPasswordPage() {
   if (step === 'success') {
     return (
       <MarketingAuthShell>
-        <SectionHeading as="h1" title="Password updated" size="md" className="mb-2" />
-        <p className="text-sm text-text-secondary">
+        <h1 className="display-md mb-td-2 text-td-ink">Password updated</h1>
+        <p className="body text-td-ink-muted">
           Your password was changed and every signed-in session was signed out for your security.
           Redirecting you to log in…
         </p>
@@ -281,35 +281,35 @@ export function CustomerResetPasswordPage() {
   if (step === 'mfa') {
     return (
       <MarketingAuthShell>
-        <SectionHeading as="h1" title="Verify it's you" size="md" className="mb-2" />
-        <p className="mb-6 text-sm text-text-secondary">
+        <h1 className="display-md mb-td-2 text-td-ink">Verify it&apos;s you</h1>
+        <p className="body mb-td-6 text-td-ink-muted">
           This account requires a second factor to finish resetting the password. Enter the
           6-digit code from your authenticator app.
         </p>
 
-        {mfaError ? <InlineAlert tone="danger">{mfaError}</InlineAlert> : null}
+        {mfaError ? <AuthAlert tone="danger">{mfaError}</AuthAlert> : null}
 
         {!mfaChallengeExpired && mfaSecondsRemaining !== null ? (
-          <p className="mb-4 text-xs text-text-secondary">
+          <p className="body-sm mb-td-4 mt-td-4 text-td-ink-muted">
             This code entry expires in {Math.floor(mfaSecondsRemaining / 60)}:
             {String(mfaSecondsRemaining % 60).padStart(2, '0')}.
           </p>
         ) : null}
 
         {mfaChallengeExpired ? (
-          <div className="mt-4 space-y-4">
-            <InlineAlert tone="warning">
+          <div className="mt-td-4 space-y-td-4">
+            <AuthAlert tone="warning">
               This verification step expired. Request a new password reset link to try again.
-            </InlineAlert>
-            <Link to="/forgot-password">
-              <Button variant="primary" fullWidth>
-                Request a new link
-              </Button>
+            </AuthAlert>
+            <Link to="/forgot-password" className={`block rounded-td-pill ${TD_FOCUS}`}>
+              <TdButton variant="primary" className="w-full" tabIndex={-1}>
+                Request new link
+              </TdButton>
             </Link>
           </div>
         ) : (
-          <form className="mt-4 space-y-4" onSubmit={onSubmitMfa}>
-            <Input floatingLabel
+          <form className="mt-td-4 space-y-td-4" onSubmit={onSubmitMfa}>
+            <TdTextField
               label="6-digit code"
               type="text"
               inputMode="numeric"
@@ -319,16 +319,16 @@ export function CustomerResetPasswordPage() {
               maxLength={6}
               required
             />
-            <Button
+            <TdButton
               type="submit"
-              fullWidth
+              className="w-full"
               loading={submittingMfa}
               disabled={Boolean(mfaRetrySecondsRemaining && mfaRetrySecondsRemaining > 0)}
             >
               {mfaRetrySecondsRemaining && mfaRetrySecondsRemaining > 0
                 ? `Try again in ${Math.ceil(mfaRetrySecondsRemaining / 60)} min`
                 : 'Verify and finish'}
-            </Button>
+            </TdButton>
           </form>
         )}
       </MarketingAuthShell>
@@ -337,21 +337,21 @@ export function CustomerResetPasswordPage() {
 
   return (
     <MarketingAuthShell>
-      <SectionHeading as="h1" title="Choose a new password" size="md" className="mb-2" />
+      <h1 className="display-md mb-td-2 text-td-ink">Choose a new password</h1>
 
-      {passwordError ? <InlineAlert tone="danger">{passwordError}</InlineAlert> : null}
+      {passwordError ? <AuthAlert tone="danger">{passwordError}</AuthAlert> : null}
 
-      <form className="mt-4 space-y-4" onSubmit={onSubmitPassword}>
-        <Input floatingLabel
+      <form className="mt-td-4 space-y-td-4" onSubmit={onSubmitPassword}>
+        <TdTextField
           label="New password"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
-          hint={`At least ${PASSWORD_MIN_LENGTH_HINT} characters.`}
+          help={`At least ${PASSWORD_MIN_LENGTH_HINT} characters.`}
           required
         />
-        <Input floatingLabel
+        <TdTextField
           label="Confirm password"
           type="password"
           value={confirmPassword}
@@ -359,9 +359,9 @@ export function CustomerResetPasswordPage() {
           autoComplete="new-password"
           required
         />
-        <Button type="submit" fullWidth loading={submittingPassword}>
+        <TdButton type="submit" className="w-full" loading={submittingPassword}>
           Update password
-        </Button>
+        </TdButton>
       </form>
     </MarketingAuthShell>
   );

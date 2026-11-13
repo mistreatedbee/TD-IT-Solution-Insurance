@@ -1,9 +1,8 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BrandLogo } from '../onboarding/marketing/components/BrandLogo';
 import { useOnboardingLayout } from '../onboarding/marketing/hooks/useOnboardingLayout';
-import { useColors } from '../theme/ThemeProvider';
-import { spacing, typography } from '../theme/tokens';
+import { useDesignTokens } from '../theme/designTheme';
 
 export interface AuthMastheadProps {
   title: string;
@@ -14,54 +13,41 @@ export interface AuthMastheadProps {
 
 /**
  * Centered logo + screen title for auth form routes (login, signup, etc.).
- * Form fields stay left-aligned below the optional divider.
+ * Title is display-md in the slab face; subtitle is body in the sans face
+ * (Design System rollout R5.1). Callers place it on a card — never on the ground.
  */
 export function AuthMasthead({ title, subtitle, showDivider = true }: AuthMastheadProps) {
-  const colors = useColors();
+  const t = useDesignTokens();
   const { isVeryCompact } = useOnboardingLayout();
-
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        wrap: {
-          alignItems: 'center',
-          marginBottom: isVeryCompact ? spacing.md : spacing.lg,
-        },
-        title: {
-          fontSize: typography.sizes['2xl'],
-          fontWeight: '700',
-          color: colors.textPrimary,
-          textAlign: 'center',
-          marginTop: spacing.lg,
-        },
-        subtitle: {
-          fontSize: typography.sizes.base,
-          color: colors.textSecondary,
-          textAlign: 'center',
-          lineHeight: typography.sizes.base * 1.4,
-          marginTop: spacing.xs,
-        },
-        divider: {
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: colors.hairline,
-          marginBottom: spacing.xl,
-        },
-      }),
-    [colors, isVeryCompact],
-  );
 
   return (
     <View>
-      <View style={styles.wrap}>
-        <BrandLogo size="hero" showPlate={false} />
-        <Text accessibilityRole="header" style={styles.title}>
+      <View style={[styles.wrap, { marginBottom: isVeryCompact ? t.spacing.s3 : t.spacing.s4 }]}>
+        <BrandLogo size="auth" showPlate={false} />
+        <Text
+          accessibilityRole="header"
+          style={[t.type.displayMd, { color: t.colors.ink, textAlign: 'center', marginTop: t.spacing.s4 }]}
+        >
           {title}
         </Text>
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        {subtitle ? (
+          <Text style={[t.type.body, { color: t.colors.inkMuted, textAlign: 'center', marginTop: t.spacing.s1 }]}>
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
       {showDivider ? (
-        <View style={styles.divider} accessibilityElementsHidden importantForAccessibility="no" />
+        <View
+          style={[styles.divider, { borderBottomColor: t.colors.borderSubtle, marginBottom: t.spacing.s5 }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
       ) : null}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  wrap: { alignItems: 'center' },
+  divider: { borderBottomWidth: StyleSheet.hairlineWidth },
+});

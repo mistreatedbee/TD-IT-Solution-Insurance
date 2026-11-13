@@ -1,12 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Input, SectionHeading } from '../components';
-import { ArrowLink } from '../components/ArrowLink';
-import { InlineAlert } from '../dashboard/components/ui';
+import { TdButton, TdTextField } from '../components/td';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
 import { login as loginRequest, verifyMfaChallenge } from '../customer/api/auth';
 import { mapUserFacingError } from '../lib/user-facing-errors';
-import { MarketingAuthShell } from '../customer/components/MarketingAuthShell';
+import { AuthAlert, AuthLink, MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { decodeJwtPayload } from '../lib/jwt';
 import { MfaEnrollmentStep } from '../invitations/MfaEnrollmentStep';
 import {
@@ -48,6 +46,9 @@ import {
  * entry points into the exact same `DashboardAuthProvider` flow — nothing
  * about their behavior changes.
  */
+const LINK_BUTTON =
+  'body-sm min-h-[48px] w-full rounded-td-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-td-focus-ring';
+
 export function CustomerLoginPage() {
   const auth = useCustomerAuth();
   const navigate = useNavigate();
@@ -76,7 +77,7 @@ export function CustomerLoginPage() {
   if (auth.status === 'hydrating') {
     return (
       <MarketingAuthShell>
-        <p className="text-sm text-text-secondary">Loading…</p>
+        <p className="body text-td-ink-muted">Loading…</p>
       </MarketingAuthShell>
     );
   }
@@ -183,15 +184,15 @@ export function CustomerLoginPage() {
 
   return (
     <MarketingAuthShell>
-      <SectionHeading as="h1" title="Log in" size="md" className="mb-1" />
-      <p className="mb-6 text-sm text-text-secondary">
+      <h1 className="display-md mb-td-1 text-td-ink">Log in</h1>
+      <p className="body mb-td-6 text-td-ink-muted">
         Sign in to your TD IT Solution Insurance account.
       </p>
 
-      {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+      {error ? <AuthAlert tone="danger">{error}</AuthAlert> : null}
 
       {enrollmentTicket ? (
-        <div className="mt-4">
+        <div className="mt-td-4">
           <MfaEnrollmentStep
             enrollmentTicket={enrollmentTicket}
             onSuccess={(tokens) => void onEnrollmentSuccess(tokens)}
@@ -199,11 +200,11 @@ export function CustomerLoginPage() {
           />
         </div>
       ) : mfaToken ? (
-        <form className="mt-4 space-y-4" onSubmit={onSubmitMfa}>
-          <p className="text-sm text-text-secondary">
+        <form className="mt-td-4 space-y-td-4" onSubmit={onSubmitMfa}>
+          <p className="body text-td-ink-muted">
             Enter the 6-digit code from your authenticator app.
           </p>
-          <Input floatingLabel
+          <TdTextField
             label="Authentication code"
             value={mfaCode}
             onChange={(e) => setMfaCode(e.target.value)}
@@ -212,16 +213,16 @@ export function CustomerLoginPage() {
             maxLength={6}
             required
           />
-          <Button type="submit" fullWidth loading={loading}>
+          <TdButton type="submit" className="w-full" loading={loading}>
             Verify
-          </Button>
-          <div className="rounded-lg border border-border bg-background-alt p-3 text-sm text-text-secondary">
+          </TdButton>
+          <div className="body-sm rounded-td-md border border-td-border-subtle bg-td-bg-sunken p-td-3 text-td-ink-muted">
             Need help with your authenticator? If you can’t access your code, set up MFA again and verify with a fresh code.
           </div>
-          <div className="space-y-2">
+          <div className="space-y-td-2">
             <button
               type="button"
-              className="w-full text-sm text-text-secondary hover:text-text-primary"
+              className={`${LINK_BUTTON} text-td-ink-muted hover:text-td-ink`}
               onClick={() => {
                 setMfaToken(null);
                 setMfaCode('');
@@ -232,7 +233,7 @@ export function CustomerLoginPage() {
             </button>
             <button
               type="button"
-              className="w-full text-sm font-medium text-primary hover:text-primary/80"
+              className={`${LINK_BUTTON} font-semibold text-td-link hover:underline`}
               onClick={async () => {
                 setMfaToken(null);
                 setMfaCode('');
@@ -249,8 +250,8 @@ export function CustomerLoginPage() {
           </div>
         </form>
       ) : (
-        <form className="mt-4 space-y-4" onSubmit={onSubmitCredentials}>
-          <Input floatingLabel
+        <form className="mt-td-4 space-y-td-4" onSubmit={onSubmitCredentials}>
+          <TdTextField
             label="Email"
             type="email"
             value={email}
@@ -258,7 +259,7 @@ export function CustomerLoginPage() {
             autoComplete="username"
             required
           />
-          <Input floatingLabel
+          <TdTextField
             label="Password"
             type="password"
             value={password}
@@ -266,22 +267,17 @@ export function CustomerLoginPage() {
             autoComplete="current-password"
             required
           />
-          <div className="flex justify-end">
-            <ArrowLink href="/forgot-password" size="sm" tone="muted">
-              Forgot password?
-            </ArrowLink>
+          <div className="body-sm flex justify-end">
+            <AuthLink to="/forgot-password">Forgot password?</AuthLink>
           </div>
-          <Button type="submit" fullWidth loading={loading}>
+          <TdButton type="submit" className="w-full" loading={loading}>
             Log in
-          </Button>
+          </TdButton>
         </form>
       )}
 
-      <p className="mt-6 text-center text-sm text-text-secondary">
-        Don&apos;t have an account?{' '}
-        <ArrowLink href="/get-started" size="sm">
-          Sign up
-        </ArrowLink>
+      <p className="body-sm mt-td-6 text-center text-td-ink-muted">
+        Don&apos;t have an account? <AuthLink to="/get-started">Sign up</AuthLink>
       </p>
     </MarketingAuthShell>
   );

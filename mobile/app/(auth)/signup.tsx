@@ -1,5 +1,6 @@
 /**
- * ui-design.md §4.1 Screen B — Signup Form.
+ * ui-design.md §4.1 Screen B — Signup Form. Restyled to the design system
+ * (R5.1); validation, draft persistence and submission unchanged.
  *
  * Per api-design.md §7/§8 (FU-20): POST /auth/signup returns the identical
  * 202 "check your email" response whether the email is new or already
@@ -17,8 +18,10 @@ import { clearSignupDraft, loadSignupDraft, saveSignupDraft } from '../../src/fo
 import { savePendingSignupAuth } from '../../src/forms/pendingSignupAuth';
 import { SubpageHeader } from '../../src/navigation/SubpageHeader';
 import { AuthMasthead } from '../../src/navigation/AuthMasthead';
-import { Alert, Button, Input, Screen } from '../../src/theme/primitives';
-import { colors, minTouchTarget, spacing, typography } from '../../src/theme/tokens';
+import { Button } from '../../src/design';
+import { AuthCard, AuthLink, AuthPage, EmailField, FieldGap, PasswordField } from '../../src/screens/auth/AuthScaffold';
+import { Alert } from '../../src/theme/primitives';
+import { useDesignTokens } from '../../src/theme/designTheme';
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -49,6 +52,7 @@ function getPasswordChecks(password: string): PasswordCheck[] {
 
 export default function SignupScreen() {
   const router = useRouter();
+  const t = useDesignTokens();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -105,176 +109,122 @@ export default function SignupScreen() {
     }
   }
 
+  const linkStyle = { color: t.colors.link, fontFamily: t.type.label.fontFamily, textDecorationLine: 'underline' as const };
+
   return (
-    <Screen>
+    <AuthPage>
       <SubpageHeader compact />
-      <AuthMasthead title="Create your account" subtitle="Takes about a minute." />
+      <AuthCard testID="signup-card">
+        <AuthMasthead title="Create your account" subtitle="Takes about a minute." />
 
-      {formError ? (
-        <View style={styles.alertSpacing}>
-          <Alert tone="danger" announceAssertively>
-            {formError}
-          </Alert>
-        </View>
-      ) : null}
+        {formError ? (
+          <View style={{ marginBottom: t.spacing.s4 }}>
+            <Alert tone="danger" announceAssertively>
+              {formError}
+            </Alert>
+          </View>
+        ) : null}
 
-      <Input
-        label="Email"
-        type="email"
-        value={email}
-        onChangeText={setEmail}
-        error={fieldErrors.email}
-        editable={!isSubmitting}
-        required
-      />
+        <EmailField
+          label="Email"
+          testID="input-email"
+          value={email}
+          onChangeText={setEmail}
+          error={fieldErrors.email}
+          editable={!isSubmitting}
+        />
+        <FieldGap />
+        <PasswordField
+          label="Password"
+          testID="input-password"
+          value={password}
+          onChangeText={setPassword}
+          editable={!isSubmitting}
+        />
+        {password.length > 0 ? (
+          <View style={[styles.checklist, { marginTop: t.spacing.s2, gap: t.spacing.s1 }]}>
+            {passwordChecks.map((check) => (
+              <View key={check.label} style={[styles.checkRow, { gap: t.spacing.s1 }]}>
+                <CheckIcon size={16} strokeWidth={1.75} color={check.met ? t.colors.success : t.colors.inkMuted} />
+                <Text style={[t.type.bodySm, { color: check.met ? t.colors.success : t.colors.inkMuted }]}>
+                  {check.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        <FieldGap />
+        <PasswordField
+          label="Confirm password"
+          testID="input-confirm-password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          error={fieldErrors.confirmPassword}
+          editable={!isSubmitting}
+        />
 
-      <Input
-        label="Password"
-        type="password"
-        value={password}
-        onChangeText={setPassword}
-        editable={!isSubmitting}
-        required
-      />
-      {password.length > 0 ? (
-        <View style={styles.checklist}>
-          {passwordChecks.map((check) => (
-            <View key={check.label} style={styles.checkRow}>
-              <CheckIcon
-                size={14}
-                color={check.met ? colors.success : colors.slate[300]}
-              />
-              <Text
-                style={[
-                  styles.checkLabel,
-                  { color: check.met ? colors.success : colors.slate[500] },
-                ]}
-              >
-                {check.label}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      <Input
-        label="Confirm password"
-        type="password"
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-        error={fieldErrors.confirmPassword}
-        editable={!isSubmitting}
-        required
-      />
-
-      <Pressable
-        style={styles.consentRow}
-        onPress={() => setConsentAccepted((v) => !v)}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: consentAccepted }}
-        accessibilityLabel="I agree to the Terms of Service and Privacy Notice"
-      >
-        <View style={[styles.checkbox, consentAccepted ? styles.checkboxChecked : undefined]}>
-          {consentAccepted ? <CheckIcon size={14} color={colors.textInverse} /> : null}
-        </View>
-        <Text style={styles.consentLabel}>
-          I agree to the{' '}
-          <Text style={styles.consentLink} onPress={() => router.push('/(auth)/terms' as Href)}>
-            Terms of Service
-          </Text>{' '}
-          and{' '}
-          <Text style={styles.consentLink} onPress={() => router.push('/(auth)/privacy' as Href)}>
-            Privacy Notice
+        <Pressable
+          style={[styles.consentRow, { gap: t.spacing.s2, marginTop: t.spacing.s4 }]}
+          onPress={() => setConsentAccepted((v) => !v)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: consentAccepted }}
+          accessibilityLabel="I agree to the Terms of Service and Privacy Notice"
+        >
+          <View
+            style={[
+              styles.checkbox,
+              {
+                borderColor: consentAccepted ? t.colors.actionSecondary : t.colors.borderControl,
+                backgroundColor: consentAccepted ? t.colors.actionSecondary : 'transparent',
+              },
+            ]}
+          >
+            {consentAccepted ? <CheckIcon size={16} strokeWidth={2} color={t.colors.onActionSecondary} /> : null}
+          </View>
+          <Text style={[t.type.bodySm, styles.consentLabel, { color: t.colors.inkMuted }]}>
+            I agree to the{' '}
+            <Text style={linkStyle} onPress={() => router.push('/(auth)/terms' as Href)}>
+              Terms of Service
+            </Text>{' '}
+            and{' '}
+            <Text style={linkStyle} onPress={() => router.push('/(auth)/privacy' as Href)}>
+              Privacy Notice
+            </Text>
+            .
           </Text>
-          .
-        </Text>
-      </Pressable>
+        </Pressable>
 
-      <View style={styles.submitSpacing}>
         <Button
-          variant="primary"
-          fullWidth
+          label="Create account"
+          testID="signup-submit"
           loading={isSubmitting}
           disabled={!isFormValid}
           onPress={handleSubmit}
-        >
-          Create account
-        </Button>
-      </View>
+          style={{ marginTop: t.spacing.s6 }}
+        />
 
-      <View style={styles.footerRow}>
-        <Text style={styles.footerText}>Already have an account? </Text>
-        <Pressable onPress={() => router.push('/(auth)/login')}>
-          <Text style={styles.footerLink}>Log in</Text>
-        </Pressable>
-      </View>
-    </Screen>
+        <AuthLink
+          prefix="Already have an account? "
+          label="Log in"
+          onPress={() => router.push('/(auth)/login')}
+          style={{ marginTop: t.spacing.s2 }}
+        />
+      </AuthCard>
+    </AuthPage>
   );
 }
 
 const styles = StyleSheet.create({
-  alertSpacing: {
-    marginBottom: spacing.lg,
-  },
-  checklist: {
-    marginTop: -spacing.md,
-    marginBottom: spacing.lg,
-    gap: spacing.xs,
-  },
-  checkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  checkLabel: {
-    fontSize: typography.sizes.xs,
-  },
-  consentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: minTouchTarget,
-    marginBottom: spacing.lg,
-  },
+  checklist: {},
+  checkRow: { flexDirection: 'row', alignItems: 'center' },
+  consentRow: { flexDirection: 'row', alignItems: 'center', minHeight: 48 },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.slate[300],
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxChecked: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  consentLabel: {
-    flex: 1,
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-  },
-  consentLink: {
-    color: colors.glassAccentDeep,
-    fontWeight: '600',
-    textDecorationLine: 'underline',
-  },
-  submitSpacing: {
-    marginBottom: spacing.lg,
-  },
-  footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    minHeight: minTouchTarget,
-    alignItems: 'center',
-  },
-  footerText: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-  },
-  footerLink: {
-    fontSize: typography.sizes.sm,
-    color: colors.glassAccentDeep,
-    fontWeight: '600',
-  },
+  consentLabel: { flex: 1 },
 });

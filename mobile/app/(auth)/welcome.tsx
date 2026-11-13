@@ -1,70 +1,75 @@
 /**
  * Hero welcome — premium first impression before marketing intro or login.
+ * Restyled to the design system (R5.1): gradient Backdrop with the chevron
+ * pattern, hero copy on a glass card, design Buttons. Navigation unchanged.
  */
 import { useRouter } from 'expo-router';
 import React, { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BRAND } from '../../src/brand/constants';
 import { BrandLogo } from '../../src/onboarding/marketing/components/BrandLogo';
 import { HeroDeviceAnimation } from '../../src/onboarding/marketing/components/HeroDeviceAnimation';
 import { useOnboardingLayout } from '../../src/onboarding/marketing/hooks/useOnboardingLayout';
-import { Button, Screen } from '../../src/theme/primitives';
-import { useColors } from '../../src/theme/ThemeProvider';
-import { minTouchTarget, spacing, typography } from '../../src/theme/tokens';
+import { Button } from '../../src/design';
+import { AuthCard, AuthHeading, AuthLink, AuthPage, AuthText } from '../../src/screens/auth/AuthScaffold';
+import { useDesignTokens } from '../../src/theme/designTheme';
 
 export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const colors = useColors();
+  const t = useDesignTokens();
   const fade = useSharedValue(0);
-  const { headlineSize, subtitleSize, buttonSize, isCompact, isVeryCompact, heroHeight } =
-    useOnboardingLayout();
+  const { isCompact, isVeryCompact, heroHeight } = useOnboardingLayout();
 
   useEffect(() => {
-    fade.value = withTiming(1, { duration: 700 });
-  }, [fade]);
+    fade.value = withTiming(1, { duration: t.motion.duration.entrance });
+  }, [fade, t.motion.duration.entrance]);
 
   const headerStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
 
   return (
-    <Screen scroll padded contentContainerStyle={styles.screenContent}>
-      <Animated.View style={[styles.header, headerStyle]}>
+    <AuthPage pattern="chevron" scroll padded contentContainerStyle={[styles.screenContent, { paddingVertical: t.spacing.s4 }]}>
+      <Animated.View style={[styles.header, { marginBottom: t.spacing.s4 }, headerStyle]}>
         <BrandLogo size="hero" showPlate={false} />
       </Animated.View>
 
       <View style={styles.hero}>
-        <Text style={[styles.headline, { fontSize: headlineSize }]}>Protect what matters most.</Text>
-        <Text style={[styles.tagline, { fontSize: isCompact ? typography.sizes.base : typography.sizes.lg }]}>
-          Insurance and intelligent asset protection in one simple app.
-        </Text>
-        {!isVeryCompact ? (
-          <Text style={[styles.supporting, { fontSize: subtitleSize, color: colors.textSecondary }]}>
-            Protect your valuable assets, manage your insurance and stay connected to the things that
-            matter most — all from your phone.
-          </Text>
-        ) : null}
+        <AuthCard variant="glass" radius="xl" testID="welcome-hero-card">
+          <AuthHeading
+            title="Protect what matters most."
+            size={isCompact ? 'md' : 'lg'}
+            subtitle="Insurance and intelligent asset protection in one simple app."
+          />
+          {!isVeryCompact ? (
+            <AuthText small>
+              Protect your valuable assets, manage your insurance and stay connected to the things that
+              matter most — all from your phone.
+            </AuthText>
+          ) : null}
+        </AuthCard>
         <HeroDeviceAnimation height={heroHeight} inlineBadges={isCompact} />
       </View>
 
-      <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-        <Button variant="primary" fullWidth size={buttonSize} onPress={() => router.push('/(auth)/intro')}>
-          Get started
-        </Button>
-        <Button variant="secondary" fullWidth size={buttonSize} onPress={() => router.push('/(auth)/login')}>
-          I already have an account
-        </Button>
-        <Pressable
-          accessibilityRole="button"
+      <AuthCard
+        variant="glass"
+        testID="welcome-actions-card"
+        style={{ marginTop: t.spacing.s4, marginBottom: Math.max(insets.bottom, t.spacing.s3) }}
+      >
+        <Button label="Get started" onPress={() => router.push('/(auth)/intro')} />
+        <Button
+          variant="secondary"
+          label="Log in"
+          onPress={() => router.push('/(auth)/login')}
+          style={{ marginTop: t.spacing.s3 }}
+        />
+        <AuthLink
+          label="Explore first"
           accessibilityLabel="Explore the app introduction first"
           onPress={() => router.push('/(auth)/intro')}
-          style={styles.exploreBtn}
-        >
-          <Text style={[styles.exploreText, { color: colors.textSecondary }]}>Explore first</Text>
-        </Pressable>
-      </View>
-    </Screen>
+        />
+      </AuthCard>
+    </AuthPage>
   );
 }
 
@@ -72,39 +77,12 @@ const styles = StyleSheet.create({
   screenContent: {
     flexGrow: 1,
     justifyContent: 'space-between',
-    paddingVertical: spacing.md,
   },
   header: {
     alignItems: 'center',
-    marginBottom: spacing.sm,
   },
   hero: {
     flexShrink: 1,
-    gap: spacing.xs,
-  },
-  headline: {
-    fontWeight: '700',
-    color: BRAND.primaryMid,
-  },
-  tagline: {
-    fontWeight: '600',
-    color: BRAND.secondary,
-  },
-  supporting: {
-    lineHeight: typography.sizes.base * 1.45,
-  },
-  actions: {
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  exploreBtn: {
-    minHeight: minTouchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exploreText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '600',
-    textDecorationLine: 'underline',
+    gap: 8,
   },
 });
