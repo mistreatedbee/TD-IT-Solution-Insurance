@@ -75,3 +75,12 @@ export const FEATURE_HARDWARE_TRACKING_ENABLED = featureEnabled(
 export const FEATURE_SECURITY_OPERATOR_ENABLED = featureEnabled(
   process.env.EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR,
 );
+
+/**
+ * Feature 020 (Protection checklist, Ruling A): home-screen checklist card
+ * backed by `GET /account/protection-checklist`. Stays off in distributed
+ * builds until Stage 8 clears — see docs/features/020-protection-score/.
+ */
+export const FEATURE_PROTECTION_CHECKLIST_ENABLED = featureEnabled(
+  process.env.EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST,
+);

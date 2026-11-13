@@ -13,5 +13,8 @@ export function shouldPersistQuery(query: Query): boolean {
   if (key[0] === 'assets' && key.length >= 3 && key[2] === 'location-history') return false;
   if (key[0] === 'recovery' && key.includes('location')) return false;
 
+  // Feature 020: protection checklist is in-memory only, never persisted (CR §7).
+  if (key[0] === 'protection-checklist') return false;
+
   return true;
 }

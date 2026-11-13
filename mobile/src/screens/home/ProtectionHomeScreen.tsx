@@ -14,12 +14,14 @@ import {
 } from 'react-native';
 import { resendVerification } from '../../api/auth';
 import { useAccountQuery } from '../../auth/useAccountQuery';
+import { useProtectionChecklistQuery } from '../../api/hooks/useProtectionChecklist';
 import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
 import { useProfileSummaryQuery } from '../../api/hooks/useCustomerProfile';
 import {
   FEATURE_ALERTS_ENABLED,
   FEATURE_KYC_ENABLED,
   FEATURE_LOCATION_TRACKING_ENABLED,
+  FEATURE_PROTECTION_CHECKLIST_ENABLED,
   FEATURE_THEFT_REPORTING_ENABLED,
 } from '../../config/features';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
@@ -30,6 +32,8 @@ import { FeaturedProtectionCard } from './FeaturedProtectionCard';
 import { HomeHeader } from './HomeHeader';
 import { HomeHeroActions } from './HomeHeroActions';
 import { HomeMapPreview } from './HomeMapPreview';
+import { ProtectionHealthCard } from './ProtectionHealthCard';
+import { checklistActionHref, isChecklistActionAvailable } from './checklistActions';
 import { ProfileCompletionCard } from './ProfileCompletionCard';
 import { useProtectionDashboard } from '../../tracking/useProtectionDashboard';
 import type { DashboardAlert } from '../../tracking/types';
@@ -121,6 +125,44 @@ function HomeAlertsPreview({
         ))}
       </SurfaceGroup>
     </AppScreenSection>
+  );
+}
+
+/** Feature 020: never blocks home; own loading/error states. Flag-gated by caller. */
+function ProtectionChecklistSection() {
+  const router = useRouter();
+  const { data, isLoading, isError, refetch } = useProtectionChecklistQuery();
+  const gap = useMemo(
+    () => StyleSheet.create({ wrap: { marginHorizontal: spacing.xl, gap: spacing.md } }),
+    [],
+  );
+
+  if (isLoading) {
+    return (
+      <View style={gap.wrap} accessibilityLabel="Loading your protection checklist">
+        <Skeleton height={160} radius={radius.glassCard} />
+      </View>
+    );
+  }
+  if (isError || !data) {
+    return (
+      <View style={gap.wrap}>
+        <Alert tone="info">Your protection checklist is unavailable right now.</Alert>
+        <Button variant="secondary" size="sm" onPress={() => void refetch()}>
+          Try again
+        </Button>
+      </View>
+    );
+  }
+  return (
+    <View style={gap.wrap}>
+      <ProtectionHealthCard
+        mode="checklist"
+        checklist={data}
+        isActionAvailable={isChecklistActionAvailable}
+        onAction={(action) => router.push(checklistActionHref(action))}
+      />
+    </View>
   );
 }
 
@@ -302,6 +344,8 @@ export function ProtectionHomeScreen() {
         profilePercent={data.profilePercent}
         operational={operational}
       />
+
+      {FEATURE_PROTECTION_CHECKLIST_ENABLED ? <ProtectionChecklistSection /> : null}
 
       <HomeHeroActions
         showTheftReporting={FEATURE_THEFT_REPORTING_ENABLED}

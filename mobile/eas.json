@@ -34,7 +34,8 @@
         "EXPO_PUBLIC_FEATURE_ALERTS": "false",
         "EXPO_PUBLIC_FEATURE_THEFT_REPORTING": "false",
         "EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING": "false",
-        "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false"
+        "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false",
+        "EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST": "false"
       }
     },
     "playInternal": {
@@ -51,7 +52,8 @@
         "EXPO_PUBLIC_FEATURE_ALERTS": "false",
         "EXPO_PUBLIC_FEATURE_THEFT_REPORTING": "false",
         "EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING": "false",
-        "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false"
+        "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false",
+        "EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST": "false"
       }
     },
     "preview-simulator": {
@@ -69,7 +71,8 @@
         "EXPO_PUBLIC_FEATURE_ALERTS": "false",
         "EXPO_PUBLIC_FEATURE_THEFT_REPORTING": "false",
         "EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING": "false",
-        "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false"
+        "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false",
+        "EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST": "false"
       }
     },
     "production": {
@@ -84,7 +87,8 @@
         "EXPO_PUBLIC_FEATURE_ALERTS": "false",
         "EXPO_PUBLIC_FEATURE_THEFT_REPORTING": "false",
         "EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING": "false",
-        "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false"
+        "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false",
+        "EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST": "false"
       }
     }
   },
