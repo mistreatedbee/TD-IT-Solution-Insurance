@@ -70,6 +70,7 @@ function createHarness(opts?: { mfaFails?: boolean; mfaA?: boolean }) {
   };
   const accountsById: Record<string, { id: string; email: string }> = { [A.id]: A, [B.id]: B };
   const seenAccountIds: string[] = [];
+  const mintCalls = { count: 0 };
 
   const ctx = {
     env,
@@ -106,6 +107,7 @@ function createHarness(opts?: { mfaFails?: boolean; mfaA?: boolean }) {
     claims: new Proxy({}, { get: () => unreachable('claims') }),
     supabase: {
       async mintTransientUserAccessToken() {
+        mintCalls.count++;
         if (opts?.mfaFails) throw new Error('supabase down');
         return 't';
       },
@@ -127,6 +129,8 @@ function createHarness(opts?: { mfaFails?: boolean; mfaA?: boolean }) {
     env,
     ctx,
     seenAccountIds,
+    mintCalls,
+    kv,
     async start() {
       await new Promise<void>((r) => {
         server = app.listen(0, '127.0.0.1', () => r());
@@ -258,5 +262,42 @@ describe('GET /account/protection-checklist', () => {
     await h.start();
     for (let i = 0; i < 3; i++) expect((await h.get(PATH, h.auth(A.id))).status).toBe(200);
     expect((await h.get(PATH, h.auth(B.id))).status).toBe(200);
+  });
+
+  it('F1: limiter returns 429 after 6/min, per account (B unaffected)', async () => {
+    h = createHarness();
+    await h.start();
+    for (let i = 0; i < 6; i++) expect((await h.get(PATH, h.auth(A.id))).status).toBe(200);
+    const blocked = await h.get(PATH, h.auth(A.id));
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get('retry-after')).toBeTruthy();
+    expect((await h.get(PATH, h.auth(B.id))).status).toBe(200);
+  });
+
+  it('F1: MFA result cached - second call does not mint again', async () => {
+    h = createHarness({ mfaA: true });
+    await h.start();
+    await h.get(PATH, h.auth(A.id));
+    const body = (await (await h.get(PATH, h.auth(A.id))).json()) as { items: { done: boolean }[] };
+    expect(h.mintCalls.count).toBe(1);
+    expect(body.items[0]!.done).toBe(true);
+  });
+
+  it('F1: failures are not cached', async () => {
+    h = createHarness({ mfaFails: true });
+    await h.start();
+    await h.get(PATH, h.auth(A.id));
+    await h.get(PATH, h.auth(A.id));
+    expect(h.mintCalls.count).toBe(2);
+    expect(await h.kv.get(`mfa-enrolled:${A.id}`)).toBeNull();
+  });
+
+  it('F1: cache key/value contain no PII or token', async () => {
+    h = createHarness({ mfaA: true });
+    await h.start();
+    await h.get(PATH, h.auth(A.id));
+    const key = `mfa-enrolled:${A.id}`;
+    expect(key).not.toContain('@');
+    expect(await h.kv.get(key)).toBe('true');
   });
 });

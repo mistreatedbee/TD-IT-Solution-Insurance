@@ -8,12 +8,14 @@
 import { Router } from 'express';
 import type { AppContext } from '../context.js';
 import { apiError } from '../lib/errors.js';
-import { resolveMfaStatus } from '../lib/mfa-enrollment.js';
-import { DEFAULT_AUTHENTICATED_LIMIT } from '../lib/policy.js';
+import { resolveMfaStatusCached } from '../lib/mfa-enrollment.js';
 import { computeProtectionChecklist } from '../lib/protection-checklist.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { requireUserType } from '../middleware/require-role.js';
+
+/** F1: tight per-account limiter (session accountId only). */
+export const PROTECTION_CHECKLIST_LIMIT = { attempts: 6, windowSeconds: 60 };
 
 export function createProtectionChecklistRouter(ctx: AppContext): Router {
   const router = Router();
@@ -25,7 +27,7 @@ export function createProtectionChecklistRouter(ctx: AppContext): Router {
     requireUserType('customer'),
     createRateLimiter(
       ctx.kv,
-      DEFAULT_AUTHENTICATED_LIMIT,
+      PROTECTION_CHECKLIST_LIMIT,
       (req) => `protection-checklist-get:${req.auth!.accountId}`,
     ),
     async (req, res, next) => {
@@ -41,7 +43,7 @@ export function createProtectionChecklistRouter(ctx: AppContext): Router {
           ctx.customerProfiles.getChecklistFields(accountId),
           ctx.policies.listStatusAndEffectiveDate(accountId),
           ctx.assets.hasActive(accountId),
-          resolveMfaStatus(ctx, account.email),
+          resolveMfaStatusCached(ctx, accountId, account.email),
         ]);
 
         const view = computeProtectionChecklist(

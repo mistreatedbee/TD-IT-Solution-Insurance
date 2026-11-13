@@ -16,7 +16,7 @@ import { validateBody } from '../lib/validation.js';
 import { ProfileVerificationLockedError } from '../repositories/customer-profiles.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
-import { resolveMfaEnrolled } from '../lib/mfa-enrollment.js';
+import { resolveMfaStatusCached } from '../lib/mfa-enrollment.js';
 import { syncAccountAlerts } from '../lib/sync-account-alerts.js';
 
 async function loadProfileExtras(ctx: AppContext, accountId: string, mfaEnrolled: boolean) {
@@ -36,7 +36,7 @@ async function loadProfileExtras(ctx: AppContext, accountId: string, mfaEnrolled
 
 async function serializeProfileForAccount(ctx: AppContext, accountId: string, email: string) {
   const profile = await ctx.customerProfiles.getOrCreateForAccount(accountId);
-  const mfaEnrolled = await resolveMfaEnrolled(ctx, email);
+  const mfaEnrolled = (await resolveMfaStatusCached(ctx, accountId, email)) === true;
   const extras = await loadProfileExtras(ctx, accountId, mfaEnrolled);
   return serializeCustomerProfile(profile, extras);
 }
@@ -64,7 +64,7 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
 
         const profile = await ctx.customerProfiles.getOrCreateForAccount(accountId);
 
-        const mfaEnrolled = await resolveMfaEnrolled(ctx, account.email);
+        const mfaEnrolled = (await resolveMfaStatusCached(ctx, accountId, account.email)) === true;
         const extras = await loadProfileExtras(ctx, accountId, mfaEnrolled);
         res.status(200).json(serializeCustomerProfile(profile, extras));
       } catch (err) {

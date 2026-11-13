@@ -11,6 +11,7 @@
  *   2. Authenticated: caller presents a bearer token (customer opting in).
  *      The account is derived from the token, never from the body.
  */
+import { invalidateMfaEnrolledCache } from '../lib/mfa-enrollment.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
@@ -197,6 +198,7 @@ export function createMfaRouter(ctx: AppContext): Router {
         }
 
         await clearPendingVerification(ctx.kv, enrollmentId);
+        await invalidateMfaEnrolledCache(ctx, pending.accountId);
         await ctx.auditLog.record({ accountId: pending.accountId, eventType: 'mfa_enrolled', ipAddress: clientIp(req) });
         notifyInBackground(
           'auth.mfa.enabled',
