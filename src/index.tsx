@@ -1,6 +1,7 @@
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import './index.css';
+import './styles/td-tokens.css';
 
 // react-refresh/only-export-components: intentionally left as a warning.
 // This barrel re-export of the whole component library is the app's

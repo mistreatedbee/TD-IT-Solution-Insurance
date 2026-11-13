@@ -6,12 +6,17 @@ import { darkColors, lightColors } from './colorSchemes';
 
 export type ColorSchemeName = 'light' | 'dark';
 
+/** Design-system theme name (day = light, night = dark). */
+export type DesignMode = 'day' | 'night';
+
 export type ThemeElevation = ViewStyle;
 
 export interface ThemeContextValue {
   colors: AppColors;
   colorScheme: ColorSchemeName;
   isDark: boolean;
+  /** Design-system theme (day = light, night = dark); read via useDesignTokens(). */
+  designMode: DesignMode;
   elevation: ThemeElevation;
   elevationSoft: ThemeElevation;
 }
@@ -39,6 +44,7 @@ function buildThemeValue(colorScheme: ColorSchemeName): ThemeContextValue {
     colors,
     colorScheme,
     isDark,
+    designMode: isDark ? 'night' : 'day',
     elevation: createElevation(shadowBase, isDark ? 0.35 : 0.06, 10, 2),
     elevationSoft: createElevation(shadowBase, isDark ? 0.25 : 0.04, 6, 1),
   };

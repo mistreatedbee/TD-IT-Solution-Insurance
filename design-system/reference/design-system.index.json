@@ -1,0 +1,240 @@
+{
+  "v": 3,
+  "assetGroups": {
+    "App icon": {
+      "files": {
+        "app-icon-android-background-1024.png": {
+          "blob": "138abae19b9f0fbfe8536104c6b065cb",
+          "name": "app-icon-android-background-1024.png",
+          "size": 904809,
+          "type": "image/png"
+        },
+        "app-icon-android-foreground-1024.png": {
+          "blob": "49adf5db3aecb2c46106330406081da4",
+          "name": "app-icon-android-foreground-1024.png",
+          "size": 33721,
+          "type": "image/png"
+        },
+        "app-icon-android-monochrome-1024.png": {
+          "blob": "49b43c72a219de63c9937e52ffb14227",
+          "name": "app-icon-android-monochrome-1024.png",
+          "size": 34018,
+          "type": "image/png"
+        },
+        "app-icon-ios-1024.png": {
+          "blob": "f6043a92f40272cb5403a63fd5913888",
+          "name": "app-icon-ios-1024.png",
+          "size": 1051284,
+          "type": "image/png"
+        },
+        "app-icon.svg": {
+          "blob": "48f2b32198d2313db11df69497b55df8",
+          "name": "app-icon.svg",
+          "size": 1303,
+          "type": "image/svg+xml"
+        },
+        "notification-icon-96.png": {
+          "blob": "e688ec876a92b9bac6148c2fbf81c6f3",
+          "name": "notification-icon-96.png",
+          "size": 1664,
+          "type": "image/png"
+        }
+      },
+      "name": "App icon",
+      "order": [
+        "app-icon.svg",
+        "app-icon-ios-1024.png",
+        "app-icon-android-foreground-1024.png",
+        "app-icon-android-background-1024.png",
+        "app-icon-android-monochrome-1024.png",
+        "notification-icon-96.png"
+      ],
+      "tile": "l"
+    },
+    "Backgrounds": {
+      "files": {
+        "bg-day-1920x1080.svg": {
+          "blob": "4d7e89e193d04fd76dfaea889a66e807",
+          "name": "bg-day-1920x1080.svg",
+          "size": 1463,
+          "type": "image/svg+xml"
+        },
+        "bg-day-phone-1170x2532.png": {
+          "blob": "55fc1d99eab0e3e39050c5cc56feb1bd",
+          "name": "bg-day-phone-1170x2532.png",
+          "size": 1303636,
+          "type": "image/png"
+        },
+        "bg-night-1920x1080.svg": {
+          "blob": "277fa89cbb2ae00ea385b8dbd8df9b49",
+          "name": "bg-night-1920x1080.svg",
+          "size": 1465,
+          "type": "image/svg+xml"
+        },
+        "bg-night-phone-1170x2532.png": {
+          "blob": "8e54e84bea2dc363f9a21dc57fc72d4a",
+          "name": "bg-night-phone-1170x2532.png",
+          "size": 1201009,
+          "type": "image/png"
+        }
+      },
+      "name": "Backgrounds",
+      "order": [
+        "bg-night-1920x1080.svg",
+        "bg-day-1920x1080.svg",
+        "bg-night-phone-1170x2532.png",
+        "bg-day-phone-1170x2532.png"
+      ],
+      "tile": "l"
+    },
+    "Logo": {
+      "files": {
+        "favicon.svg": {
+          "blob": "4b26983888bae344d9745634bbf37183",
+          "name": "favicon.svg",
+          "size": 823,
+          "type": "image/svg+xml"
+        },
+        "logo-full.png": {
+          "blob": "052146d6358eb04d8266ae7dcf12b0c8",
+          "name": "logo-full.png",
+          "size": 252047,
+          "type": "image/png"
+        },
+        "logo-mark-navy.svg": {
+          "blob": "fd55eb0d9b51dc421992e185ae833d4f",
+          "name": "logo-mark-navy.svg",
+          "size": 684,
+          "type": "image/svg+xml"
+        },
+        "logo-mark-on-dark.svg": {
+          "blob": "174f5285c573694d31381fcc83cc7e6f",
+          "name": "logo-mark-on-dark.svg",
+          "size": 684,
+          "type": "image/svg+xml"
+        },
+        "logo-mark-white.svg": {
+          "blob": "7766ddf6774d55667a32681b12dd8514",
+          "name": "logo-mark-white.svg",
+          "size": 684,
+          "type": "image/svg+xml"
+        },
+        "logo-mark.svg": {
+          "blob": "db854277538452e5c421ccb37d8c4722",
+          "name": "logo-mark.svg",
+          "size": 684,
+          "type": "image/svg+xml"
+        }
+      },
+      "name": "Logo",
+      "order": [
+        "logo-full.png",
+        "logo-mark.svg",
+        "logo-mark-on-dark.svg",
+        "logo-mark-white.svg",
+        "logo-mark-navy.svg",
+        "favicon.svg"
+      ],
+      "tile": "l"
+    },
+    "Patterns": {
+      "files": {
+        "pattern-chevron-dark.svg": {
+          "blob": "45fea3e463c19766fd2061a383aa235f",
+          "name": "pattern-chevron-dark.svg",
+          "size": 281,
+          "type": "image/svg+xml"
+        },
+        "pattern-chevron-light.svg": {
+          "blob": "b6fbd2ac768b3e888e888fdafd93280f",
+          "name": "pattern-chevron-light.svg",
+          "size": 280,
+          "type": "image/svg+xml"
+        },
+        "pattern-dots-dark.svg": {
+          "blob": "b2ba6fec949ca6bea7fb05ecfef345b7",
+          "name": "pattern-dots-dark.svg",
+          "size": 165,
+          "type": "image/svg+xml"
+        },
+        "pattern-dots-light.svg": {
+          "blob": "7091e84f1a0e5ac50658e0aff901283d",
+          "name": "pattern-dots-light.svg",
+          "size": 164,
+          "type": "image/svg+xml"
+        },
+        "pattern-rings-dark.svg": {
+          "blob": "bd7e957afcb0a9e5be1cab7e9922ffb6",
+          "name": "pattern-rings-dark.svg",
+          "size": 749,
+          "type": "image/svg+xml"
+        },
+        "pattern-rings-light.svg": {
+          "blob": "3c07cdd3efbf8edfe53e47e9a2891ce9",
+          "name": "pattern-rings-light.svg",
+          "size": 759,
+          "type": "image/svg+xml"
+        }
+      },
+      "name": "Patterns",
+      "order": [
+        "pattern-chevron-light.svg",
+        "pattern-chevron-dark.svg",
+        "pattern-rings-light.svg",
+        "pattern-rings-dark.svg",
+        "pattern-dots-light.svg",
+        "pattern-dots-dark.svg"
+      ],
+      "tile": "m"
+    },
+    "Splash": {
+      "files": {
+        "splash-1284x2778.png": {
+          "blob": "5e14f87d5edaa779541652c3b76d0e87",
+          "name": "splash-1284x2778.png",
+          "size": 1490672,
+          "type": "image/png"
+        },
+        "splash.svg": {
+          "blob": "0cf86fdd75b8cbcbe63351a261ef56fd",
+          "name": "splash.svg",
+          "size": 2627,
+          "type": "image/svg+xml"
+        }
+      },
+      "name": "Splash",
+      "order": [
+        "splash.svg",
+        "splash-1284x2778.png"
+      ],
+      "tile": "l"
+    }
+  },
+  "blobs": {},
+  "createdOnFiles": {
+    "at": "2026-11-13T08:55:00Z",
+    "v": 1
+  },
+  "docs": {
+    "readme": "project/README.md",
+    "sections": []
+  },
+  "groups": [
+    "Logo",
+    "App icon",
+    "Splash",
+    "Patterns",
+    "Backgrounds"
+  ],
+  "lastChange": {
+    "at": "2026-11-13T08:55:00Z",
+    "by": "Ashley",
+    "note": "First version: tokens, brand book, assets, components and cover built from the supplied logo.",
+    "via": "Claude"
+  },
+  "layout": "files",
+  "libraries": [],
+  "namespace": "TDIT",
+  "sections": {},
+  "title": "TD IT Solution Insurance Design System"
+}

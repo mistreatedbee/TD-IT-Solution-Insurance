@@ -8,6 +8,8 @@
     "demo:security": "node scripts/demo-security.mjs",
     "demo:security:cleanup": "node scripts/demo-security-cleanup.mjs",
     "build": "npx vite build",
+    "tokens:check": "node design-system/check-tokens.mjs",
+    "tokens:build": "node design-system/build-web-css.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint src --ext .js,.jsx,.ts,.tsx",

@@ -18,6 +18,7 @@ import { NetworkProvider, OfflineBanner } from '../src/network/NetworkProvider';
 import { asyncStoragePersister, queryClient, shouldPersistQuery } from '../src/query/queryClient';
 import { AnalyticsBootstrap } from '../src/analytics/AnalyticsBootstrap';
 import { ThemeProvider, useColors } from '../src/theme/ThemeProvider';
+import { useDesignFonts } from '../src/theme/designFonts';
 
 // Start waking the backend as early as possible (module load, before bootstrap).
 warmUpBackend();
@@ -36,6 +37,8 @@ function BootstrapLoading() {
 }
 
 function RootLayoutInner() {
+  // Fire-and-forget: design-system fonts load in the background; first render is not gated on them.
+  useDesignFonts();
   const status = useSessionStore((s) => s.status);
   const appShellGate = useAppShellGate();
   const router = useRouter();

@@ -13,6 +13,7 @@
     "expo-constants": "~57.0.9",
     "expo-crypto": "~57.0.3",
     "expo-device": "~57.0.2",
+    "expo-font": "~57.0.4",
     "expo-glass-effect": "~57.0.3",
     "expo-image-manipulator": "~57.0.17",
     "expo-image-picker": "~57.0.17",
@@ -62,7 +63,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "generate:api-types": "openapi-typescript openapi/identity-service.yaml -o src/api/generated/identity-service.ts && openapi-typescript openapi/policy-asset-service.yaml -o src/api/generated/policy-asset-service.ts",
-    "generate-icons": "node scripts/generate-icons.mjs"
+    "generate-icons": "node scripts/generate-icons.mjs",
+    "tokens:gen": "node scripts/gen-design-tokens.mjs"
   },
   "jest": {
     "preset": "jest-expo",

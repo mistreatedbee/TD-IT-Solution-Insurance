@@ -1,0 +1,32 @@
+<!-- @dsCard height=264 -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{margin:0}
+body{width:960px;height:264px;position:relative;overflow:hidden;background:var(--bg-page);font-family:var(--font-sans)}
+svg{position:absolute;left:0;top:0;width:960px;height:112px;display:block}
+.navy{fill:var(--brand-navy)} .orange{fill:var(--brand-orange)} .blue{fill:var(--brand-blue)} .bright{fill:var(--brand-blue-bright)}
+.blk{rx:var(--radius-md)}
+.cut{fill:none;stroke:var(--bg-page);stroke-width:3;stroke-linejoin:miter}
+.ink{fill:none;stroke:var(--brand-orange);stroke-width:3;stroke-linejoin:miter}
+.text{position:absolute;left:40px;bottom:34px;width:440px}
+.text h1{margin:0;font:700 56px/.95 var(--font-display);color:var(--ink);white-space:nowrap;letter-spacing:-.005em}
+.text p{margin:14px 0 0;font:400 14px/20px var(--font-sans);color:var(--ink-muted);white-space:nowrap}
+</style></head><body>
+<!--
+Derivation.
+Blocks: brand-navy 392x136 (bleeds off top), brand-orange 216x112, brand-blue 168x136, brand-blue-bright 136x76; corners radius-md, tops cut by the edge.
+Arrangement: one band of unequal blocks across the top, heights stepped 136/112/136/76 so the bottom edge reads like the logo's staggered chevron feet; the name is too wide for the right-hand zone (56px, 24 characters), so it sits beneath the band.
+Pattern: nested chevrons at a 24px pitch (a multiple of space-6) in brand-orange on the navy block and cut out in bg-page on the blue block; the logo itself is nested chevrons, so the motif is this brand and no other.
+Scales: pitch 24 = space-6, block gaps 16 = space-4, corner radius-md, inset 40.
+-->
+<svg viewBox="0 0 960 112" aria-hidden="true">
+ <defs><clipPath id="cn"><rect x="0" y="0" width="392" height="112"/></clipPath><clipPath id="cb"><rect x="640" y="0" width="168" height="112"/></clipPath></defs>
+ <rect class="navy blk" x="0" y="-24" width="392" height="136"/>
+ <rect class="orange blk" x="408" y="-24" width="216" height="112"/>
+ <rect class="blue blk" x="640" y="-24" width="168" height="136"/>
+ <rect class="bright blk" x="824" y="-24" width="136" height="76"/>
+ <g clip-path="url(#cn)"><polyline class="ink" points="-4,214 196,14 396,214"/><polyline class="ink" points="-4,238 196,38 396,238"/><polyline class="ink" points="-4,262 196,62 396,262"/><polyline class="ink" points="-4,286 196,86 396,286"/></g>
+ <g clip-path="url(#cb)"><polyline class="cut" points="556,196 724,28 892,196"/><polyline class="cut" points="556,220 724,52 892,220"/><polyline class="cut" points="556,244 724,76 892,244"/></g>
+</svg>
+<div class="text"><h1>TD IT Solution Insurance</h1><p>Protect what you own. Recover it if it goes missing.</p></div>
+</body></html>

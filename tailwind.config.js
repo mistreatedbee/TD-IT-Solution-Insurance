@@ -1,3 +1,16 @@
+import { readFileSync } from 'node:fs';
+
+// TD design-system tokens (design-system/tokens.json), namespaced under `td`.
+// Values are var(--td-*) so Day/Night (data-theme) switches at runtime.
+const tdTokens = JSON.parse(readFileSync(new URL('./design-system/tokens.json', import.meta.url), 'utf8'));
+const tdMap = (list, prefix) =>
+  Object.fromEntries(list.map((t) => [t.name.replace(prefix, ''), `var(--td-${t.name})`]));
+const tdColors = tdMap(tdTokens.color.tokens, '');
+const tdSpacing = Object.fromEntries(tdTokens.spacing.tokens.map((t) => [`td-${t.name.replace('space-', '')}`, `var(--td-${t.name})`]));
+const tdRadius = Object.fromEntries(tdTokens.radius.tokens.map((t) => [`td-${t.name.replace('radius-', '')}`, `var(--td-${t.name})`]));
+const tdShadow = Object.fromEntries(tdTokens.shadow.tokens.map((t) => [`td-${t.name.replace('shadow-', '')}`, `var(--td-${t.name})`]));
+const tdBlur = Object.fromEntries(tdTokens.blur.tokens.map((t) => [`td-${t.name.replace('blur-', '')}`, `var(--td-${t.name})`]));
+
 export default {content: [
   './index.html',
   './src/**/*.{js,ts,jsx,tsx}'
@@ -5,6 +18,7 @@ export default {content: [
   theme: {
     extend: {
       colors: {
+        td: tdColors,
         primary: 'var(--primary)',
         'primary-foreground': 'var(--primary-foreground)',
         'primary-hover': 'var(--primary-hover)',
@@ -77,7 +91,11 @@ export default {content: [
         'glass-text-secondary': 'var(--glass-text-secondary)',
         'glass-surface-opaque': 'var(--glass-surface-opaque)'
       },
+      spacing: tdSpacing,
+      blur: tdBlur,
+      backdropBlur: tdBlur,
       boxShadow: {
+        ...tdShadow,
         resting: 'var(--shadow-resting)',
         hover: 'var(--shadow-hover)',
         elevated: 'var(--shadow-elevated)',
@@ -91,12 +109,15 @@ export default {content: [
           'linear-gradient(180deg, var(--glass-bg-gradient-start) 0%, var(--glass-bg-gradient-mid) 55%, var(--glass-bg-gradient-end) 100%)'
       },
       borderRadius: {
+        ...tdRadius,
         'glass-card': 'var(--glass-radius-card)',
         'glass-card-lg': 'var(--glass-radius-card-lg)',
         'glass-chip': 'var(--glass-radius-chip)',
         'glass-input': 'var(--glass-radius-input)'
       },
       fontFamily: {
+        'td-display': 'var(--td-font-display)',
+        'td-sans': 'var(--td-font-sans)',
         heading: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
         body: ['Public Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         glass: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif']
