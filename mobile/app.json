@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "description": "Protect and recover your valuable assets with monthly insurance plans and GPS-assisted recovery support.",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/app-icon-ios-1024.png",
     "scheme": "tditinsurance",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -23,10 +23,10 @@
     "android": {
       "package": "co.za.tditsolutions.insurance",
       "adaptiveIcon": {
-        "backgroundColor": "#2C3E50",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#2C3E52",
+        "foregroundImage": "./assets/app-icon-android-foreground-1024.png",
+        "backgroundImage": "./assets/app-icon-android-background-1024.png",
+        "monochromeImage": "./assets/app-icon-android-monochrome-1024.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -57,8 +57,8 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/android-icon-monochrome.png",
-          "color": "#2C3E50",
+          "icon": "./assets/notification-icon-96.png",
+          "color": "#F5A022",
           "defaultChannel": "general",
           "sounds": []
         }
@@ -66,10 +66,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#2C3E50",
-          "image": "./assets/splash-icon.png",
-          "imageWidth": 280,
-          "resizeMode": "contain"
+          "backgroundColor": "#0B1622",
+          "image": "./assets/splash-1284x2778.png",
+          "resizeMode": "cover"
         }
       ]
     ],

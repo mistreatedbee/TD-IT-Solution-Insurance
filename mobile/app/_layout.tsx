@@ -6,7 +6,6 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import * as SplashScreen from 'expo-splash-screen';
 import { Stack, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { registerForcedLogoutHandler, refreshAccessToken } from '../src/api/client';
@@ -17,7 +16,8 @@ import { useAppShellGate } from '../src/onboarding/useAppShellGate';
 import { NetworkProvider, OfflineBanner } from '../src/network/NetworkProvider';
 import { asyncStoragePersister, queryClient, shouldPersistQuery } from '../src/query/queryClient';
 import { AnalyticsBootstrap } from '../src/analytics/AnalyticsBootstrap';
-import { ThemeProvider, useColors } from '../src/theme/ThemeProvider';
+import { LoadingScreen } from '../src/components/LoadingScreen';
+import { ThemeProvider } from '../src/theme/ThemeProvider';
 import { useDesignFonts } from '../src/theme/designFonts';
 
 // Start waking the backend as early as possible (module load, before bootstrap).
@@ -26,15 +26,6 @@ warmUpBackend();
 SplashScreen.preventAutoHideAsync().catch(() => {
   // no-op — if this races with an already-hidden splash screen, that's fine.
 });
-
-function BootstrapLoading() {
-  const colors = useColors();
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas }}>
-      <ActivityIndicator size="large" color={colors.primary} />
-    </View>
-  );
-}
 
 function RootLayoutInner() {
   // Fire-and-forget: design-system fonts load in the background; first render is not gated on them.
@@ -79,13 +70,13 @@ function RootLayoutInner() {
     status === 'signed-in' && appShellGate === 'loading';
 
   if (isWaitingForBootstrap) {
-    return null;
+    return <LoadingScreen />;
   }
 
   if (isWaitingForShell) {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <BootstrapLoading />
+        <LoadingScreen />
       </GestureHandlerRootView>
     );
   }
