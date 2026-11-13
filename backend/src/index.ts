@@ -55,6 +55,7 @@ import { createTrustProxyMonitor } from './lib/proxy-trust.js';
 import { unscopedConfiguredCallers } from './middleware/internal-service-auth.js';
 import { createNotificationsRouter } from './routes/notifications.js';
 import { createCustomerProfileRouter } from './routes/customer-profile.js';
+import { createProtectionChecklistRouter } from './routes/protection-checklist.js';
 import { createTrackingDevicesRouter } from './routes/tracking-devices.js';
 import { createAlertsRouter } from './routes/alerts.js';
 import { createAdminVerificationRouter } from './routes/admin-verification.js';
@@ -186,6 +187,7 @@ async function main(): Promise<void> {
   v1.use(createInternalRouter(ctx));
   v1.use(createNotificationsRouter(ctx));
   v1.use(createCustomerProfileRouter(ctx));
+  v1.use(createProtectionChecklistRouter(ctx));
   v1.use(createTrackingDevicesRouter(ctx));
   v1.use(createAlertsRouter(ctx));
   v1.use(createAdminVerificationRouter(ctx));

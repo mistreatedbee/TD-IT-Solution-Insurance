@@ -16,6 +16,7 @@ import { validateBody } from '../lib/validation.js';
 import { ProfileVerificationLockedError } from '../repositories/customer-profiles.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
+import { resolveMfaEnrolled } from '../lib/mfa-enrollment.js';
 import { syncAccountAlerts } from '../lib/sync-account-alerts.js';
 
 async function loadProfileExtras(ctx: AppContext, accountId: string, mfaEnrolled: boolean) {
@@ -31,16 +32,6 @@ async function loadProfileExtras(ctx: AppContext, accountId: string, mfaEnrolled
     hasPolicy: policies.length > 0,
     hasAsset: assets.length > 0,
   };
-}
-
-async function resolveMfaEnrolled(ctx: AppContext, email: string): Promise<boolean> {
-  try {
-    const userAccessToken = await ctx.supabase.mintTransientUserAccessToken(email);
-    const verifiedFactor = await ctx.supabase.findVerifiedTotpFactor(userAccessToken);
-    return verifiedFactor !== null;
-  } catch {
-    return false;
-  }
 }
 
 async function serializeProfileForAccount(ctx: AppContext, accountId: string, email: string) {

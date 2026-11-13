@@ -175,6 +175,17 @@ export function createPoliciesRepo(db: Db) {
       return rows.map(toPolicy);
     },
 
+    /** Feature 020 - minimal projection (status + effectiveDate only), bounded. */
+    async listStatusAndEffectiveDate(
+      accountId: string,
+    ): Promise<{ status: PolicyStatus; effectiveDate: Date }[]> {
+      const rows = await collection()
+        .find({ accountId }, { projection: { status: 1, effectiveDate: 1 } })
+        .limit(200)
+        .toArray();
+      return rows.map((r) => ({ status: r.status, effectiveDate: r.effectiveDate }));
+    },
+
     async findByIdForAccount(accountId: string, policyId: string): Promise<PolicyDocument | null> {
       if (!ObjectId.isValid(policyId)) return null;
       const row = await collection().findOne({ _id: new ObjectId(policyId), accountId });

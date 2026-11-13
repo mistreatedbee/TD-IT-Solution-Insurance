@@ -152,6 +152,15 @@ export function createAssetsRepo(db: Db) {
       return row ? toAsset(row) : null;
     },
 
+    /** Feature 020 - existence check only (limit 1, projection of _id). */
+    async hasActive(accountId: string): Promise<boolean> {
+      const row = await collection().findOne(
+        { accountId, status: 'active' },
+        { projection: { _id: 1 } },
+      );
+      return row !== null;
+    },
+
     async countActiveByAccount(accountId: string): Promise<number> {
       return collection().countDocuments({ accountId, status: { $ne: 'removed' } });
     },

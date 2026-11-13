@@ -144,8 +144,17 @@ function deriveVerificationStatus(profile: CustomerProfileDocument): Verificatio
   return 'not_started';
 }
 
+/** Feature 020 - minimal projection for the protection checklist. Read-only; never creates a profile. */
+export interface ChecklistProfileFields {
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  verificationStatus: VerificationStatus;
+}
+
 export interface CustomerProfilesRepo {
   findByAccountId(accountId: string): Promise<CustomerProfileDocument | null>;
+  getChecklistFields(accountId: string): Promise<ChecklistProfileFields | null>;
   getOrCreateForAccount(accountId: string): Promise<CustomerProfileDocument>;
   updateForAccount(
     accountId: string,
@@ -294,6 +303,20 @@ export function createCustomerProfilesRepo(db: Db, auditLog: AuditLogRepo): Cust
     async findByAccountId(accountId) {
       const doc = await col.findOne({ accountId });
       return doc ? toProfile(doc) : null;
+    },
+
+    async getChecklistFields(accountId) {
+      const doc = await col.findOne(
+        { accountId },
+        { projection: { firstName: 1, lastName: 1, phone: 1, verificationStatus: 1 } },
+      );
+      if (!doc) return null;
+      return {
+        firstName: doc.firstName ?? null,
+        lastName: doc.lastName ?? null,
+        phone: doc.phone ?? null,
+        verificationStatus: doc.verificationStatus ?? 'not_started',
+      };
     },
 
     async getOrCreateForAccount(accountId) {
