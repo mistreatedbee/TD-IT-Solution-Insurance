@@ -322,3 +322,35 @@ These conditions apply to every GO below:
   - OB-09: an informational score is permitted. A pricing-linked score falls under s71 conditions and
     G-17.
   - **OB-09 Stage 1 (`business-analyst`) may start against Ruling A.**
+
+## Design System rollout (TD IT Solution Insurance Design System) — 2026-11-13
+
+Appended. Nothing above is changed. The owner supplied a new design system: tokens, Day/Night
+modes, Zilla Slab + Plus Jakarta Sans, glass components, backgrounds/patterns, and app
+icon/splash/LoadingScreen. RACI (`01-raci-matrix.md`, "Design System"): A = `design-system-manager`,
+R = `ui-designer`, C = `frontend-architect`, `mobile-architect` and engineering roles, I = `product-manager`.
+
+**Constraints on every step**
+
+- Release Gate A is NOT widened. No feature flag changes; `eas.json` is untouched;
+  `verify-eas-feature-flags` must stay PASS.
+- Contrast targets must hold: 4.5:1 text, 3:1 controls/focus, validated by `design-system/check-contrast.mjs`.
+- Each step is its own branch and PR. Reviewer = owner.
+- Restyles make no behaviour or API changes.
+- **PUBLISHING NOTE.** The GitHub repo is public, and local `main` is 105 commits ahead of
+  `origin/main` (including security/compliance docs). Do NOT open PRs until the owner decides the
+  publishing approach (private first, or a clean base).
+
+**Entries**
+
+| ID | Scope | A | Contributors | Status | Gate |
+|---|---|---|---|---|---|
+| R1 | Tokens, fonts, Tailwind, mobile theme | `design-system-manager` | `ui-designer`, `frontend-engineer`, `mobile-engineer` | DONE. Local commit `eabd20d` on `design/01-tokens-fonts-assets`. Additive; no screen restyled. | Contrast check; owner review (PR held, see publishing note) |
+| R2 | App icon, adaptive icon, notification icon, splash, animated LoadingScreen | `design-system-manager` | `ui-designer`, `mobile-engineer` | IN PROGRESS. Branch `design/02-app-icon-splash-loading`. Takes effect only in a NEW native build. | Native build; device check by `manual-qa-engineer`; owner review |
+| R3 | Shared components: Button, GlassCard, TextField, StatusBadge, AssetCard, TabBar, with reduced-transparency fallback | `design-system-manager` | `ui-designer`, `frontend-engineer`, `mobile-engineer`, `automation-qa-engineer` | NOT STARTED | `design-system-manager` sign-off required (shared primitives). Supersedes the interim `glass*` tokens in `mobile/src/theme/colorSchemes.ts` and settles the `#2DBDB6` vs `#00B5B5` question. Contrast check. |
+| R4 | Backgrounds and patterns, web and app | `design-system-manager` | `ui-designer`, `frontend-engineer`, `mobile-engineer` | NOT STARTED | Depends on R3; contrast check over patterns |
+| R5.x | Restyle existing screens, one feature group per PR | `design-system-manager` | `ui-designer`, owning engineer, `qa-engineer` | NOT STARTED | Depends on R3/R4; regression tests green; no behaviour or API change |
+
+R5.x feature groups: R5.1 auth/onboarding; R5.2 home/protection centre; R5.3 assets/register;
+R5.4 alerts; R5.5 account/profile; R5.6 claims (UI only, still flag-hidden); R5.7 security-ops
+portal; R5.8 admin panel; R5.9 marketing site.
