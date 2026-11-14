@@ -235,7 +235,7 @@ describe('GET /account/protection-checklist', () => {
   it('mfa on -> done; lookup failure -> unavailable (not "not done"), excluded from max', async () => {
     h = createHarness({ mfaA: true });
     await h.start();
-    let body = (await (await h.get(PATH, h.auth(A.id))).json()) as { items: { id: string; done: boolean | null }[] };
+    const body = (await (await h.get(PATH, h.auth(A.id))).json()) as { items: { id: string; done: boolean | null }[] };
     expect(body.items[0]!.done).toBe(true);
     await h.stop();
 
