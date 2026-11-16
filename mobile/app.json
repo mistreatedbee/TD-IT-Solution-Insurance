@@ -23,7 +23,7 @@
     "android": {
       "package": "co.za.tditsolutions.insurance",
       "adaptiveIcon": {
-        "backgroundColor": "#2C3E52",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/app-icon-android-foreground-1024.png",
         "backgroundImage": "./assets/app-icon-android-background-1024.png",
         "monochromeImage": "./assets/app-icon-android-monochrome-1024.png"
