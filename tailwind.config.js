@@ -118,9 +118,9 @@ export default {content: [
       fontFamily: {
         'td-display': 'var(--td-font-display)',
         'td-sans': 'var(--td-font-sans)',
-        heading: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
-        body: ['Public Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        glass: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif']
+        heading: ['var(--td-font-display)'],
+        body: ['var(--td-font-sans)'],
+        glass: ['var(--td-font-sans)']
       }
     }
   }

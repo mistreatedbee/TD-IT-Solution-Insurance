@@ -14,7 +14,7 @@ export interface ButtonProps extends
 }
 
 const base =
-'inline-flex items-center justify-center gap-2 font-semibold tracking-tight transition-all duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-accent-gold-deep disabled:opacity-50 disabled:pointer-events-none select-none';
+'inline-flex items-center justify-center gap-2 font-semibold tracking-tight transition-all duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-td-focus-ring disabled:opacity-50 disabled:pointer-events-none select-none';
 
 const sizes: Record<ButtonSize, string> = {
   sm: 'text-sm px-4 py-2',
@@ -23,17 +23,15 @@ const sizes: Record<ButtonSize, string> = {
 };
 
 const variants: Record<ButtonVariant, string> = {
-  // Confident navy-to-ember gradient built from the real brand hues (see
-  // --accent-gradient-* in index.css) instead of the old generic
-  // electric-blue-to-sky pill.
+  // Matches TdButton: the one main action is brand orange with dark text, pill-shaped, with an orange glow.
   primary:
-  'rounded-full text-white bg-gradient-to-r from-primary to-accent-gold-deep shadow-md shadow-black/10 hover:scale-[1.03] hover:shadow-glow-gold active:scale-100',
+  'rounded-td-pill border-[1.5px] border-transparent bg-td-action-primary text-td-on-action-primary shadow-[0_6px_20px_var(--td-glow-orange)] enabled:hover:-translate-y-px enabled:hover:brightness-105 active:scale-[0.98]',
   secondary:
-  'rounded-lg border border-primary text-primary bg-transparent hover:bg-primary hover:text-white active:bg-primary-hover',
+  'rounded-td-pill border-[1.5px] border-td-border-control bg-transparent text-td-ink hover:bg-td-bg-sunken active:scale-[0.98]',
   ghost:
-  'rounded-lg border border-white/70 text-white bg-white/10 backdrop-blur-sm hover:bg-white hover:text-primary focus-visible:ring-white focus-visible:ring-offset-transparent',
+  'rounded-td-pill border border-white/70 text-white bg-white/10 backdrop-blur-sm hover:bg-white hover:text-td-ink focus-visible:ring-white focus-visible:ring-offset-transparent',
   tertiary:
-  'rounded-md px-1 py-1 text-accent-gold-deep bg-transparent underline-offset-4 hover:underline hover:text-primary'
+  'rounded-md px-1 py-1 text-td-link bg-transparent underline-offset-4 hover:underline hover:text-td-ink'
 };
 
 const Spinner = () =>
