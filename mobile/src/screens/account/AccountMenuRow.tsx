@@ -1,9 +1,7 @@
 import { ChevronRightIcon, type LucideIcon } from 'lucide-react-native';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useColors } from '../../theme/ThemeProvider';
-import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
-import { spacing, typography } from '../../theme/tokens';
+import { useDesignTokens } from '../../theme/designTheme';
 
 export interface AccountMenuRowProps {
   icon: LucideIcon;
@@ -17,6 +15,7 @@ export interface AccountMenuRowProps {
   onPress?: () => void;
 }
 
+/** One tappable row: icon tile, title, optional subtitle, chevron. Design tokens, 48px minimum target. */
 export function AccountMenuRow({
   icon: Icon,
   title,
@@ -28,73 +27,46 @@ export function AccountMenuRow({
   disabled = false,
   onPress,
 }: AccountMenuRowProps) {
-  const colors = useColors();
-  const surfaceStyles = useSurfaceStyles();
-  const resolvedIconColor = iconColor ?? colors.glassAccentDeep;
-  const resolvedTitleColor = titleColor ?? colors.textPrimary;
-
+  const t = useDesignTokens();
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        row: {
-          ...surfaceStyles.insetRow,
-          gap: spacing.md,
-        },
-        rowDisabled: {
-          opacity: 0.65,
-        },
-        insetDivider: {
-          height: StyleSheet.hairlineWidth,
-          backgroundColor: colors.hairline,
-          marginLeft: spacing.lg + 36 + spacing.md,
-        },
-        iconWrap: {
-          width: 36,
-          height: 36,
-          borderRadius: 12,
-          backgroundColor: colors.slate[100],
+        row: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingVertical: t.spacing.s3 },
+        rowDisabled: { opacity: 0.5 },
+        iconTile: {
+          width: 40,
+          height: 40,
+          borderRadius: t.radius.md,
+          backgroundColor: t.colors.bgSunken,
           alignItems: 'center',
           justifyContent: 'center',
+          marginRight: t.spacing.s3,
         },
-        copy: {
-          flex: 1,
-          minWidth: 0,
-          gap: 2,
-        },
-        title: {
-          fontSize: typography.sizes.base,
-          fontWeight: '600',
-          color: colors.textPrimary,
-        },
-        subtitle: {
-          fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
-          lineHeight: typography.sizes.xs * 1.4,
-        },
+        copy: { flex: 1, minWidth: 0 },
+        divider: { height: StyleSheet.hairlineWidth, backgroundColor: t.colors.borderSubtle, marginLeft: 40 + t.spacing.s3 },
       }),
-    [colors, surfaceStyles.insetRow],
+    [t],
   );
 
   return (
     <View>
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel={subtitle ? `${title}. ${subtitle}` : title}
         disabled={disabled || !onPress}
         onPress={onPress}
         style={[styles.row, disabled ? styles.rowDisabled : null]}
       >
-        <View style={styles.iconWrap}>
-          <Icon size={18} color={resolvedIconColor} strokeWidth={2.2} />
+        <View style={styles.iconTile}>
+          <Icon size={20} color={iconColor ?? t.colors.ink} strokeWidth={1.75} />
         </View>
         <View style={styles.copy}>
-          <Text style={[styles.title, { color: resolvedTitleColor }]}>{title}</Text>
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+          <Text style={[t.type.title, { color: titleColor ?? t.colors.ink }]}>{title}</Text>
+          {subtitle ? <Text style={[t.type.bodySm, { color: t.colors.inkMuted }]}>{subtitle}</Text> : null}
         </View>
-        {showChevron && onPress ? (
-          <ChevronRightIcon size={18} color={colors.slate[400]} strokeWidth={2.2} />
-        ) : null}
+        {showChevron && onPress ? <ChevronRightIcon size={20} color={t.colors.inkMuted} strokeWidth={1.75} /> : null}
       </Pressable>
-      {!isLast ? <View style={styles.insetDivider} /> : null}
+      {!isLast ? <View style={styles.divider} /> : null}
     </View>
   );
 }

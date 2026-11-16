@@ -1,5 +1,9 @@
 /**
  * Account hub — profile, plan, security, and session controls.
+ *
+ * Design System rollout R5.5: gradient Backdrop ground, a glass header and profile card, and solid cards
+ * grouping the rows. Behaviour is unchanged: same hooks, feature flags, navigation targets, the two-step
+ * log-out-everywhere confirmation, and profile-picture upload.
  */
 import { useRouter, type Href } from 'expo-router';
 import {
@@ -18,7 +22,7 @@ import {
   UserIcon,
 } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { Alert, Linking, Text, View } from 'react-native';
+import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
 import { logout, logoutAll } from '../../api/auth';
 import { revokePushTokenFromBackend } from '../../notifications/push';
 import { clearRefreshToken } from '../../auth/secure-storage';
@@ -34,17 +38,17 @@ import {
 import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
 import { COMPANY_CONTACT } from '../../lib/companyContact';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
-import { AppScreenSection, InsetDivider, SurfaceGroup } from '../../components/SurfaceGroup';
+import { DesignPage } from '../../components/DesignPage';
+import { GlassCard } from '../../design';
 import { useProfileSummaryQuery } from '../../api/hooks/useCustomerProfile';
 import { ProfileCompletionCard } from '../home/ProfileCompletionCard';
 import { PlanUsageSummary } from '../policy/PlanUsageSummary';
 import { useProtectionDashboard } from '../../tracking/useProtectionDashboard';
 import { queryClient } from '../../query/queryClient';
-import { Badge, Screen } from '../../theme/primitives';
-import { useColors } from '../../theme/ThemeProvider';
+import { useDesignTokens } from '../../theme/designTheme';
 import { AccountMenuRow } from './AccountMenuRow';
 import { AccountQuickStats } from './AccountQuickStats';
-import { useAccountStyles } from './accountStyles';
+import { AccountGroup } from './AccountGroup';
 import { useProfilePictureUpload } from './useProfilePictureUpload';
 
 function initialsFromName(name: string, email?: string): string {
@@ -63,24 +67,45 @@ function initialsFromEmail(email?: string): string {
   return local.slice(0, 1).toUpperCase() || 'TD';
 }
 
-function AccountSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function AccountSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const t = useDesignTokens();
   return (
-    <AppScreenSection title={title}>
+    <View style={{ gap: t.spacing.s2 }}>
+      <Text
+        accessibilityRole="header"
+        style={[t.type.labelSm, { color: t.colors.inkMuted, textTransform: 'uppercase', paddingHorizontal: t.spacing.s1 }]}
+      >
+        {title}
+      </Text>
       {children}
-    </AppScreenSection>
+    </View>
+  );
+}
+
+/** Account state as icon-free word pill: success tone when active, warning otherwise. */
+function AccountStatePill({ state }: { state: string }) {
+  const t = useDesignTokens();
+  const active = state === 'active';
+  return (
+    <View
+      accessible
+      accessibilityLabel={`Account status: ${state}`}
+      style={{
+        alignSelf: 'flex-start',
+        backgroundColor: active ? t.colors.successBg : t.colors.warningBg,
+        borderRadius: t.radius.pill,
+        paddingHorizontal: t.spacing.s3,
+        paddingVertical: t.spacing.s1,
+      }}
+    >
+      <Text style={[t.type.labelSm, { color: active ? t.colors.success : t.colors.warning }]}>{state}</Text>
+    </View>
   );
 }
 
 export function AccountHubScreen() {
   const router = useRouter();
-  const colors = useColors();
-  const accountStyles = useAccountStyles();
+  const t = useDesignTokens();
   const { data: account, isLoading } = useAccountQuery();
   const profileSummaryQuery = useProfileSummaryQuery();
   const { showPicker, isUploading } = useProfilePictureUpload();
@@ -172,17 +197,19 @@ export function AccountHubScreen() {
   ];
 
   return (
-    <Screen padded={false} safeAreaEdges={['top']}>
-      <View style={accountStyles.header}>
-        <Text style={accountStyles.title}>Account</Text>
-        <Text style={accountStyles.subtitle}>
-          Manage your profile, protection plan, and security settings.
-        </Text>
-      </View>
+    <DesignPage padded={false} safeAreaEdges={['top']}>
+      <View style={{ paddingHorizontal: t.spacing.s4, paddingTop: t.spacing.s4, paddingBottom: t.spacing.s8, gap: t.spacing.s4 }}>
+        <GlassCard radius="xl">
+          <Text style={[t.type.displayMd, { color: t.colors.ink }]} accessibilityRole="header">
+            Account
+          </Text>
+          <Text style={[t.type.body, { color: t.colors.inkMuted, marginTop: t.spacing.s1 }]}>
+            Manage your profile, protection plan, and security settings.
+          </Text>
+        </GlassCard>
 
-      <View style={accountStyles.body}>
-        <SurfaceGroup padded>
-          <View style={accountStyles.heroRow}>
+        <GlassCard>
+          <View style={styles.heroRow}>
             <ProfileAvatar
               initials={initialsFromName(displayName ?? '', account?.email)}
               profilePictureUrl={profileSummaryQuery.data?.profilePictureUrl}
@@ -191,51 +218,47 @@ export function AccountHubScreen() {
               loading={isUploading}
               onPress={showPicker}
             />
-            <View style={accountStyles.heroCopy}>
+            <View style={[styles.heroCopy, { marginLeft: t.spacing.s4, gap: t.spacing.s1 }]}>
               {displayName ? (
-                <Text style={accountStyles.heroEmail} numberOfLines={1}>
+                <Text style={[t.type.title, { color: t.colors.ink }]} numberOfLines={1}>
                   {displayName}
                 </Text>
               ) : null}
               <Text
-                style={displayName ? accountStyles.heroMeta : accountStyles.heroEmail}
+                style={displayName ? [t.type.bodySm, { color: t.colors.inkMuted }] : [t.type.title, { color: t.colors.ink }]}
                 numberOfLines={1}
               >
                 {email}
               </Text>
-              <Text style={accountStyles.heroMeta}>
+              <Text style={[t.type.bodySm, { color: t.colors.inkMuted }]}>
                 {account?.mfaEnrolled ? 'Two-factor authentication enabled' : 'Signed in to TD IT Solution'}
               </Text>
               {account?.accountNumber ? (
-                <Text style={accountStyles.heroMeta}>
+                <Text style={[t.type.bodySm, { color: t.colors.inkMuted }]}>
                   Account Number: {account.accountNumber}
                 </Text>
               ) : null}
-              {account ? (
-                <Badge tone={account.accountState === 'active' ? 'emerald' : 'gold'}>
-                  {account.accountState}
-                </Badge>
-              ) : null}
+              {account?.accountState ? <AccountStatePill state={account.accountState} /> : null}
             </View>
           </View>
-          <InsetDivider inset={0} />
-          <AccountQuickStats items={quickStats} inline />
-        </SurfaceGroup>
+          <View style={[styles.statsDivider, { backgroundColor: t.colors.borderSubtle, marginVertical: t.spacing.s4 }]} />
+          <AccountQuickStats items={quickStats} />
+        </GlassCard>
 
         {FEATURE_KYC_ENABLED && dashboard ? (
-          <SurfaceGroup>
+          <AccountGroup>
             <ProfileCompletionCard
               percent={dashboard.profilePercent}
               checklist={dashboard.profileChecklist}
               inset
               onPress={() => router.push('/account/profile')}
             />
-          </SurfaceGroup>
+          </AccountGroup>
         ) : null}
 
         {FEATURE_KYC_ENABLED ? (
           <AccountSection title="Your profile">
-            <SurfaceGroup>
+            <AccountGroup>
               <AccountMenuRow
                 icon={UserIcon}
                 title="Profile & identity"
@@ -249,12 +272,12 @@ export function AccountHubScreen() {
                 isLast
                 onPress={() => router.push('/account/verification')}
               />
-            </SurfaceGroup>
+            </AccountGroup>
           </AccountSection>
         ) : null}
 
         <AccountSection title="Your protection">
-          <SurfaceGroup>
+          <AccountGroup>
             <AccountMenuRow
               icon={LayersIcon}
               title="Protection vault"
@@ -316,7 +339,7 @@ export function AccountHubScreen() {
                 onPress={() => router.push('/(app)/claims' as Href)}
               />
             ) : null}
-          </SurfaceGroup>
+          </AccountGroup>
         </AccountSection>
 
         <AccountSection title="Plan & billing">
@@ -329,7 +352,7 @@ export function AccountHubScreen() {
               compact
             />
           ) : null}
-          <SurfaceGroup>
+          <AccountGroup>
             <AccountMenuRow
               icon={ShieldIcon}
               title="Protection plan"
@@ -359,11 +382,11 @@ export function AccountHubScreen() {
                 onPress={() => router.push('/(app)/policy/create' as Href)}
               />
             ) : null}
-          </SurfaceGroup>
+          </AccountGroup>
         </AccountSection>
 
         <AccountSection title="Preferences">
-          <SurfaceGroup>
+          <AccountGroup>
             <AccountMenuRow
               icon={BellIcon}
               title="Notification preferences"
@@ -371,11 +394,11 @@ export function AccountHubScreen() {
               isLast
               onPress={() => router.push('/(app)/notification-preferences' as Href)}
             />
-          </SurfaceGroup>
+          </AccountGroup>
         </AccountSection>
 
         <AccountSection title="Security">
-          <SurfaceGroup>
+          <AccountGroup>
             <AccountMenuRow
               icon={ShieldCheckIcon}
               title="Two-factor authentication"
@@ -383,11 +406,11 @@ export function AccountHubScreen() {
               isLast
               onPress={() => router.push('/(app)/mfa-enroll' as Href)}
             />
-          </SurfaceGroup>
+          </AccountGroup>
         </AccountSection>
 
         <AccountSection title="Help & support">
-          <SurfaceGroup>
+          <AccountGroup>
             <AccountMenuRow
               icon={MailIcon}
               title="Contact support"
@@ -413,16 +436,16 @@ export function AccountHubScreen() {
               isLast
               onPress={() => router.push('/(auth)/terms' as Href)}
             />
-          </SurfaceGroup>
+          </AccountGroup>
         </AccountSection>
 
         <AccountSection title="Session">
-          <SurfaceGroup>
+          <AccountGroup>
             <AccountMenuRow
               icon={LogOutIcon}
               title="Log out"
               subtitle="Sign out on this device"
-              iconColor={colors.glassTextSecondary}
+              iconColor={t.colors.inkMuted}
               showChevron={false}
               onPress={handleLogout}
             />
@@ -430,16 +453,22 @@ export function AccountHubScreen() {
               icon={LogOutIcon}
               title={isLoggingOutAll ? 'Logging out everywhere…' : 'Log out of all devices'}
               subtitle="Ends sessions on every device"
-              iconColor={colors.fieldErrorText}
-              titleColor={colors.fieldErrorText}
+              iconColor={t.colors.danger}
+              titleColor={t.colors.danger}
               showChevron={false}
               isLast
               disabled={isLoggingOutAll}
               onPress={handleLogoutAll}
             />
-          </SurfaceGroup>
+          </AccountGroup>
         </AccountSection>
       </View>
-    </Screen>
+    </DesignPage>
   );
 }
+
+const styles = StyleSheet.create({
+  heroRow: { flexDirection: 'row', alignItems: 'center' },
+  heroCopy: { flex: 1, minWidth: 0 },
+  statsDivider: { height: StyleSheet.hairlineWidth },
+});

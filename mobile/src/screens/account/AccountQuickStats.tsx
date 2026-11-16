@@ -1,53 +1,33 @@
 import React from 'react';
-import { Text, View } from 'react-native';
-import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
-import { useAccountStyles } from './accountStyles';
+import { StyleSheet, Text, View } from 'react-native';
+import { useDesignTokens } from '../../theme/designTheme';
 
 export interface AccountQuickStat {
   label: string;
   value: string;
 }
 
-export function AccountQuickStats({
-  items,
-  inline = false,
-}: {
-  items: AccountQuickStat[];
-  /** When true, stats render inside a parent SurfaceGroup (no outer card). */
-  inline?: boolean;
-}) {
-  const accountStyles = useAccountStyles();
-  const surfaceStyles = useSurfaceStyles();
-
+/** A row of big-number stats with hairline dividers, for use inside a card. */
+export function AccountQuickStats({ items }: { items: AccountQuickStat[] }) {
+  const t = useDesignTokens();
   if (items.length === 0) return null;
-
-  if (inline) {
-    return (
-      <View style={accountStyles.statRowEmbedded}>
-        {items.map((item, index) => (
-          <React.Fragment key={item.label}>
-            {index > 0 ? <View style={surfaceStyles.statDivider} /> : null}
-            <View style={surfaceStyles.statItem}>
-              <Text style={surfaceStyles.statValue}>{item.value}</Text>
-              <Text style={surfaceStyles.statLabel}>{item.label}</Text>
-            </View>
-          </React.Fragment>
-        ))}
-      </View>
-    );
-  }
-
   return (
-    <View style={surfaceStyles.statBar}>
+    <View style={styles.row}>
       {items.map((item, index) => (
         <React.Fragment key={item.label}>
-          {index > 0 ? <View style={surfaceStyles.statDivider} /> : null}
-          <View style={surfaceStyles.statItem}>
-            <Text style={surfaceStyles.statValue}>{item.value}</Text>
-            <Text style={surfaceStyles.statLabel}>{item.label}</Text>
+          {index > 0 ? <View style={[styles.divider, { backgroundColor: t.colors.borderSubtle }]} /> : null}
+          <View style={styles.item}>
+            <Text style={[t.type.displayMd, { color: t.colors.ink }]}>{item.value}</Text>
+            <Text style={[t.type.labelSm, { color: t.colors.inkMuted }]}>{item.label}</Text>
           </View>
         </React.Fragment>
       ))}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center' },
+  item: { flex: 1, alignItems: 'center' },
+  divider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch' },
+});
