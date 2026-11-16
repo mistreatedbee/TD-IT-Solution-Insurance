@@ -1,32 +1,39 @@
 /**
  * Alerts centre — server-backed with client-derived fallback.
+ *
+ * Design System rollout R5.4: gradient Backdrop ground, a GlassCard header with the open/urgent counts, one
+ * solid card per alert with an icon-and-word severity pill (never colour alone), and a glass preferences row.
+ * Behaviour is unchanged: same hooks, server/client alert sources, dismiss, links and pull-to-refresh.
  */
 import { useRouter, type Href } from 'expo-router';
-import { BellIcon, Settings2Icon } from 'lucide-react-native';
+import {
+  BellIcon,
+  ChevronRightIcon,
+  CircleAlertIcon,
+  InfoIcon,
+  Settings2Icon,
+  TriangleAlertIcon,
+  type LucideIcon,
+} from 'lucide-react-native';
 import React, { useMemo } from 'react';
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useAlertsWithFallback, useDismissAlertMutation } from '../../api/hooks/useAlerts';
-import { InlineStatBar, InsetDivider, SurfaceGroup } from '../../components/SurfaceGroup';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { useProtectionDashboard } from '../../tracking/useProtectionDashboard';
+import { useDesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
 import type { AlertSeverity, DashboardAlert } from '../../tracking/types';
-import { Alert, Badge, Button, Screen, SkeletonRow } from '../../theme/primitives';
-import { useColors } from '../../theme/ThemeProvider';
-import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
-import { minTouchTarget, spacing, typography } from '../../theme/tokens';
-import { useAlertsStyles } from './alertsStyles';
+import { useProtectionDashboard } from '../../tracking/useProtectionDashboard';
 
-function severityTone(severity: AlertSeverity): 'danger' | 'warning' | 'gold' | 'neutral' {
-  switch (severity) {
-    case 'critical':
-    case 'high':
-      return 'danger';
-    case 'warning':
-      return 'warning';
-    default:
-      return 'neutral';
-  }
-}
+type SeverityTone = 'danger' | 'warning' | 'info';
+
+const SEVERITY: Record<AlertSeverity, { tone: SeverityTone; Icon: LucideIcon }> = {
+  critical: { tone: 'danger', Icon: TriangleAlertIcon },
+  high: { tone: 'danger', Icon: TriangleAlertIcon },
+  warning: { tone: 'warning', Icon: CircleAlertIcon },
+  info: { tone: 'info', Icon: InfoIcon },
+};
 
 function severityLabel(severity: AlertSeverity): string {
   return severity.charAt(0).toUpperCase() + severity.slice(1);
@@ -36,14 +43,39 @@ function isUrgent(severity: AlertSeverity): boolean {
   return severity === 'critical' || severity === 'high';
 }
 
-function AlertsHeader({
-  openCount,
-  urgentCount,
-}: {
-  openCount: number;
-  urgentCount: number;
-}) {
-  const alertsStyles = useAlertsStyles();
+/** Icon + word, so severity is never carried by colour alone. */
+function SeverityPill({ severity }: { severity: AlertSeverity }) {
+  const t = useDesignTokens();
+  const { tone, Icon } = SEVERITY[severity];
+  const fg = { danger: t.colors.danger, warning: t.colors.warning, info: t.colors.link }[tone];
+  const bg = { danger: t.colors.dangerBg, warning: t.colors.warningBg, info: t.colors.infoBg }[tone];
+  return (
+    <View
+      accessible
+      accessibilityLabel={`Severity: ${severity}`}
+      style={[
+        styles.pill,
+        { backgroundColor: bg, borderRadius: t.radius.pill, paddingHorizontal: t.spacing.s3, paddingVertical: t.spacing.s1 },
+      ]}
+    >
+      <Icon size={14} strokeWidth={2} color={fg} />
+      <Text style={[t.type.labelSm, { color: fg, marginLeft: t.spacing.s1 }]}>{severityLabel(severity)}</Text>
+    </View>
+  );
+}
+
+function StatTile({ value, label }: { value: string; label: string }) {
+  const t = useDesignTokens();
+  return (
+    <View style={styles.stat}>
+      <Text style={[t.type.displayMd, { color: t.colors.ink }]}>{value}</Text>
+      <Text style={[t.type.labelSm, { color: t.colors.inkMuted }]}>{label}</Text>
+    </View>
+  );
+}
+
+function AlertsHeader({ openCount, urgentCount }: { openCount: number; urgentCount: number }) {
+  const t = useDesignTokens();
   const subtitle =
     openCount === 0
       ? 'You are all caught up. We will surface action items here when something needs attention.'
@@ -52,16 +84,16 @@ function AlertsHeader({
         : `${openCount} item${openCount === 1 ? '' : 's'} need${openCount === 1 ? 's' : ''} your attention.`;
 
   return (
-    <View style={alertsStyles.header}>
-      <Text style={alertsStyles.title}>Alerts</Text>
-      <Text style={alertsStyles.subtitle}>{subtitle}</Text>
-      <InlineStatBar
-        items={[
-          { label: 'Open', value: String(openCount) },
-          { label: 'Urgent', value: String(urgentCount) },
-        ]}
-      />
-    </View>
+    <GlassCard radius="xl">
+      <Text style={[t.type.displayMd, { color: t.colors.ink }]} accessibilityRole="header">
+        Alerts
+      </Text>
+      <Text style={[t.type.body, { color: t.colors.inkMuted, marginTop: t.spacing.s1 }]}>{subtitle}</Text>
+      <View style={[styles.statRow, { marginTop: t.spacing.s4 }]}>
+        <StatTile value={String(openCount)} label="Open" />
+        <StatTile value={String(urgentCount)} label="Urgent" />
+      </View>
+    </GlassCard>
   );
 }
 
@@ -78,183 +110,67 @@ function AlertRow({
   dismissing: boolean;
   canDismiss: boolean;
 }) {
-  const colors = useColors();
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        row: {
-          minHeight: minTouchTarget + spacing.sm,
-          paddingHorizontal: spacing.lg,
-          paddingVertical: spacing.md,
-          backgroundColor: colors.background,
-        },
-        rowHeader: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: spacing.sm,
-          marginBottom: spacing.sm,
-        },
-        category: {
-          fontSize: typography.sizes.xs,
-          color: colors.slate[500],
-          textTransform: 'uppercase',
-          fontWeight: '600',
-        },
-        alertTitle: {
-          fontSize: typography.sizes.base,
-          fontWeight: '700',
-          color: colors.textPrimary,
-          marginBottom: spacing.xs,
-        },
-        body: {
-          fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
-          lineHeight: typography.sizes.sm * 1.4,
-        },
-        link: {
-          marginTop: spacing.sm,
-          fontSize: typography.sizes.sm,
-          fontWeight: '600',
-          color: colors.glassAccentDeep,
-        },
-        dismiss: {
-          marginTop: spacing.sm,
-          alignSelf: 'flex-start',
-        },
-      }),
-    [colors],
-  );
-
+  const t = useDesignTokens();
   return (
-    <View style={styles.row}>
-      <Pressable onPress={onPress} accessibilityRole="button">
+    <GlassCard variant="solid">
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${item.title}. ${item.body}`}>
         <View style={styles.rowHeader}>
-          <Badge tone={severityTone(item.severity)}>{severityLabel(item.severity)}</Badge>
-          <Text style={styles.category}>{item.category}</Text>
+          <SeverityPill severity={item.severity} />
+          <Text style={[t.type.labelSm, { color: t.colors.inkMuted, marginLeft: t.spacing.s2, textTransform: 'uppercase' }]}>
+            {item.category}
+          </Text>
         </View>
-        <Text style={styles.alertTitle}>{item.title}</Text>
-        <Text style={styles.body}>{item.body}</Text>
-        {item.href ? <Text style={styles.link}>View details</Text> : null}
+        <Text style={[t.type.title, { color: t.colors.ink, marginTop: t.spacing.s3 }]}>{item.title}</Text>
+        <Text style={[t.type.body, { color: t.colors.inkMuted, marginTop: t.spacing.s1 }]}>{item.body}</Text>
+        {item.href ? (
+          <Text style={[t.type.label, { color: t.colors.link, marginTop: t.spacing.s3 }]}>View details</Text>
+        ) : null}
       </Pressable>
       {canDismiss ? (
         <Button
-          variant="secondary"
-          size="sm"
+          variant="glass"
+          label="Dismiss"
           disabled={dismissing}
           onPress={onDismiss}
-          style={styles.dismiss}
-        >
-          Dismiss
-        </Button>
+          style={{ marginTop: t.spacing.s3, alignSelf: 'flex-start' }}
+        />
       ) : null}
-    </View>
+    </GlassCard>
   );
 }
 
 function NotificationPrefsRow({ onPress }: { onPress: () => void }) {
-  const colors = useColors();
-  const surfaceStyles = useSurfaceStyles();
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        prefsRow: {
-          ...surfaceStyles.insetRow,
-          gap: spacing.md,
-        },
-        prefsIconWrap: {
-          width: 36,
-          height: 36,
-          borderRadius: 12,
-          backgroundColor: colors.slate[100],
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        prefsCopy: {
-          flex: 1,
-          gap: 2,
-        },
-        prefsTitle: {
-          fontSize: typography.sizes.base,
-          fontWeight: '600',
-          color: colors.textPrimary,
-        },
-        prefsSubtitle: {
-          fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
-        },
-      }),
-    [colors, surfaceStyles.insetRow],
-  );
-
+  const t = useDesignTokens();
   return (
-    <Pressable
-      accessibilityRole="button"
-      style={styles.prefsRow}
-      onPress={onPress}
-    >
-      <View style={styles.prefsIconWrap}>
-        <Settings2Icon size={18} color={colors.primary} strokeWidth={2.2} />
-      </View>
-      <View style={styles.prefsCopy}>
-        <Text style={styles.prefsTitle}>Notification preferences</Text>
-        <Text style={styles.prefsSubtitle}>Choose how alerts reach you</Text>
-      </View>
+    <Pressable accessibilityRole="button" onPress={onPress}>
+      <GlassCard variant="solid">
+        <View style={styles.prefsRow}>
+          <View style={[styles.iconTile, { backgroundColor: t.colors.bgSunken, borderRadius: t.radius.md }]}>
+            <Settings2Icon size={20} color={t.colors.ink} strokeWidth={1.75} />
+          </View>
+          <View style={[styles.prefsCopy, { marginHorizontal: t.spacing.s3 }]}>
+            <Text style={[t.type.title, { color: t.colors.ink }]}>Notification preferences</Text>
+            <Text style={[t.type.bodySm, { color: t.colors.inkMuted }]}>Choose how alerts reach you</Text>
+          </View>
+          <ChevronRightIcon size={20} color={t.colors.inkMuted} />
+        </View>
+      </GlassCard>
     </Pressable>
   );
 }
 
 export function AlertsScreen() {
   const router = useRouter();
-  const colors = useColors();
-  const alertsStyles = useAlertsStyles();
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        centered: {
-          minHeight: 160,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        emptyCard: {
-          alignItems: 'center',
-        },
-        emptyIconWrap: {
-          width: 48,
-          height: 48,
-          borderRadius: 24,
-          backgroundColor: colors.slate[100],
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: spacing.md,
-        },
-        emptyTitle: {
-          fontSize: typography.sizes.lg,
-          fontWeight: '700',
-          color: colors.textPrimary,
-          marginBottom: spacing.xs,
-          textAlign: 'center',
-        },
-        emptyBody: {
-          fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
-          textAlign: 'center',
-          lineHeight: typography.sizes.sm * 1.45,
-        },
-      }),
-    [colors],
-  );
+  const t = useDesignTokens();
   const dashboard = useProtectionDashboard();
   const fallbackAlerts = dashboard.data?.clientAlerts ?? [];
   const dismissMutation = useDismissAlertMutation();
-  const {
-    alerts,
-    isLoading,
-    isError,
-    error,
-    refetch,
-    isRefetching,
-    source,
-  } = useAlertsWithFallback(fallbackAlerts);
+  const { alerts, isLoading, isError, error, refetch, isRefetching, source } = useAlertsWithFallback(fallbackAlerts);
+
+  const placeholder = useMemo(
+    () => ({ height: 120, borderRadius: t.radius.lg, backgroundColor: t.colors.bgSunken }),
+    [t],
+  );
 
   const openCount = alerts.length;
   const urgentCount = alerts.filter((item) => isUrgent(item.severity)).length;
@@ -264,26 +180,23 @@ export function AlertsScreen() {
   }
 
   return (
-    <Screen
+    <DesignPage
       padded={false}
       safeAreaEdges={['top']}
       refreshControl={
-        <RefreshControl
-          refreshing={isRefetching || dashboard.isRefetching}
-          onRefresh={() => void handleRefresh()}
-        />
+        <RefreshControl refreshing={isRefetching || dashboard.isRefetching} onRefresh={() => void handleRefresh()} />
       }
     >
-      <AlertsHeader openCount={openCount} urgentCount={urgentCount} />
+      <View style={{ paddingHorizontal: t.spacing.s4, paddingTop: t.spacing.s4, gap: t.spacing.s3 }}>
+        <AlertsHeader openCount={openCount} urgentCount={urgentCount} />
 
-      <View style={alertsStyles.body}>
         {isLoading && alerts.length === 0 ? (
-          // OB-17: row-shaped shimmer blocks (screens doc §7.1) replace the spinner.
-          <View>
-            <SkeletonRow />
-            <SkeletonRow />
-            <SkeletonRow />
-          </View>
+          // Plain placeholder cards (no shimmer) in the shape of an alert card, so the list does not jump.
+          <>
+            <View style={placeholder} />
+            <View style={placeholder} />
+            <View style={placeholder} />
+          </>
         ) : null}
 
         {isError && alerts.length === 0 ? (
@@ -291,55 +204,59 @@ export function AlertsScreen() {
         ) : null}
 
         {source === 'client' && alerts.length > 0 ? (
-          <Alert tone="info">
-            Showing locally derived alerts until the server alerts API is available.
-          </Alert>
+          <Alert tone="info">Showing locally derived alerts until the server alerts API is available.</Alert>
         ) : null}
 
         {!isLoading && alerts.length === 0 && !isError ? (
-          <SurfaceGroup padded style={styles.emptyCard}>
-            <View style={styles.emptyIconWrap}>
-              <BellIcon size={22} color={colors.primary} strokeWidth={2.2} />
+          <GlassCard variant="solid">
+            <View style={styles.empty}>
+              <View style={[styles.emptyIcon, { backgroundColor: t.colors.bgSunken }]}>
+                <BellIcon size={22} color={t.colors.ink} strokeWidth={1.75} />
+              </View>
+              <Text style={[t.type.title, styles.centerText, { color: t.colors.ink, marginTop: t.spacing.s3 }]}>
+                All clear
+              </Text>
+              <Text style={[t.type.body, styles.centerText, { color: t.colors.inkMuted, marginTop: t.spacing.s1 }]}>
+                No alerts need your attention right now. We will post protection updates, verification
+                reminders, and recovery activity here. Need help sooner? Contact support from Account or
+                email support@tditsolutionsinsurance.co.za.
+              </Text>
             </View>
-            <Text style={styles.emptyTitle}>All clear</Text>
-            <Text style={styles.emptyBody}>
-              No alerts need your attention right now. We will post protection updates,
-              verification reminders, and recovery activity here. Need help sooner? Contact
-              support from Account or email support@tditsolutionsinsurance.co.za.
-            </Text>
-          </SurfaceGroup>
+          </GlassCard>
         ) : null}
 
-        {alerts.length > 0 ? (
-          <SurfaceGroup>
-            {alerts.map((item, index) => (
-              <React.Fragment key={item.id}>
-                {index > 0 ? <InsetDivider inset={0} /> : null}
-                <AlertRow
-                  item={item}
-                  canDismiss={source === 'server'}
-                  dismissing={dismissMutation.isPending && dismissMutation.variables === item.id}
-                  onPress={() => {
-                    if (item.href) router.push(item.href as Href);
-                  }}
-                  onDismiss={() => {
-                    if (source === 'server') {
-                      void dismissMutation.mutateAsync(item.id);
-                    }
-                  }}
-                />
-              </React.Fragment>
-            ))}
-          </SurfaceGroup>
-        ) : null}
-
-        <SurfaceGroup>
-          <NotificationPrefsRow
-            onPress={() => router.push('/(app)/notification-preferences' as Href)}
+        {alerts.map((item) => (
+          <AlertRow
+            key={item.id}
+            item={item}
+            canDismiss={source === 'server'}
+            dismissing={dismissMutation.isPending && dismissMutation.variables === item.id}
+            onPress={() => {
+              if (item.href) router.push(item.href as Href);
+            }}
+            onDismiss={() => {
+              if (source === 'server') {
+                void dismissMutation.mutateAsync(item.id);
+              }
+            }}
           />
-        </SurfaceGroup>
+        ))}
+
+        <NotificationPrefsRow onPress={() => router.push('/(app)/notification-preferences' as Href)} />
       </View>
-    </Screen>
+    </DesignPage>
   );
 }
 
+const styles = StyleSheet.create({
+  pill: { flexDirection: 'row', alignItems: 'center' },
+  stat: { flex: 1 },
+  statRow: { flexDirection: 'row' },
+  rowHeader: { flexDirection: 'row', alignItems: 'center' },
+  prefsRow: { flexDirection: 'row', alignItems: 'center' },
+  prefsCopy: { flex: 1 },
+  iconTile: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  empty: { alignItems: 'center' },
+  emptyIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  centerText: { textAlign: 'center' },
+});

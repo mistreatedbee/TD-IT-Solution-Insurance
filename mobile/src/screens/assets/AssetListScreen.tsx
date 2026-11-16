@@ -123,7 +123,7 @@ export function AssetListScreen() {
             You&apos;ve reached your plan&apos;s asset limit. Upgrade your plan to register more devices.
           </Alert>
           <Button
-            variant="glass"
+            variant="secondary"
             label="Change plan"
             onPress={() => {
               if (policy?.id) {
@@ -177,7 +177,7 @@ export function AssetListScreen() {
     <GlassCard>
       <Alert tone="danger">{mapUserFacingError(error, { context: 'asset' })}</Alert>
       <View style={{ marginTop: t.spacing.s3 }}>
-        <Button variant="glass" label="Try again" onPress={() => void refetch()} />
+        <Button variant="secondary" label="Try again" onPress={() => void refetch()} />
       </View>
     </GlassCard>
   ) : (
