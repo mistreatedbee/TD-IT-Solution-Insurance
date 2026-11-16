@@ -11,6 +11,8 @@
  *   assets/app-icon-android-background-1024.png  solid white
  *   assets/app-icon-android-monochrome-1024.png  white silhouette on transparent (Android 13+ themed icons)
  *   assets/splash-1284x2778.png                  white, mark placed where LoadingScreen draws it (no jump at hand-over)
+ * assets/splash-night-1284x2778.png is the design pack's original navy splash, kept (not generated) as the dark-mode
+ * splash (app.json `expo-splash-screen` > `dark`), so dark-mode phones go navy splash -> navy loading screen -> Night UI.
  * The notification icon is a separate monochrome asset and is not touched. Never add text, a border or a shadow.
  */
 import path from 'node:path';
