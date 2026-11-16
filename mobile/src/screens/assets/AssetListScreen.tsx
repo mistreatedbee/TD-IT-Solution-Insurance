@@ -1,34 +1,27 @@
 /**
- * Protection vault — premium asset list (Feature 009 Phase 3).
+ * Protection vault — asset list.
+ *
+ * Design System rollout R5.3: gradient Backdrop ground, a GlassCard header (title, stats, register action),
+ * pill filters, and one glass card per asset that keeps the asset's picture (AssetImageCard). Behaviour is
+ * unchanged: same hooks, plan-limit and verification gating, filters, pull-to-refresh and navigation.
  */
 import { useRouter, type Href } from 'expo-router';
 import { PlusIcon } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { gateWriteAction } from '../../auth/gateWriteAction';
-import { useTabBarContentInset } from '../../navigation/TabBarInsetContext';
 import { usePlanUsage } from '../../api/hooks/usePlanUsage';
+import { Button, GlassCard } from '../../design';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { useTabBarContentInset } from '../../navigation/TabBarInsetContext';
 import { ASSET_CATEGORY_OPTIONS } from '../../onboarding/assetFormConfig';
-import { AssetTypeImage } from '../home/assetVisuals';
-import { InlineStatBar } from '../../components/SurfaceGroup';
-import { PlanUsageSummary } from '../policy/PlanUsageSummary';
+import { useDesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
 import { useAssetVault, type VaultFilter } from '../../tracking/useAssetVault';
-import { Alert, Button, Screen, SkeletonRow } from '../../theme/primitives';
-import { useColors, useTheme } from '../../theme/ThemeProvider';
-import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
-import { minTouchTarget, spacing, typography } from '../../theme/tokens';
-import { AssetVaultCard } from './AssetVaultCard';
-import { useVaultStyles } from './assetVaultStyles';
+import { AssetTypeImage } from '../home/assetVisuals';
+import { PlanUsageSummary } from '../policy/PlanUsageSummary';
+import { AssetImageCard } from './AssetImageCard';
+import { AssetPage } from './AssetPage';
 
 const FILTERS: { id: VaultFilter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -36,133 +29,44 @@ const FILTERS: { id: VaultFilter; label: string }[] = [
   { id: 'needs_attention', label: 'Needs attention' },
 ];
 
+function StatTile({ value, label }: { value: string; label: string }) {
+  const t = useDesignTokens();
+  return (
+    <View style={styles.stat}>
+      <Text style={[t.type.displayMd, { color: t.colors.ink }]}>{value}</Text>
+      <Text style={[t.type.labelSm, { color: t.colors.inkMuted }]}>{label}</Text>
+    </View>
+  );
+}
+
 export function AssetListScreen() {
   const router = useRouter();
-  const colors = useColors();
-  const { isDark } = useTheme();
-  const surfaceStyles = useSurfaceStyles();
-  const vaultStyles = useVaultStyles();
+  const t = useDesignTokens();
   const tabBarInset = useTabBarContentInset();
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        titleRow: {
-          flexDirection: 'row',
-          alignItems: 'flex-start',
-          gap: spacing.md,
-          marginBottom: spacing.lg,
-        },
-        titleCopy: {
-          flex: 1,
-        },
-        addButton: {
-          width: minTouchTarget,
-          height: minTouchTarget,
-          borderRadius: minTouchTarget / 2,
-          backgroundColor: colors.glassAccent,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        addButtonDisabled: {
-          opacity: 0.7,
-        },
-        alertWrap: {
-          paddingHorizontal: spacing.xl,
-          marginBottom: spacing.md,
-          gap: spacing.sm,
-        },
-        planUsageWrap: {
-          paddingHorizontal: spacing.xl,
-          marginBottom: spacing.md,
-        },
-        upgradeButton: {
-          marginTop: spacing.sm,
-        },
-        padded: {
-          paddingHorizontal: spacing.xl,
-          paddingTop: spacing.md,
-        },
-        emptyTitle: {
-          fontSize: typography.sizes.lg,
-          fontWeight: '700',
-          color: colors.textPrimary,
-          marginBottom: spacing.xs,
-        },
-        emptyBody: {
-          fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
-          lineHeight: typography.sizes.sm * 1.45,
-          marginBottom: spacing.lg,
-        },
-        emptyPickerLabel: {
-          fontSize: typography.sizes.sm,
-          fontWeight: '700',
-          color: colors.textPrimary,
-          marginBottom: spacing.sm,
-        },
-        emptyShowcaseRow: {
-          gap: spacing.sm,
-          paddingBottom: spacing.lg,
-        },
-        emptyShowcaseTile: {
-          width: 88,
-          alignItems: 'center',
-          gap: spacing.xs,
-        },
-        emptyShowcaseLabel: {
-          fontSize: 10,
-          fontWeight: '600',
-          color: colors.textSecondary,
-          textAlign: 'center',
-          lineHeight: 12,
-        },
-        emptyCta: {
-          alignSelf: 'flex-start',
-          backgroundColor: isDark ? colors.card : colors.glassAccentTint,
-          borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
-          borderColor: colors.hairline,
-          borderRadius: 999,
-          paddingHorizontal: spacing.lg,
-          paddingVertical: spacing.sm,
-        },
-        emptyCtaText: {
-          fontSize: typography.sizes.sm,
-          fontWeight: '700',
-          color: isDark ? colors.glassAccent : colors.glassAccentDeep,
-        },
-        centered: {
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        retryLink: {
-          marginTop: spacing.md,
-        },
-        retryText: {
-          color: colors.glassAccentDeep,
-          fontWeight: '600',
-        },
-        listWrap: {
-          flex: 1,
-          paddingHorizontal: spacing.xl,
-          paddingBottom: spacing['2xl'],
-        },
-        listSurface: {
-          flex: 1,
-          overflow: 'hidden',
-        },
-        list: {
-          flex: 1,
-        },
-      }),
-    [colors, isDark],
-  );
   const [filter, setFilter] = useState<VaultFilter>('all');
   const { items, stats, isLoading, isError, error, isRefetching, refetch } = useAssetVault(filter);
   const { policy, plans, assetCount, atLimit } = usePlanUsage();
   const [isGating, setIsGating] = useState(false);
   const [gateError, setGateError] = useState(false);
   const [limitMessage, setLimitMessage] = useState(false);
+
+  const dynamic = useMemo(
+    () =>
+      StyleSheet.create({
+        chip: {
+          paddingHorizontal: t.spacing.s4,
+          paddingVertical: t.spacing.s2,
+          borderRadius: t.radius.pill,
+          borderWidth: 1.5,
+          borderColor: t.colors.borderControl,
+          minHeight: 40,
+          justifyContent: 'center',
+        },
+        chipActive: { backgroundColor: t.colors.actionSecondary, borderColor: t.colors.actionSecondary },
+        skeleton: { height: 132, borderRadius: t.radius.lg, backgroundColor: t.colors.bgSunken },
+      }),
+    [t],
+  );
 
   async function handleRegisterPress() {
     if (atLimit) {
@@ -184,65 +88,43 @@ export function AssetListScreen() {
     }
   }
 
-  return (
-    <Screen scroll={false} padded={false} safeAreaEdges={['top']}>
-      <View style={vaultStyles.header}>
-        <View style={styles.titleRow}>
-          <View style={styles.titleCopy}>
-            <Text style={vaultStyles.title}>Protection vault</Text>
-            <Text style={vaultStyles.subtitle}>
-              {stats.total === 0
-                ? 'Register devices and vehicles to build your protection portfolio.'
-                : `${stats.total} protected asset${stats.total === 1 ? '' : 's'} on your account`}
-            </Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Register asset"
-            accessibilityState={{ disabled: isGating, busy: isGating }}
-            onPress={isGating ? undefined : handleRegisterPress}
-            style={[styles.addButton, isGating ? styles.addButtonDisabled : null]}
-          >
-            {isGating ? (
-              <ActivityIndicator color={colors.textInverse} size="small" />
-            ) : (
-              <PlusIcon color={colors.textInverse} size={22} strokeWidth={2.4} />
-            )}
-          </Pressable>
-        </View>
-
+  const header = (
+    <View style={{ paddingTop: t.spacing.s4, gap: t.spacing.s4 }}>
+      <GlassCard radius="xl">
+        <Text style={[t.type.displayMd, { color: t.colors.ink }]}>Protection vault</Text>
+        <Text style={[t.type.body, { color: t.colors.inkMuted, marginTop: t.spacing.s1 }]}>
+          {stats.total === 0
+            ? 'Register devices and vehicles to build your protection portfolio.'
+            : `${stats.total} protected asset${stats.total === 1 ? '' : 's'} on your account`}
+        </Text>
         {stats.total > 0 ? (
-          <InlineStatBar
-            items={[
-              { label: 'Assets', value: String(stats.total) },
-              { label: 'Online', value: String(stats.online) },
-              { label: 'Needs attention', value: String(stats.needsAttention) },
-            ]}
-          />
+          <View style={[styles.statRow, { marginTop: t.spacing.s4 }]}>
+            <StatTile value={String(stats.total)} label="Assets" />
+            <StatTile value={String(stats.online)} label="Online" />
+            <StatTile value={String(stats.needsAttention)} label="Needs attention" />
+          </View>
         ) : null}
-      </View>
+        <Button
+          label="Register asset"
+          icon={<PlusIcon size={20} strokeWidth={2} color={t.colors.onActionPrimary} />}
+          loading={isGating}
+          onPress={handleRegisterPress}
+          style={{ marginTop: t.spacing.s4, alignSelf: 'flex-start' }}
+        />
+      </GlassCard>
 
       {policy ? (
-        <View style={styles.planUsageWrap}>
-          <PlanUsageSummary
-            policy={policy}
-            plans={plans}
-            assetCount={assetCount}
-            showUpgradePrompt
-            compact
-          />
-        </View>
+        <PlanUsageSummary policy={policy} plans={plans} assetCount={assetCount} showUpgradePrompt compact />
       ) : null}
 
       {limitMessage && atLimit ? (
-        <View style={styles.alertWrap}>
+        <View style={{ gap: t.spacing.s2 }}>
           <Alert tone="warning">
-            You&apos;ve reached your plan&apos;s asset limit. Upgrade your plan to register more
-            devices.
+            You&apos;ve reached your plan&apos;s asset limit. Upgrade your plan to register more devices.
           </Alert>
           <Button
-            variant="secondary"
-            fullWidth
+            variant="glass"
+            label="Change plan"
             onPress={() => {
               if (policy?.id) {
                 router.push(`/policy/${policy.id}/change-plan` as Href);
@@ -250,30 +132,30 @@ export function AssetListScreen() {
                 router.push('/policy/create' as Href);
               }
             }}
-            style={styles.upgradeButton}
-          >
-            Change plan
-          </Button>
+          />
         </View>
       ) : null}
 
-      {gateError ? (
-        <View style={styles.alertWrap}>
-          <Alert tone="danger">Couldn&apos;t verify your account. Try again.</Alert>
-        </View>
-      ) : null}
+      {gateError ? <Alert tone="danger">Couldn&apos;t verify your account. Try again.</Alert> : null}
 
       {stats.total > 0 ? (
-        <View style={vaultStyles.filterRow}>
+        <View style={[styles.filterRow, { gap: t.spacing.s2 }]}>
           {FILTERS.map((item) => {
             const active = filter === item.id;
             return (
               <Pressable
                 key={item.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
                 onPress={() => setFilter(item.id)}
-                style={[vaultStyles.filterChip, active ? vaultStyles.filterChipActive : null]}
+                style={[dynamic.chip, active ? dynamic.chipActive : null]}
               >
-                <Text style={[vaultStyles.filterText, active ? vaultStyles.filterTextActive : null]}>
+                <Text
+                  style={[
+                    t.type.label,
+                    { color: active ? t.colors.onActionSecondary : t.colors.ink },
+                  ]}
+                >
                   {item.label}
                 </Text>
               </Pressable>
@@ -281,79 +163,82 @@ export function AssetListScreen() {
           })}
         </View>
       ) : null}
+    </View>
+  );
 
-      {isLoading ? (
-        // OB-17: row-shaped shimmer blocks matching the list geometry
-        // (screens doc §3.1) replace the spinner.
-        <View style={styles.padded}>
-          <SkeletonRow />
-          <SkeletonRow />
-          <SkeletonRow />
-          <SkeletonRow />
-        </View>
-      ) : isError && items.length === 0 ? (
-        <View style={styles.padded}>
-          <Alert tone="danger">{mapUserFacingError(error, { context: 'asset' })}</Alert>
-          <Pressable onPress={() => void refetch()} style={styles.retryLink}>
-            <Text style={styles.retryText}>Try again</Text>
-          </Pressable>
-        </View>
-      ) : items.length === 0 ? (
-        <View style={styles.padded}>
-          <Text style={styles.emptyTitle}>
-            {filter === 'all' ? 'No assets yet' : 'Nothing in this view'}
+  const empty = isLoading ? (
+    // Plain placeholder cards (no shimmer) in the shape of AssetCard, so the list does not jump when data arrives.
+    <View style={{ gap: t.spacing.s3 }}>
+      <View style={dynamic.skeleton} />
+      <View style={dynamic.skeleton} />
+      <View style={dynamic.skeleton} />
+    </View>
+  ) : isError ? (
+    <GlassCard>
+      <Alert tone="danger">{mapUserFacingError(error, { context: 'asset' })}</Alert>
+      <View style={{ marginTop: t.spacing.s3 }}>
+        <Button variant="glass" label="Try again" onPress={() => void refetch()} />
+      </View>
+    </GlassCard>
+  ) : (
+    <GlassCard>
+      <Text style={[t.type.title, { color: t.colors.ink }]}>
+        {filter === 'all' ? 'No assets yet' : 'Nothing in this view'}
+      </Text>
+      <Text style={[t.type.body, { color: t.colors.inkMuted, marginTop: t.spacing.s2 }]}>
+        {filter === 'all'
+          ? 'Add a vehicle, phone, laptop, or other covered item to start building your vault.'
+          : 'Try another filter or register a new asset.'}
+      </Text>
+      {filter === 'all' ? (
+        <>
+          <Text style={[t.type.label, { color: t.colors.ink, marginTop: t.spacing.s4 }]}>
+            Protect vehicles, devices & equipment
           </Text>
-          <Text style={styles.emptyBody}>
-            {filter === 'all'
-              ? 'Add a vehicle, phone, laptop, or other covered item to start building your vault.'
-              : 'Try another filter or register a new asset.'}
-          </Text>
-          {filter === 'all' ? (
-            <>
-              <Text style={styles.emptyPickerLabel}>Protect vehicles, devices & equipment</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.emptyShowcaseRow}
-              >
-                {ASSET_CATEGORY_OPTIONS.map((opt) => (
-                  <View key={opt.api} style={styles.emptyShowcaseTile}>
-                    <AssetTypeImage assetType={opt.api} size="sm" />
-                    <Text style={styles.emptyShowcaseLabel}>{opt.label}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-              <Pressable onPress={handleRegisterPress} style={styles.emptyCta}>
-                <Text style={styles.emptyCtaText}>Register your first asset</Text>
-              </Pressable>
-            </>
-          ) : null}
-        </View>
-      ) : (
-        <View style={styles.listWrap}>
-          <View style={[surfaceStyles.group, styles.listSurface]}>
-            <FlatList
-              data={items}
-              keyExtractor={(item) => item.assetId}
-              contentContainerStyle={tabBarInset > 0 ? { paddingBottom: tabBarInset } : undefined}
-              renderItem={({ item, index }) => (
-                <AssetVaultCard
-                  item={item}
-                  variant="inset"
-                  isLast={index === items.length - 1}
-                  onPress={() => router.push(`/assets/${item.assetId}` as Href)}
-                />
-              )}
-              style={styles.list}
-              scrollEnabled
-              refreshControl={
-                <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />
-              }
-            />
-          </View>
-        </View>
-      )}
-    </Screen>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: t.spacing.s2, paddingVertical: t.spacing.s3 }}
+          >
+            {ASSET_CATEGORY_OPTIONS.map((opt) => (
+              <View key={opt.api} style={styles.showcaseTile}>
+                <AssetTypeImage assetType={opt.api} size="sm" />
+                <Text style={[t.type.labelSm, styles.showcaseLabel, { color: t.colors.inkMuted }]}>{opt.label}</Text>
+              </View>
+            ))}
+          </ScrollView>
+          <Button label="Register your first asset" onPress={handleRegisterPress} style={{ alignSelf: 'flex-start' }} />
+        </>
+      ) : null}
+    </GlassCard>
+  );
+
+  return (
+    <AssetPage scroll={false} padded={false} safeAreaEdges={['top']}>
+      <FlatList
+        data={isLoading || (isError && items.length === 0) ? [] : items}
+        keyExtractor={(item) => item.assetId}
+        renderItem={({ item }) => <AssetImageCard item={item} />}
+        ItemSeparatorComponent={() => <View style={{ height: t.spacing.s3 }} />}
+        ListHeaderComponent={header}
+        ListHeaderComponentStyle={{ marginBottom: t.spacing.s4 }}
+        ListEmptyComponent={empty}
+        contentContainerStyle={{
+          paddingHorizontal: t.spacing.s4,
+          paddingBottom: tabBarInset > 0 ? tabBarInset : t.spacing.s8,
+        }}
+        style={styles.list}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />}
+      />
+    </AssetPage>
   );
 }
 
+const styles = StyleSheet.create({
+  list: { flex: 1 },
+  statRow: { flexDirection: 'row' },
+  stat: { flex: 1 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  showcaseTile: { width: 88, alignItems: 'center', gap: 4 },
+  showcaseLabel: { textAlign: 'center' },
+});
