@@ -122,3 +122,49 @@ Per the CTO mandate: **`backend/src/lib/tracking-profile.ts` remains vendor-agno
 ## 9. Standing Decision Rule (pre-authorized fallback — reaffirmed 2026-08-28)
 
 Per `docs/organization/sprint-plan-release-gate-a.md` ("Standing Decision Rule — GPS hardware vendor default"): if Cartrack and Tracker do not commit to a documented third-party API on commercially reasonable B2B terms by **2026-10-05**, the OEM route (Digital Matter / Teltonika — Category 1, Candidates A/B above) becomes the **default selection automatically**. `integration-architect` does not require a fresh sign-off cycle to conclude that outcome once the deadline passes without commitment — it is pre-authorized, not a decision requiring new approval. This does not change the 2026-10-05 decision-due date, and does not authorize any change to `tracking-profile.ts`'s vendor-agnostic shape ahead of ratification (§0, §6 above still bind regardless of which path this resolves to). Recorded here so this scorecard is self-contained on the rule the sprint plan already established, rather than requiring a cross-document lookup at decision time.
+
+---
+
+## 10. Candidate E — 18gps hosted platform + U907 tracker (added 2026-11-16, `cto` on behalf of `integration-architect`)
+
+**Trigger:** physical trackers arrived 2026-11-16. The supplier shipped a U907 ("Vehicle
+Positioning Communication Terminal", 2G GSM/GPRS, magnetic, rechargeable) and pointed us at
+the **18gps** hosted tracking platform (`api.18gps.net`, China-hosted) with an enterprise login.
+Evidence is filed under `docs/vendor-apis/18gps/` (API brief, endpoint reference, device
+manual notes, and a read-only probe of the live platform). This section is append-only per the
+house rule; §§0–9 above are unchanged and still bind.
+
+**Category:** 1 (OEM hardware + platform API, no SA recovery network). Falls under the
+"Queclink/Concox-via-reseller" fallback noted at the end of §2, not the A/B/C/D shortlist.
+
+| Criterion | Signal from evidence | Directional score (of 5) |
+|---|---|---|
+| G1 coverage & accuracy | GPS + GSM, ≤30 m claimed, LBS fallback fields exist in the API. **2G-only radio** per the manual; SA 2G sunset unresolved. | 2 |
+| G2 ping / battery | Configurable 60 s–180 s upload and heartbeat by SMS; sleep after 3 min parked with **no heartbeat by default**; power-saving mode ignores commands while asleep. No battery curve published. | 2 |
+| G3 API / webhook | HTTP GET/POST, **polling only**, no webhooks, 20-min session token in query string, production host has **no TLS** (HTTPS only via `www` host with a DV cert expiring 2026-11-21). WGS84 confirmed. Battery + GSM level present for U9. Doc is 2021.5 and the live schema has already drifted. | 1.5 |
+| G4 SA security ecosystem | None. | 1 |
+| G5 cost | Unknown; hardware already purchased. Platform fee per device unknown. | — |
+| G6 SA coverage | 2G GSM only. | 2 |
+| G7 portability | **Strong:** the device server is SMS-reconfigurable (`SZCS#SERVIP=…`), so the hardware is not locked to 18gps if the supplier releases the device protocol. | 4 (conditional) |
+
+**Disqualifying-unless-resolved items** (per §8 revisit triggers, these are gates not deductions):
+1. TD IT has no account of its own; the supplied login is the supplier's master account holding
+   602 devices and 36 sub-accounts belonging to the supplier and other customers (probe §3, §5).
+2. All location data lands in mainland China first (device default server and API host). Needs a
+   `compliance-specialist` cross-border ruling and a DPA before any customer device activates.
+3. No transport security on the documented production host.
+4. 2G-only radio versus the SA 2G switch-off timetable.
+
+**Recommendation to `integration-architect`:** treat the arrived U907 units as a **pilot
+hardware lot**, not a vendor selection. Two routes are open and ADR-0018 (Proposed) frames
+them: (A) read through the 18gps API from a TD IT-only sub-account, or (B) repoint the devices
+at a TD IT-hosted ingestion endpoint and parse the device protocol directly, which keeps data in
+our Render + MongoDB Atlas boundary and removes items 2 and 3 above but requires the protocol
+document from the supplier. The §9 Standing Decision Rule's OEM default (Digital Matter /
+Teltonika) is **not displaced** by this hardware arriving; it stays the production-fleet default
+until ADR-0018 is ratified either way.
+
+**Correction to §10, 2026-11-16 (`cto`):** the business owner confirmed the delivered U907 lot is
+**4G**, not 2G as the 2022 manual states. G1 and G6 rows above were scored on the manual and are
+**void for the delivered lot**; re-score G1 at 3 and G6 at 3 pending LTE-band confirmation for SA.
+Disqualifying item 4 is withdrawn. Items 1–3 stand.
