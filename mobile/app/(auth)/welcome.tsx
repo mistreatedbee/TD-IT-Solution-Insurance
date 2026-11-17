@@ -19,17 +19,19 @@ import {
 } from '../../src/screens/auth/AuthScaffold';
 import { useDesignTokens } from '../../src/theme/designTheme';
 
+const MAX_MAP_HEIGHT = 480;
+
 export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const t = useDesignTokens();
   const { isCompact, isVeryCompact, heroHeight } = useOnboardingLayout();
-  // The animation takes the space left between the two cards (up to its normal height), so nothing overflows.
+  // The map takes all the space left between the two cards (capped so it stays in proportion), so nothing overflows.
   const [freeHeight, setFreeHeight] = useState<number | null>(null);
   const animationHeight =
     freeHeight == null
       ? heroHeight
-      : Math.max(0, Math.min(heroHeight + 90, freeHeight - t.spacing.s2));
+      : Math.max(0, Math.min(MAX_MAP_HEIGHT, freeHeight - t.spacing.s2));
 
   return (
     <AuthPage
