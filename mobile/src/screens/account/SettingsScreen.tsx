@@ -13,7 +13,7 @@ import {
   ShieldCheckIcon,
 } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { Alert, View } from 'react-native';
+import { Alert, Text, View } from 'react-native';
 import { logout, logoutAll } from '../../api/auth';
 import { clearRefreshToken } from '../../auth/secure-storage';
 import { useSessionStore } from '../../auth/session-store';
@@ -21,14 +21,24 @@ import { useAccountQuery } from '../../auth/useAccountQuery';
 import { DesignPage } from '../../components/DesignPage';
 import { revokePushTokenFromBackend } from '../../notifications/push';
 import { queryClient } from '../../query/queryClient';
+import { Button, GlassCard } from '../../design';
 import { useDesignTokens } from '../../theme/designTheme';
+import { useTheme } from '../../theme/ThemeProvider';
+import type { AppearancePreference } from '../../theme/appearancePreference';
 import { AccountGroup } from './AccountGroup';
 import { AccountMenuRow } from './AccountMenuRow';
 import { AccountSection } from './AccountSection';
 
+const APPEARANCE_OPTIONS: { value: AppearancePreference; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
 export function SettingsScreen() {
   const router = useRouter();
   const t = useDesignTokens();
+  const { appearance, setAppearance } = useTheme();
   const { data: account } = useAccountQuery();
   const setSignedOut = useSessionStore((s) => s.setSignedOut);
   const [isLoggingOutAll, setIsLoggingOutAll] = useState(false);
@@ -102,6 +112,33 @@ export function SettingsScreen() {
           gap: t.spacing.s6,
         }}
       >
+        <AccountSection title="Appearance">
+          <GlassCard variant="solid">
+            <Text
+              style={[
+                t.type.body,
+                { color: t.colors.inkMuted, marginBottom: t.spacing.s3 },
+              ]}
+            >
+              Choose light or dark, or follow your phone's setting.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: t.spacing.s2 }}>
+              {APPEARANCE_OPTIONS.map((opt) => (
+                <Button
+                  key={opt.value}
+                  label={opt.label}
+                  variant={appearance === opt.value ? 'secondary' : 'glass'}
+                  accessibilityHint={
+                    appearance === opt.value ? 'Selected' : undefined
+                  }
+                  onPress={() => setAppearance(opt.value)}
+                  style={{ flex: 1 }}
+                />
+              ))}
+            </View>
+          </GlassCard>
+        </AccountSection>
+
         <AccountSection title="Notifications & security">
           <AccountGroup>
             <AccountMenuRow

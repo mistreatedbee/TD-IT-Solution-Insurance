@@ -1,6 +1,23 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { createContext, useContext, useMemo } from 'react';
-import { Platform, useColorScheme, type ViewStyle } from 'react-native';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import {
+  Appearance,
+  Platform,
+  useColorScheme,
+  type ViewStyle,
+} from 'react-native';
+import {
+  loadAppearancePreference,
+  saveAppearancePreference,
+  type AppearancePreference,
+} from './appearancePreference';
 import type { AppColors } from './colorSchemes';
 import { darkColors, lightColors } from './colorSchemes';
 
@@ -19,11 +36,19 @@ export interface ThemeContextValue {
   designMode: DesignMode;
   elevation: ThemeElevation;
   elevationSoft: ThemeElevation;
+  /** Manual choice from Settings; 'system' follows the phone. */
+  appearance: AppearancePreference;
+  setAppearance: (value: AppearancePreference) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function createElevation(shadowColor: string, opacity: number, radius: number, android: number): ThemeElevation {
+function createElevation(
+  shadowColor: string,
+  opacity: number,
+  radius: number,
+  android: number,
+): ThemeElevation {
   return Platform.select({
     ios: {
       shadowColor,
@@ -36,7 +61,11 @@ function createElevation(shadowColor: string, opacity: number, radius: number, a
   }) as ThemeElevation;
 }
 
-function buildThemeValue(colorScheme: ColorSchemeName): ThemeContextValue {
+function buildThemeValue(
+  colorScheme: ColorSchemeName,
+  appearance: AppearancePreference = 'system',
+  setAppearance: (value: AppearancePreference) => void = () => {},
+): ThemeContextValue {
   const isDark = colorScheme === 'dark';
   const colors = isDark ? darkColors : lightColors;
   const shadowBase = isDark ? '#000000' : colors.textPrimary;
@@ -47,13 +76,60 @@ function buildThemeValue(colorScheme: ColorSchemeName): ThemeContextValue {
     designMode: isDark ? 'night' : 'day',
     elevation: createElevation(shadowBase, isDark ? 0.35 : 0.06, 10, 2),
     elevationSoft: createElevation(shadowBase, isDark ? 0.25 : 0.04, 6, 1),
+    appearance,
+    setAppearance,
   };
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  // Appearance.setColorScheme makes native chrome (status bar, alerts, keyboards) follow the manual choice too;
+  // useColorScheme then reports it, so the palette below needs no separate override path.
   const systemScheme = useColorScheme();
-  const colorScheme: ColorSchemeName = systemScheme === 'dark' ? 'dark' : 'light';
-  const value = useMemo(() => buildThemeValue(colorScheme), [colorScheme]);
+  const [appearance, setAppearanceState] =
+    useState<AppearancePreference>('system');
+
+  const applyToNative = useCallback((pref: AppearancePreference) => {
+    try {
+      // null hands control back to the phone's setting (accepted at runtime; the type omits it).
+      Appearance.setColorScheme?.(
+        (pref === 'system' ? null : pref) as 'light' | 'dark',
+      );
+    } catch {
+      // older runtimes: the palette still follows the preference below
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadAppearancePreference().then((pref) => {
+      if (cancelled) return;
+      setAppearanceState(pref);
+      applyToNative(pref);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [applyToNative]);
+
+  const setAppearance = useCallback(
+    (pref: AppearancePreference) => {
+      setAppearanceState(pref);
+      applyToNative(pref);
+      void saveAppearancePreference(pref);
+    },
+    [applyToNative],
+  );
+
+  const colorScheme: ColorSchemeName =
+    appearance === 'system'
+      ? systemScheme === 'dark'
+        ? 'dark'
+        : 'light'
+      : appearance;
+  const value = useMemo(
+    () => buildThemeValue(colorScheme, appearance, setAppearance),
+    [colorScheme, appearance, setAppearance],
+  );
 
   return (
     <ThemeContext.Provider value={value}>

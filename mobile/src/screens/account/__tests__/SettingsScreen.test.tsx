@@ -98,6 +98,14 @@ describe('SettingsScreen', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
+  it('offers System, Light and Dark appearance choices', async () => {
+    await renderWithProviders(<SettingsScreen />);
+    expect(screen.getByText('Appearance')).toBeTruthy();
+    for (const label of ['System', 'Light', 'Dark']) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+  });
+
   it('lists every setting-type option', async () => {
     await renderWithProviders(<SettingsScreen />);
     for (const label of [
