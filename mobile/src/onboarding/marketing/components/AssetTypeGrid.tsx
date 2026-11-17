@@ -1,11 +1,3 @@
-import {
-  BriefcaseIcon,
-  CarIcon,
-  LaptopIcon,
-  SmartphoneIcon,
-  TabletIcon,
-  TvIcon,
-} from 'lucide-react-native';
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -14,17 +6,17 @@ import Animated, {
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
-import { BRAND } from '../../../brand/constants';
+import { AssetPhoto } from './AssetPhoto';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { colors, radius, spacing, typography } from '../../../theme/tokens';
 
 const ASSETS = [
-  { label: 'Vehicle', Icon: CarIcon },
-  { label: 'Laptop', Icon: LaptopIcon },
-  { label: 'Smartphone', Icon: SmartphoneIcon },
-  { label: 'Television', Icon: TvIcon },
-  { label: 'Tablet', Icon: TabletIcon },
-  { label: 'Business equipment', Icon: BriefcaseIcon },
+  { label: 'Vehicle', type: 'vehicle' },
+  { label: 'Laptop', type: 'laptop' },
+  { label: 'Smartphone', type: 'smartphone' },
+  { label: 'Television', type: 'tv' },
+  { label: 'Tablet', type: 'tablet' },
+  { label: 'Business equipment', type: 'business_equipment' },
 ] as const;
 
 export function AssetTypeGrid() {
@@ -41,12 +33,12 @@ export function AssetTypeGrid() {
 
 function AssetCard({
   label,
-  Icon,
+  type,
   index,
   reduced,
 }: {
   label: string;
-  Icon: typeof CarIcon;
+  type: string;
   index: number;
   reduced: boolean;
 }) {
@@ -66,7 +58,7 @@ function AssetCard({
   return (
     <Animated.View style={[styles.card, style]}>
       <View style={styles.iconWrap}>
-        <Icon size={22} color={BRAND.secondary} strokeWidth={1.75} />
+        <AssetPhoto type={type} size={64} />
       </View>
       <Text style={styles.label}>{label}</Text>
     </Animated.View>
@@ -89,12 +81,6 @@ const styles = StyleSheet.create({
     borderColor: colors.hairline,
   },
   iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.input,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: spacing.sm,
   },
   label: {

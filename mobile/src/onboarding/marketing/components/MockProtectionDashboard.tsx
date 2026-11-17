@@ -1,4 +1,5 @@
-import { LaptopIcon, CarIcon, SmartphoneIcon, TvIcon, ShieldCheckIcon } from 'lucide-react-native';
+import { ShieldCheckIcon } from 'lucide-react-native';
+import { AssetPhoto } from './AssetPhoto';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BRAND } from '../../../brand/constants';
@@ -6,10 +7,10 @@ import { DemoBadge } from './DemoBadge';
 import { colors, radius, spacing, typography } from '../../../theme/tokens';
 
 const DEMO_ASSETS = [
-  { name: 'MacBook Pro', Icon: LaptopIcon },
-  { name: 'iPhone 15', Icon: SmartphoneIcon },
-  { name: 'Toyota Corolla', Icon: CarIcon },
-  { name: 'Samsung TV', Icon: TvIcon },
+  { name: 'MacBook Pro', type: 'laptop' },
+  { name: 'iPhone 15', type: 'smartphone' },
+  { name: 'Toyota Corolla', type: 'vehicle' },
+  { name: 'Samsung TV', type: 'tv' },
 ] as const;
 
 export function MockProtectionDashboard() {
@@ -24,11 +25,9 @@ export function MockProtectionDashboard() {
           <Text style={styles.statusText}>All protected</Text>
         </View>
         <View style={styles.divider} />
-        {DEMO_ASSETS.map(({ name, Icon }) => (
+        {DEMO_ASSETS.map(({ name, type }) => (
           <View key={name} style={styles.row}>
-            <View style={styles.iconWrap}>
-              <Icon size={18} color={BRAND.secondary} />
-            </View>
+            <AssetPhoto type={type} size={44} />
             <View style={styles.rowText}>
               <Text style={styles.assetName}>{name}</Text>
               <Text style={styles.assetStatus}>Protected</Text>

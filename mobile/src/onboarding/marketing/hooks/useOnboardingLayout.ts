@@ -21,7 +21,9 @@ export function useOnboardingLayout() {
       ? typography.sizes['2xl']
       : typography.sizes['3xl'];
 
-  const subtitleSize = isVeryCompact ? typography.sizes.sm : typography.sizes.base;
+  const subtitleSize = isVeryCompact
+    ? typography.sizes.sm
+    : typography.sizes.base;
 
   /** Wide wordmark — needs generous width; height follows ~3.6:1 aspect. */
   const logoHeroHeight = isVeryCompact ? 64 : isCompact ? 72 : 80;

@@ -1,12 +1,12 @@
 import { useRouter } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
 import {
-  Dimensions,
   FlatList,
   Pressable,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type ListRenderItem,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -19,17 +19,21 @@ import { minTouchTarget, spacing } from '../../theme/tokens';
 import { AssetTypeGrid } from './components/AssetTypeGrid';
 import { BrandLogo } from './components/BrandLogo';
 import { FullDashboardMock } from './components/FullDashboardMock';
-import { MapTrackingDemo } from './components/MapTrackingDemo';
 import { MarketingSlideShell } from './components/MarketingSlideShell';
 import { MockProtectionDashboard } from './components/MockProtectionDashboard';
 import { PlanIntroPanel } from './components/PlanIntroPanel';
-import { ProgressDots } from './components/ProgressDots';
+import { ProtectionMapHero } from './components/ProtectionMapHero';
+import { StoryProgress } from './components/StoryProgress';
 import { RecoveryFlowDiagram } from './components/RecoveryFlowDiagram';
 import { ThreeStepGuide } from './components/ThreeStepGuide';
+import { useAutoAdvance } from './hooks/useAutoAdvance';
 import { useOnboardingLayout } from './hooks/useOnboardingLayout';
+import { useReducedMotion } from './hooks/useReducedMotion';
+import { useScreenFocused } from './hooks/useScreenFocused';
 import { usePublicPlans } from './hooks/usePublicPlans';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+/** How long each slide stays before the intro moves on by itself. */
+const DWELL_MS = 6500;
 
 type SlideId =
   | 'what-we-do'
@@ -65,9 +69,9 @@ const SLIDES: Slide[] = [
   },
   {
     id: 'track',
-    title: 'Know where your asset is',
+    title: 'See where your assets are',
     subtitle:
-      'For compatible insured assets with an assigned tracking device, view their latest available location directly from the app.',
+      'Assets with a tracker, or your own phone, appear on the map. Speed, battery and signal show where the device reports them.',
     footerLabel: 'Next',
   },
   {
@@ -111,7 +115,7 @@ function slideContent(item: Slide, plans: ReturnType<typeof usePublicPlans>) {
     case 'protect':
       return <MockProtectionDashboard />;
     case 'track':
-      return <MapTrackingDemo />;
+      return <ProtectionMapHero height={300} />;
     case 'recovery':
       return <RecoveryFlowDiagram />;
     case 'dashboard':
@@ -140,11 +144,29 @@ export function MarketingOnboardingFlow() {
   const plans = usePublicPlans();
   const { isCompact } = useOnboardingLayout();
   const t = useDesignTokens();
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const reduced = useReducedMotion();
+  const focused = useScreenFocused();
+  const [touching, setTouching] = useState(false);
+  const [cycle, setCycle] = useState(0);
 
   const goToSlide = useCallback((index: number) => {
     listRef.current?.scrollToIndex({ index, animated: true });
     setActiveIndex(index);
   }, []);
+
+  // The intro moves on by itself. It waits while a finger is on it, while another screen is on top, when the phone's
+  // Reduce Motion setting is on, and it stops on the last slide (the account choice).
+  const autoRunning =
+    !reduced && focused && !touching && activeIndex < SLIDES.length - 1;
+  useAutoAdvance({
+    enabled: autoRunning,
+    index: activeIndex,
+    count: SLIDES.length,
+    dwellMs: DWELL_MS,
+    cycle,
+    onAdvance: goToSlide,
+  });
 
   const finishIntro = useCallback(
     async (destination: 'signup' | 'login') => {
@@ -170,8 +192,10 @@ export function MarketingOnboardingFlow() {
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
       setActiveIndex(index);
+      setTouching(false);
+      setCycle((c) => c + 1);
     },
-    [],
+    [SCREEN_WIDTH],
   );
 
   const renderSlide: ListRenderItem<Slide> = useCallback(
@@ -208,7 +232,7 @@ export function MarketingOnboardingFlow() {
         )}
       </View>
     ),
-    [finishIntro, goToSlide, plans],
+    [SCREEN_WIDTH, finishIntro, goToSlide, plans],
   );
 
   return (
@@ -257,10 +281,12 @@ export function MarketingOnboardingFlow() {
           )}
         </View>
 
-        <ProgressDots
+        <StoryProgress
           count={SLIDES.length}
           activeIndex={activeIndex}
-          compact={isCompact}
+          dwellMs={DWELL_MS}
+          running={autoRunning}
+          cycle={cycle}
         />
       </GlassCard>
 
@@ -272,6 +298,7 @@ export function MarketingOnboardingFlow() {
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
+        onScrollBeginDrag={() => setTouching(true)}
         onMomentumScrollEnd={onMomentumScrollEnd}
         getItemLayout={(_, index) => ({
           length: SCREEN_WIDTH,
