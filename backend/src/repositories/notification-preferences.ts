@@ -11,7 +11,9 @@ export type NotificationCategory =
   | 'account'
   | 'claims'
   | 'general'
-  | 'marketing';
+  | 'marketing'
+  // Feature 021 stage (c): behaviour/safety alerts (went dark, ...). Added after the original seven.
+  | 'safety_alerts';
 
 export type NotificationChannel = 'push' | 'email' | 'sms';
 
@@ -35,6 +37,7 @@ export const NOTIFICATION_CATEGORIES: NotificationCategory[] = [
   'claims',
   'general',
   'marketing',
+  'safety_alerts',
 ];
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferencesChannels = {
@@ -45,6 +48,8 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferencesChannels =
   claims: { push: true, email: true, sms: false },
   general: { push: false, email: true, sms: false },
   marketing: { push: false, email: false, sms: false },
+  // Safe default: the two free channels on, SMS (paid, vendor undecided) strictly opt-in.
+  safety_alerts: { push: true, email: true, sms: false },
 };
 
 export interface NotificationPreferencesRepo {
@@ -76,7 +81,8 @@ function serialize(doc: Record<string, unknown>): NotificationPreferencesDocumen
   return {
     id: (doc._id as ObjectId).toHexString(),
     accountId: doc.accountId as string,
-    channels: doc.channels as NotificationPreferencesChannels,
+    // Documents stored before a category existed lack it: fill from defaults, never undefined.
+    channels: { ...structuredClone(DEFAULT_NOTIFICATION_PREFERENCES), ...(doc.channels as Partial<NotificationPreferencesChannels>) },
     createdAt: doc.createdAt as Date,
     updatedAt: doc.updatedAt as Date,
   };
