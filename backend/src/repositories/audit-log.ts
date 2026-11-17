@@ -82,7 +82,17 @@ export type AuditEventType =
   // admin) — IS in `PRIVILEGED_ACCESS_EVENT_TYPES`, carries `decision`
   // (migrations/039).
   | 'customer_identity_reset'
-  | 'customer_verification_decision';
+  | 'customer_verification_decision'
+  // Feature 021 stage (b) / ADR-0020 section 9 - customer protection-change step-up. Added by
+  // migrations/041. `protection_change` carries `protectionDetail`.
+  | 'protection_reauth_verified'
+  | 'protection_reauth_failed'
+  | 'protection_reauth_exhausted'
+  | 'protection_change'
+  | 'protection_change_notice_failed';
+
+export type ProtectionChangeAction = 'asset_removed' | 'emergency_contact_changed';
+export type ProtectionChangeMethod = 'mfa' | 'password';
 
 /**
  * Event types that record privileged access to another account's data and
@@ -128,6 +138,9 @@ export interface AuditEventInput extends AuditActor {
    * `eventType === 'customer_verification_decision'`, one of `'verified'`,
    * `'rejected'`, `'action_required'`. */
   decision?: 'verified' | 'rejected' | 'action_required' | null;
+  /** migrations/041 - `protection_change` / `protection_change_notice_failed` rows only:
+   * fixed-vocabulary `action[|method[|assetId]]`. Never free text. */
+  protectionDetail?: string | null;
 }
 
 export interface BulkDisclosureInput extends AuditActor {
@@ -143,8 +156,8 @@ export interface BulkDisclosureInput extends AuditActor {
 
 const COLUMNS =
   'account_id, actor_account_id, actor_service, actor_session_id, audit_request_id, ' +
-  'event_type, attempted_identifier, ip_address, user_agent, result_count, decision';
-const COLUMN_COUNT = 11;
+  'event_type, attempted_identifier, ip_address, user_agent, result_count, decision, protection_detail';
+const COLUMN_COUNT = 12;
 
 function rowValues(event: AuditEventInput): unknown[] {
   return [
@@ -159,6 +172,7 @@ function rowValues(event: AuditEventInput): unknown[] {
     event.userAgent ?? null,
     event.resultCount ?? null,
     event.decision ?? null,
+    event.protectionDetail ?? null,
   ];
 }
 

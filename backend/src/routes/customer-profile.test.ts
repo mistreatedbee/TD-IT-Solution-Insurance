@@ -252,6 +252,24 @@ function createHarness(opts?: { accountState?: AccountStatus['accountState'] }) 
         return [];
       },
     },
+    // Feature 021 stage (b): the guarded route reads the live session row; these pre-existing
+    // happy-path tests present a session with fresh MFA proof. The guard itself is covered in
+    // protection-step-up.test.ts.
+    sessions: {
+      async findById(id: string) {
+        return { id, revokedAt: null, deviceName: 'Test phone', mfaVerifiedAt: new Date(), passwordReauthAt: null };
+      },
+    },
+    auditLog: {
+      async record() {
+        return undefined;
+      },
+    },
+    authNotifications: {
+      async notifyProtectionChanged() {
+        return undefined;
+      },
+    },
     alerts: {
       async upsertForAccount() {
         return {};

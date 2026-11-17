@@ -23,6 +23,7 @@ interface Row {
   revoked_reason: SessionRevokedReason | null;
   replaced_by_session_id: string | null;
   mfa_verified_at: Date | null;
+  password_reauth_at: Date | null;
 }
 
 function toRecord(row: Row): SessionRecord {
@@ -40,12 +41,13 @@ function toRecord(row: Row): SessionRecord {
     revokedReason: row.revoked_reason,
     replacedBySessionId: row.replaced_by_session_id,
     mfaVerifiedAt: row.mfa_verified_at ? new Date(row.mfa_verified_at) : null,
+    passwordReauthAt: row.password_reauth_at ? new Date(row.password_reauth_at) : null,
   };
 }
 
 const SELECT_COLUMNS = `id, account_id, refresh_token_hash, device_id, device_name, family_id,
        created_at, expires_at, absolute_expires_at, revoked_at, revoked_reason,
-       replaced_by_session_id, mfa_verified_at`;
+       replaced_by_session_id, mfa_verified_at, password_reauth_at`;
 
 export function createSessionRepo(db: Queryable): SessionRepo {
   return {
@@ -53,8 +55,8 @@ export function createSessionRepo(db: Queryable): SessionRepo {
       const result = await db.query<Row>(
         `insert into app.sessions
            (id, account_id, refresh_token_hash, device_id, device_name, ip_address,
-            user_agent, family_id, expires_at, absolute_expires_at, mfa_verified_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            user_agent, family_id, expires_at, absolute_expires_at, mfa_verified_at, password_reauth_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          returning ${SELECT_COLUMNS}`,
         [
           session.id,
@@ -68,6 +70,7 @@ export function createSessionRepo(db: Queryable): SessionRepo {
           session.expiresAt,
           session.absoluteExpiresAt,
           session.mfaVerifiedAt,
+          session.passwordReauthAt ?? null,
         ],
       );
       const row = result.rows[0];
@@ -177,6 +180,17 @@ export function createSessionRepo(db: Queryable): SessionRepo {
       await db.query(
         `update app.sessions
          set mfa_verified_at = $2
+         where id = $1 and revoked_at is null`,
+        [id, at],
+      );
+    },
+
+    // Feature 021 stage (b) P-INV-1/P-INV-4: updates exactly one column, on the
+    // current un-revoked row. Never mfa_verified_at, never either expiry.
+    async touchPasswordReauthAt(id, at) {
+      await db.query(
+        `update app.sessions
+         set password_reauth_at = $2
          where id = $1 and revoked_at is null`,
         [id, at],
       );

@@ -33,6 +33,8 @@ import {
 } from '../lib/asset-location-validation.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
+import { requireProtectionStepUp } from '../lib/step-up.js';
+import { recordProtectionChange } from '../lib/protection-change.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 
 const assetIdParamsSchema = z.object({
@@ -525,6 +527,9 @@ export function createAssetsRouter(ctx: AppContext): Router {
       { attempts: DEFAULT_AUTHENTICATED_LIMIT.attempts, windowSeconds: DEFAULT_AUTHENTICATED_LIMIT.windowSeconds },
       (req) => `assets-delete:${req.auth!.accountId}`,
     ),
+    // Feature 021 stage (b) G-1: fresh MFA or password re-auth proof, read live from the
+    // session row, BEFORE any asset read or write.
+    requireProtectionStepUp(ctx),
     async (req, res, next) => {
       try {
         const parsed = assetIdParamsSchema.safeParse(req.params);
@@ -542,11 +547,33 @@ export function createAssetsRouter(ctx: AppContext): Router {
           return;
         }
 
+        // ADR-0020 s9 A-6: refused whatever the step-up state is while a claim or recovery
+        // case is open. The copy deliberately does not say which kind of record exists.
+        const [openClaim, openCase] = await Promise.all([
+          ctx.claims.findNonTerminalByAssetForAccount(accountId, parsed.data.assetId),
+          ctx.recoveryCases.findOpenByAssetForAccount(accountId, parsed.data.assetId),
+        ]);
+        if (openClaim || openCase) {
+          next(
+            apiError('CONFLICT', {
+              message: 'This item cannot be removed right now. Please contact support.',
+            }),
+          );
+          return;
+        }
+
         const removed = await ctx.assets.markRemovedForAccount(accountId, parsed.data.assetId);
         if (!removed) {
           next(apiError('NOT_FOUND'));
           return;
         }
+
+        await recordProtectionChange(ctx, req, {
+          action: 'asset_removed',
+          method: res.locals.protectionStepUpMethod === 'password' ? 'password' : 'mfa',
+          assetId: removed.id,
+          assetDisplayName: existing.displayName,
+        });
 
         notifyInBackground(
           'asset.removed',

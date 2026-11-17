@@ -199,6 +199,22 @@ export const MFA_CHALLENGE_TOKEN_TTL_SECONDS = 5 * 60;
  * POST /v1/invitations requires mfa_verified_at within this window. */
 export const INVITATION_ISSUANCE_STEP_UP_WINDOW_SECONDS = 15 * 60;
 
+/** ADR-0020 D4 / §9 A-4: customer protection-change step-up freshness.
+ * Applies to both mfa_verified_at and password_reauth_at. Shorter than the
+ * 15-min admin window: the main threat is a snatch theft with the app open. */
+export const PROTECTION_CHANGE_STEP_UP_WINDOW_SECONDS = 5 * 60;
+
+/** Feature 021 stage (b) spec §7: password re-authentication attempts for a
+ * protection change. Counted per account AND per session, SEPARATELY from
+ * LOGIN_LOCKOUT so a thief hammering the sheet cannot lock the owner out of
+ * logging in elsewhere. Exhaustion revokes the CURRENT session only. The
+ * per-IP ceiling reuses LOGIN_LOCKOUT.perIp*. Loosening needs
+ * cybersecurity-architect counter-signature. */
+export const PROTECTION_REAUTH_LIMIT = {
+  attempts: 5,
+  windowSeconds: 15 * 60,
+} as const;
+
 export const PRIVILEGED_USER_TYPES = ['admin', 'security_company_operator', 'support_agent'] as const;
 export type PrivilegedUserType = (typeof PRIVILEGED_USER_TYPES)[number];
 

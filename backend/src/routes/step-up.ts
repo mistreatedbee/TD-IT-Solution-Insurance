@@ -19,7 +19,11 @@ import { validateBody } from '../lib/validation.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { clientIp } from '../middleware/rate-limit.js';
 import { checkRateLimit } from '../lib/rate-limit.js';
-import { MFA_CHALLENGE_LIMIT } from '../lib/policy.js';
+import { LOGIN_LOCKOUT, MFA_CHALLENGE_LIMIT, PROTECTION_REAUTH_LIMIT } from '../lib/policy.js';
+import { createRateLimiter } from '../middleware/rate-limit.js';
+import { RATE_LIMIT_KEY_PREFIX } from '../db/redis.js';
+import { revokeJtisInKv } from '../lib/revocation.js';
+import { dispatchProtectionNotice } from '../lib/protection-change.js';
 import { STEP_UP_WINDOW_SECONDS } from '../lib/step-up.js';
 import {
   createStepUpChallenge,
@@ -28,7 +32,7 @@ import {
   stepUpChallengeAttemptKey,
   stepUpAccountAttemptKey,
 } from '../lib/step-up-challenge-store.js';
-import { SupabaseUnavailableError } from '../db/supabase.js';
+import { SupabaseEmailNotConfirmedError, SupabaseUnavailableError } from '../db/supabase.js';
 
 export function createStepUpRouter(ctx: AppContext): Router {
   const router = Router();
@@ -219,6 +223,134 @@ export function createStepUpRouter(ctx: AppContext): Router {
         const stepUpExpiresAt = new Date(now.getTime() + STEP_UP_WINDOW_SECONDS.invitationIssuance * 1000);
 
         res.status(200).json({ mfaVerifiedAt: now.toISOString(), stepUpExpiresAt: stepUpExpiresAt.toISOString() });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------
+  // POST /auth/reauth/password - Feature 021 stage (b) spec section 2.2 / ADR-0020 s9 A-1.
+  // Scoped exception: a CUSTOMER with NO verified TOTP factor proves presence on the CURRENT
+  // session by re-entering their password. Writes password_reauth_at ONLY (P-INV-1: never
+  // mfa_verified_at, P-INV-4: never an expiry). Mints no tokens, rotates nothing.
+  // ---------------------------------------------------------------
+  const reauthSchema = z.object({ password: z.string().min(1).max(256) }).strict();
+  const reauthAttemptKey = (kind: 'acct' | 'sess', id: string) => `protection-reauth:${kind}:${id}`;
+  router.post(
+    '/auth/reauth/password',
+    authenticate,
+    // Per-IP ceiling reuses the login per-IP numbers, in its own key namespace.
+    createRateLimiter(
+      ctx.kv,
+      { attempts: LOGIN_LOCKOUT.perIpAttempts, windowSeconds: LOGIN_LOCKOUT.perIpWindowSeconds },
+      (req) => `protection-reauth-ip:${clientIp(req)}`,
+    ),
+    validateBody(reauthSchema),
+    async (req, res, next) => {
+      try {
+        const { password } = req.body as z.infer<typeof reauthSchema>;
+        const accountId = req.auth!.accountId;
+        const sessionId = req.auth!.sessionId;
+        const auditBase = {
+          accountId,
+          actorAccountId: accountId,
+          actorSessionId: sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          ipAddress: clientIp(req),
+        };
+
+        // 1. Live session read (INV-3).
+        const session = await ctx.sessions.findById(sessionId);
+        if (!session || session.revokedAt !== null) {
+          next(apiError('UNAUTHORIZED'));
+          return;
+        }
+
+        // 2. Separate lockout counters (account and session), failures only. Already
+        // exhausted -> the session is gone (revoked below); treat a stale call the same.
+        const acctKey = reauthAttemptKey('acct', accountId);
+        const sessKey = reauthAttemptKey('sess', sessionId);
+        const limit = PROTECTION_REAUTH_LIMIT;
+        const [acctCount, sessCount] = await Promise.all([
+          ctx.kv.get(`${RATE_LIMIT_KEY_PREFIX}${acctKey}`),
+          ctx.kv.get(`${RATE_LIMIT_KEY_PREFIX}${sessKey}`),
+        ]);
+        if (Number(acctCount ?? 0) >= limit.attempts || Number(sessCount ?? 0) >= limit.attempts) {
+          next(apiError('RATE_LIMITED', undefined, limit.windowSeconds));
+          return;
+        }
+
+        // 3. Account row only - email never comes from the client. Customers only.
+        const account = await ctx.accounts.findById(accountId);
+        if (!account) {
+          next(apiError('UNAUTHORIZED'));
+          return;
+        }
+        if (account.userType !== 'customer') {
+          next(apiError('FORBIDDEN'));
+          return;
+        }
+
+        // 4. Verify the password with Supabase.
+        let verification: Awaited<ReturnType<typeof ctx.supabase.verifyPassword>>;
+        try {
+          verification = await ctx.supabase.verifyPassword(account.email, password);
+        } catch (err) {
+          if (err instanceof SupabaseUnavailableError) {
+            next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
+            return;
+          }
+          if (!(err instanceof SupabaseEmailNotConfirmedError)) throw err;
+          verification = null;
+        }
+
+        if (!verification) {
+          const a = await checkRateLimit(ctx.kv, acctKey, limit);
+          const s = await checkRateLimit(ctx.kv, sessKey, limit);
+          await ctx.auditLog.record({ ...auditBase, eventType: 'protection_reauth_failed' });
+          const count = Math.max(a.attemptCount, s.attemptCount);
+          if (count >= limit.attempts) {
+            // Exhausted: revoke the CURRENT session only (spec section 7). The account is not
+            // locked and the login counter is untouched.
+            await ctx.sessions.revoke(sessionId, 'logout');
+            await revokeJtisInKv(ctx.kv, [sessionId]);
+            await ctx.auditLog.record({ ...auditBase, eventType: 'protection_reauth_exhausted' });
+            void dispatchProtectionNotice(ctx, req, { action: 'reauth_exhausted', deviceName: session.deviceName });
+            next(apiError('UNAUTHORIZED'));
+            return;
+          }
+          next(apiError('INVALID_CREDENTIALS', { attemptsRemaining: Math.max(0, limit.attempts - count) }));
+          return;
+        }
+
+        // 5. Anti-downgrade: an account with a verified TOTP factor must use the TOTP flow.
+        let verifiedFactor: { factorId: string } | null;
+        try {
+          verifiedFactor = await ctx.supabase.findVerifiedTotpFactor(verification.userAccessToken);
+        } catch (err) {
+          if (err instanceof SupabaseUnavailableError) {
+            next(apiError('UPSTREAM_UNAVAILABLE', undefined, 5));
+            return;
+          }
+          throw err;
+        }
+        if (verifiedFactor) {
+          next(apiError('MFA_STEP_UP_REQUIRED'));
+          return;
+        }
+
+        // 6. userAccessToken is dropped here: never stored, never returned.
+        // 7. The only write.
+        const now = new Date();
+        await ctx.sessions.touchPasswordReauthAt(sessionId, now);
+        await Promise.all([ctx.kv.del(`${RATE_LIMIT_KEY_PREFIX}${acctKey}`), ctx.kv.del(`${RATE_LIMIT_KEY_PREFIX}${sessKey}`)]);
+        await ctx.auditLog.record({ ...auditBase, eventType: 'protection_reauth_verified' });
+
+        res.status(200).json({
+          reauthAt: now.toISOString(),
+          reauthExpiresAt: new Date(now.getTime() + STEP_UP_WINDOW_SECONDS.protectionChange * 1000).toISOString(),
+        });
       } catch (err) {
         next(err);
       }
