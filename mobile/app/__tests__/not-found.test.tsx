@@ -29,7 +29,7 @@ beforeEach(() => {
 describe('+not-found', () => {
   it('does not render the path or query', async () => {
     await renderWithProviders(<NotFoundScreen />);
-    expect(screen.getByText('Page not found')).toBeTruthy();
+    expect(screen.getByText('That page has gone missing')).toBeTruthy();
     const rendered = JSON.stringify(screen.toJSON());
     for (const leaked of ['secret-hash-123', 'victim@example.com', 'secret-path-segment', 'reset-password-typo']) {
       expect(rendered).not.toContain(leaked);
@@ -40,14 +40,14 @@ describe('+not-found', () => {
 
   it('continues to the app root when there is no history', async () => {
     await renderWithProviders(<NotFoundScreen />);
-    await fireEvent.press(screen.getByText('Continue'));
+    await fireEvent.press(screen.getByText('Take me back'));
     expect(mockReplace).toHaveBeenCalledWith('/');
   });
 
   it('goes back when there is history', async () => {
     mockCanGoBack = true;
     await renderWithProviders(<NotFoundScreen />);
-    await fireEvent.press(screen.getByText('Continue'));
+    await fireEvent.press(screen.getByText('Take me back'));
     expect(mockBack).toHaveBeenCalled();
     expect(mockReplace).not.toHaveBeenCalled();
   });
