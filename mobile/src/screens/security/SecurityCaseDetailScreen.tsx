@@ -2,7 +2,7 @@
  * Security partner — single recovery case detail with claim/status actions.
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
   acceptSecurityCase,
@@ -23,10 +23,16 @@ import { ApiError, NetworkUnavailableError } from '../../api/errors';
 import { useIsOnline } from '../../network/NetworkProvider';
 import { MapPlaceholder } from '../recovery/MapPlaceholder';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { Alert, Badge, Button, Card, Screen } from '../../theme/primitives';
-import { SelectChipGroup, type SelectChipOption } from '../../theme/primitives/SelectChip';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
+import { PolicyStatusPill } from '../policy/PolicyStatusPill';
+import {
+  SelectChipGroup,
+  type SelectChipOption,
+} from '../../theme/primitives/SelectChip';
 import type { BadgeTone } from '../../theme/primitives/Badge';
-import { colors, spacing, typography } from '../../theme/tokens';
 
 const STATUS_ACTIONS: { label: string; status: SecurityCaseStatus }[] = [
   { label: 'Start investigating', status: 'investigating' },
@@ -77,6 +83,8 @@ function formatStatus(status: string): string {
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   return (
     <View style={styles.detailRow}>
       <Text style={styles.detailLabel}>{label}</Text>
@@ -90,9 +98,9 @@ export function SecurityCaseDetailScreen() {
 
   if (!caseId) {
     return (
-      <Screen>
+      <DesignPage>
         <Alert tone="danger">Missing case ID.</Alert>
-      </Screen>
+      </DesignPage>
     );
   }
 
@@ -100,22 +108,24 @@ export function SecurityCaseDetailScreen() {
 }
 
 function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
-  const [recoveryCase, setRecoveryCase] = useState<SecurityRecoveryCase | null>(null);
+  const [recoveryCase, setRecoveryCase] = useState<SecurityRecoveryCase | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
-  const [pendingTerminalStatus, setPendingTerminalStatus] = useState<SecurityCaseStatus | null>(
-    null,
-  );
-  const [closeReason, setCloseReason] = useState<SecurityCaseCloseReason | null>(null);
-  const [pendingDeclineReason, setPendingDeclineReason] = useState<SecurityCaseDeclineReason | null>(
-    null,
-  );
+  const [pendingTerminalStatus, setPendingTerminalStatus] =
+    useState<SecurityCaseStatus | null>(null);
+  const [closeReason, setCloseReason] =
+    useState<SecurityCaseCloseReason | null>(null);
+  const [pendingDeclineReason, setPendingDeclineReason] =
+    useState<SecurityCaseDeclineReason | null>(null);
   const [declinePickerOpen, setDeclinePickerOpen] = useState(false);
-  const [pendingReleaseReason, setPendingReleaseReason] = useState<SecurityCaseReleaseReason | null>(
-    null,
-  );
+  const [pendingReleaseReason, setPendingReleaseReason] =
+    useState<SecurityCaseReleaseReason | null>(null);
   const [releasePickerOpen, setReleasePickerOpen] = useState(false);
   const isOnline = useIsOnline();
 
@@ -159,10 +169,15 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
     void setStatus(status);
   }
 
-  async function setStatus(status: SecurityCaseStatus, reason?: SecurityCaseCloseReason) {
+  async function setStatus(
+    status: SecurityCaseStatus,
+    reason?: SecurityCaseCloseReason,
+  ) {
     if (!caseId) return;
     if (!isOnline) {
-      setError("You're offline. This status change has not been saved — reconnect and try again.");
+      setError(
+        "You're offline. This status change has not been saved — reconnect and try again.",
+      );
       return;
     }
     setUpdating(true);
@@ -174,7 +189,9 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
       setCloseReason(null);
     } catch (err) {
       if (err instanceof NetworkUnavailableError) {
-        setError("We couldn't confirm this status change was saved. Check your connection and try again.");
+        setError(
+          "We couldn't confirm this status change was saved. Check your connection and try again.",
+        );
       } else {
         setError(mapUserFacingError(err, { context: 'security-case' }));
       }
@@ -191,7 +208,9 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
   async function handleClaim() {
     if (!caseId) return;
     if (!isOnline) {
-      setError("You're offline. This case has not been claimed — reconnect and try again.");
+      setError(
+        "You're offline. This case has not been claimed — reconnect and try again.",
+      );
       return;
     }
     setUpdating(true);
@@ -201,7 +220,9 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
       setRecoveryCase(updated);
     } catch (err) {
       if (err instanceof NetworkUnavailableError) {
-        setError("We couldn't confirm this claim was received. Check your connection, then refresh before retrying — retrying a claim that already succeeded will show as unavailable, not as success.");
+        setError(
+          "We couldn't confirm this claim was received. Check your connection, then refresh before retrying — retrying a claim that already succeeded will show as unavailable, not as success.",
+        );
         return;
       }
       // (d): a claim retried after it actually already succeeded hits the
@@ -233,7 +254,9 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
   async function handleAccept() {
     if (!caseId) return;
     if (!isOnline) {
-      setError("You're offline. This case has not been accepted — reconnect and try again.");
+      setError(
+        "You're offline. This case has not been accepted — reconnect and try again.",
+      );
       return;
     }
     setUpdating(true);
@@ -243,10 +266,15 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
       setRecoveryCase(updated);
     } catch (err) {
       if (err instanceof NetworkUnavailableError) {
-        setError("We couldn't confirm this accept was received. Check your connection, then refresh before retrying — retrying an accept that already succeeded will show as unavailable, not as success.");
+        setError(
+          "We couldn't confirm this accept was received. Check your connection, then refresh before retrying — retrying an accept that already succeeded will show as unavailable, not as success.",
+        );
         return;
       }
-      if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
+      if (
+        err instanceof ApiError &&
+        (err.status === 404 || err.status === 409)
+      ) {
         try {
           const refreshed = await getSecurityCase(caseId);
           if (refreshed.dispatchStatus === 'accepted') {
@@ -288,7 +316,9 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
   async function handleDecline() {
     if (!caseId || !pendingDeclineReason) return;
     if (!isOnline) {
-      setError("You're offline. This case has not been declined — reconnect and try again.");
+      setError(
+        "You're offline. This case has not been declined — reconnect and try again.",
+      );
       return;
     }
     setUpdating(true);
@@ -298,10 +328,15 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
       leaveCaseAfterHandoff();
     } catch (err) {
       if (err instanceof NetworkUnavailableError) {
-        setError("We couldn't confirm this decline was received. Check your connection, then refresh before retrying.");
+        setError(
+          "We couldn't confirm this decline was received. Check your connection, then refresh before retrying.",
+        );
         return;
       }
-      if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
+      if (
+        err instanceof ApiError &&
+        (err.status === 404 || err.status === 409)
+      ) {
         try {
           const refreshed = await getSecurityCase(caseId);
           if (refreshed.dispatchStatus !== 'pending') {
@@ -324,7 +359,9 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
   async function handleRelease() {
     if (!caseId || !pendingReleaseReason) return;
     if (!isOnline) {
-      setError("You're offline. This case has not been released — reconnect and try again.");
+      setError(
+        "You're offline. This case has not been released — reconnect and try again.",
+      );
       return;
     }
     setUpdating(true);
@@ -334,10 +371,15 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
       leaveCaseAfterHandoff();
     } catch (err) {
       if (err instanceof NetworkUnavailableError) {
-        setError("We couldn't confirm this release was received. Check your connection, then refresh before retrying.");
+        setError(
+          "We couldn't confirm this release was received. Check your connection, then refresh before retrying.",
+        );
         return;
       }
-      if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
+      if (
+        err instanceof ApiError &&
+        (err.status === 404 || err.status === 409)
+      ) {
         try {
           const refreshed = await getSecurityCase(caseId);
           if (refreshed.dispatchStatus !== 'accepted') {
@@ -358,28 +400,28 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
 
   if (loading) {
     return (
-      <Screen scroll={false}>
+      <DesignPage scroll={false}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
-      </Screen>
+      </DesignPage>
     );
   }
 
   if (error && !recoveryCase) {
     return (
-      <Screen>
+      <DesignPage>
         <Text style={styles.title}>Case</Text>
         <Alert tone="danger">{error}</Alert>
-      </Screen>
+      </DesignPage>
     );
   }
 
   if (!recoveryCase) {
     return (
-      <Screen>
+      <DesignPage>
         <Alert tone="danger">Case not found.</Alert>
-      </Screen>
+      </DesignPage>
     );
   }
 
@@ -390,11 +432,11 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
     !recoveryCase.partnerOrganizationId;
 
   return (
-    <Screen>
+    <DesignPage>
       <Text style={styles.title}>{recoveryCase.referenceNumber}</Text>
-      <Badge tone={caseStatusTone(recoveryCase.status)}>
+      <PolicyStatusPill tone={caseStatusTone(recoveryCase.status)}>
         {formatStatus(recoveryCase.status)}
-      </Badge>
+      </PolicyStatusPill>
 
       {error ? (
         <View style={styles.alertSpacing}>
@@ -402,7 +444,7 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
         </View>
       ) : null}
 
-      <Card style={styles.section}>
+      <GlassCard variant="solid" style={styles.section}>
         <DetailRow label="Asset ID" value={recoveryCase.assetId} />
         <DetailRow
           label="Reported"
@@ -414,25 +456,28 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
           value={recoveryCase.partnerOrganizationId ?? 'Unassigned'}
         />
         {recoveryCase.closeReason ? (
-          <DetailRow label="Close reason" value={formatCloseReason(recoveryCase.closeReason)} />
+          <DetailRow
+            label="Close reason"
+            value={formatCloseReason(recoveryCase.closeReason)}
+          />
         ) : null}
-      </Card>
+      </GlassCard>
 
       {recoveryCase.status === 'tracking' ? (
         <>
-          <MapPlaceholder
-            emptyMessage="Live GPS requires Phase 2 ingestion — not connected yet."
-          />
+          <MapPlaceholder emptyMessage="Live GPS requires Phase 2 ingestion — not connected yet." />
           <Text style={styles.gpsNote}>
-            Live GPS map and location history require Phase 2 GPS ingestion — not yet connected.
+            Live GPS map and location history require Phase 2 GPS ingestion —
+            not yet connected.
           </Text>
         </>
       ) : null}
 
       {pendingTerminalStatus ? (
-        <Card style={styles.section}>
+        <GlassCard variant="solid" style={styles.section}>
           <Text style={styles.detailLabel}>
-            Reason for marking this case &quot;{formatStatus(pendingTerminalStatus)}&quot;
+            Reason for marking this case &quot;
+            {formatStatus(pendingTerminalStatus)}&quot;
           </Text>
           <SelectChipGroup
             options={CLOSE_REASON_OPTIONS}
@@ -442,28 +487,25 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
           />
           <View style={styles.actions}>
             <Button
-              variant="primary"
+              label={`Confirm ${formatStatus(pendingTerminalStatus)}`}
               loading={updating}
               disabled={!closeReason}
               onPress={confirmTerminalStatus}
-            >
-              {`Confirm ${formatStatus(pendingTerminalStatus)}`}
-            </Button>
+            />
             <Button
-              variant="secondary"
+              label="Cancel"
               onPress={() => {
                 setPendingTerminalStatus(null);
                 setCloseReason(null);
               }}
-            >
-              Cancel
-            </Button>
+              variant="secondary"
+            />
           </View>
-        </Card>
+        </GlassCard>
       ) : null}
 
       {declinePickerOpen ? (
-        <Card style={styles.section}>
+        <GlassCard variant="solid" style={styles.section}>
           <Text style={styles.detailLabel}>Reason for declining this case</Text>
           <SelectChipGroup
             options={DECLINE_REASON_OPTIONS}
@@ -473,28 +515,25 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
           />
           <View style={styles.actions}>
             <Button
-              variant="primary"
+              label="Confirm decline"
               loading={updating}
               disabled={!pendingDeclineReason}
               onPress={() => void handleDecline()}
-            >
-              Confirm decline
-            </Button>
+            />
             <Button
-              variant="secondary"
+              label="Cancel"
               onPress={() => {
                 setDeclinePickerOpen(false);
                 setPendingDeclineReason(null);
               }}
-            >
-              Cancel
-            </Button>
+              variant="secondary"
+            />
           </View>
-        </Card>
+        </GlassCard>
       ) : null}
 
       {releasePickerOpen ? (
-        <Card style={styles.section}>
+        <GlassCard variant="solid" style={styles.section}>
           <Text style={styles.detailLabel}>Reason for releasing this case</Text>
           <SelectChipGroup
             options={RELEASE_REASON_OPTIONS}
@@ -504,119 +543,102 @@ function SecurityCaseDetailBody({ caseId }: { caseId: string }) {
           />
           <View style={styles.actions}>
             <Button
-              variant="primary"
+              label="Confirm release"
               loading={updating}
               disabled={!pendingReleaseReason}
               onPress={() => void handleRelease()}
-            >
-              Confirm release
-            </Button>
+            />
             <Button
-              variant="secondary"
+              label="Cancel"
               onPress={() => {
                 setReleasePickerOpen(false);
                 setPendingReleaseReason(null);
               }}
-            >
-              Cancel
-            </Button>
+              variant="secondary"
+            />
           </View>
-        </Card>
+        </GlassCard>
       ) : null}
 
       <View style={styles.actions}>
         {canClaim ? (
-          <Button variant="primary" loading={updating} onPress={() => void handleClaim()}>
-            Claim case
-          </Button>
+          <Button
+            label="Claim case"
+            loading={updating}
+            onPress={() => void handleClaim()}
+          />
         ) : null}
         {caseMode === 'offered' ? (
           <>
-            <Button variant="primary" loading={updating} onPress={() => void handleAccept()}>
-              Accept
-            </Button>
             <Button
-              variant="secondary"
+              label="Accept"
+              loading={updating}
+              onPress={() => void handleAccept()}
+            />
+            <Button
+              label="Decline"
               loading={updating}
               onPress={() => {
                 setDeclinePickerOpen(true);
                 setPendingDeclineReason(null);
               }}
-            >
-              Decline
-            </Button>
+              variant="secondary"
+            />
           </>
         ) : null}
         {caseMode !== 'offered'
-          ? STATUS_ACTIONS.filter((a) => a.status !== recoveryCase.status).map((action) => (
-              <Button
-                key={action.status}
-                variant="secondary"
-                loading={updating}
-                onPress={() => requestStatusChange(action.status)}
-              >
-                {action.label}
-              </Button>
-            ))
+          ? STATUS_ACTIONS.filter((a) => a.status !== recoveryCase.status).map(
+              (action) => (
+                <Button
+                  label={action.label}
+                  key={action.status}
+                  loading={updating}
+                  onPress={() => requestStatusChange(action.status)}
+                  variant="secondary"
+                />
+              ),
+            )
           : null}
         {caseMode === 'held' ? (
           <Button
-            variant="secondary"
+            label="Release"
             loading={updating}
             onPress={() => {
               setReleasePickerOpen(true);
               setPendingReleaseReason(null);
             }}
-          >
-            Release
-          </Button>
+            variant="secondary"
+          />
         ) : null}
       </View>
-    </Screen>
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  alertSpacing: {
-    marginTop: spacing.lg,
-  },
-  section: {
-    marginTop: spacing.xl,
-  },
-  detailRow: {
-    marginBottom: spacing.md,
-  },
-  detailLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  detailValue: {
-    fontSize: typography.sizes.sm,
-    color: colors.textPrimary,
-  },
-  gpsNote: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-    lineHeight: typography.sizes.xs * 1.4,
-  },
-  actions: {
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  reasonPicker: {
-    marginTop: spacing.sm,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s2,
+    },
+    alertSpacing: { marginTop: t.spacing.s4 },
+    section: { marginTop: t.spacing.s6 },
+    detailRow: { marginBottom: t.spacing.s3 },
+    detailLabel: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s1,
+    },
+    detailValue: { ...t.type.bodySm, color: t.colors.ink },
+    gpsNote: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
+    actions: { gap: t.spacing.s2, marginTop: t.spacing.s3 },
+    reasonPicker: { marginTop: t.spacing.s2 },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    stretch: { alignSelf: 'stretch' },
+  });
+}
