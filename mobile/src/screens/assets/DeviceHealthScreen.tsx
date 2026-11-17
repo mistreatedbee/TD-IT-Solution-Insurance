@@ -150,6 +150,12 @@ export function DeviceHealthScreen() {
                 value={profile.telemetry.signalStrength}
               />
             ) : null}
+            {ui.showSpeed && profile.telemetry.speedKmh != null ? (
+              <MetricRow
+                label="Speed"
+                value={`${Math.round(profile.telemetry.speedKmh)} km/h`}
+              />
+            ) : null}
           </>
         ) : (
           <Text style={styles.emptyTelemetry}>

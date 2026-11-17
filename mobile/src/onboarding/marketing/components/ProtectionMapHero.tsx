@@ -15,6 +15,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Animated, {
+  cancelAnimation,
   Easing,
   interpolate,
   useAnimatedStyle,
@@ -47,29 +48,38 @@ const PHONE: Pt = { x: 0.24, y: 0.52 };
 const LAPTOP: Pt = { x: 0.74, y: 0.93 };
 
 type Key = 'car' | 'phone' | 'laptop';
-const TRACKED: { key: Key; assetType: string; name: string; status: string }[] =
-  [
-    {
-      key: 'car',
-      assetType: 'vehicle',
-      name: 'Car',
-      status: 'Moving · updated just now',
-    },
-    {
-      key: 'phone',
-      assetType: 'smartphone',
-      name: 'Phone',
-      status: 'At Home · inside safe zone',
-    },
-    {
-      key: 'laptop',
-      assetType: 'laptop',
-      name: 'Laptop',
-      status: 'At Office · inside safe zone',
-    },
-  ];
+const TRACKED: {
+  key: Key;
+  assetType: string;
+  name: string;
+  status: string;
+  readings: string;
+}[] = [
+  {
+    key: 'car',
+    assetType: 'vehicle',
+    name: 'Car',
+    status: 'Moving',
+    readings: 'Battery 88% · Strong signal',
+  },
+  {
+    key: 'phone',
+    assetType: 'smartphone',
+    name: 'Phone',
+    status: 'At Home · safe zone',
+    readings: 'Battery 72% · Good signal',
+  },
+  {
+    key: 'laptop',
+    assetType: 'laptop',
+    name: 'Laptop',
+    status: 'At Office · safe zone',
+    readings: 'Battery 100% · Charging',
+  },
+];
 
-const CARD_HEIGHT = 58;
+const CARD_HEIGHT = 78;
+const CAPTION_HEIGHT = 18;
 const GAP = 10;
 const SIDE_MARGIN = 16;
 const TAG_HEIGHT = 20;
@@ -77,6 +87,7 @@ const TAG_GAP = 4;
 const TAIL = 7;
 /** Keeps every marker (tag included) fully inside the map, clear of the "Example" label. */
 const MIN_TOP = 30;
+const CYCLE_MS = 10000;
 
 export interface ProtectionMapHeroProps {
   /** Total height available, including the info card. */
@@ -117,7 +128,7 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
   const MapView = useMemo(loadMapView, []);
 
   const mapW = Math.max(220, width - SIDE_MARGIN * 2);
-  const mapH = Math.max(120, height - CARD_HEIGHT - GAP);
+  const mapH = Math.max(120, height - CARD_HEIGHT - GAP - CAPTION_HEIGHT);
   const thumb = Math.max(36, Math.min(48, mapH * 0.2));
   const boxW = 96;
   const boxH = TAG_HEIGHT + TAG_GAP + thumb + TAIL;
@@ -125,13 +136,16 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
   const progress = useSharedValue(reduced ? 0.5 : 0);
   const blink = useSharedValue(0);
   const [active, setActive] = useState(0);
+  const [speed, setSpeed] = useState(48);
 
   useEffect(() => {
     if (reduced) return;
+    // One-way drive: the car follows the route, fades out at the end and starts again (it never reverses).
+    progress.value = 0;
     progress.value = withRepeat(
-      withTiming(1, { duration: 9500, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: CYCLE_MS, easing: Easing.inOut(Easing.sin) }),
       -1,
-      true,
+      false,
     );
     blink.value = withRepeat(
       withSequence(
@@ -141,11 +155,22 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
       -1,
       false,
     );
-    const id = setInterval(
+    const started = Date.now();
+    const activeTimer = setInterval(
       () => setActive((i) => (i + 1) % TRACKED.length),
       3200,
     );
-    return () => clearInterval(id);
+    // Illustrative speed that rises and falls with the drive (same cycle as the car).
+    const speedTimer = setInterval(() => {
+      const u = ((Date.now() - started) % CYCLE_MS) / CYCLE_MS;
+      setSpeed(Math.round(16 + 56 * Math.sin(Math.PI * u)));
+    }, 300);
+    return () => {
+      clearInterval(activeTimer);
+      clearInterval(speedTimer);
+      cancelAnimation(progress);
+      cancelAnimation(blink);
+    };
   }, [blink, progress, reduced]);
 
   const inputs = useMemo(() => ROUTE.map((_, i) => i / (ROUTE.length - 1)), []);
@@ -154,6 +179,7 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
 
   // The marker's tail tip sits on the route point.
   const carStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.06, 0.94, 1], [0, 1, 1, 0]),
     transform: [
       { translateX: interpolate(progress.value, inputs, xs) * mapW - boxW / 2 },
       {
@@ -166,12 +192,17 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
   }));
   // The route is left to right, so revealing the drawn trail up to the car's x gives a trail behind the car.
   const trailClip = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.06, 0.94, 1], [0, 1, 1, 0]),
     width: interpolate(progress.value, inputs, xs) * mapW,
   }));
   const liveDot = useAnimatedStyle(() => ({ opacity: blink.value }));
 
   const routePoints = ROUTE.map((p) => `${p.x * mapW},${p.y * mapH}`).join(' ');
   const focus = TRACKED[active]!;
+  const focusStatus =
+    focus.key === 'car'
+      ? `Moving at ${speed} km/h · updated just now`
+      : focus.status;
 
   const tag = (text: string, isActive: boolean, live = false) => (
     <View
@@ -318,7 +349,7 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
       style={[styles.root, { height }]}
       accessible
       accessibilityRole="image"
-      accessibilityLabel="Example view: a car, phone and laptop shown on a map as they are tracked"
+      accessibilityLabel="Illustration: a car, phone and laptop shown on a map as they are tracked"
     >
       <View
         style={[
@@ -383,16 +414,6 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
           </Svg>
         </Animated.View>
 
-        <Text
-          style={[
-            t.type.labelSm,
-            styles.exampleTag,
-            { color: t.colors.ink, backgroundColor: t.colors.bgRaised },
-          ]}
-        >
-          Example
-        </Text>
-
         <View style={place(PHONE)} pointerEvents="none">
           {marker('phone', 'smartphone', 'Home')}
         </View>
@@ -403,7 +424,7 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
           style={[styles.carWrap, { width: boxW, height: boxH }, carStyle]}
           pointerEvents="none"
         >
-          {marker('car', 'vehicle', 'Car · live', true)}
+          {marker('car', 'vehicle', `Car · ${speed} km/h`, true)}
         </Animated.View>
       </View>
 
@@ -441,18 +462,31 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
             style={[t.type.labelSm, { color: t.colors.inkMuted }]}
             numberOfLines={1}
           >
-            {focus.status}
+            {focusStatus}
+          </Text>
+          <Text
+            style={[t.type.labelSm, { color: t.colors.ink }]}
+            numberOfLines={1}
+          >
+            {focus.readings}
           </Text>
         </View>
         <View
           style={[styles.statusDot, { backgroundColor: t.colors.success }]}
         />
       </View>
+      <Text
+        style={[t.type.labelSm, styles.caption, { color: t.colors.inkMuted }]}
+        numberOfLines={1}
+      >
+        Illustration · readings show when a device reports them
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  caption: { marginTop: 6, fontSize: 10, opacity: 0.85, textAlign: 'center' },
   root: { alignItems: 'center', justifyContent: 'center' },
   map: { overflow: 'hidden', borderWidth: 1 },
   trailClip: { position: 'absolute', left: 0, top: 0, overflow: 'hidden' },
