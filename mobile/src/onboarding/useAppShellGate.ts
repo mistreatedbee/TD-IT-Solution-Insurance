@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useRef, useState } from 'react';
 import { getCurrentAccount } from '../api/auth';
 import type { components } from '../api/generated/identity-service';
 import { useSessionStore } from '../auth/session-store';
@@ -15,6 +16,31 @@ export type AppShellGateState =
   | 'web-portal';
 
 type ResolvedShell = { sessionId: string; gate: AppShellGateState };
+
+const SHELL_CACHE_KEY = 'td-app-shell-cache';
+const CACHEABLE: AppShellGateState[] = ['onboarding', 'app', 'security-app', 'web-portal'];
+
+/**
+ * Last verified shell for a session. It only picks which screens to show first; every API call is still
+ * authorised by the server, and the background check below corrects it if the role changed.
+ */
+async function readCachedShell(sessionId: string): Promise<AppShellGateState | null> {
+  try {
+    const raw = await AsyncStorage.getItem(SHELL_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ResolvedShell>;
+    if (parsed.sessionId === sessionId && CACHEABLE.includes(parsed.gate as AppShellGateState)) {
+      return parsed.gate as AppShellGateState;
+    }
+  } catch {
+    // ignore: fall back to the blocking check
+  }
+  return null;
+}
+
+function writeCachedShell(value: ResolvedShell): void {
+  AsyncStorage.setItem(SHELL_CACHE_KEY, JSON.stringify(value)).catch(() => {});
+}
 
 function gateForUserType(userType: UserType | undefined): AppShellGateState | 'customer' {
   switch (userType) {
@@ -36,18 +62,30 @@ export function useAppShellGate(): AppShellGateState {
   const sessionStatus = useSessionStore((s) => s.status);
   const sessionId = useSessionStore((s) => s.sessionId);
   const [resolved, setResolved] = useState<ResolvedShell | null>(null);
+  const startedFor = useRef<string | null>(null);
 
   useEffect(() => {
     if (sessionStatus !== 'signed-in' || !sessionId) {
       return;
     }
-    if (resolved?.sessionId === sessionId) {
+    if (startedFor.current === sessionId) {
       return;
     }
+    startedFor.current = sessionId;
 
     let cancelled = false;
+    const commit = (gate: AppShellGateState) => {
+      if (cancelled) return;
+      setResolved((prev) =>
+        prev?.sessionId === sessionId && prev.gate === gate ? prev : { sessionId, gate },
+      );
+      writeCachedShell({ sessionId, gate });
+    };
 
     void (async () => {
+      // Show the cached shell at once (skips waiting on a cold server), then verify below.
+      const cached = await readCachedShell(sessionId);
+      if (cached && !cancelled) setResolved({ sessionId, gate: cached });
       try {
         const [account, customerGate] = await Promise.all([
           getCurrentAccount(),
@@ -56,17 +94,13 @@ export function useAppShellGate(): AppShellGateState {
         const shell = gateForUserType(account.userType);
 
         if (shell !== 'customer') {
-          if (!cancelled) setResolved({ sessionId, gate: shell });
+          commit(shell);
           return;
         }
 
-        if (!cancelled) {
-          setResolved({
-            sessionId,
-            gate: customerGate === 'onboarding' ? 'onboarding' : 'app',
-          });
-        }
+        commit(customerGate === 'onboarding' ? 'onboarding' : 'app');
       } catch {
+        if (cached) return; // keep the cached shell when the server cannot be reached
         try {
           const customerGate = await resolveCustomerOnboardingGate();
           if (!cancelled) {
@@ -89,8 +123,9 @@ export function useAppShellGate(): AppShellGateState {
 
     return () => {
       cancelled = true;
+      startedFor.current = null; // lets a remount (or StrictMode re-run) start the check again
     };
-  }, [sessionStatus, sessionId, resolved?.sessionId]);
+  }, [sessionStatus, sessionId]);
 
   if (sessionStatus !== 'signed-in') {
     return 'app';
