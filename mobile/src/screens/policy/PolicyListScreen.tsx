@@ -2,30 +2,39 @@
  * Policy tab — lists the caller's policies from GET /v1/policies.
  * Empty state when the API returns no rows (never fake data).
  */
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { PlanCatalogItem } from '../../api/plans';
+import { useRouter } from "expo-router";
+import React, { useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import type { PlanCatalogItem } from "../../api/plans";
 import {
   formatAssetUsage,
   formatPlanPrice,
   resolvePlanForPolicy,
-} from '../../api/plans';
-import { usePlansQuery } from '../../api/hooks/usePlans';
-import { useAssetsQuery } from '../../api/hooks/useAssets';
-import { usePoliciesQuery } from '../../api/hooks/usePolicies';
-import { ApiError, NetworkUnavailableError } from '../../api/errors';
-import { mapUserFacingError } from '../../lib/user-facing-errors';
-import type { Policy } from '../../api/policies';
-import { gateWriteAction } from '../../auth/gateWriteAction';
+} from "../../api/plans";
+import { usePlansQuery } from "../../api/hooks/usePlans";
+import { useAssetsQuery } from "../../api/hooks/useAssets";
+import { usePoliciesQuery } from "../../api/hooks/usePolicies";
+import { ApiError, NetworkUnavailableError } from "../../api/errors";
+import { mapUserFacingError } from "../../lib/user-facing-errors";
+import type { Policy } from "../../api/policies";
+import { gateWriteAction } from "../../auth/gateWriteAction";
 import {
   formatDate,
   formatPolicyStatus,
   policyStatusBadgeTone,
-} from '../../lib/asset-labels';
-import { Alert, Badge, Button, Card, Screen } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
-import type { Href } from 'expo-router';
+} from "../../lib/asset-labels";
+import { DesignPage } from "../../components/DesignPage";
+import { Button, GlassCard } from "../../design";
+import { useDesignTokens, type DesignTokens } from "../../theme/designTheme";
+import { Alert } from "../../theme/primitives";
+import { PolicyStatusPill } from "./PolicyStatusPill";
+import type { Href } from "expo-router";
 
 function PolicyCard({
   policy,
@@ -38,40 +47,54 @@ function PolicyCard({
   assetCount: number;
   onPress?: () => void;
 }) {
-  const status = policy.status ?? 'pending_activation';
-  const billingStatus = policy.billing?.billingStatus ?? 'not_configured';
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
+  const status = policy.status ?? "pending_activation";
+  const billingStatus = policy.billing?.billingStatus ?? "not_configured";
   const plan = resolvePlanForPolicy(plans ?? [], policy);
 
   return (
     <Pressable onPress={onPress} disabled={!onPress}>
-      <Card style={styles.card}>
+      <GlassCard variant="solid" style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.planTier}>{plan.name}</Text>
-          <Badge tone={policyStatusBadgeTone(status)}>
+          <PolicyStatusPill tone={policyStatusBadgeTone(status)}>
             {formatPolicyStatus(status)}
-          </Badge>
+          </PolicyStatusPill>
         </View>
-        <Text style={styles.meta}>{formatPlanPrice(plan as Parameters<typeof formatPlanPrice>[0])}</Text>
-        <Text style={styles.meta}>{formatAssetUsage(assetCount, plan.maxAssets)}</Text>
-        <Text style={styles.meta}>Billing: {billingStatus.replace(/_/g, ' ')}</Text>
-        <Text style={styles.meta}>Effective: {formatDate(policy.effectiveDate)}</Text>
+        <Text style={styles.meta}>
+          {formatPlanPrice(plan as Parameters<typeof formatPlanPrice>[0])}
+        </Text>
+        <Text style={styles.meta}>
+          {formatAssetUsage(assetCount, plan.maxAssets)}
+        </Text>
+        <Text style={styles.meta}>
+          Billing: {billingStatus.replace(/_/g, " ")}
+        </Text>
+        <Text style={styles.meta}>
+          Effective: {formatDate(policy.effectiveDate)}
+        </Text>
         {policy.coverageLimits && policy.coverageLimits.length > 0 ? (
           <Text style={styles.meta}>
             Coverage limits: {policy.coverageLimits.length} defined
           </Text>
         ) : (
           <Text style={styles.hint}>
-            Coverage limits are not configured yet (plan tiers are not ratified).
+            Coverage limits are not configured yet (plan tiers are not
+            ratified).
           </Text>
         )}
-      </Card>
+      </GlassCard>
     </Pressable>
   );
 }
 
 export function PolicyListScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
-  const { data, isLoading, isError, error, refetch, isFetching } = usePoliciesQuery();
+  const { data, isLoading, isError, error, refetch, isFetching } =
+    usePoliciesQuery();
   const plansQuery = usePlansQuery();
   const assetsQuery = useAssetsQuery();
   const [isGating, setIsGating] = useState(false);
@@ -86,9 +109,9 @@ export function PolicyListScreen() {
     setIsGating(true);
     try {
       const result = await gateWriteAction(router);
-      if (result === 'verified') {
-        router.push('/policy/create' as Href);
-      } else if (result === 'error') {
+      if (result === "verified") {
+        router.push("/policy/create" as Href);
+      } else if (result === "error") {
         setGateError(true);
       }
     } finally {
@@ -109,14 +132,18 @@ export function PolicyListScreen() {
     }
     return (
       <Alert tone="danger" title="Could not load policies">
-        {mapUserFacingError(error, { context: 'policy' })}
+        {mapUserFacingError(error, { context: "policy" })}
       </Alert>
     );
   }
 
   return (
-    <Screen>
-      <Text style={styles.title}>Your protection plan</Text>
+    <DesignPage>
+      <GlassCard radius="xl" style={styles.card}>
+        <Text style={[styles.title, { marginBottom: 0 }]}>
+          Your protection plan
+        </Text>
+      </GlassCard>
 
       {isFetching && !isLoading ? (
         <Text style={styles.syncHint}>Refreshing…</Text>
@@ -124,25 +151,30 @@ export function PolicyListScreen() {
 
       {gateError ? (
         <View style={styles.alertSpacing}>
-          <Alert tone="danger">Couldn&apos;t verify your account. Try again.</Alert>
+          <Alert tone="danger">
+            Couldn&apos;t verify your account. Try again.
+          </Alert>
         </View>
       ) : null}
 
       {isLoading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
       ) : isError && policies.length === 0 ? (
         <View style={styles.alertSpacing}>{renderError()}</View>
       ) : policies.length === 0 ? (
         <>
           <Text style={styles.body}>
-            You don&apos;t have a protection plan yet. Choose one of our plans to start protecting
-            your assets.
+            You don&apos;t have a protection plan yet. Choose one of our plans
+            to start protecting your assets.
           </Text>
-          <Button fullWidth loading={isGating} onPress={handleCreatePress}>
-            Choose a plan
-          </Button>
+          <Button
+            label="Choose a plan"
+            style={styles.stretch}
+            loading={isGating}
+            onPress={handleCreatePress}
+          />
         </>
       ) : (
         <>
@@ -162,80 +194,71 @@ export function PolicyListScreen() {
           <View style={styles.footerActions}>
             <Button
               variant="secondary"
-              fullWidth
+              label="Choose another plan"
+              style={styles.stretch}
               loading={isGating}
               onPress={handleCreatePress}
-            >
-              Choose another plan
-            </Button>
+            />
             {isError ? (
-              <Button variant="tertiary" onPress={() => refetch()}>
-                Retry sync
-              </Button>
+              <Button
+                variant="glass"
+                label="Retry sync"
+                style={styles.stretch}
+                onPress={() => refetch()}
+              />
             ) : null}
           </View>
         </>
       )}
-    </Screen>
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.lg,
-  },
-  body: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-    marginBottom: spacing.xl,
-  },
-  card: {
-    marginBottom: spacing.lg,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  planTier: {
-    flex: 1,
-    fontSize: typography.sizes.lg,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  meta: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  hint: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    fontStyle: 'italic',
-    marginTop: spacing.xs,
-  },
-  footerActions: {
-    gap: spacing.md,
-    marginTop: spacing.md,
-  },
-  alertSpacing: {
-    marginBottom: spacing.lg,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing['2xl'],
-  },
-  syncHint: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    marginBottom: spacing.sm,
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s4,
+    },
+    body: {
+      ...t.type.body,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s6,
+    },
+    card: { marginBottom: t.spacing.s4 },
+    cardHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: t.spacing.s3,
+      marginBottom: t.spacing.s2,
+    },
+    planTier: { ...t.type.title, flex: 1, color: t.colors.ink },
+    meta: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s1,
+    },
+    hint: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      fontStyle: "italic",
+      marginTop: t.spacing.s1,
+    },
+    footerActions: { gap: t.spacing.s3, marginTop: t.spacing.s3 },
+    alertSpacing: { marginBottom: t.spacing.s4 },
+    centered: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: t.spacing.s8,
+    },
+    syncHint: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s2,
+    },
+    stretch: { alignSelf: "stretch" },
+  });
+}
