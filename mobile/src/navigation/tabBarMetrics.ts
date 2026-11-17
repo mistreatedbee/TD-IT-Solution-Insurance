@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import type { ViewStyle } from 'react-native';
 import { useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
 import { useDesignTokens } from '../theme/designTheme';
-import { useTheme } from '../theme/ThemeProvider';
 import { lightColors } from '../theme/colorSchemes';
 import { spacing } from '../theme/tokens';
 
@@ -65,6 +64,6 @@ export function useTabSceneStyle(): ViewStyle {
 
 /** Map tab uses a muted canvas without tab-bar clearance padding. */
 export function useMapTabSceneStyle(): ViewStyle {
-  const { colors } = useTheme();
-  return useMemo(() => ({ backgroundColor: colors.card, paddingBottom: 0 }), [colors.card]);
+  const { colors } = useDesignTokens();
+  return useMemo(() => ({ backgroundColor: colors.bgBottom, paddingBottom: 0 }), [colors.bgBottom]);
 }

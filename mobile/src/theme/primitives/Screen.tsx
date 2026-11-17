@@ -14,7 +14,7 @@ import {
 import type { RefreshControlProps } from 'react-native';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import { useTabBarContentInset } from '../../navigation/TabBarInsetContext';
-import { useColors } from '../ThemeProvider';
+import { useDesignTokens } from '../designTheme';
 import { spacing } from '../tokens';
 
 export interface ScreenProps {
@@ -36,7 +36,7 @@ export function Screen({
   style,
   contentContainerStyle,
 }: ScreenProps) {
-  const colors = useColors();
+  const design = useDesignTokens();
   const tabBarInset = useTabBarContentInset();
 
   const scrollBottomInset = useMemo(
@@ -60,7 +60,7 @@ export function Screen({
 
   return (
     <SafeAreaView
-      style={[styles.safeArea, { backgroundColor: colors.canvas }, style]}
+      style={[styles.safeArea, { backgroundColor: design.colors.bgPage }, style]}
       edges={safeAreaEdges}
     >
       <KeyboardAvoidingView
