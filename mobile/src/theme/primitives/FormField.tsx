@@ -11,7 +11,7 @@
  * and still the default, so this is additive, not a behavior change for
  * existing callers that don't opt in.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Animated,
   StyleSheet,
@@ -57,8 +57,8 @@ export function FormField({
 }: FormFieldProps) {
   const colors = useColors();
   const raised = focused || filled;
-  const animatedValue = useRef(new Animated.Value(raised ? 1 : 0)).current;
-  const [hasAnimated, setHasAnimated] = useState(false);
+  // Lazy state initialiser (not a ref) so the Animated.Value is safe to read in render.
+  const [animatedValue] = useState(() => new Animated.Value(raised ? 1 : 0));
 
   useEffect(() => {
     if (!floatingLabel) return;
@@ -67,19 +67,16 @@ export function FormField({
       duration: 220,
       useNativeDriver: false,
     }).start();
-    setHasAnimated(true);
   }, [raised, floatingLabel, animatedValue]);
 
   if (floatingLabel) {
     const labelStyle = {
-      fontSize: hasAnimated
-        ? animatedValue.interpolate({
-            inputRange: [0, 1],
-            outputRange: [typography.sizes.base, typography.sizes.xs],
-          })
-        : raised
-          ? typography.sizes.xs
-          : typography.sizes.base,
+      // animatedValue starts at raised ? 1 : 0, so the first frame matches the
+      // static size and no animation runs on mount.
+      fontSize: animatedValue.interpolate({
+        inputRange: [0, 1],
+        outputRange: [typography.sizes.base, typography.sizes.xs],
+      }),
       color: focused ? colors.glassAccentDeep : colors.glassTextSecondary,
     };
 

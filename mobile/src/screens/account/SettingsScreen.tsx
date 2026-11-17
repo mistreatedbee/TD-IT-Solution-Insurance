@@ -120,7 +120,7 @@ export function SettingsScreen() {
                 { color: t.colors.inkMuted, marginBottom: t.spacing.s3 },
               ]}
             >
-              Choose light or dark, or follow your phone's setting.
+              Choose light or dark, or follow your phone&apos;s setting.
             </Text>
             <View style={{ flexDirection: 'row', gap: t.spacing.s2 }}>
               {APPEARANCE_OPTIONS.map((opt) => (

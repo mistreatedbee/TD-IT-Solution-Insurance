@@ -7,7 +7,7 @@
  * callers keep their existing `isLoading` branches and swap the spinner
  * markup for this component.
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useColors } from '../ThemeProvider';
 import { glassMotion } from '../tokens';
@@ -29,7 +29,7 @@ export interface SkeletonProps {
  */
 export function Skeleton({ width = '100%', height = 16, radius = 8, style }: SkeletonProps) {
   const colors = useColors();
-  const opacity = useRef(new Animated.Value(0.45)).current;
+  const [opacity] = useState(() => new Animated.Value(0.45));
 
   useEffect(() => {
     const loop = Animated.loop(

@@ -1,7 +1,7 @@
 /**
  * TEMPORARY BRIDGE component — see mobile/src/theme/tokens.ts header.
  */
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -52,7 +52,7 @@ export function Button({
   const isDisabled = disabled || loading;
   const sizeStyle = sizeStyles[size];
   // OB-17: soft spring on button presses (tokens doc §5.3 `--glass-spring-press`).
-  const scale = useRef(new Animated.Value(1)).current;
+  const [scale] = useState(() => new Animated.Value(1));
   const onPressIn = () => {
     Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, ...glassMotion.springPress }).start();
   };

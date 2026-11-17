@@ -108,6 +108,9 @@ function loadMapView(): React.ComponentType<Record<string, unknown>> | null {
   }
 }
 
+// Resolved once when the module loads (not during render), so it is a stable component.
+const MapView = loadMapView();
+
 class MapBoundary extends Component<
   { fallback: React.ReactNode; children: React.ReactNode },
   { failed: boolean }
@@ -129,7 +132,6 @@ export function ProtectionMapHero({
   const isDark = t.mode === 'night';
   const reduced = useReducedMotion();
   const { width } = useWindowDimensions();
-  const MapView = useMemo(loadMapView, []);
 
   const mapW =
     areaWidth != null
@@ -288,7 +290,7 @@ export function ProtectionMapHero({
     top: Math.max(MIN_TOP, p.y * mapH - boxH),
   });
 
-  const DrawnBackdrop = () => (
+  const drawnBackdrop = (
     <Svg width={mapW} height={mapH} style={StyleSheet.absoluteFill}>
       <Rect x={0} y={0} width={mapW} height={mapH} fill={t.colors.bgSunken} />
       <Ellipse
@@ -372,7 +374,7 @@ export function ProtectionMapHero({
         ]}
       >
         {MapView ? (
-          <MapBoundary fallback={<DrawnBackdrop />}>
+          <MapBoundary fallback={drawnBackdrop}>
             <MapView
               style={StyleSheet.absoluteFill}
               pointerEvents="none"
@@ -394,7 +396,7 @@ export function ProtectionMapHero({
             />
           </MapBoundary>
         ) : (
-          <DrawnBackdrop />
+          drawnBackdrop
         )}
 
         {/* the trail the car has driven, revealed up to the car */}
