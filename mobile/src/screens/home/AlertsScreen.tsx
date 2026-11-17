@@ -181,6 +181,7 @@ export function AlertsScreen() {
 
   return (
     <DesignPage
+      sharedBackdrop
       padded={false}
       safeAreaEdges={['top']}
       refreshControl={

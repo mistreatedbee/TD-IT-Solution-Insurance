@@ -7,7 +7,10 @@ export default function AssetsLayout() {
 
   return (
     <Stack screenOptions={screenOptions}>
-      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="index"
+        options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}
+      />
       <Stack.Screen name="register" options={{ title: 'Register asset' }} />
       <Stack.Screen name="[id]" options={{ headerShown: false }} />
     </Stack>

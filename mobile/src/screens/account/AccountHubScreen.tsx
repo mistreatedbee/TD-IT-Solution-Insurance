@@ -227,7 +227,7 @@ export function AccountHubScreen() {
   ];
 
   return (
-    <DesignPage padded={false} safeAreaEdges={['top']}>
+    <DesignPage sharedBackdrop padded={false} safeAreaEdges={['top']}>
       <View
         style={{
           paddingHorizontal: t.spacing.s4,

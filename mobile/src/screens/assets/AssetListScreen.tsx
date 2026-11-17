@@ -214,7 +214,7 @@ export function AssetListScreen() {
   );
 
   return (
-    <AssetPage scroll={false} padded={false} safeAreaEdges={['top']}>
+    <AssetPage sharedBackdrop scroll={false} padded={false} safeAreaEdges={['top']}>
       <FlatList
         data={isLoading || (isError && items.length === 0) ? [] : items}
         keyExtractor={(item) => item.assetId}

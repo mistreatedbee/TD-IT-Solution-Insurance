@@ -87,12 +87,17 @@ function parseRgba(value: string): { color: string; opacity: number } {
   return { color: `rgb(${m[1]},${m[2]},${m[3]})`, opacity: m[4] === undefined ? 1 : Number(m[4]) };
 }
 
-function GradientLayer() {
+function GradientLayer({ size }: { size: { w: number; h: number } | null }) {
   const { colors } = useDesignTokens();
   const blue = parseRgba(colors.glowBlue);
   const orange = parseRgba(colors.glowOrange);
   return (
-    <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" testID="td-backdrop-gradient">
+    <Svg
+      style={StyleSheet.absoluteFill}
+      width={size ? size.w : '100%'}
+      height={size ? size.h : '100%'}
+      testID="td-backdrop-gradient"
+    >
       <Defs>
         <LinearGradient id="tdbg" x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor={colors.bgTop} />
@@ -117,13 +122,25 @@ function GradientLayer() {
 export function Backdrop({ variant = 'image', pattern, children, style, testID = 'td-backdrop' }: BackdropProps) {
   const { mode } = useDesignTokens();
   const night = mode === 'night';
+  // Measured size: percentage-sized SVGs can keep a stale height inside nested tab/stack layouts and stop short
+  // of the screen bottom, so the gradient is drawn at the container's real size.
+  const [size, setSize] = React.useState<{ w: number; h: number } | null>(null);
   const hidden = { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' } as const;
 
   return (
     <View style={[StyleSheet.absoluteFill, style]} testID={testID} pointerEvents="box-none">
-      <View style={StyleSheet.absoluteFill} pointerEvents="none" testID="td-backdrop-decor" {...hidden}>
+      <View
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+        testID="td-backdrop-decor"
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          setSize((prev) => (prev && prev.w === width && prev.h === height ? prev : { w: width, h: height }));
+        }}
+        {...hidden}
+      >
         {variant === 'gradient' ? (
-          <GradientLayer />
+          <GradientLayer size={size} />
         ) : (
           <ImageBackground
             testID="td-backdrop-image"

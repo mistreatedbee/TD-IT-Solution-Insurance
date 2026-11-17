@@ -8,10 +8,15 @@ import { StyleSheet, View } from 'react-native';
 import { Backdrop } from '../design';
 import { Screen } from '../theme/primitives';
 
-export function DesignPage({ children, ...screenProps }: React.ComponentProps<typeof Screen>) {
+export type DesignPageProps = React.ComponentProps<typeof Screen> & {
+  /** Tab-root pages: the tab shell already draws one full-screen gradient behind every tab, so skip a second one. */
+  sharedBackdrop?: boolean;
+};
+
+export function DesignPage({ children, sharedBackdrop = false, ...screenProps }: DesignPageProps) {
   return (
     <View style={styles.fill} testID="design-page">
-      <Backdrop variant="gradient" />
+      {sharedBackdrop ? null : <Backdrop variant="gradient" />}
       <Screen {...screenProps} backdrop={false} style={styles.transparent}>
         {children}
       </Screen>
