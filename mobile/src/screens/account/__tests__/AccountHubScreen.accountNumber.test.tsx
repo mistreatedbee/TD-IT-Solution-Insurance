@@ -130,7 +130,10 @@ describe('AccountHubScreen — no dev rows, claims hidden when disabled', () => 
     expect(screen.queryByText('Send test notification')).toBeNull();
     expect(screen.queryByText('Claims')).toBeNull();
     expect(screen.queryByText('Claims filing coming soon')).toBeNull();
-    expect(screen.getByText('Notification preferences')).toBeTruthy();
+    expect(screen.getByText('Settings')).toBeTruthy();
+    // the setting-type options live behind the Settings row, not on the Account page itself
+    expect(screen.queryByText('Notification preferences')).toBeNull();
+    expect(screen.queryByText('Log out of all devices')).toBeNull();
   });
 });
 
@@ -149,19 +152,6 @@ describe('AccountHubScreen — rows keep their behaviour after the restyle', () 
     expect(screen.getByText('Settings')).toBeTruthy();
     expect(screen.getByText('active')).toBeTruthy();
     expect(screen.getByText('Two-factor authentication enabled')).toBeTruthy();
-  });
-
-  it('asks twice before logging out of every device', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    await renderWithProviders(<AccountHubScreen />);
-    fireEvent.press(screen.getByText('Log out of all devices'));
-    expect(alertSpy).toHaveBeenCalledTimes(1);
-    expect(alertSpy.mock.calls[0]![0]).toBe('Log out of all devices?');
-    // pressing Continue opens the second, escalating confirmation, not the logout itself
-    const buttons = alertSpy.mock.calls[0]![2]!;
-    buttons.find((b) => b.text === 'Continue')!.onPress!();
-    expect(alertSpy).toHaveBeenCalledTimes(2);
-    expect(alertSpy.mock.calls[1]![0]).toBe('Are you sure?');
   });
 
   it('opens the support email', async () => {

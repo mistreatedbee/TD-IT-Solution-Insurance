@@ -12,7 +12,7 @@ import {
   FileTextIcon,
   HelpCircleIcon,
   LayersIcon,
-  LogOutIcon,
+  SettingsIcon,
   MailIcon,
   MapPinIcon,
   PlusIcon,
@@ -22,11 +22,7 @@ import {
   UserIcon,
 } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
-import { logout, logoutAll } from '../../api/auth';
-import { revokePushTokenFromBackend } from '../../notifications/push';
-import { clearRefreshToken } from '../../auth/secure-storage';
-import { useSessionStore } from '../../auth/session-store';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import { useAccountQuery } from '../../auth/useAccountQuery';
 import {
   FEATURE_ALERTS_ENABLED,
@@ -44,9 +40,9 @@ import { useProfileSummaryQuery } from '../../api/hooks/useCustomerProfile';
 import { ProfileCompletionCard } from '../home/ProfileCompletionCard';
 import { PlanUsageSummary } from '../policy/PlanUsageSummary';
 import { useProtectionDashboard } from '../../tracking/useProtectionDashboard';
-import { queryClient } from '../../query/queryClient';
 import { useDesignTokens } from '../../theme/designTheme';
 import { AccountMenuRow } from './AccountMenuRow';
+import { AccountSection } from './AccountSection';
 import { AccountQuickStats } from './AccountQuickStats';
 import { AccountGroup } from './AccountGroup';
 import { useProfilePictureUpload } from './useProfilePictureUpload';
@@ -65,34 +61,6 @@ function initialsFromEmail(email?: string): string {
   const local = email.split('@')[0] ?? '';
   if (local.length >= 2) return local.slice(0, 2).toUpperCase();
   return local.slice(0, 1).toUpperCase() || 'TD';
-}
-
-function AccountSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  const t = useDesignTokens();
-  return (
-    <View style={{ gap: t.spacing.s2 }}>
-      <Text
-        accessibilityRole="header"
-        style={[
-          t.type.labelSm,
-          {
-            color: t.colors.inkMuted,
-            textTransform: 'uppercase',
-            paddingHorizontal: t.spacing.s1,
-          },
-        ]}
-      >
-        {title}
-      </Text>
-      {children}
-    </View>
-  );
 }
 
 /** Account state as icon-free word pill: success tone when active, warning otherwise. */
@@ -139,64 +107,6 @@ export function AccountHubScreen() {
     usageLabel,
     changePlanHref,
   } = usePlanEntitlements();
-  const setSignedOut = useSessionStore((s) => s.setSignedOut);
-  const [isLoggingOutAll, setIsLoggingOutAll] = useState(false);
-
-  async function handleLogout() {
-    revokePushTokenFromBackend().catch(() => {});
-    await clearRefreshToken();
-    setSignedOut();
-    queryClient.clear();
-    logout().catch(() => {});
-  }
-
-  function handleLogoutAll() {
-    // Owner request (2026-09-14): this is destructive to every OTHER signed-in
-    // device/session, not just this one — require TWO explicit confirmations
-    // before firing (not one), matching the extra-layer instruction for this
-    // specific action. No Modal/prompt primitive exists in this design system
-    // yet (would need design-system-manager sign-off per CLAUDE.md house
-    // rules for a new one-off component) — a second, escalating native Alert
-    // is the safe extra layer without inventing one.
-    Alert.alert(
-      'Log out of all devices?',
-      'This will sign you out on this phone and every other device where you are currently signed in. You will need to log in again everywhere.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Continue', onPress: confirmLogoutAllStepTwo },
-      ],
-    );
-  }
-
-  function confirmLogoutAllStepTwo() {
-    Alert.alert(
-      'Are you sure?',
-      'This cannot be undone from this screen — every other device will need to log in again, including any family or team member using a shared session.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Yes, log out everywhere',
-          style: 'destructive',
-          onPress: () => void confirmLogoutAll(),
-        },
-      ],
-    );
-  }
-
-  async function confirmLogoutAll() {
-    setIsLoggingOutAll(true);
-    try {
-      await logoutAll();
-    } catch {
-      /* still sign out locally */
-    } finally {
-      revokePushTokenFromBackend().catch(() => {});
-      await clearRefreshToken();
-      setSignedOut();
-      queryClient.clear();
-      setIsLoggingOutAll(false);
-    }
-  }
 
   function handleContactSupport() {
     void Linking.openURL(
@@ -209,9 +119,6 @@ export function AccountHubScreen() {
       ? dashboard.greetingName
       : null;
   const email = isLoading ? 'Loading…' : (account?.email ?? '—');
-  const mfaLabel = account?.mfaEnrolled
-    ? 'Enabled'
-    : 'Optional — add an extra layer of security';
   const alertCount = dashboard?.alertCount ?? 0;
   const openRecoveryCount = dashboard?.openRecoveryCount ?? 0;
 
@@ -465,71 +372,17 @@ export function AccountHubScreen() {
           </AccountGroup>
         </AccountSection>
 
-        <AccountSection title="Settings">
-          <AccountGroup>
-            <AccountMenuRow
-              icon={BellIcon}
-              title="Notification preferences"
-              subtitle="Choose which alerts you get, and how"
-              onPress={() =>
-                router.push('/(app)/notification-preferences' as Href)
-              }
-            />
-            <AccountMenuRow
-              icon={ShieldCheckIcon}
-              title="Two-factor authentication"
-              subtitle={mfaLabel}
-              isLast
-              onPress={() => router.push('/(app)/mfa-enroll' as Href)}
-            />
-          </AccountGroup>
-          <AccountGroup>
-            <AccountMenuRow
-              icon={HelpCircleIcon}
-              title="Privacy notice"
-              subtitle="How we handle your personal information"
-              onPress={() => router.push('/(auth)/privacy' as Href)}
-            />
-            <AccountMenuRow
-              icon={FileTextIcon}
-              title="Terms of use"
-              subtitle="Service terms and conditions"
-              onPress={() => router.push('/(auth)/terms' as Href)}
-            />
-            <AccountMenuRow
-              icon={FileTextIcon}
-              title="Delete account & data"
-              subtitle="Request removal of your account and associated data"
-              isLast
-              onPress={() => router.push('/(auth)/delete-account' as Href)}
-            />
-          </AccountGroup>
-          <AccountGroup>
-            <AccountMenuRow
-              icon={LogOutIcon}
-              title="Log out"
-              subtitle="Sign out on this device"
-              iconColor={t.colors.inkMuted}
-              showChevron={false}
-              onPress={handleLogout}
-            />
-            <AccountMenuRow
-              icon={LogOutIcon}
-              title={
-                isLoggingOutAll
-                  ? 'Logging out everywhere…'
-                  : 'Log out of all devices'
-              }
-              subtitle="Ends sessions on every device"
-              iconColor={t.colors.danger}
-              titleColor={t.colors.danger}
-              showChevron={false}
-              isLast
-              disabled={isLoggingOutAll}
-              onPress={handleLogoutAll}
-            />
-          </AccountGroup>
-        </AccountSection>
+        <AccountGroup>
+          <AccountMenuRow
+            icon={SettingsIcon}
+            title="Settings"
+            subtitle="Notifications, security, privacy and log out"
+            isLast
+            onPress={() =>
+              router.push('/(app)/(tabs)/account/settings' as Href)
+            }
+          />
+        </AccountGroup>
 
         <AccountSection title="Help & support">
           <AccountGroup>
