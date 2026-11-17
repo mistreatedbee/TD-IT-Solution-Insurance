@@ -17,6 +17,7 @@ import { NetworkProvider, OfflineBanner } from '../src/network/NetworkProvider';
 import { asyncStoragePersister, queryClient, shouldPersistQuery } from '../src/query/queryClient';
 import { AnalyticsBootstrap } from '../src/analytics/AnalyticsBootstrap';
 import { LoadingScreen } from '../src/components/LoadingScreen';
+import { useDesignTokens } from '../src/theme/designTheme';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 import { useDesignFonts } from '../src/theme/designFonts';
 
@@ -28,6 +29,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 function RootLayoutInner() {
+  const design = useDesignTokens();
   // Fire-and-forget: design-system fonts load in the background; first render is not gated on them.
   useDesignFonts();
   const status = useSessionStore((s) => s.status);
@@ -82,7 +84,7 @@ function RootLayoutInner() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: design.colors.bgPage }}>
       <PersistQueryClientProvider
         client={queryClient}
         persistOptions={{
@@ -94,7 +96,7 @@ function RootLayoutInner() {
         <NetworkProvider>
           <AnalyticsBootstrap />
           <OfflineBanner />
-          <Stack screenOptions={{ headerShown: false }}>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: design.colors.bgPage } }}>
             <Stack.Protected guard={status === 'signed-out'}>
               <Stack.Screen name="(auth)" />
             </Stack.Protected>
