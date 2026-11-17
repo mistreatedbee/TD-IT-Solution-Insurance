@@ -16,3 +16,18 @@ Not a legal opinion. These are the questions that must be answered, with the ans
 11. **Honest-wording review.** Sign off the copy rules in the design note §7 (no promise to block or detect power-off).
 
 Compliance review comes first for any entry touching location, per roadmap addendum rule A.3.
+
+---
+
+## Addendum (2026-11-17, second owner brief) — further questions
+
+12. **Next of kin (ADR-0021).** Consent model for a person who is not a user: is confirmation through an invite link enough? What may we store about them, for how long? Who is the responsible party for their data? Safety review of level (c) live-location links (coercive-control risk) and of the reminder cadence.
+13. **Alert channels.** Push, then SMS, then email (Resend). Operator agreements and transfer basis for the SMS vendor (not chosen). Opt-in and opt-out wording per contact and per alert type. Cost-abuse limits.
+14. **Evidence pack.** A one-tap bundle of alerts, locations, staff actions and the SAPS number, exportable for the police and the insurer. Lawful basis for each disclosure, the customer's role in triggering it, watermarking and retention.
+15. **Bluetooth tag and Wi-Fi/charger signals.** Data minimisation for hashed network and tag identifiers; Play and App Store permission wording for Bluetooth and nearby-network access.
+16. **Wrong-passcode counter (Android).** Device-administrator permissions are restricted by Google Play. Is the feature permissible at all, and with what disclosure?
+17. **Thief selfie (opt-in, Android).** Legal view on capturing an image of a third party, disclosure, retention, and Google Play policy. **Blocked until this ruling.** No covert capture of any kind.
+18. **Lost mode.** Lock-screen contact message and loud alarm (Android). Confirm no remote camera or microphone is involved and the wording is accurate.
+19. **Theft-hardening score.** Confirm the self-attested design and the copy (never "your phone is protected").
+20. **Hardware tracker.** Independent-battery tracker as a data source: lawful basis, retention, device registration and consent, in addition to the vendor DPA once a vendor is chosen.
+

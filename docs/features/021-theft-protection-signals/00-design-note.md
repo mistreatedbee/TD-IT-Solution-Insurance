@@ -85,3 +85,66 @@ Every stage owes Stage 8 (Security Review) and Stage 10 (QA). Neither is skipped
 ## 8. What this note deliberately leaves open
 
 Geohash precision for coarse zones; retention periods per class; whether behaviour profiling needs its own opt-in screen; the duress-PIN safety review; the trusted-contact consent model; the alert SLA targets; the voice/SMS vendor for the customer-call path. Each has an owner in §6 and is listed in the roadmap entries.
+
+---
+
+## 9. Addendum (2026-11-17, second owner brief): scope extended to twenty items, six stages
+
+Appended by `cto`. Sections 0–8 above are unchanged. The second brief adds hardware and Bluetooth protection, more signals, alert channels, next-of-kin sharing, and recovery tools. Where it overlaps §1–§8 it wins; two supersessions are recorded in §9.6.
+
+### 9.1 Standing rules, restated because the brief adds riskier items
+
+1. Release Gate A is not widened. No flag changes. `LOCATION_INGESTION_ENABLED` stays off. All of this starts after Gate A closes except paper design.
+2. **No power-off blocker and no promise of one.** The app states plainly that it cannot block switching off (item 20).
+3. **No covert camera or microphone capture of any kind.** Lost-mode and any "thief selfie" are the only camera/audio-adjacent items. The alarm plays a sound the thief can hear; it records nothing. The selfie (item 16) is **opt-in, clearly disclosed, flag-gated, and not built until legal and Google Play policy review pass** (TP-17). No remote camera, ever (item 15).
+4. SDL-2 still applies. Alerts and shared links are labelled as customer-phone claims or tracker readings, never as instructions to anyone.
+
+### 9.2 Platform support matrix (to be verified per platform before any screen is written)
+
+| Item | Android | iOS | Note |
+|---|---|---|---|
+| Protection-change guard (server-checked step-up) | Yes | Yes | Local biometric is a convenience layer only (ADR-0020 D4). |
+| Last-gasp on shutdown | Best effort | **No** | Needs a native module and background execution. Never a dependency. |
+| Wrong-passcode counter | Possible only through device-admin APIs, which Google Play restricts | **No** | Needs a Play-policy and permission review before it is even designed. |
+| SIM removed, flight mode, location switched off while moving | Partly observable | Mostly **not** observable | Absence of a signal means "unknown", never "safe". |
+| Unknown Wi-Fi / new charger | Possible, needs location-class permissions for Wi-Fi names | Wi-Fi name access is restricted; charger state is visible only while the app runs | Network identity is hashed on the phone (ADR-0020 D8). |
+| Bluetooth tag separation | Background Bluetooth is limited by the OS | Background Bluetooth is more limited | Tag hardware is a **new open decision**. |
+| Loud alarm and lock-screen message | Possible with a high-priority push and a native module | **Not possible** for a normal app | iOS relies on the platform's own lost mode. |
+| Thief selfie | Possible; policy-sensitive | **No** | Blocked on legal and Play review. |
+
+### 9.3 Layers, in order of strength (for product copy and expectations)
+
+1. **Independent hardware tracker with its own battery (item 4).** The strongest protection: it keeps reporting after the phone is off. It is built behind the vendor-agnostic `HardwareProvider` and the `capabilities` shape in `tracking-device-types.ts`. Per the GPS scorecard §6, **no vendor-specific field may enter `tracking-profile.ts`, `tracking-device-types.ts` or the `tracking-devices` repository before the vendor ADR is ratified.** The U907 pilot (ADR-0018) is 2G and is a pilot only. This item stays vendor-dependent until `integration-architect`'s decision.
+2. **Server-side went-dark detection (item 3).** Works for a hardware tracker without any phone background work.
+3. **Phone signals (items 2, 6, 7, 11, 12).** Best effort, platform-limited, advisory.
+4. **Bluetooth tag (item 5).** Separation of phone and tag in a case or bag; debounce, grace period and planned-travel suppression to avoid false alarms. It is a second independent signal, and its hardware is not chosen.
+
+### 9.4 New threats added by this brief
+
+1. **Coercive control through next-of-kin sharing.** Level (c) live location sent to a partner, parent or other person is also a tool for stalking. Mitigations are in ADR-0021: customer-only control, kin confirmation, sharing only while an alert is open, expiry, one-tap stop, periodic "who can see this" reminders, a log, and staff unable to add or upgrade a contact without the customer's PIN or code word.
+2. **A thief adds themselves as next of kin** to learn the owner's location. Mitigation: adding or upgrading a kin contact needs the ADR-0020 D4 step-up plus the PIN or code word, and notifies the customer out of band.
+3. **Shared-link leakage.** Links are signed, scoped to one alert, short-lived and revocable, and every open is audited (ADR-0021).
+4. **Evidence pack misuse.** It bundles location and staff actions. One customer tap builds it; it names its purpose, is watermarked and hashed, and disclosure to police or insurer is a recorded customer action (TP-18).
+5. **False reassurance from the theft-hardening score.** The app cannot verify most phone settings (especially on iOS). The score is a **self-attested checklist with links to the right settings**, and says so. It never says "your phone is protected".
+6. **SMS cost and abuse.** SMS is a paid, third-party channel. Per-contact controls, rate limits and an owner cost decision are needed (TP-14).
+
+### 9.5 Revised stage plan (one PR per stage)
+
+| Stage | Contents (TP IDs) | Notes |
+|---|---|---|
+| (a) | Design note + ADR-0020 + ADR-0021 + roadmap + compliance request (TP-01) | This PR. Paper only. |
+| (b) | Protection-change guard (TP-02), honest wording (TP-20), theft-hardening score (TP-19) | No location dependency. Verify current platform feature names first (see §9.7). |
+| (c) | Went-dark detection (TP-03) + alert channels push, then SMS, then email (TP-14) | Hardware-tracker heartbeat first. SMS vendor is a new open decision. |
+| (d) | Known places and scoring (TP-04, TP-05) + Wi-Fi, charger and wrong-passcode signals (TP-13, TP-12) | Needs compliance rulings and INC-001 closure. |
+| (e) | Customer check (TP-06) + staff console (TP-07) + next-of-kin sharing (TP-15) + extras (TP-08) | Needs ADR-0021 accepted and the caller-verification design. |
+| (f) | Evidence pack (TP-18), lost mode (TP-16), Bluetooth tag (TP-11); hardware tracker (TP-10) after the vendor decision; last-gasp (TP-09); thief selfie (TP-17) only after legal and Play review | The hardware tracker and selfie are explicitly gated. |
+
+### 9.6 Supersessions recorded (nothing above is edited)
+
+- §1 row 8 and TP-08 mention a "trusted contact notified on alert". That is **superseded by next-of-kin sharing (ADR-0021, TP-15)**, which adds per-contact levels, confirmation, expiry and audit.
+- §5 stage table is superseded by §9.5 for stage contents.
+
+### 9.7 Verification owed before copy is written (not done here)
+
+Item 19 says to verify current feature names with each platform. That is owed at stage (b) by `mobile-architect` with `ux-researcher`, against the vendors' own documentation on the day. Candidate names to check, **unverified from memory**: iOS Stolen Device Protection and Find My; Android theft-protection lock features and Google's Find Hub (formerly Find My Device). Screens use only names confirmed at that time.
+

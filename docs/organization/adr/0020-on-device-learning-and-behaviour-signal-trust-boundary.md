@@ -99,3 +99,30 @@ Items needing the phone to sense or report in the background are blocked behind 
 ## 7. Follow-ups
 
 `compliance-specialist`: see the routing request. `authentication-engineer`: D4 window length and the notification on each change. `database-architect`: schema and retention. `mobile-architect`: on-device learning storage and the platform signal matrix. `ai-solutions-architect`: scoring limits and the rule against automated action. `cto`: ratify or amend after concurrences.
+
+---
+
+## 8. Addendum (2026-11-17, second owner brief) — decisions D7–D10
+
+Appended by `cto`. Sections 1–7 are unchanged and stay Proposed.
+
+### D7 — The independent hardware tracker is the strongest layer and stays vendor-agnostic
+
+It keeps reporting after the phone is off, so it is the only layer that does not depend on the phone. It is built behind `HardwareProvider` and the existing `capabilities` shape. No vendor-specific field may enter `tracking-profile.ts`, `tracking-device-types.ts` or the `tracking-devices` repository before the vendor ADR (scorecard §6). Went-dark detection (server side) is the primary consumer of its heartbeat. ADR-0018's U907 pilot is a pilot only.
+
+### D8 — Network and charger signals are hashed on the phone; the server sees an opaque identifier and a reason
+
+A Wi-Fi network or charger counts as "new" when the **phone** has not seen its salted hash before. The server receives at most an opaque identifier and the reason code (`new_wifi`, `new_charger`), never an SSID, BSSID or location derived from one. Staff see the reason in plain words. Like all phone signals this is a claim (D5): absence is "unknown", never "safe".
+
+### D9 — No covert camera or microphone capture; the selfie is a gated exception
+
+No feature may capture camera or microphone content without the user's knowledge. Lost-mode plays an audible alarm and shows a lock-screen message; it records nothing and has no remote camera. The Android "thief selfie" after repeated wrong unlocks is **opt-in, clearly disclosed, behind a feature flag, and blocked until legal and Google Play policy review pass** (TP-17). Not available on iOS. Ratifying this ADR does not approve it.
+
+### D10 — The theft-hardening score is a self-attested checklist, not verification
+
+The app usually cannot read whether quick settings are off, the passcode is long, a SIM PIN is set, or the platform's theft features are on (iOS exposes almost none of it). The score therefore counts what the customer **confirms**, links to the correct settings screen, and states that it is unverified. It must never claim the phone is "protected". Feature names are verified against each platform's own documentation before any copy is written.
+
+### What this addendum still does not authorize
+
+Same as §6: no flag, no ingestion, no code, no native module, no permission string, no Stage 8 or compliance conclusion. Next-of-kin sharing is a separate trust boundary and is in ADR-0021.
+
