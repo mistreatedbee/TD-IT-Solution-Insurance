@@ -2,7 +2,7 @@
  * GPS tracker activation — register IMEI/serial and link to asset (Feature 009 Phase 4).
  */
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useAssetQuery } from '../../api/hooks/useAssets';
 import {
@@ -10,10 +10,14 @@ import {
   useRegisterTrackingDeviceMutation,
 } from '../../api/hooks/useAssetTrackingProfile';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { Alert, Button, Card, Input, Screen } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert, Input } from '../../theme/primitives';
+import { AssetPage } from './AssetPage';
 
 export function DeviceActivationScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: asset, isLoading } = useAssetQuery(id);
@@ -47,16 +51,16 @@ export function DeviceActivationScreen() {
 
   if (isLoading) {
     return (
-      <Screen scroll={false}>
+      <AssetPage scroll={false}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
-      </Screen>
+      </AssetPage>
     );
   }
 
   return (
-    <Screen>
+    <AssetPage>
       <Text style={styles.title}>Connect GPS tracker</Text>
       <Text style={styles.subtitle}>
         Register the IMEI or serial number from your tracker to link it to{' '}
@@ -74,7 +78,7 @@ export function DeviceActivationScreen() {
         </Alert>
       ) : null}
 
-      <Card style={styles.form}>
+      <GlassCard variant="solid" style={styles.form}>
         <Input
           label="IMEI or serial number"
           value={serialOrImei}
@@ -89,57 +93,46 @@ export function DeviceActivationScreen() {
           onChangeText={setLabel}
           placeholder="e.g. Dashboard tracker"
         />
-      </Card>
+      </GlassCard>
 
-      <Button
-        fullWidth
+      <Button label="Register and link tracker"
         loading={registerMutation.isPending || linkMutation.isPending}
         onPress={() => void handleActivate()}
-      >
-        Register and link tracker
-      </Button>
+       style={styles.stretch} />
 
-      <Button
+      <Button label="View installation guide first"
         variant="secondary"
-        fullWidth
-        style={styles.secondary}
+        style={[styles.stretch, styles.secondary]}
         onPress={() => router.push(`/assets/${id}/installation-guide` as Href)}
-      >
-        View installation guide first
-      </Button>
-    </Screen>
+       />
+    </AssetPage>
   );
 }
 
-const styles = StyleSheet.create({
-  centered: {
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    centered: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-    lineHeight: 22,
-  },
-  info: {
-    marginBottom: spacing.lg,
-  },
-  alert: {
-    marginBottom: spacing.md,
-  },
-  form: {
-    marginBottom: spacing.lg,
-    gap: spacing.md,
-  },
-  secondary: {
-    marginTop: spacing.md,
-  },
-});
+    justifyContent: 'center',},
+    title: {
+    ...t.type.displayMd,
+    color: t.colors.ink,
+    marginBottom: t.spacing.s2,},
+    subtitle: {
+    ...t.type.body,
+    color: t.colors.inkMuted,
+    marginBottom: t.spacing.s4,},
+    info: {
+    marginBottom: t.spacing.s4,},
+    alert: {
+    marginBottom: t.spacing.s3,},
+    form: {
+    marginBottom: t.spacing.s4,
+    gap: t.spacing.s3,},
+    secondary: {
+    marginTop: t.spacing.s3,},
+
+    stretch: { alignSelf: 'stretch' },
+  });
+}
