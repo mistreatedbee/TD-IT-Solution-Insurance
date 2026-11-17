@@ -170,6 +170,15 @@ export interface Env {
   locationIngestionEnabled?: boolean;
 
   /**
+   * Sign-up for an already-registered address emails the existing owner ("you already have an account").
+   * The on-screen response stays the identical uniform 202 either way (FR-5/AC-2); only an email is added.
+   * Fail-closed, same convention as `locationIngestionEnabled`: only the exact string "true" enables it.
+   * Keep off until cybersecurity-architect has reviewed the cooldown/mail-bomb controls (see the Feature 001
+   * security review addendum).
+   */
+  signupExistingAccountEmailEnabled?: boolean;
+
+  /**
    * security-review.md §12.3 (compliance ruling, SR-018-6) — contact and
    * licensing details that MUST appear in every server-composed claim
    * decision notice (`lib/claim-decision-notice.ts`): the insurer's internal
@@ -498,6 +507,9 @@ export function loadEnv(): Env {
     );
   }
 
+  // Fail-closed: only the exact string "true" turns on the existing-owner sign-up email.
+  const signupExistingAccountEmailEnabled = process.env.SIGNUP_EXISTING_ACCOUNT_EMAIL_ENABLED === 'true';
+
   // SR-018-2: fail-closed kill switch for the Feature 018 claims API — same
   // convention as LOCATION_INGESTION_ENABLED above. Only the exact string
   // "true" enables the claims routes; anything else is off.
@@ -648,6 +660,7 @@ export function loadEnv(): Env {
     invitationAcceptRedirectUrl,
     expoAccessToken,
     locationIngestionEnabled,
+    signupExistingAccountEmailEnabled,
     claimsNotice,
     claimsApiEnabled,
     directedDispatchEnabled,

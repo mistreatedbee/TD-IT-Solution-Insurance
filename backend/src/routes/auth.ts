@@ -17,6 +17,7 @@ import {
   RESET_PASSWORD_MFA_VERIFY_LIMIT,
   SIGNUP_LIMIT,
   RESEND_VERIFICATION_LIMIT,
+  SIGNUP_EXISTING_EMAIL_LIMIT,
   RESEND_VERIFICATION_IP_LIMIT,
   NOTIFY_EMAIL_VERIFIED_IP_LIMIT,
   isPrivilegedUserType,
@@ -188,6 +189,25 @@ export function createAuthRouter(ctx: AppContext): Router {
               return;
             }
             throw err;
+          }
+        }
+        if (existing && ctx.env.signupExistingAccountEmailEnabled === true) {
+          // Existing owner: tell them by email only. The response below stays identical to the new-account case
+          // (FR-5/AC-2). Cooldown + daily ceiling keep this from being used to mail-bomb an address, and the send
+          // is fire-and-forget so timing does not reveal that the address is registered.
+          const cooldown = await checkRateLimit(ctx.kv, `signup-exists-cooldown:${normalizedEmail}`, {
+            attempts: 1,
+            windowSeconds: SIGNUP_EXISTING_EMAIL_LIMIT.cooldownSeconds,
+          });
+          const ceiling = await checkRateLimit(ctx.kv, `signup-exists-ceiling:${normalizedEmail}`, {
+            attempts: SIGNUP_EXISTING_EMAIL_LIMIT.perAddressAttempts,
+            windowSeconds: SIGNUP_EXISTING_EMAIL_LIMIT.perAddressWindowSeconds,
+          });
+          if (cooldown.allowed && ceiling.allowed) {
+            notifyInBackground(
+              'auth.signup_existing_account',
+              ctx.authNotifications.notifySignupAttemptExistingAccount({ accountId: existing.id, email: normalizedEmail }),
+            );
           }
         }
         // FR-5/AC-2: identical 202 response whether or not the email was

@@ -366,6 +366,27 @@ export function buildEmailAlreadyVerifiedEmail(): { subject: string; html: strin
   };
 }
 
+export function buildSignupAccountExistsEmail(): { subject: string; html: string; preheader: string } {
+  const preheader = 'Someone tried to create an account with your email address.';
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+    Someone tried to create a new ${escapeHtml(NOTIFICATION_BRAND.name)} account with this email address, but you already have one.
+    Sign in to continue, or reset your password if you have forgotten it.
+  </p>
+  <p style="margin:0;font-size:14px;color:#6B6156;">If this was not you, you can ignore this email. Your account has not been changed.</p>`;
+
+  return {
+    preheader,
+    subject: `You already have an account — ${NOTIFICATION_BRAND.name}`,
+    html: wrapBrandedEmail({
+      preheader,
+      title: 'You already have an account',
+      bodyHtml,
+      ctaLabel: 'Sign in',
+      ctaUrl: `${NOTIFICATION_BRAND.siteUrl}/login`,
+    }),
+  };
+}
+
 export function buildOnboardingIncompleteEmail(): { subject: string; html: string; preheader: string } {
   const preheader = 'Finish setting up your asset protection in the app.';
   const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
