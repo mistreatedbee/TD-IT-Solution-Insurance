@@ -12,7 +12,7 @@ export function DesignPage({ children, ...screenProps }: React.ComponentProps<ty
   return (
     <View style={styles.fill} testID="design-page">
       <Backdrop variant="gradient" />
-      <Screen {...screenProps} style={styles.transparent}>
+      <Screen {...screenProps} backdrop={false} style={styles.transparent}>
         {children}
       </Screen>
     </View>

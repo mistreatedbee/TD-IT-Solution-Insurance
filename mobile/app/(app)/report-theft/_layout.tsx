@@ -6,6 +6,7 @@ import { FeatureUnavailableScreen } from '../../../src/screens/common/FeatureUna
 import { PlanFeatureGateScreen } from '../../../src/screens/plan/PlanFeatureGateScreen';
 import { useAppStackScreenOptions } from '../../../src/navigation/useAppStackScreenOptions';
 import { ActivityIndicator, View } from 'react-native';
+import { useDesignTokens } from '../../../src/theme/designTheme';
 import { useColors } from '../../../src/theme/ThemeProvider';
 
 function ReportTheftStack() {
@@ -23,10 +24,11 @@ function ReportTheftStack() {
 function ReportTheftEntitlementGate() {
   const { hasIncidentManagement, isLoading } = usePlanEntitlements();
   const colors = useColors();
+  const design = useDesignTokens();
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: design.colors.bgPage }}>
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );

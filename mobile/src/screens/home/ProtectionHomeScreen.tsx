@@ -85,7 +85,7 @@ function HomePage({ children, ...screenProps }: React.ComponentProps<typeof Scre
   return (
     <View style={home.fill} testID="home-page">
       <Backdrop variant="gradient" />
-      <Screen {...screenProps} style={home.transparent}>
+      <Screen {...screenProps} backdrop={false} style={home.transparent}>
         {children}
       </Screen>
     </View>

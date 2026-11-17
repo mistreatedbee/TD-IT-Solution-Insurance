@@ -25,7 +25,7 @@ export function AuthPage({ pattern, children, style, ...screenProps }: AuthPageP
   return (
     <View style={styles.fill} testID="auth-page">
       <Backdrop variant="gradient" pattern={pattern} />
-      <Screen {...screenProps} style={[styles.transparent, style]}>
+      <Screen {...screenProps} backdrop={false} style={[styles.transparent, style]}>
         {children}
       </Screen>
     </View>
