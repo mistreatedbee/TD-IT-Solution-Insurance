@@ -79,7 +79,6 @@ const TRACKED: {
 ];
 
 const CARD_HEIGHT = 78;
-const CAPTION_HEIGHT = 18;
 const GAP = 10;
 const SIDE_MARGIN = 16;
 const TAG_HEIGHT = 20;
@@ -128,7 +127,7 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
   const MapView = useMemo(loadMapView, []);
 
   const mapW = Math.max(220, width - SIDE_MARGIN * 2);
-  const mapH = Math.max(120, height - CARD_HEIGHT - GAP - CAPTION_HEIGHT);
+  const mapH = Math.max(120, height - CARD_HEIGHT - GAP);
   const thumb = Math.max(36, Math.min(48, mapH * 0.2));
   const boxW = 96;
   const boxH = TAG_HEIGHT + TAG_GAP + thumb + TAIL;
@@ -168,8 +167,9 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
     return () => {
       clearInterval(activeTimer);
       clearInterval(speedTimer);
-      cancelAnimation(progress);
-      cancelAnimation(blink);
+      // (the Jest mock of Reanimated has no cancelAnimation, hence the guard)
+      cancelAnimation?.(progress);
+      cancelAnimation?.(blink);
     };
   }, [blink, progress, reduced]);
 
@@ -475,18 +475,11 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
           style={[styles.statusDot, { backgroundColor: t.colors.success }]}
         />
       </View>
-      <Text
-        style={[t.type.labelSm, styles.caption, { color: t.colors.inkMuted }]}
-        numberOfLines={1}
-      >
-        Illustration · readings show when a device reports them
-      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  caption: { marginTop: 6, fontSize: 10, opacity: 0.85, textAlign: 'center' },
   root: { alignItems: 'center', justifyContent: 'center' },
   map: { overflow: 'hidden', borderWidth: 1 },
   trailClip: { position: 'absolute', left: 0, top: 0, overflow: 'hidden' },
