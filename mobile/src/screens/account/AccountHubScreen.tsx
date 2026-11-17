@@ -465,22 +465,16 @@ export function AccountHubScreen() {
           </AccountGroup>
         </AccountSection>
 
-        <AccountSection title="Preferences">
+        <AccountSection title="Settings">
           <AccountGroup>
             <AccountMenuRow
               icon={BellIcon}
               title="Notification preferences"
               subtitle="Choose which alerts you get, and how"
-              isLast
               onPress={() =>
                 router.push('/(app)/notification-preferences' as Href)
               }
             />
-          </AccountGroup>
-        </AccountSection>
-
-        <AccountSection title="Security">
-          <AccountGroup>
             <AccountMenuRow
               icon={ShieldCheckIcon}
               title="Two-factor authentication"
@@ -489,16 +483,7 @@ export function AccountHubScreen() {
               onPress={() => router.push('/(app)/mfa-enroll' as Href)}
             />
           </AccountGroup>
-        </AccountSection>
-
-        <AccountSection title="Help & support">
           <AccountGroup>
-            <AccountMenuRow
-              icon={MailIcon}
-              title="Contact support"
-              subtitle={COMPANY_CONTACT.email}
-              onPress={handleContactSupport}
-            />
             <AccountMenuRow
               icon={HelpCircleIcon}
               title="Privacy notice"
@@ -507,21 +492,18 @@ export function AccountHubScreen() {
             />
             <AccountMenuRow
               icon={FileTextIcon}
-              title="Delete account & data"
-              subtitle="Request removal of your account and associated data"
-              onPress={() => router.push('/(auth)/delete-account' as Href)}
+              title="Terms of use"
+              subtitle="Service terms and conditions"
+              onPress={() => router.push('/(auth)/terms' as Href)}
             />
             <AccountMenuRow
               icon={FileTextIcon}
-              title="Terms of use"
-              subtitle="Service terms and conditions"
+              title="Delete account & data"
+              subtitle="Request removal of your account and associated data"
               isLast
-              onPress={() => router.push('/(auth)/terms' as Href)}
+              onPress={() => router.push('/(auth)/delete-account' as Href)}
             />
           </AccountGroup>
-        </AccountSection>
-
-        <AccountSection title="Session">
           <AccountGroup>
             <AccountMenuRow
               icon={LogOutIcon}
@@ -545,6 +527,18 @@ export function AccountHubScreen() {
               isLast
               disabled={isLoggingOutAll}
               onPress={handleLogoutAll}
+            />
+          </AccountGroup>
+        </AccountSection>
+
+        <AccountSection title="Help & support">
+          <AccountGroup>
+            <AccountMenuRow
+              icon={MailIcon}
+              title="Contact support"
+              subtitle={COMPANY_CONTACT.email}
+              isLast
+              onPress={handleContactSupport}
             />
           </AccountGroup>
         </AccountSection>
