@@ -11,7 +11,11 @@ function AlertsStack() {
     <Stack screenOptions={screenOptions}>
       <Stack.Screen
         name="index"
-        options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}
+        options={
+          title: 'Alerts',
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
+        }
       />
     </Stack>
   );
