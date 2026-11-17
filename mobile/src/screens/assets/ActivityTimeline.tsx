@@ -2,7 +2,7 @@ import { CheckCircle2Icon, MapPinIcon, ShieldIcon } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { formatDate } from '../../lib/asset-labels';
-import { colors, radius, spacing, typography } from '../../theme/tokens';
+import { useDesignTokens } from '../../theme/designTheme';
 
 export interface TimelineEvent {
   id: string;
@@ -15,38 +15,40 @@ export interface ActivityTimelineProps {
   events: TimelineEvent[];
 }
 
-function iconForEvent(event: TimelineEvent) {
-  if (event.id.includes('location')) {
-    return <MapPinIcon size={16} color={colors.primary} strokeWidth={2.2} />;
-  }
-  if (event.id.includes('protection') || event.id.includes('registered')) {
-    return <ShieldIcon size={16} color={colors.accentGoldDeep} strokeWidth={2.2} />;
-  }
-  return <CheckCircle2Icon size={16} color={colors.success} strokeWidth={2.2} />;
-}
-
 export function ActivityTimeline({ events }: ActivityTimelineProps) {
+  const t = useDesignTokens();
   if (events.length === 0) return null;
 
+  function icon(event: TimelineEvent) {
+    if (event.id.includes('location')) return <MapPinIcon size={16} color={t.colors.ink} strokeWidth={1.75} />;
+    if (event.id.includes('protection') || event.id.includes('registered')) {
+      return <ShieldIcon size={16} color={t.colors.link} strokeWidth={1.75} />;
+    }
+    return <CheckCircle2Icon size={16} color={t.colors.success} strokeWidth={1.75} />;
+  }
+
   return (
-    <View style={styles.wrap}>
+    <View style={{ gap: t.spacing.s2 }}>
       {events.map((event, index) => (
-        <View key={event.id} style={styles.item}>
+        <View key={event.id} style={[styles.item, { gap: t.spacing.s3 }]}>
           <View style={styles.track}>
-            <View style={styles.iconWrap}>{iconForEvent(event)}</View>
-            {index < events.length - 1 ? <View style={styles.line} /> : null}
+            <View style={[styles.iconWrap, { backgroundColor: t.colors.bgSunken, borderRadius: t.radius.sm }]}>
+              {icon(event)}
+            </View>
+            {index < events.length - 1 ? (
+              <View style={[styles.line, { backgroundColor: t.colors.borderSubtle, marginTop: t.spacing.s1 }]} />
+            ) : null}
           </View>
-          <View style={styles.copy}>
+          <View style={[styles.copy, { paddingBottom: t.spacing.s2 }]}>
             <Text
               style={[
-                styles.title,
-                event.tone === 'muted' ? styles.titleMuted : null,
-                event.tone === 'success' ? styles.titleSuccess : null,
+                t.type.label,
+                { color: event.tone === 'muted' ? t.colors.inkMuted : event.tone === 'success' ? t.colors.success : t.colors.ink },
               ]}
             >
               {event.title}
             </Text>
-            {event.subtitle ? <Text style={styles.subtitle}>{event.subtitle}</Text> : null}
+            {event.subtitle ? <Text style={[t.type.bodySm, { color: t.colors.inkMuted }]}>{event.subtitle}</Text> : null}
           </View>
         </View>
       ))}
@@ -98,52 +100,9 @@ export function buildAssetTimeline(input: {
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    gap: spacing.sm,
-  },
-  item: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  track: {
-    alignItems: 'center',
-    width: 32,
-  },
-  iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.input,
-    backgroundColor: colors.slate[100],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  line: {
-    flex: 1,
-    width: 2,
-    backgroundColor: colors.border,
-    marginTop: spacing.xs,
-    minHeight: 16,
-  },
-  copy: {
-    flex: 1,
-    paddingBottom: spacing.sm,
-  },
-  title: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 2,
-  },
-  titleMuted: {
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  titleSuccess: {
-    color: colors.success,
-  },
-  subtitle: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.xs * 1.45,
-  },
+  item: { flexDirection: 'row' },
+  track: { alignItems: 'center', width: 32 },
+  iconWrap: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  line: { flex: 1, width: 2, minHeight: 16 },
+  copy: { flex: 1 },
 });

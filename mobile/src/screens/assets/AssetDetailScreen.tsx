@@ -1,5 +1,10 @@
 /**
- * Asset command view — premium detail screen (Feature 009 Phase 3).
+ * Asset command view — detail screen (Feature 009 Phase 3).
+ *
+ * Design System rollout R5.3: gradient Backdrop ground, a glass hero that keeps the asset's picture, solid cards
+ * for each section, and the design Button (report theft uses the danger button, as the spec allows). Text colours
+ * come from the theme tokens, so the screen is readable in dark mode (it used fixed light-mode colours before).
+ * Behaviour is unchanged: location consent, tracking, hardware tracker actions, plan gating and navigation.
  */
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -15,11 +20,7 @@ import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
 import { NetworkUnavailableError } from '../../api/errors';
 import { useIsOnline } from '../../network/NetworkProvider';
 import { FEATURE_HARDWARE_TRACKING_ENABLED, FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
-import {
-  assetStatusBadgeTone,
-  formatAssetType,
-  formatDate,
-} from '../../lib/asset-labels';
+import { formatAssetType, formatDate } from '../../lib/asset-labels';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import {
   LocationConsentModal,
@@ -35,16 +36,16 @@ import {
 import { mergeAssetsWithLocations } from '../../tracking/buildAssetTrackingView';
 import { useAssetLocationSummaryQuery } from '../../api/hooks/useAssetLocation';
 import { useAssetTrackingProfileQuery } from '../../api/hooks/useAssetTrackingProfile';
-import { Alert, Badge, Button, Card, Screen } from '../../theme/primitives';
-import { canvasColor } from '../../theme/surfaces';
-import { colors, radius, spacing, typography } from '../../theme/tokens';
+import { Button, GlassCard, StatusBadge } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
 import { resolveTrackingUiCapabilities } from '../../tracking/TrackingCapabilityService';
 import { AssetHeroImage } from '../home/assetVisuals';
 import { ProtectionMapView } from '../home/ProtectionMapView';
 import { ActivityTimeline, buildAssetTimeline } from './ActivityTimeline';
 import { AssetPhotoSlots } from './AssetPhotoSlots';
-import { TrackingStatusChip } from './TrackingStatusChip';
-import { vaultShadow } from './assetVaultStyles';
+import { assetStatusBadge } from '../home/assetStatus';
+import { AssetPage } from './AssetPage';
 
 function formatDetailValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
@@ -63,6 +64,8 @@ function protectionSteps(
 }
 
 export function AssetDetailScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: asset, isLoading, isError, error } = useAssetQuery(id);
@@ -303,20 +306,22 @@ export function AssetDetailScreen() {
 
   if (isLoading) {
     return (
-      <Screen scroll={false}>
+      <AssetPage scroll={false}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
-      </Screen>
+      </AssetPage>
     );
   }
 
   if (isError || !asset) {
     return (
-      <Screen>
-        <Text style={styles.pageTitle}>Asset</Text>
-        <Alert tone="danger">{mapUserFacingError(error, { context: 'asset' })}</Alert>
-      </Screen>
+      <AssetPage>
+        <GlassCard variant="solid">
+          <Text style={styles.pageTitle}>Asset</Text>
+          <Alert tone="danger">{mapUserFacingError(error, { context: 'asset' })}</Alert>
+        </GlassCard>
+      </AssetPage>
     );
   }
 
@@ -325,6 +330,7 @@ export function AssetDetailScreen() {
   const trackingStatus = trackingView?.trackingStatus ?? 'tracking_unavailable';
   const trackingLabel = trackingView?.trackingLabel ?? 'Unavailable';
   const locationLabel = trackingView?.locationLabel ?? null;
+  const heroBadge = assetStatusBadge({ trackingStatus });
   const mapCoords = FEATURE_LOCATION_TRACKING_ENABLED
     ? (location ?? trackingView?.lastLocation ?? null)
     : null;
@@ -360,20 +366,23 @@ export function AssetDetailScreen() {
       : [];
 
   return (
-    <Screen style={styles.screenBg}>
+    <AssetPage>
+      <GlassCard radius="xl" style={styles.section}>
       <View style={styles.hero}>
         <AssetHeroImage assetType={asset.assetType ?? 'other_electronics'} />
         <View style={styles.heroCopy}>
           <Text style={styles.heroTitle}>{asset.displayName}</Text>
-          <Text style={styles.heroMeta}>{formatAssetType(asset.assetType ?? 'other_electronics')}</Text>
+          <Text style={styles.heroMeta}>
+            {formatAssetType(asset.assetType ?? 'other_electronics')} · {status.charAt(0).toUpperCase() + status.slice(1)}
+          </Text>
           <View style={styles.badgeRow}>
-            <Badge tone={assetStatusBadgeTone(status)}>{status}</Badge>
-            <TrackingStatusChip status={trackingStatus} label={trackingLabel} />
+            {heroBadge ? <StatusBadge status={heroBadge} /> : <Text style={styles.heroState}>{trackingLabel}</Text>}
           </View>
         </View>
       </View>
+      </GlassCard>
 
-      <Card style={styles.section}>
+      <GlassCard variant="solid" style={styles.section}>
         <Text style={styles.sectionTitle}>Protection journey</Text>
         <View style={styles.steps}>
           {steps.map((step, index) => (
@@ -390,14 +399,14 @@ export function AssetDetailScreen() {
             </View>
           ))}
         </View>
-      </Card>
+      </GlassCard>
 
-      <Card style={styles.section}>
+      <GlassCard variant="solid" style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitleInline}>Last known location</Text>
         </View>
         {locationLoading && isSmartphone ? (
-          <ActivityIndicator color={colors.primary} style={styles.locationSpinner} />
+          <ActivityIndicator color={t.colors.link} style={styles.locationSpinner} />
         ) : (
           <View style={styles.mapWrap}>
             <ProtectionMapView
@@ -427,35 +436,24 @@ export function AssetDetailScreen() {
             </Alert>
           ) : trackingActive ? (
             <View style={styles.trackingActiveActions}>
-              <Button
-                variant="secondary"
-                fullWidth
+              <Button label="Update location now"
                 loading={actionLoading || reportMutation.isPending}
                 onPress={handleUpdateLocation}
-              >
-                Update location now
-              </Button>
-              <Button
-                variant="secondary"
-                fullWidth
+               variant="secondary" style={styles.stretch} />
+              <Button label="Turn off tracking"
                 loading={actionLoading || withdrawMutation.isPending}
                 onPress={handleDisableTracking}
-              >
-                Turn off tracking
-              </Button>
+               variant="glass" style={styles.stretch} />
             </View>
           ) : linkedAssetId && !isThisPhoneLinked ? (
             <Alert tone="info">
               Another smartphone asset is linked to this phone. Disable tracking there first.
             </Alert>
           ) : (
-            <Button
-              fullWidth
+            <Button label="Enable location tracking on this phone"
               loading={actionLoading || reportMutation.isPending}
               onPress={handleEnableTracking}
-            >
-              Enable location tracking on this phone
-            </Button>
+             style={styles.stretch} />
           )
         ) : (
           <>
@@ -465,34 +463,25 @@ export function AssetDetailScreen() {
               </Alert>
             ) : null}
             {FEATURE_HARDWARE_TRACKING_ENABLED && trackingUi.showDeviceActivation ? (
-              <Button
-                fullWidth
-                style={styles.trackerAction}
+              <Button label="Connect GPS tracker"
+                style={[styles.stretch, styles.trackerAction]}
                 onPress={() => router.push(`/assets/${id}/activate-tracker` as Href)}
-              >
-                Connect GPS tracker
-              </Button>
+               />
             ) : FEATURE_HARDWARE_TRACKING_ENABLED && linkedDevice ? (
-              <Button
-                variant="secondary"
-                fullWidth
-                style={styles.trackerAction}
+              <Button label="View device health"
+                style={[styles.stretch, styles.trackerAction]}
                 onPress={() => router.push(`/assets/${id}/device-health` as Href)}
-              >
-                View device health
-              </Button>
+               variant="secondary" />
             ) : null}
             {FEATURE_LOCATION_TRACKING_ENABLED ? (
-              <Button variant="secondary" fullWidth onPress={() => router.push('/map' as Href)}>
-                View on protection map
-              </Button>
+              <Button label="View on protection map" onPress={() => router.push('/map' as Href)} variant="secondary" style={styles.stretch} />
             ) : null}
           </>
         )}
-      </Card>
+      </GlassCard>
 
       {FEATURE_HARDWARE_TRACKING_ENABLED && !isSmartphone && trackingUi.showInstallationGuide ? (
-        <Card style={styles.section}>
+        <GlassCard variant="solid" style={styles.section}>
           <Text style={styles.sectionTitle}>GPS tracker</Text>
           <Text style={styles.trackerCopy}>
             Install a hardware GPS tracker for location recovery. Vendor live feed is pending — you
@@ -500,43 +489,32 @@ export function AssetDetailScreen() {
           </Text>
           <View style={styles.trackerButtons}>
             {trackingUi.showDeviceActivation ? (
-              <Button
-                fullWidth
+              <Button label="Connect GPS tracker"
                 onPress={() => router.push(`/assets/${id}/activate-tracker` as Href)}
-              >
-                Connect GPS tracker
-              </Button>
+               style={styles.stretch} />
             ) : null}
-            <Button
-              variant="secondary"
-              fullWidth
+            <Button label="Installation guide"
               onPress={() => router.push(`/assets/${id}/installation-guide` as Href)}
-            >
-              Installation guide
-            </Button>
+             variant="secondary" style={styles.stretch} />
             {linkedDevice ? (
-              <Button
-                variant="secondary"
-                fullWidth
+              <Button label="Device health"
                 onPress={() => router.push(`/assets/${id}/device-health` as Href)}
-              >
-                Device health
-              </Button>
+               variant="secondary" style={styles.stretch} />
             ) : null}
           </View>
-        </Card>
+        </GlassCard>
       ) : null}
 
-      <Card style={styles.section}>
+      <GlassCard variant="solid" style={styles.section}>
         <Text style={styles.sectionTitle}>Activity</Text>
         <ActivityTimeline events={timeline} />
-      </Card>
+      </GlassCard>
 
-      <Card style={styles.section}>
+      <GlassCard variant="solid" style={styles.section}>
         <AssetPhotoSlots assetType={asset.assetType ?? 'other_electronics'} />
-      </Card>
+      </GlassCard>
 
-      <Card style={styles.section}>
+      <GlassCard variant="solid" style={styles.section}>
         <DetailRow label="Registered" value={formatDate(asset.registeredAt)} />
         <DetailRow
           label="GPS device"
@@ -558,9 +536,9 @@ export function AssetDetailScreen() {
             value={`${asset.estimatedValue.amount} ${asset.estimatedValue.currency}`}
           />
         ) : null}
-      </Card>
+      </GlassCard>
 
-      <Card style={styles.section}>
+      <GlassCard variant="solid" style={styles.section}>
         <Text style={styles.sectionTitle}>Details</Text>
         {Object.entries(details).map(([key, value]) => (
           <DetailRow
@@ -569,29 +547,21 @@ export function AssetDetailScreen() {
             value={formatDetailValue(value)}
           />
         ))}
-      </Card>
+      </GlassCard>
 
       {status === 'active' ? (
         hasIncidentManagement ? (
-          <Button
-            variant="secondary"
-            fullWidth
+          <Button label="Report theft"
             onPress={() =>
               router.push(`/report-theft/confirm?assetId=${encodeURIComponent(id!)}` as Href)
             }
-            style={styles.reportButton}
-          >
-            Report theft
-          </Button>
+            style={[styles.stretch, styles.reportButton]}
+           variant="danger" />
         ) : changePlanHref ? (
-          <Button
-            variant="secondary"
-            fullWidth
+          <Button label="Upgrade to report theft"
             onPress={() => router.push(changePlanHref as Href)}
-            style={styles.reportButton}
-          >
-            Upgrade to report theft
-          </Button>
+            style={[styles.stretch, styles.reportButton]}
+           variant="secondary" />
         ) : null
       ) : null}
 
@@ -602,176 +572,53 @@ export function AssetDetailScreen() {
         onDecline={handleConsentDecline}
         loading={actionLoading}
       />
-    </Screen>
+    </AssetPage>
   );
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
+  const t = useDesignTokens();
   return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowValue}>{value}</Text>
+    <View style={{ marginBottom: t.spacing.s3 }}>
+      <Text style={[t.type.labelSm, { color: t.colors.inkMuted, marginBottom: t.spacing.s1 }]}>{label}</Text>
+      <Text style={[t.type.body, { color: t.colors.ink }]}>{value}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screenBg: {
-    backgroundColor: canvasColor,
-  },
-  pageTitle: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.lg,
-  },
-  hero: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-    backgroundColor: colors.background,
-    borderRadius: radius.glassCardLg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-    ...vaultShadow,
-  },
-  heroCopy: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  heroTitle: {
-    fontSize: typography.sizes.xl,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  heroMeta: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  section: {
-    marginBottom: spacing.lg,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  sectionTitle: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.md,
-  },
-  sectionTitleInline: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  steps: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  stepItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  stepTrack: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    justifyContent: 'center',
-    marginBottom: spacing.xs,
-  },
-  stepDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.slate[300],
-  },
-  stepDotDone: {
-    backgroundColor: colors.glassAccent,
-  },
-  stepLine: {
-    position: 'absolute',
-    left: '55%',
-    right: '-45%',
-    height: 2,
-    backgroundColor: colors.slate[300],
-    top: 4,
-  },
-  stepLineDone: {
-    backgroundColor: colors.glassAccent,
-  },
-  stepLabel: {
-    fontSize: 10,
-    color: colors.slate[500],
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  stepLabelDone: {
-    color: colors.textPrimary,
-  },
-  mapWrap: {
-    borderRadius: radius.glassCard,
-    overflow: 'hidden',
-    marginBottom: spacing.sm,
-  },
-  lastSeen: {
-    fontSize: typography.sizes.sm,
-    color: colors.slate[500],
-    marginBottom: spacing.md,
-  },
-  locationSpinner: {
-    marginVertical: spacing.md,
-  },
-  actionAlert: {
-    marginBottom: spacing.md,
-  },
-  trackingActiveActions: {
-    gap: spacing.sm,
-  },
-  row: {
-    marginBottom: spacing.md,
-  },
-  rowLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    marginBottom: spacing.xs,
-  },
-  rowValue: {
-    fontSize: typography.sizes.base,
-    color: colors.textPrimary,
-  },
-  reportButton: {
-    marginBottom: spacing.lg,
-  },
-  trackerStatus: {
-    marginBottom: spacing.md,
-  },
-  trackerAction: {
-    marginBottom: spacing.sm,
-  },
-  trackerCopy: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: spacing.md,
-  },
-  trackerButtons: {
-    gap: spacing.sm,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    pageTitle: { ...t.type.displayMd, color: t.colors.ink, marginBottom: t.spacing.s4 },
+    hero: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.s4 },
+    heroCopy: { flex: 1, gap: t.spacing.s1 },
+    heroTitle: { ...t.type.displayMd, color: t.colors.ink },
+    heroMeta: { ...t.type.bodySm, color: t.colors.inkMuted },
+    heroState: { ...t.type.label, color: t.colors.inkMuted },
+    badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: t.spacing.s2, marginTop: t.spacing.s1 },
+    section: { marginBottom: t.spacing.s4 },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.s2, marginBottom: t.spacing.s3 },
+    sectionTitle: { ...t.type.title, color: t.colors.ink, marginBottom: t.spacing.s3 },
+    sectionTitleInline: { ...t.type.title, color: t.colors.ink },
+    steps: { flexDirection: 'row', gap: t.spacing.s3 },
+    stepItem: { alignItems: 'center', flex: 1 },
+    stepTrack: { flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'center', marginBottom: t.spacing.s1 },
+    stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: t.colors.borderControl },
+    stepDotDone: { backgroundColor: t.colors.success },
+    stepLine: { position: 'absolute', left: '55%', right: '-45%', height: 2, backgroundColor: t.colors.borderControl, top: 4 },
+    stepLineDone: { backgroundColor: t.colors.success },
+    stepLabel: { ...t.type.labelSm, color: t.colors.inkMuted, textAlign: 'center' },
+    stepLabelDone: { color: t.colors.ink },
+    mapWrap: { borderRadius: t.radius.md, overflow: 'hidden', marginBottom: t.spacing.s2 },
+    lastSeen: { ...t.type.bodySm, color: t.colors.inkMuted, marginBottom: t.spacing.s3 },
+    locationSpinner: { marginVertical: t.spacing.s3 },
+    actionAlert: { marginBottom: t.spacing.s3 },
+    trackingActiveActions: { gap: t.spacing.s2 },
+    reportButton: { marginBottom: t.spacing.s4 },
+    trackerStatus: { marginBottom: t.spacing.s3 },
+    trackerAction: { marginBottom: t.spacing.s2 },
+    trackerCopy: { ...t.type.bodySm, color: t.colors.inkMuted, marginBottom: t.spacing.s3 },
+    trackerButtons: { gap: t.spacing.s2 },
+    stretch: { alignSelf: 'stretch' },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  });
+}
