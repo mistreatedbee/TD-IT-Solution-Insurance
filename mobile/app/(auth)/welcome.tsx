@@ -41,7 +41,8 @@ export default function WelcomeScreen() {
         {
           paddingHorizontal: t.spacing.s4,
           paddingTop: t.spacing.s4,
-          paddingBottom: Math.max(insets.bottom, t.spacing.s4),
+          // Sit just above the home indicator instead of a full safe-area gap below the card.
+          paddingBottom: Math.max(insets.bottom - 14, t.spacing.s2),
           gap: t.spacing.s4,
         },
       ]}
@@ -80,9 +81,10 @@ export default function WelcomeScreen() {
           variant="secondary"
           label="Log in"
           onPress={() => router.push('/(auth)/login')}
-          style={{ marginTop: t.spacing.s3 }}
+          style={{ marginTop: t.spacing.s2 }}
         />
         <AuthLink
+          compact
           label="Explore first"
           accessibilityLabel="Explore the app introduction first"
           onPress={() => router.push('/(auth)/intro')}
