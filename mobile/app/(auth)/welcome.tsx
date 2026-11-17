@@ -5,7 +5,7 @@
  */
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProtectionMapHero } from '../../src/onboarding/marketing/components/ProtectionMapHero';
 import { useOnboardingLayout } from '../../src/onboarding/marketing/hooks/useOnboardingLayout';
@@ -33,18 +33,26 @@ export default function WelcomeScreen() {
       ? heroHeight
       : Math.max(0, Math.min(MAX_MAP_HEIGHT, freeHeight - t.spacing.s2));
 
+  // iPhone: sit just above the home indicator. Android: always clear the system navigation bar (three buttons or
+  // gesture bar) by its full height, so the card is never covered.
+  const bottomPadding =
+    Platform.OS === 'ios'
+      ? Math.max(insets.bottom - 14, t.spacing.s2)
+      : insets.bottom + t.spacing.s3;
+
   return (
     <AuthPage
       pattern="chevron"
       scroll={false}
       padded={false}
+      // Only the top inset comes from the page; the bottom is handled below so it can differ per platform.
+      safeAreaEdges={['top']}
       contentContainerStyle={[
         styles.screenContent,
         {
           paddingHorizontal: t.spacing.s4,
           paddingTop: t.spacing.s4,
-          // Sit just above the home indicator instead of a full safe-area gap below the card.
-          paddingBottom: Math.max(insets.bottom - 14, t.spacing.s2),
+          paddingBottom: bottomPadding,
           gap: t.spacing.s4,
         },
       ]}

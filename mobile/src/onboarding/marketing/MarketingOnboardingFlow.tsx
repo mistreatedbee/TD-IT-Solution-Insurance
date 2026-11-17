@@ -80,7 +80,8 @@ const SLIDES: Slide[] = [
   {
     id: 'dashboard',
     title: 'Your protection. One app.',
-    subtitle: 'View coverage, assets, alerts and connected devices from a single dashboard.',
+    subtitle:
+      'View coverage, assets, alerts and connected devices from a single dashboard.',
     footerLabel: 'Next',
   },
   {
@@ -145,24 +146,33 @@ export function MarketingOnboardingFlow() {
     setActiveIndex(index);
   }, []);
 
-  const finishIntro = useCallback(async (destination: 'signup' | 'login') => {
-    await markMarketingIntroComplete();
-    if (destination === 'login') {
-      router.push('/(auth)/login');
-    } else {
-      router.push({ pathname: '/(auth)/get-started', params: { from: 'intro' } });
-    }
-  }, [router]);
+  const finishIntro = useCallback(
+    async (destination: 'signup' | 'login') => {
+      await markMarketingIntroComplete();
+      if (destination === 'login') {
+        router.push('/(auth)/login');
+      } else {
+        router.push({
+          pathname: '/(auth)/get-started',
+          params: { from: 'intro' },
+        });
+      }
+    },
+    [router],
+  );
 
   const skipToAccount = useCallback(async () => {
     await markMarketingIntroComplete();
     goToSlide(SLIDES.length - 1);
   }, [goToSlide]);
 
-  const onMomentumScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    setActiveIndex(index);
-  }, []);
+  const onMomentumScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+      setActiveIndex(index);
+    },
+    [],
+  );
 
   const renderSlide: ListRenderItem<Slide> = useCallback(
     ({ item, index }) => (
@@ -174,8 +184,15 @@ export function MarketingOnboardingFlow() {
             footerHidden
             inlineActions={
               <>
-                <Button label="Create account" onPress={() => void finishIntro('signup')} />
-                <Button variant="secondary" label="Log in" onPress={() => void finishIntro('login')} />
+                <Button
+                  label="Create account"
+                  onPress={() => void finishIntro('signup')}
+                />
+                <Button
+                  variant="secondary"
+                  label="Log in"
+                  onPress={() => void finishIntro('login')}
+                />
               </>
             }
           />
@@ -195,7 +212,14 @@ export function MarketingOnboardingFlow() {
   );
 
   return (
-    <AuthPage pattern="chevron" scroll={false} padded={false} contentContainerStyle={styles.screenBody}>
+    <AuthPage
+      pattern="chevron"
+      scroll={false}
+      padded={false}
+      // the footer adds the bottom inset itself (Android navigation bar included), so the page must not add it too
+      safeAreaEdges={['top']}
+      contentContainerStyle={styles.screenBody}
+    >
       <GlassCard style={styles.header} testID="intro-header-card">
         <View style={styles.headerTop}>
           {activeIndex < SLIDES.length - 1 ? (
@@ -206,7 +230,9 @@ export function MarketingOnboardingFlow() {
               hitSlop={8}
               style={styles.headerSide}
             >
-              <Text style={[t.type.label, { color: t.colors.inkMuted }]}>Skip</Text>
+              <Text style={[t.type.label, { color: t.colors.inkMuted }]}>
+                Skip
+              </Text>
             </Pressable>
           ) : (
             <View style={styles.headerSide} />
@@ -231,7 +257,11 @@ export function MarketingOnboardingFlow() {
           )}
         </View>
 
-        <ProgressDots count={SLIDES.length} activeIndex={activeIndex} compact={isCompact} />
+        <ProgressDots
+          count={SLIDES.length}
+          activeIndex={activeIndex}
+          compact={isCompact}
+        />
       </GlassCard>
 
       <FlatList

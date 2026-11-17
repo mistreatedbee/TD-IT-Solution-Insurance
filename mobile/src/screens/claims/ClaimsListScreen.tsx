@@ -2,6 +2,7 @@
  * Claims list — Feature 018 backend (GET /v1/claims).
  */
 import { useRouter, type Href } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
@@ -30,6 +31,7 @@ import {
 } from '../../theme/tokens';
 
 export function ClaimsListScreen() {
+  const insets = useSafeAreaInsets();
   const t = useDesignTokens();
   const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
@@ -96,7 +98,7 @@ export function ClaimsListScreen() {
         accessibilityRole="button"
         accessibilityLabel="File new claim"
         onPress={() => router.push('/claims/new' as Href)}
-        style={styles.fab}
+        style={[styles.fab, { bottom: t.spacing.s6 + insets.bottom }]}
       >
         <PlusIcon color={t.colors.onNavy} size={28} />
       </Pressable>
