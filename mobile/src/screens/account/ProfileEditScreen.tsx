@@ -2,20 +2,29 @@
  * Profile edit — personal details, address, emergency contact, ID number.
  */
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import type { CustomerProfile, UpdateCustomerProfileRequest } from '../../api/customer-profile';
+import type {
+  CustomerProfile,
+  UpdateCustomerProfileRequest,
+} from '../../api/customer-profile';
 import { verificationStatusLabel } from '../../api/customer-profile';
 import {
   useCustomerProfileQuery,
   useUpdateCustomerProfileMutation,
 } from '../../api/hooks/useCustomerProfile';
-import { ProfileAvatar, ProfilePictureActions } from '../../components/ProfileAvatar';
+import {
+  ProfileAvatar,
+  ProfilePictureActions,
+} from '../../components/ProfileAvatar';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { truncateSaIdNumber, validateSaIdNumber } from '../../lib/sa-id-number';
 import { useProfilePictureUpload } from './useProfilePictureUpload';
-import { Alert, Badge, Button, Card, Input, Screen } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert, Input } from '../../theme/primitives';
+import { PolicyStatusPill } from '../policy/PolicyStatusPill';
 
 type ProfileFieldErrors = {
   firstName?: string;
@@ -63,7 +72,9 @@ function applyProfileToForm(
   setters.setProvince(profile.residentialAddress?.province ?? '');
   setters.setPostalCode(profile.residentialAddress?.postalCode ?? '');
   setters.setEmergencyName(profile.emergencyContact?.name ?? '');
-  setters.setEmergencyRelationship(profile.emergencyContact?.relationship ?? '');
+  setters.setEmergencyRelationship(
+    profile.emergencyContact?.relationship ?? '',
+  );
   setters.setEmergencyPhone(profile.emergencyContact?.phone ?? '');
 }
 
@@ -113,7 +124,8 @@ function validateProfileForm(input: {
   if (!input.province.trim()) errors.province = 'Province is required.';
   if (!input.postalCode.trim()) errors.postalCode = 'Postal code is required.';
 
-  if (!input.emergencyName.trim()) errors.emergencyName = 'Emergency contact name is required.';
+  if (!input.emergencyName.trim())
+    errors.emergencyName = 'Emergency contact name is required.';
   if (!input.emergencyRelationship.trim()) {
     errors.emergencyRelationship = 'Relationship is required.';
   }
@@ -144,16 +156,13 @@ function statusTone(status: CustomerProfile['verificationStatus']) {
 }
 
 export function ProfileEditScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const profileQuery = useCustomerProfileQuery();
   const updateMutation = useUpdateCustomerProfileMutation();
-  const {
-    choosePhoto,
-    takePhoto,
-    removePhoto,
-    isUploading,
-    isRemoving,
-  } = useProfilePictureUpload();
+  const { choosePhoto, takePhoto, removePhoto, isUploading, isRemoving } =
+    useProfilePictureUpload();
 
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
@@ -273,33 +282,40 @@ export function ProfileEditScreen() {
 
   if (profileQuery.isLoading) {
     return (
-      <Screen scroll={false} safeAreaEdges={['bottom']}>
+      <DesignPage scroll={false} safeAreaEdges={['bottom']}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
-      </Screen>
+      </DesignPage>
     );
   }
 
   if (profileQuery.isError || !profileQuery.data) {
     return (
-      <Screen safeAreaEdges={['bottom']}>
+      <DesignPage safeAreaEdges={['bottom']}>
         <Alert tone="danger">
           {mapUserFacingError(profileQuery.error, { context: 'profile' })}
         </Alert>
-        <Button variant="secondary" onPress={() => profileQuery.refetch()}>
-          Try again
-        </Button>
-      </Screen>
+        <Button
+          label="Try again"
+          onPress={() => profileQuery.refetch()}
+          variant="secondary"
+        />
+      </DesignPage>
     );
   }
 
   const profile = profileQuery.data;
-  const profileInitials = `${profile.firstName?.[0] ?? ''}${profile.lastName?.[0] ?? ''}`.toUpperCase() || 'TD';
+  const profileInitials =
+    `${profile.firstName?.[0] ?? ''}${profile.lastName?.[0] ?? ''}`.toUpperCase() ||
+    'TD';
 
   return (
-    <Screen safeAreaEdges={['bottom']} contentContainerStyle={{ paddingBottom: spacing.lg }}>
-      <Card style={styles.photoCard} padding="md">
+    <DesignPage
+      safeAreaEdges={['bottom']}
+      contentContainerStyle={{ paddingBottom: t.spacing.s4 }}
+    >
+      <GlassCard variant="solid" style={styles.photoCard}>
         <View style={styles.photoRow}>
           <ProfileAvatar
             initials={profileInitials}
@@ -310,7 +326,8 @@ export function ProfileEditScreen() {
           <View style={styles.photoCopy}>
             <Text style={styles.photoTitle}>Profile picture</Text>
             <Text style={styles.photoBody}>
-              Add a photo so support and your account screens are easier to recognise.
+              Add a photo so support and your account screens are easier to
+              recognise.
             </Text>
           </View>
         </View>
@@ -321,24 +338,28 @@ export function ProfileEditScreen() {
           onTakePhoto={() => void takePhoto()}
           onRemovePhoto={() => void removePhoto()}
         />
-      </Card>
+      </GlassCard>
 
-      <Card style={styles.summaryCard} padding="md">
+      <GlassCard variant="solid" style={styles.summaryCard}>
         <View style={styles.summaryRow}>
           <View>
             <Text style={styles.summaryLabel}>Profile completion</Text>
-            <Text style={styles.summaryValue}>{profile.completionPercent}%</Text>
+            <Text style={styles.summaryValue}>
+              {profile.completionPercent}%
+            </Text>
           </View>
-          <Badge tone={statusTone(profile.verificationStatus)}>
+          <PolicyStatusPill tone={statusTone(profile.verificationStatus)}>
             {verificationStatusLabel(profile.verificationStatus)}
-          </Badge>
+          </PolicyStatusPill>
         </View>
-      </Card>
+      </GlassCard>
 
       <Text style={styles.heading}>Personal details</Text>
 
       {profile.idNumberMasked ? (
-        <Text style={styles.maskedId}>ID on file: {profile.idNumberMasked}</Text>
+        <Text style={styles.maskedId}>
+          ID on file: {profile.idNumberMasked}
+        </Text>
       ) : null}
 
       <Input
@@ -348,7 +369,11 @@ export function ProfileEditScreen() {
         onChangeText={setFirstName}
         error={fieldErrors.firstName}
       />
-      <Input label="Middle name" value={middleName} onChangeText={setMiddleName} />
+      <Input
+        label="Middle name"
+        value={middleName}
+        onChangeText={setMiddleName}
+      />
       <Input
         label="Last name"
         required
@@ -444,99 +469,67 @@ export function ProfileEditScreen() {
 
       {saveError ? <Alert tone="danger">{saveError}</Alert> : null}
       {saveSuccess ? (
-        <Alert tone="success">Profile saved. You can submit for verification when ready.</Alert>
+        <Alert tone="success">
+          Profile saved. You can submit for verification when ready.
+        </Alert>
       ) : null}
 
       <Button
-        fullWidth
+        label={updateMutation.isPending ? 'Saving…' : 'Save profile'}
         onPress={() => void handleSave()}
         disabled={updateMutation.isPending}
-        style={styles.saveButton}
-      >
-        {updateMutation.isPending ? 'Saving…' : 'Save profile'}
-      </Button>
+        style={[styles.stretch, styles.saveButton]}
+      />
 
       <Button
-        variant="secondary"
-        fullWidth
+        label="Go to verification centre"
         onPress={() => router.push('/account/verification')}
-        style={styles.secondaryButton}
-      >
-        Go to verification centre
-      </Button>
-    </Screen>
+        style={[styles.stretch, styles.secondaryButton]}
+        variant="secondary"
+      />
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryCard: {
-    marginBottom: spacing.lg,
-  },
-  photoCard: {
-    marginBottom: spacing.lg,
-  },
-  photoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  photoCopy: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  photoTitle: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  photoBody: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.4,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  summaryLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  summaryValue: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  heading: {
-    fontSize: typography.sizes.lg,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.lg,
-  },
-  sectionHeading: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginTop: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  maskedId: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.md,
-  },
-  saveButton: {
-    marginTop: spacing.lg,
-  },
-  secondaryButton: {
-    marginTop: spacing.md,
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    summaryCard: { marginBottom: t.spacing.s4 },
+    photoCard: { marginBottom: t.spacing.s4 },
+    photoRow: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.s3 },
+    photoCopy: { flex: 1, gap: t.spacing.s1 },
+    photoTitle: { ...t.type.label, color: t.colors.ink },
+    photoBody: { ...t.type.bodySm, color: t.colors.inkMuted },
+    summaryRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: t.spacing.s3,
+    },
+    summaryLabel: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s1,
+    },
+    summaryValue: { ...t.type.displayMd, color: t.colors.ink },
+    heading: {
+      ...t.type.title,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s4,
+    },
+    sectionHeading: {
+      ...t.type.label,
+      color: t.colors.ink,
+      marginTop: t.spacing.s4,
+      marginBottom: t.spacing.s3,
+    },
+    maskedId: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s3,
+    },
+    saveButton: { marginTop: t.spacing.s4 },
+    secondaryButton: { marginTop: t.spacing.s3 },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

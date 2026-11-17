@@ -4,7 +4,13 @@
  */
 import { useRouter, type Href } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useAssetLocationSummaryQuery } from '../../api/hooks/useAssetLocation';
 import type { AssetLocationSummaryItem } from '../../api/asset-location';
 import { formatAssetType } from '../../lib/asset-labels';
@@ -12,8 +18,11 @@ import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { formatRelativeTime } from '../../location/formatRelativeTime';
 import { ProtectionMapView } from '../home/ProtectionMapView';
 import { AssetTypeImage } from '../home/assetVisuals';
-import { Alert, Badge, Card, Screen } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
+import { PolicyStatusPill } from '../policy/PolicyStatusPill';
 
 function isSelfReportable(type: string): boolean {
   return type === 'smartphone';
@@ -24,8 +33,11 @@ function hardwareTrackingMessage(type: string): string {
 }
 
 export function DeviceLocationsScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
-  const { data, isLoading, isError, error, refetch, isRefetching } = useAssetLocationSummaryQuery();
+  const { data, isLoading, isError, error, refetch, isRefetching } =
+    useAssetLocationSummaryQuery();
   const items = data?.data ?? [];
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -37,7 +49,8 @@ export function DeviceLocationsScreen() {
 
   const selected = useMemo(() => {
     if (mappable.length === 0) return items[0] ?? null;
-    if (selectedId) return mappable.find((i) => i.assetId === selectedId) ?? mappable[0]!;
+    if (selectedId)
+      return mappable.find((i) => i.assetId === selectedId) ?? mappable[0]!;
     return mappable[0]!;
   }, [items, mappable, selectedId]);
 
@@ -54,37 +67,40 @@ export function DeviceLocationsScreen() {
 
   if (isLoading) {
     return (
-      <Screen scroll={false}>
+      <DesignPage scroll={false}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
-      </Screen>
+      </DesignPage>
     );
   }
 
   if (isError) {
     return (
-      <Screen>
+      <DesignPage>
         <Text style={styles.title}>Live map</Text>
-        <Alert tone="danger">{mapUserFacingError(error, { context: 'location' })}</Alert>
-      </Screen>
+        <Alert tone="danger">
+          {mapUserFacingError(error, { context: 'location' })}
+        </Alert>
+      </DesignPage>
     );
   }
 
   return (
-    <Screen>
+    <DesignPage>
       <Text style={styles.subtitle}>
-        All devices with a last-known location appear on the map. Smartphones report from this app;
-        other asset types need a GPS tracker.
+        All devices with a last-known location appear on the map. Smartphones
+        report from this app; other asset types need a GPS tracker.
       </Text>
 
       {items.length === 0 ? (
-        <Card>
+        <GlassCard variant="solid">
           <Text style={styles.emptyTitle}>No assets yet</Text>
           <Text style={styles.emptyBody}>
-            Register assets from the Assets tab, then return here to see locations when available.
+            Register assets from the Assets tab, then return here to see
+            locations when available.
           </Text>
-        </Card>
+        </GlassCard>
       ) : (
         <>
           <ProtectionMapView
@@ -120,12 +136,18 @@ export function DeviceLocationsScreen() {
             />
           ))}
 
-          <Pressable onPress={() => refetch()} disabled={isRefetching} style={styles.refresh}>
-            <Text style={styles.refreshText}>{isRefetching ? 'Refreshing…' : 'Refresh locations'}</Text>
+          <Pressable
+            onPress={() => refetch()}
+            disabled={isRefetching}
+            style={styles.refresh}
+          >
+            <Text style={styles.refreshText}>
+              {isRefetching ? 'Refreshing…' : 'Refresh locations'}
+            </Text>
           </Pressable>
         </>
       )}
-    </Screen>
+    </DesignPage>
   );
 }
 
@@ -140,138 +162,119 @@ function DeviceLocationRow({
   onSelect: () => void;
   onOpenAsset: () => void;
 }) {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const hasLocation = item.lastLocation != null;
   const selfReportable = isSelfReportable(item.assetType);
 
   return (
     <Pressable onPress={onSelect}>
-      <Card style={[styles.row, selected ? styles.rowSelected : undefined]}>
+      <GlassCard
+        variant="solid"
+        style={[styles.row, selected ? styles.rowSelected : undefined]}
+      >
         <View style={styles.rowHeader}>
           <View style={styles.rowTitleWrap}>
             <AssetTypeImage assetType={item.assetType} size="sm" />
             <Text style={styles.rowTitle}>{item.displayName}</Text>
           </View>
-          <Badge tone={hasLocation ? 'emerald' : 'neutral'}>
-            {hasLocation ? 'Located' : selfReportable ? 'No fix yet' : 'No tracker'}
-          </Badge>
+          <PolicyStatusPill tone={hasLocation ? 'emerald' : 'neutral'}>
+            {hasLocation
+              ? 'Located'
+              : selfReportable
+                ? 'No fix yet'
+                : 'No tracker'}
+          </PolicyStatusPill>
         </View>
         <Text style={styles.rowMeta}>{formatAssetType(item.assetType)}</Text>
         {hasLocation && item.lastLocation ? (
           <Text style={styles.rowLocation}>
             Last seen {formatRelativeTime(item.lastLocation.recordedAt)} ·{' '}
-            {item.lastLocation.latitude.toFixed(4)}, {item.lastLocation.longitude.toFixed(4)}
+            {item.lastLocation.latitude.toFixed(4)},{' '}
+            {item.lastLocation.longitude.toFixed(4)}
           </Text>
         ) : selfReportable ? (
           <Text style={styles.rowHint}>
             Enable location tracking on this phone from the asset detail screen.
           </Text>
         ) : (
-          <Text style={styles.rowHint}>{hardwareTrackingMessage(item.assetType)}</Text>
+          <Text style={styles.rowHint}>
+            {hardwareTrackingMessage(item.assetType)}
+          </Text>
         )}
         <Pressable onPress={onOpenAsset} hitSlop={8}>
           <Text style={styles.openLink}>View asset details</Text>
         </Pressable>
-      </Card>
+      </GlassCard>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  subtitle: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.45,
-    marginBottom: spacing.lg,
-  },
-  listHeading: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginTop: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  mapLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  row: {
-    marginBottom: spacing.md,
-  },
-  rowSelected: {
-    borderColor: colors.primary,
-    borderWidth: 1,
-  },
-  rowHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  rowTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flex: 1,
-  },
-  rowTitle: {
-    fontSize: typography.sizes.base,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    flexShrink: 1,
-  },
-  rowMeta: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    marginBottom: spacing.xs,
-  },
-  rowLocation: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  rowHint: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.4,
-    marginBottom: spacing.xs,
-  },
-  openLink: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  refresh: {
-    alignSelf: 'center',
-    paddingVertical: spacing.md,
-  },
-  refreshText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  emptyTitle: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  emptyBody: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.4,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s1,
+    },
+    subtitle: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
+    listHeading: {
+      ...t.type.label,
+      color: t.colors.ink,
+      marginTop: t.spacing.s4,
+      marginBottom: t.spacing.s3,
+    },
+    mapLabel: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginTop: t.spacing.s2,
+      marginBottom: t.spacing.s3,
+    },
+    row: { marginBottom: t.spacing.s3 },
+    rowSelected: { borderColor: t.colors.link, borderWidth: 1 },
+    rowHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: t.spacing.s2,
+      marginBottom: t.spacing.s1,
+    },
+    rowTitleWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: t.spacing.s2,
+      flex: 1,
+    },
+    rowTitle: { ...t.type.label, color: t.colors.ink, flexShrink: 1 },
+    rowMeta: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s1,
+    },
+    rowLocation: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s1,
+    },
+    rowHint: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s1,
+    },
+    openLink: { ...t.type.label, color: t.colors.link },
+    refresh: { alignSelf: 'center', paddingVertical: t.spacing.s3 },
+    refreshText: { ...t.type.label, color: t.colors.link },
+    emptyTitle: {
+      ...t.type.label,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s1,
+    },
+    emptyBody: { ...t.type.bodySm, color: t.colors.inkMuted },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

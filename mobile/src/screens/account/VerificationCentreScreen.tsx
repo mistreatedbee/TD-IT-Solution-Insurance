@@ -3,7 +3,13 @@
  */
 import { useRouter, type Href } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { verificationStatusLabel } from '../../api/customer-profile';
 import {
   useCustomerProfileQuery,
@@ -18,8 +24,11 @@ import {
   partitionVerificationItems,
   type VerificationCentreItem,
 } from './deriveVerificationCentreItems';
-import { Alert, Badge, Button, Card, Screen } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
+import { PolicyStatusPill } from '../policy/PolicyStatusPill';
 
 function VerificationStatusRow({
   item,
@@ -28,19 +37,23 @@ function VerificationStatusRow({
   item: VerificationCentreItem;
   onPress?: () => void;
 }) {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const content = (
-    <Card style={styles.statusCard} padding="md">
+    <GlassCard variant="solid" style={styles.statusCard}>
       <View style={styles.statusHeader}>
         <View style={styles.statusCopy}>
-          <Text style={styles.statusCategory}>{item.category.replace(/_/g, ' ')}</Text>
+          <Text style={styles.statusCategory}>
+            {item.category.replace(/_/g, ' ')}
+          </Text>
           <Text style={styles.statusTitle}>{item.title}</Text>
         </View>
-        <Badge tone={item.tone}>{item.statusLabel}</Badge>
+        <PolicyStatusPill tone={item.tone}>{item.statusLabel}</PolicyStatusPill>
       </View>
       <Text style={styles.statusDescription}>{item.description}</Text>
       {item.meta ? <Text style={styles.statusMeta}>{item.meta}</Text> : null}
       {onPress ? <Text style={styles.statusLink}>View details</Text> : null}
-    </Card>
+    </GlassCard>
   );
 
   if (!onPress) return content;
@@ -53,6 +66,8 @@ function VerificationStatusRow({
 }
 
 export function VerificationCentreScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const accountQuery = useAccountQuery();
   const profileQuery = useCustomerProfileQuery();
@@ -83,7 +98,10 @@ export function VerificationCentreScreen() {
     assetsQuery.data,
   ]);
 
-  const { pending, complete } = useMemo(() => partitionVerificationItems(items), [items]);
+  const { pending, complete } = useMemo(
+    () => partitionVerificationItems(items),
+    [items],
+  );
 
   async function handleSubmit() {
     setSubmitError(null);
@@ -96,24 +114,26 @@ export function VerificationCentreScreen() {
 
   if (isLoading) {
     return (
-      <Screen scroll={false} safeAreaEdges={['bottom']}>
+      <DesignPage scroll={false} safeAreaEdges={['bottom']}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
-      </Screen>
+      </DesignPage>
     );
   }
 
   if (profileQuery.isError || !profileQuery.data) {
     return (
-      <Screen safeAreaEdges={['bottom']}>
+      <DesignPage safeAreaEdges={['bottom']}>
         <Alert tone="danger">
           {mapUserFacingError(profileQuery.error, { context: 'profile' })}
         </Alert>
-        <Button variant="secondary" onPress={() => profileQuery.refetch()}>
-          Try again
-        </Button>
-      </Screen>
+        <Button
+          label="Try again"
+          onPress={() => profileQuery.refetch()}
+          variant="secondary"
+        />
+      </DesignPage>
     );
   }
 
@@ -129,21 +149,27 @@ export function VerificationCentreScreen() {
   }
 
   return (
-    <Screen safeAreaEdges={['bottom']} contentContainerStyle={{ paddingBottom: spacing.lg }}>
+    <DesignPage
+      safeAreaEdges={['bottom']}
+      contentContainerStyle={{ paddingBottom: t.spacing.s4 }}
+    >
       <Text style={styles.intro}>
-        Track everything still pending for your account — email, profile, identity review,
-        protection plans, and asset registration — in one place.
+        Track everything still pending for your account — email, profile,
+        identity review, protection plans, and asset registration — in one
+        place.
       </Text>
 
-      <Card style={styles.summaryCard} padding="md">
+      <GlassCard variant="solid" style={styles.summaryCard}>
         <Text style={styles.summaryLabel}>Overall setup</Text>
-        <Text style={styles.summaryValue}>{profile.completionPercent}% complete</Text>
+        <Text style={styles.summaryValue}>
+          {profile.completionPercent}% complete
+        </Text>
         <Text style={styles.summaryHint}>
           {pending.length === 0
             ? 'All setup steps are complete.'
             : `${pending.length} item${pending.length === 1 ? '' : 's'} still pending or in review.`}
         </Text>
-      </Card>
+      </GlassCard>
 
       {profile.rejectionReasonCustomerSafe ? (
         <Alert tone="warning" style={styles.blockAlert}>
@@ -171,7 +197,9 @@ export function VerificationCentreScreen() {
 
       {complete.length > 0 ? (
         <>
-          <Text style={styles.sectionHeading}>Completed ({complete.length})</Text>
+          <Text style={styles.sectionHeading}>
+            Completed ({complete.length})
+          </Text>
           {complete.map((item) => (
             <VerificationStatusRow
               key={item.id}
@@ -183,150 +211,122 @@ export function VerificationCentreScreen() {
       ) : null}
 
       <Text style={styles.sectionHeading}>Identity submission</Text>
-      <Card style={styles.card} padding="md">
+      <GlassCard variant="solid" style={styles.card}>
         <View style={styles.identityRow}>
           <Text style={styles.label}>Current status</Text>
-          <Badge tone={profile.verificationStatus === 'verified' ? 'emerald' : 'gold'}>
+          <PolicyStatusPill
+            tone={
+              profile.verificationStatus === 'verified' ? 'emerald' : 'gold'
+            }
+          >
             {verificationStatusLabel(profile.verificationStatus)}
-          </Badge>
+          </PolicyStatusPill>
         </View>
         {profile.idNumberMasked ? (
           <Text style={styles.value}>ID on file: {profile.idNumberMasked}</Text>
         ) : null}
-      </Card>
+      </GlassCard>
 
       {submitError ? <Alert tone="danger">{submitError}</Alert> : null}
 
       {profile.verificationStatus === 'verified' ? (
-        <Alert tone="success">Your identity is verified. No further action needed.</Alert>
+        <Alert tone="success">
+          Your identity is verified. No further action needed.
+        </Alert>
       ) : profile.verificationStatus === 'pending_review' ? (
         <Alert tone="info">
-          Your identity details are with our team. We will notify you when review is complete.
+          Your identity details are with our team. We will notify you when
+          review is complete.
         </Alert>
       ) : (
         <>
           <Button
-            fullWidth
+            label={
+              submitMutation.isPending
+                ? 'Submitting…'
+                : 'Submit identity for review'
+            }
             onPress={() => void handleSubmit()}
             disabled={!canSubmit || submitMutation.isPending}
-            style={styles.button}
-          >
-            {submitMutation.isPending ? 'Submitting…' : 'Submit identity for review'}
-          </Button>
+            style={[styles.stretch, styles.button]}
+          />
           <Button
-            variant="secondary"
-            fullWidth
+            label="Edit profile details"
             onPress={() => router.push('/account/profile')}
-          >
-            Edit profile details
-          </Button>
+            variant="secondary"
+            style={styles.stretch}
+          />
         </>
       )}
-    </Screen>
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  intro: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-    lineHeight: 20,
-  },
-  summaryCard: {
-    marginBottom: spacing.lg,
-  },
-  summaryLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  summaryValue: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  summaryHint: {
-    marginTop: spacing.xs,
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  sectionHeading: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-    marginTop: spacing.md,
-  },
-  statusCard: {
-    marginBottom: spacing.sm,
-  },
-  statusHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  statusCopy: {
-    flex: 1,
-  },
-  statusCategory: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    textTransform: 'capitalize',
-    marginBottom: 2,
-  },
-  statusTitle: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  statusDescription: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  statusMeta: {
-    marginTop: spacing.xs,
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-  },
-  statusLink: {
-    marginTop: spacing.sm,
-    fontSize: typography.sizes.sm,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  blockAlert: {
-    marginBottom: spacing.md,
-  },
-  card: {
-    marginBottom: spacing.lg,
-  },
-  identityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  label: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-  },
-  value: {
-    fontSize: typography.sizes.sm,
-    color: colors.textPrimary,
-  },
-  button: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.md,
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    intro: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
+    summaryCard: { marginBottom: t.spacing.s4 },
+    summaryLabel: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s1,
+    },
+    summaryValue: { ...t.type.displayMd, color: t.colors.ink },
+    summaryHint: {
+      ...t.type.bodySm,
+      marginTop: t.spacing.s1,
+      color: t.colors.inkMuted,
+    },
+    sectionHeading: {
+      ...t.type.label,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s2,
+      marginTop: t.spacing.s3,
+    },
+    statusCard: { marginBottom: t.spacing.s2 },
+    statusHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: t.spacing.s2,
+      marginBottom: t.spacing.s2,
+    },
+    statusCopy: { flex: 1 },
+    statusCategory: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      textTransform: 'capitalize',
+      marginBottom: 2,
+    },
+    statusTitle: { ...t.type.label, color: t.colors.ink },
+    statusDescription: { ...t.type.bodySm, color: t.colors.inkMuted },
+    statusMeta: {
+      ...t.type.labelSm,
+      marginTop: t.spacing.s1,
+      color: t.colors.inkMuted,
+    },
+    statusLink: {
+      ...t.type.label,
+      marginTop: t.spacing.s2,
+      color: t.colors.link,
+    },
+    blockAlert: { marginBottom: t.spacing.s3 },
+    card: { marginBottom: t.spacing.s4 },
+    identityRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: t.spacing.s2,
+      marginBottom: t.spacing.s2,
+    },
+    label: { ...t.type.labelSm, color: t.colors.inkMuted },
+    value: { ...t.type.bodySm, color: t.colors.ink },
+    button: { marginTop: t.spacing.s4, marginBottom: t.spacing.s3 },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

@@ -15,10 +15,21 @@ export function AccountQuickStats({ items }: { items: AccountQuickStat[] }) {
     <View style={styles.row}>
       {items.map((item, index) => (
         <React.Fragment key={item.label}>
-          {index > 0 ? <View style={[styles.divider, { backgroundColor: t.colors.borderSubtle }]} /> : null}
+          {index > 0 ? (
+            <View
+              style={[
+                styles.divider,
+                { backgroundColor: t.colors.borderSubtle },
+              ]}
+            />
+          ) : null}
           <View style={styles.item}>
-            <Text style={[t.type.displayMd, { color: t.colors.ink }]}>{item.value}</Text>
-            <Text style={[t.type.labelSm, { color: t.colors.inkMuted }]}>{item.label}</Text>
+            <Text style={[t.type.displayMd, { color: t.colors.ink }]}>
+              {item.value}
+            </Text>
+            <Text style={[t.type.labelSm, { color: t.colors.inkMuted }]}>
+              {item.label}
+            </Text>
           </View>
         </React.Fragment>
       ))}

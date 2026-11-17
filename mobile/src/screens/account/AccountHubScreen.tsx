@@ -67,13 +67,26 @@ function initialsFromEmail(email?: string): string {
   return local.slice(0, 1).toUpperCase() || 'TD';
 }
 
-function AccountSection({ title, children }: { title: string; children: React.ReactNode }) {
+function AccountSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   const t = useDesignTokens();
   return (
     <View style={{ gap: t.spacing.s2 }}>
       <Text
         accessibilityRole="header"
-        style={[t.type.labelSm, { color: t.colors.inkMuted, textTransform: 'uppercase', paddingHorizontal: t.spacing.s1 }]}
+        style={[
+          t.type.labelSm,
+          {
+            color: t.colors.inkMuted,
+            textTransform: 'uppercase',
+            paddingHorizontal: t.spacing.s1,
+          },
+        ]}
       >
         {title}
       </Text>
@@ -98,7 +111,14 @@ function AccountStatePill({ state }: { state: string }) {
         paddingVertical: t.spacing.s1,
       }}
     >
-      <Text style={[t.type.labelSm, { color: active ? t.colors.success : t.colors.warning }]}>{state}</Text>
+      <Text
+        style={[
+          t.type.labelSm,
+          { color: active ? t.colors.success : t.colors.warning },
+        ]}
+      >
+        {state}
+      </Text>
     </View>
   );
 }
@@ -154,7 +174,11 @@ export function AccountHubScreen() {
       'This cannot be undone from this screen — every other device will need to log in again, including any family or team member using a shared session.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Yes, log out everywhere', style: 'destructive', onPress: () => void confirmLogoutAll() },
+        {
+          text: 'Yes, log out everywhere',
+          style: 'destructive',
+          onPress: () => void confirmLogoutAll(),
+        },
       ],
     );
   }
@@ -180,17 +204,23 @@ export function AccountHubScreen() {
     );
   }
 
-  const displayName = dashboard?.greetingName && dashboard.greetingName !== 'there'
-    ? dashboard.greetingName
-    : null;
-  const email = isLoading ? 'Loading…' : account?.email ?? '—';
-  const mfaLabel = account?.mfaEnrolled ? 'Enabled' : 'Optional — add an extra layer of security';
+  const displayName =
+    dashboard?.greetingName && dashboard.greetingName !== 'there'
+      ? dashboard.greetingName
+      : null;
+  const email = isLoading ? 'Loading…' : (account?.email ?? '—');
+  const mfaLabel = account?.mfaEnrolled
+    ? 'Enabled'
+    : 'Optional — add an extra layer of security';
   const alertCount = dashboard?.alertCount ?? 0;
   const openRecoveryCount = dashboard?.openRecoveryCount ?? 0;
 
   const quickStats = [
     { label: 'Assets', value: String(assetCount) },
-    { label: 'Plan', value: policy ? planName.split(' ')[0] ?? planName : '—' },
+    {
+      label: 'Plan',
+      value: policy ? (planName.split(' ')[0] ?? planName) : '—',
+    },
     ...(FEATURE_ALERTS_ENABLED
       ? [{ label: 'Alerts', value: String(alertCount) }]
       : []),
@@ -198,12 +228,27 @@ export function AccountHubScreen() {
 
   return (
     <DesignPage padded={false} safeAreaEdges={['top']}>
-      <View style={{ paddingHorizontal: t.spacing.s4, paddingTop: t.spacing.s4, paddingBottom: t.spacing.s8, gap: t.spacing.s4 }}>
+      <View
+        style={{
+          paddingHorizontal: t.spacing.s4,
+          paddingTop: t.spacing.s4,
+          paddingBottom: t.spacing.s8,
+          gap: t.spacing.s4,
+        }}
+      >
         <GlassCard radius="xl">
-          <Text style={[t.type.displayMd, { color: t.colors.ink }]} accessibilityRole="header">
+          <Text
+            style={[t.type.displayMd, { color: t.colors.ink }]}
+            accessibilityRole="header"
+          >
             Account
           </Text>
-          <Text style={[t.type.body, { color: t.colors.inkMuted, marginTop: t.spacing.s1 }]}>
+          <Text
+            style={[
+              t.type.body,
+              { color: t.colors.inkMuted, marginTop: t.spacing.s1 },
+            ]}
+          >
             Manage your profile, protection plan, and security settings.
           </Text>
         </GlassCard>
@@ -218,30 +263,54 @@ export function AccountHubScreen() {
               loading={isUploading}
               onPress={showPicker}
             />
-            <View style={[styles.heroCopy, { marginLeft: t.spacing.s4, gap: t.spacing.s1 }]}>
+            <View
+              style={[
+                styles.heroCopy,
+                { marginLeft: t.spacing.s4, gap: t.spacing.s1 },
+              ]}
+            >
               {displayName ? (
-                <Text style={[t.type.title, { color: t.colors.ink }]} numberOfLines={1}>
+                <Text
+                  style={[t.type.title, { color: t.colors.ink }]}
+                  numberOfLines={1}
+                >
                   {displayName}
                 </Text>
               ) : null}
               <Text
-                style={displayName ? [t.type.bodySm, { color: t.colors.inkMuted }] : [t.type.title, { color: t.colors.ink }]}
+                style={
+                  displayName
+                    ? [t.type.bodySm, { color: t.colors.inkMuted }]
+                    : [t.type.title, { color: t.colors.ink }]
+                }
                 numberOfLines={1}
               >
                 {email}
               </Text>
               <Text style={[t.type.bodySm, { color: t.colors.inkMuted }]}>
-                {account?.mfaEnrolled ? 'Two-factor authentication enabled' : 'Signed in to TD IT Solution'}
+                {account?.mfaEnrolled
+                  ? 'Two-factor authentication enabled'
+                  : 'Signed in to TD IT Solution'}
               </Text>
               {account?.accountNumber ? (
                 <Text style={[t.type.bodySm, { color: t.colors.inkMuted }]}>
                   Account Number: {account.accountNumber}
                 </Text>
               ) : null}
-              {account?.accountState ? <AccountStatePill state={account.accountState} /> : null}
+              {account?.accountState ? (
+                <AccountStatePill state={account.accountState} />
+              ) : null}
             </View>
           </View>
-          <View style={[styles.statsDivider, { backgroundColor: t.colors.borderSubtle, marginVertical: t.spacing.s4 }]} />
+          <View
+            style={[
+              styles.statsDivider,
+              {
+                backgroundColor: t.colors.borderSubtle,
+                marginVertical: t.spacing.s4,
+              },
+            ]}
+          />
           <AccountQuickStats items={quickStats} />
         </GlassCard>
 
@@ -292,14 +361,23 @@ export function AccountHubScreen() {
               icon={PlusIcon}
               title="Register asset"
               subtitle="Add a vehicle, device, or equipment"
-              isLast={!FEATURE_ALERTS_ENABLED && !FEATURE_THEFT_REPORTING_ENABLED && !FEATURE_LOCATION_TRACKING_ENABLED && !FEATURE_CLAIMS_ENABLED}
+              isLast={
+                !FEATURE_ALERTS_ENABLED &&
+                !FEATURE_THEFT_REPORTING_ENABLED &&
+                !FEATURE_LOCATION_TRACKING_ENABLED &&
+                !FEATURE_CLAIMS_ENABLED
+              }
               onPress={() => router.push('/assets/register' as Href)}
             />
             {FEATURE_ALERTS_ENABLED ? (
               <AccountMenuRow
                 icon={BellIcon}
                 title="Alerts"
-                isLast={!FEATURE_THEFT_REPORTING_ENABLED && !FEATURE_LOCATION_TRACKING_ENABLED && !FEATURE_CLAIMS_ENABLED}
+                isLast={
+                  !FEATURE_THEFT_REPORTING_ENABLED &&
+                  !FEATURE_LOCATION_TRACKING_ENABLED &&
+                  !FEATURE_CLAIMS_ENABLED
+                }
                 subtitle={
                   alertCount === 0
                     ? 'No alerts need attention'
@@ -312,7 +390,9 @@ export function AccountHubScreen() {
               <AccountMenuRow
                 icon={AlertTriangleIcon}
                 title="Report theft"
-                isLast={!FEATURE_LOCATION_TRACKING_ENABLED && !FEATURE_CLAIMS_ENABLED}
+                isLast={
+                  !FEATURE_LOCATION_TRACKING_ENABLED && !FEATURE_CLAIMS_ENABLED
+                }
                 subtitle={
                   openRecoveryCount > 0
                     ? `${openRecoveryCount} open recovery case${openRecoveryCount === 1 ? '' : 's'}`
@@ -392,7 +472,9 @@ export function AccountHubScreen() {
               title="Notification preferences"
               subtitle="Choose which alerts you get, and how"
               isLast
-              onPress={() => router.push('/(app)/notification-preferences' as Href)}
+              onPress={() =>
+                router.push('/(app)/notification-preferences' as Href)
+              }
             />
           </AccountGroup>
         </AccountSection>
@@ -451,7 +533,11 @@ export function AccountHubScreen() {
             />
             <AccountMenuRow
               icon={LogOutIcon}
-              title={isLoggingOutAll ? 'Logging out everywhere…' : 'Log out of all devices'}
+              title={
+                isLoggingOutAll
+                  ? 'Logging out everywhere…'
+                  : 'Log out of all devices'
+              }
               subtitle="Ends sessions on every device"
               iconColor={t.colors.danger}
               titleColor={t.colors.danger}

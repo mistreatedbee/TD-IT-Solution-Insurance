@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react-native';
 import { NotificationPreferencesScreen } from '../notifications/NotificationPreferencesScreen';
 import type { NotificationPreferencesResponse } from '../../api/notifications';
+import { ThemeProvider } from '../../theme/ThemeProvider';
 
 jest.mock('../../theme/primitives', () => {
   const React = require('react');
@@ -74,7 +75,7 @@ describe('NotificationPreferencesScreen — claims flag disabled (preview/produc
   it('does not render the Claims category', async () => {
     getNotificationPreferences.mockResolvedValue(buildPreferences());
 
-    await render(<NotificationPreferencesScreen />);
+    await render(<ThemeProvider><NotificationPreferencesScreen /></ThemeProvider>);
 
     await waitFor(() => {
       expect(screen.getByText('Theft alerts')).toBeTruthy();
