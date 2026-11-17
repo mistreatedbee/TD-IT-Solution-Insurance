@@ -91,6 +91,8 @@ const CYCLE_MS = 10000;
 export interface ProtectionMapHeroProps {
   /** Total height available, including the info card. */
   height?: number;
+  /** Width of the area it sits in. Defaults to the phone width minus a margin. */
+  width?: number;
 }
 
 function loadMapView(): React.ComponentType<Record<string, unknown>> | null {
@@ -119,14 +121,20 @@ class MapBoundary extends Component<
   }
 }
 
-export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
+export function ProtectionMapHero({
+  height = 260,
+  width: areaWidth,
+}: ProtectionMapHeroProps) {
   const t = useDesignTokens();
   const isDark = t.mode === 'night';
   const reduced = useReducedMotion();
   const { width } = useWindowDimensions();
   const MapView = useMemo(loadMapView, []);
 
-  const mapW = Math.max(220, width - SIDE_MARGIN * 2);
+  const mapW =
+    areaWidth != null
+      ? Math.max(220, areaWidth)
+      : Math.max(220, width - SIDE_MARGIN * 2);
   const mapH = Math.max(120, height - CARD_HEIGHT - GAP);
   const thumb = Math.max(36, Math.min(48, mapH * 0.2));
   const boxW = 96;

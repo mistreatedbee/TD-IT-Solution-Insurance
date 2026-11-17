@@ -19,6 +19,7 @@ import { minTouchTarget, spacing } from '../../theme/tokens';
 import { AssetTypeGrid } from './components/AssetTypeGrid';
 import { BrandLogo } from './components/BrandLogo';
 import { FullDashboardMock } from './components/FullDashboardMock';
+import { DemoBadge } from './components/DemoBadge';
 import { MarketingSlideShell } from './components/MarketingSlideShell';
 import { MockProtectionDashboard } from './components/MockProtectionDashboard';
 import { PlanIntroPanel } from './components/PlanIntroPanel';
@@ -108,6 +109,20 @@ const SLIDES: Slide[] = [
   },
 ];
 
+/** The tracking slide: the example map sized to the slide's own width, with the same demo badge as the other slides. */
+function TrackSlide() {
+  const { isCompact } = useOnboardingLayout();
+  const [areaWidth, setAreaWidth] = useState(0);
+  return (
+    <View onLayout={(e) => setAreaWidth(e.nativeEvent.layout.width)}>
+      <DemoBadge />
+      {areaWidth > 0 ? (
+        <ProtectionMapHero width={areaWidth} height={isCompact ? 340 : 400} />
+      ) : null}
+    </View>
+  );
+}
+
 function slideContent(item: Slide, plans: ReturnType<typeof usePublicPlans>) {
   switch (item.id) {
     case 'what-we-do':
@@ -115,7 +130,7 @@ function slideContent(item: Slide, plans: ReturnType<typeof usePublicPlans>) {
     case 'protect':
       return <MockProtectionDashboard />;
     case 'track':
-      return <ProtectionMapHero height={300} />;
+      return <TrackSlide />;
     case 'recovery':
       return <RecoveryFlowDiagram />;
     case 'dashboard':
