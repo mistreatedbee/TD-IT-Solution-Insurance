@@ -4,36 +4,48 @@
  * pattern, hero copy on a glass card, design Buttons. Navigation unchanged.
  */
 import { useRouter } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BrandLogo } from '../../src/onboarding/marketing/components/BrandLogo';
 import { HeroDeviceAnimation } from '../../src/onboarding/marketing/components/HeroDeviceAnimation';
 import { useOnboardingLayout } from '../../src/onboarding/marketing/hooks/useOnboardingLayout';
 import { Button } from '../../src/design';
-import { AuthCard, AuthHeading, AuthLink, AuthPage, AuthText } from '../../src/screens/auth/AuthScaffold';
+import {
+  AuthCard,
+  AuthHeading,
+  AuthLink,
+  AuthPage,
+  AuthText,
+} from '../../src/screens/auth/AuthScaffold';
 import { useDesignTokens } from '../../src/theme/designTheme';
 
 export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const t = useDesignTokens();
-  const fade = useSharedValue(0);
   const { isCompact, isVeryCompact, heroHeight } = useOnboardingLayout();
-
-  useEffect(() => {
-    fade.value = withTiming(1, { duration: t.motion.duration.entrance });
-  }, [fade, t.motion.duration.entrance]);
-
-  const headerStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
+  // The animation takes the space left between the two cards (up to its normal height), so nothing overflows.
+  const [freeHeight, setFreeHeight] = useState<number | null>(null);
+  const animationHeight =
+    freeHeight == null
+      ? heroHeight
+      : Math.max(0, Math.min(heroHeight, freeHeight - t.spacing.s4));
 
   return (
-    <AuthPage pattern="chevron" scroll padded contentContainerStyle={[styles.screenContent, { paddingVertical: t.spacing.s4 }]}>
-      <Animated.View style={[styles.header, { marginBottom: t.spacing.s4 }, headerStyle]}>
-        <BrandLogo size="hero" showPlate={false} />
-      </Animated.View>
-
+    <AuthPage
+      pattern="chevron"
+      scroll={false}
+      padded={false}
+      contentContainerStyle={[
+        styles.screenContent,
+        {
+          paddingHorizontal: t.spacing.s4,
+          paddingTop: t.spacing.s4,
+          paddingBottom: Math.max(insets.bottom, t.spacing.s4),
+          gap: t.spacing.s4,
+        },
+      ]}
+    >
       <View style={styles.hero}>
         <AuthCard variant="glass" radius="xl" testID="welcome-hero-card">
           <AuthHeading
@@ -43,20 +55,30 @@ export default function WelcomeScreen() {
           />
           {!isVeryCompact ? (
             <AuthText small>
-              Protect your valuable assets, manage your insurance and stay connected to the things that
-              matter most — all from your phone.
+              Protect your valuable assets, manage your insurance and stay
+              connected to the things that matter most — all from your phone.
             </AuthText>
           ) : null}
         </AuthCard>
-        <HeroDeviceAnimation height={heroHeight} inlineBadges={isCompact} />
       </View>
 
-      <AuthCard
-        variant="glass"
-        testID="welcome-actions-card"
-        style={{ marginTop: t.spacing.s4, marginBottom: Math.max(insets.bottom, t.spacing.s3) }}
+      <View
+        style={styles.animationSlot}
+        onLayout={(e) => setFreeHeight(e.nativeEvent.layout.height)}
       >
-        <Button label="Get started" onPress={() => router.push('/(auth)/intro')} />
+        {animationHeight > 80 ? (
+          <HeroDeviceAnimation
+            height={animationHeight}
+            inlineBadges={isCompact}
+          />
+        ) : null}
+      </View>
+
+      <AuthCard variant="glass" testID="welcome-actions-card">
+        <Button
+          label="Get started"
+          onPress={() => router.push('/(auth)/intro')}
+        />
         <Button
           variant="secondary"
           label="Log in"
@@ -75,14 +97,16 @@ export default function WelcomeScreen() {
 
 const styles = StyleSheet.create({
   screenContent: {
-    flexGrow: 1,
-    justifyContent: 'space-between',
-  },
-  header: {
-    alignItems: 'center',
+    flex: 1,
   },
   hero: {
-    flexShrink: 1,
-    gap: 8,
+    flexShrink: 0,
+  },
+  animationSlot: {
+    flex: 1,
+    minHeight: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
 });
