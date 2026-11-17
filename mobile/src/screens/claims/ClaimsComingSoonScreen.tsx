@@ -8,37 +8,41 @@ import { useRouter, type Href } from 'expo-router';
 import React, { useMemo } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { SubpageHeader } from '../../navigation/SubpageHeader';
-import { Alert, Button, Screen } from '../../theme/primitives';
-import { useColors } from '../../theme/ThemeProvider';
-import { spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
 
 export function ClaimsComingSoonScreen() {
   const router = useRouter();
-  const colors = useColors();
+  const t = useDesignTokens();
   const styles = useMemo(
     () =>
       StyleSheet.create({
         body: {
-          fontSize: typography.sizes.base,
-          color: colors.textSecondary,
-          lineHeight: typography.sizes.base * 1.4,
-          marginVertical: spacing.xl,
+          ...t.type.body,
+          color: t.colors.inkMuted,
+          marginVertical: t.spacing.s4,
         },
       }),
-    [colors],
+    [t],
   );
 
   return (
-    <Screen>
+    <DesignPage>
       <SubpageHeader />
-      <Alert tone="info">Claims filing is coming soon.</Alert>
-      <Text style={styles.body}>
-        In-app claims filing is not available in this build yet. If you need to report a theft or
-        loss, our support team can help in the meantime.
-      </Text>
-      <Button variant="primary" fullWidth onPress={() => router.replace('/(app)/(tabs)' as Href)}>
-        Back to home
-      </Button>
-    </Screen>
+      <GlassCard variant="solid">
+        <Alert tone="info">Claims filing is coming soon.</Alert>
+        <Text style={styles.body}>
+          In-app claims filing is not available in this build yet. If you need
+          to report a theft or loss, our support team can help in the meantime.
+        </Text>
+        <Button
+          label="Back to home"
+          style={{ alignSelf: 'stretch' }}
+          onPress={() => router.replace('/(app)/(tabs)' as Href)}
+        />
+      </GlassCard>
+    </DesignPage>
   );
 }

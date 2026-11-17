@@ -2,18 +2,31 @@
  * Claim detail — Feature 018 backend (GET/PATCH /v1/claims/:claimId*).
  */
 import { useLocalSearchParams } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { useClaimQuery, useRespondToClaimMutation, useWithdrawClaimMutation } from '../../api/hooks/useClaims';
+import {
+  useClaimQuery,
+  useRespondToClaimMutation,
+  useWithdrawClaimMutation,
+} from '../../api/hooks/useClaims';
 import type { Claim } from '../../api/claims';
-import { Alert, Badge, Button, Card, Input, Screen } from '../../theme/primitives';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert, Input } from '../../theme/primitives';
+import { PolicyStatusPill } from '../policy/PolicyStatusPill';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { claimStatusBadgeTone, formatClaimStatus, isClaimWithdrawable } from '../../lib/claim-labels';
+import {
+  claimStatusBadgeTone,
+  formatClaimStatus,
+  isClaimWithdrawable,
+} from '../../lib/claim-labels';
 import { formatAssetType } from '../../lib/asset-labels';
 import type { AssetType } from '../../api/assets';
-import { colors, spacing, typography } from '../../theme/tokens';
 
 export function ClaimDetailScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { data: claim, isLoading, isError, error } = useClaimQuery(id);
   const respondMutation = useRespondToClaimMutation(id ?? '');
@@ -25,20 +38,22 @@ export function ClaimDetailScreen() {
 
   if (isLoading) {
     return (
-      <Screen scroll={false}>
+      <DesignPage scroll={false}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
-      </Screen>
+      </DesignPage>
     );
   }
 
   if (isError || !claim) {
     return (
-      <Screen>
+      <DesignPage>
         <Text style={styles.title}>Claim</Text>
-        <Alert tone="danger">{mapUserFacingError(error, { context: 'claim' })}</Alert>
-      </Screen>
+        <Alert tone="danger">
+          {mapUserFacingError(error, { context: 'claim' })}
+        </Alert>
+      </DesignPage>
     );
   }
 
@@ -72,17 +87,28 @@ export function ClaimDetailScreen() {
   const hasDecisionNotices = claim.decisionNotices.length > 0;
   const sortedNotices = hasDecisionNotices
     ? [...claim.decisionNotices].sort(
-        (a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime(),
+        (a, b) =>
+          new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime(),
       )
     : [];
 
   const decisionNoticesCard = hasDecisionNotices ? (
-    <Card style={styles.section}>
-      <Text style={styles.sectionTitle}>Important notices about this claim</Text>
+    <GlassCard variant="solid" style={styles.section}>
+      <Text style={styles.sectionTitle}>
+        Important notices about this claim
+      </Text>
       {sortedNotices.map((notice, idx) => (
-        <View key={idx} style={styles.noticeBlock} testID={`decision-notice-${idx}`}>
-          <Text style={styles.noticeHeading}>{decisionNoticeHeading(notice.kind)}</Text>
-          <Text style={styles.noticeMeta}>{new Date(notice.issuedAt).toLocaleString()}</Text>
+        <View
+          key={idx}
+          style={styles.noticeBlock}
+          testID={`decision-notice-${idx}`}
+        >
+          <Text style={styles.noticeHeading}>
+            {decisionNoticeHeading(notice.kind)}
+          </Text>
+          <Text style={styles.noticeMeta}>
+            {new Date(notice.issuedAt).toLocaleString()}
+          </Text>
           {notice.renderedText
             .split(/\n\n+/)
             .filter((p) => p.trim().length > 0)
@@ -93,21 +119,32 @@ export function ClaimDetailScreen() {
             ))}
         </View>
       ))}
-    </Card>
+    </GlassCard>
   ) : null;
 
   return (
-    <Screen>
+    <DesignPage>
       <Text style={styles.title}>{claim.assetDisplayName}</Text>
-      <Badge tone={claimStatusBadgeTone(claim.status)}>{formatClaimStatus(claim.status)}</Badge>
+      <PolicyStatusPill tone={claimStatusBadgeTone(claim.status)}>
+        {formatClaimStatus(claim.status)}
+      </PolicyStatusPill>
 
       {decisionNoticesCard}
 
-      <Card style={styles.section}>
-        <DetailRow label="Asset type" value={formatAssetType(claim.assetType as AssetType)} />
+      <GlassCard variant="solid" style={styles.section}>
+        <DetailRow
+          label="Asset type"
+          value={formatAssetType(claim.assetType as AssetType)}
+        />
         <DetailRow label="Policy plan" value={claim.policyPlanTier} />
-        <DetailRow label="Submitted" value={new Date(claim.submittedAt).toLocaleString()} />
-        <DetailRow label="Incident date" value={new Date(claim.incidentDate).toLocaleDateString()} />
+        <DetailRow
+          label="Submitted"
+          value={new Date(claim.submittedAt).toLocaleString()}
+        />
+        <DetailRow
+          label="Incident date"
+          value={new Date(claim.incidentDate).toLocaleDateString()}
+        />
         <DetailRow
           label="Claimed amount"
           value={`${claim.claimedAmountCurrency} ${claim.claimedAmount.toLocaleString()}`}
@@ -118,31 +155,35 @@ export function ClaimDetailScreen() {
             value={`${claim.claimedAmountCurrency} ${claim.approvedAmount.toLocaleString()}`}
           />
         ) : null}
-        {claim.recoveryCaseId ? <DetailRow label="Recovery case" value={claim.recoveryCaseId} /> : null}
-      </Card>
+        {claim.recoveryCaseId ? (
+          <DetailRow label="Recovery case" value={claim.recoveryCaseId} />
+        ) : null}
+      </GlassCard>
 
-      <Card style={styles.section}>
+      <GlassCard variant="solid" style={styles.section}>
         <Text style={styles.sectionTitle}>Incident description</Text>
         <Text style={styles.body}>{claim.incidentDescription}</Text>
-      </Card>
+      </GlassCard>
 
       {claim.evidenceDescription ? (
-        <Card style={styles.section}>
+        <GlassCard variant="solid" style={styles.section}>
           <Text style={styles.sectionTitle}>Evidence description</Text>
           <Text style={styles.body}>{claim.evidenceDescription}</Text>
-        </Card>
+        </GlassCard>
       ) : null}
 
       {!hasDecisionNotices && claim.rejectionReason ? (
-        <Card style={styles.section}>
+        <GlassCard variant="solid" style={styles.section}>
           <Text style={styles.sectionTitle}>Rejection reason</Text>
           <Text style={styles.body}>{claim.rejectionReason}</Text>
-        </Card>
+        </GlassCard>
       ) : null}
 
       {claim.quantumReason ? (
-        <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Why the approved amount differs from what you claimed</Text>
+        <GlassCard variant="solid" style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            Why the approved amount differs from what you claimed
+          </Text>
           <DetailRow
             label="Amount claimed"
             value={`${claim.claimedAmountCurrency} ${claim.claimedAmount.toLocaleString()}`}
@@ -154,26 +195,28 @@ export function ClaimDetailScreen() {
             />
           ) : null}
           <Text style={styles.body}>{claim.quantumReason}</Text>
-        </Card>
+        </GlassCard>
       ) : null}
 
       {claim.closeReason ? (
-        <Card style={styles.section}>
+        <GlassCard variant="solid" style={styles.section}>
           <Text style={styles.sectionTitle}>Reason this claim was closed</Text>
           <Text style={styles.body}>{claim.closeReason}</Text>
-        </Card>
+        </GlassCard>
       ) : null}
 
       {claim.reviewNotes.length > 0 ? (
-        <Card style={styles.section}>
+        <GlassCard variant="solid" style={styles.section}>
           <Text style={styles.sectionTitle}>Reviewer notes</Text>
           {claim.reviewNotes.map((note, idx) => (
             <View key={idx} style={styles.noteRow}>
               <Text style={styles.body}>{note.text}</Text>
-              <Text style={styles.noteMeta}>{new Date(note.createdAt).toLocaleString()}</Text>
+              <Text style={styles.noteMeta}>
+                {new Date(note.createdAt).toLocaleString()}
+              </Text>
             </View>
           ))}
-        </Card>
+        </GlassCard>
       ) : null}
 
       {actionError ? (
@@ -183,7 +226,7 @@ export function ClaimDetailScreen() {
       ) : null}
 
       {claim.status === 'more_info_requested' ? (
-        <Card style={styles.section}>
+        <GlassCard variant="solid" style={styles.section}>
           <Text style={styles.sectionTitle}>Respond to reviewer</Text>
           <Input
             label="Your response"
@@ -194,53 +237,56 @@ export function ClaimDetailScreen() {
             style={styles.multilineInput}
           />
           <Button
-            variant="primary"
-            fullWidth
+            label="Send response"
             loading={respondMutation.isPending}
             disabled={responseText.trim().length === 0}
             onPress={handleRespond}
-          >
-            Send response
-          </Button>
-        </Card>
+            style={styles.stretch}
+          />
+        </GlassCard>
       ) : null}
 
       {isClaimWithdrawable(claim.status) ? (
         <View style={styles.section}>
           {confirmingWithdraw ? (
             <>
-              <Alert tone="warning">Withdraw this claim? This cannot be undone.</Alert>
+              <Alert tone="warning">
+                Withdraw this claim? This cannot be undone.
+              </Alert>
               <View style={styles.withdrawActions}>
                 <Button
-                  variant="tertiary"
-                  fullWidth
+                  label="Cancel"
                   disabled={withdrawMutation.isPending}
                   onPress={() => setConfirmingWithdraw(false)}
-                >
-                  Cancel
-                </Button>
+                  variant="glass"
+                  style={styles.stretch}
+                />
                 <Button
-                  variant="secondary"
-                  fullWidth
+                  label="Confirm withdraw"
                   loading={withdrawMutation.isPending}
                   onPress={handleWithdraw}
-                >
-                  Confirm withdraw
-                </Button>
+                  variant="secondary"
+                  style={styles.stretch}
+                />
               </View>
             </>
           ) : (
-            <Button variant="tertiary" fullWidth onPress={() => setConfirmingWithdraw(true)}>
-              Withdraw claim
-            </Button>
+            <Button
+              label="Withdraw claim"
+              onPress={() => setConfirmingWithdraw(true)}
+              variant="glass"
+              style={styles.stretch}
+            />
           )}
         </View>
       ) : null}
-    </Screen>
+    </DesignPage>
   );
 }
 
-function decisionNoticeHeading(kind: Claim['decisionNotices'][number]['kind']): string {
+function decisionNoticeHeading(
+  kind: Claim['decisionNotices'][number]['kind'],
+): string {
   switch (kind) {
     case 'rejection':
       return 'Claim rejection notice';
@@ -256,6 +302,8 @@ function decisionNoticeHeading(kind: Claim['decisionNotices'][number]['kind']): 
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -264,81 +312,57 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  section: {
-    marginTop: spacing.lg,
-  },
-  sectionTitle: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  body: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-  },
-  row: {
-    marginBottom: spacing.md,
-  },
-  rowLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    marginBottom: spacing.xs,
-  },
-  rowValue: {
-    fontSize: typography.sizes.base,
-    color: colors.textPrimary,
-  },
-  noteRow: {
-    marginBottom: spacing.sm,
-  },
-  noteMeta: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    marginTop: spacing.xs,
-  },
-  noticeBlock: {
-    marginBottom: spacing.lg,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.slate[100],
-  },
-  noticeHeading: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  noticeMeta: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    marginBottom: spacing.sm,
-  },
-  noticeParagraph: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-    marginBottom: spacing.sm,
-  },
-  multilineInput: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  withdrawActions: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.md,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s2,
+    },
+    section: { marginTop: t.spacing.s4 },
+    sectionTitle: {
+      ...t.type.label,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s2,
+    },
+    body: { ...t.type.body, color: t.colors.inkMuted },
+    row: { marginBottom: t.spacing.s3 },
+    rowLabel: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s1,
+    },
+    rowValue: { ...t.type.body, color: t.colors.ink },
+    noteRow: { marginBottom: t.spacing.s2 },
+    noteMeta: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginTop: t.spacing.s1,
+    },
+    noticeBlock: {
+      marginBottom: t.spacing.s4,
+      paddingBottom: t.spacing.s3,
+      borderBottomWidth: 1,
+      borderBottomColor: t.colors.inkMuted,
+    },
+    noticeHeading: { ...t.type.label, color: t.colors.ink },
+    noticeMeta: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s2,
+    },
+    noticeParagraph: {
+      ...t.type.body,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s2,
+    },
+    multilineInput: { minHeight: 100, textAlignVertical: 'top' },
+    withdrawActions: {
+      flexDirection: 'row',
+      gap: t.spacing.s3,
+      marginTop: t.spacing.s3,
+    },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    stretch: { alignSelf: 'stretch' },
+  });
+}
