@@ -85,6 +85,8 @@ export default function WelcomeScreen() {
         />
         <AuthLink
           compact
+          // pull the link toward the card's bottom edge so there is less empty space under it
+          style={{ marginBottom: -t.spacing.s3 }}
           label="Explore first"
           accessibilityLabel="Explore the app introduction first"
           onPress={() => router.push('/(auth)/intro')}
