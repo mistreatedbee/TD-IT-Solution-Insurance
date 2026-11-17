@@ -9,11 +9,11 @@ export default function AssetsLayout() {
     <Stack screenOptions={screenOptions}>
       <Stack.Screen
         name="index"
-        options={
+        options={{
           title: 'Assets',
           headerShown: false,
           contentStyle: { backgroundColor: 'transparent' },
-        }
+        }}
       />
       <Stack.Screen name="register" options={{ title: 'Register asset' }} />
       <Stack.Screen name="[id]" options={{ headerShown: false }} />
