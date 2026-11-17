@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { HeroDeviceAnimation } from '../../src/onboarding/marketing/components/HeroDeviceAnimation';
+import { ProtectionMapHero } from '../../src/onboarding/marketing/components/ProtectionMapHero';
 import { useOnboardingLayout } from '../../src/onboarding/marketing/hooks/useOnboardingLayout';
 import { Button } from '../../src/design';
 import {
@@ -29,7 +29,7 @@ export default function WelcomeScreen() {
   const animationHeight =
     freeHeight == null
       ? heroHeight
-      : Math.max(0, Math.min(heroHeight, freeHeight - t.spacing.s4));
+      : Math.max(0, Math.min(heroHeight + 90, freeHeight - t.spacing.s2));
 
   return (
     <AuthPage
@@ -66,11 +66,8 @@ export default function WelcomeScreen() {
         style={styles.animationSlot}
         onLayout={(e) => setFreeHeight(e.nativeEvent.layout.height)}
       >
-        {animationHeight > 80 ? (
-          <HeroDeviceAnimation
-            height={animationHeight}
-            inlineBadges={isCompact}
-          />
+        {animationHeight > 150 ? (
+          <ProtectionMapHero height={animationHeight} />
         ) : null}
       </View>
 
