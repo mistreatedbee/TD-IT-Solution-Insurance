@@ -190,3 +190,25 @@ Revisit if any of these happen:
 - passkeys or a device-bound key released by biometric are adopted, which would let the biometric become a real control under a new ADR;
 - a customer Tier A action from ADR-0012 ships.
 
+
+---
+
+## 10. `cto` ratification (2026-11-17) — conditional
+
+Appended by `cto`, acting under the owner's instruction to act as `cto` on this feature. Sections 1–9 are unchanged.
+
+**Ratified, as amended by §9:** D4 (server-checked step-up for protection changes, with the narrow password re-authentication exception for customers without a TOTP factor), D2 (a score advises a human and never acts), D3 (the "Was this you?" reply needs the same step-up; only a "yes" needs it), D5 (phone signals are best effort and never load-bearing; there is no power-off blocker), D9 (no covert camera or microphone), D10 (the theft-hardening score is self-attested). The four residual risks RR-D4-1 to RR-D4-4 in §9 are **accepted** by `cto`.
+
+**Ratified as direction only, not yet buildable:** D1 (known places learned on the phone), D6 (background sensing is not decided here), D7 (hardware tracker stays vendor-agnostic) and D8 (hashed network and charger signals). Each still needs the compliance rulings listed in the routing request and, for anything that touches location, closure of INC-001.
+
+**Conditions on this ratification (none reopens the decision):**
+1. **Not a Stage 8 sign-off, QA sign-off or compliance ruling.** Stage 8 and Stage 10 remain hard gates for every stage. `compliance-specialist`'s concurrence is still outstanding and is a condition on D1, D2 and D8, not discharged here.
+2. **Server and client ship together.** The server guard (backend PR) and the mobile re-authentication prompts must be deployed in the same release; Render deploys `main` directly, so the guard must not reach production alone.
+3. **Production Resend delivery must be live before release.** Protection-change notices are a launch dependency, and the sender is still an owner action.
+4. **Migration 041** (`password_reauth_at`, `protection_detail`, new audit event types) needs `database-architect` review before it is applied anywhere.
+5. **`authentication-engineer`** must confirm that the GoTrue session created by the password check is handled as at login, and that exhausting the lockout revokes only the current session.
+6. **`cybersecurity-architect`** to confirm the amendments recorded in §9 (A-1 to A-4) are implemented as written, at Stage 8.
+7. The consent-withdrawal route (`DELETE /assets/:id/location`) stays ungated until `compliance-specialist` rules on the s18 point in §9.
+8. Ratification does not widen Release Gate A, enable `LOCATION_INGESTION_ENABLED`, or authorise any flag change.
+
+The owner remains free to overrule any part of this ratification.
