@@ -2,39 +2,39 @@
  * Policy tab — lists the caller's policies from GET /v1/policies.
  * Empty state when the API returns no rows (never fake data).
  */
-import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { useRouter } from 'expo-router';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
   View,
-} from "react-native";
-import type { PlanCatalogItem } from "../../api/plans";
+} from 'react-native';
+import type { PlanCatalogItem } from '../../api/plans';
 import {
   formatAssetUsage,
   formatPlanPrice,
   resolvePlanForPolicy,
-} from "../../api/plans";
-import { usePlansQuery } from "../../api/hooks/usePlans";
-import { useAssetsQuery } from "../../api/hooks/useAssets";
-import { usePoliciesQuery } from "../../api/hooks/usePolicies";
-import { ApiError, NetworkUnavailableError } from "../../api/errors";
-import { mapUserFacingError } from "../../lib/user-facing-errors";
-import type { Policy } from "../../api/policies";
-import { gateWriteAction } from "../../auth/gateWriteAction";
+} from '../../api/plans';
+import { usePlansQuery } from '../../api/hooks/usePlans';
+import { useAssetsQuery } from '../../api/hooks/useAssets';
+import { usePoliciesQuery } from '../../api/hooks/usePolicies';
+import { ApiError, NetworkUnavailableError } from '../../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
+import type { Policy } from '../../api/policies';
+import { gateWriteAction } from '../../auth/gateWriteAction';
 import {
   formatDate,
   formatPolicyStatus,
   policyStatusBadgeTone,
-} from "../../lib/asset-labels";
-import { DesignPage } from "../../components/DesignPage";
-import { Button, GlassCard } from "../../design";
-import { useDesignTokens, type DesignTokens } from "../../theme/designTheme";
-import { Alert } from "../../theme/primitives";
-import { PolicyStatusPill } from "./PolicyStatusPill";
-import type { Href } from "expo-router";
+} from '../../lib/asset-labels';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
+import { PolicyStatusPill } from './PolicyStatusPill';
+import type { Href } from 'expo-router';
 
 function PolicyCard({
   policy,
@@ -49,8 +49,8 @@ function PolicyCard({
 }) {
   const t = useDesignTokens();
   const styles = useMemo(() => buildStyles(t), [t]);
-  const status = policy.status ?? "pending_activation";
-  const billingStatus = policy.billing?.billingStatus ?? "not_configured";
+  const status = policy.status ?? 'pending_activation';
+  const billingStatus = policy.billing?.billingStatus ?? 'not_configured';
   const plan = resolvePlanForPolicy(plans ?? [], policy);
 
   return (
@@ -69,7 +69,7 @@ function PolicyCard({
           {formatAssetUsage(assetCount, plan.maxAssets)}
         </Text>
         <Text style={styles.meta}>
-          Billing: {billingStatus.replace(/_/g, " ")}
+          Billing: {billingStatus.replace(/_/g, ' ')}
         </Text>
         <Text style={styles.meta}>
           Effective: {formatDate(policy.effectiveDate)}
@@ -109,9 +109,9 @@ export function PolicyListScreen() {
     setIsGating(true);
     try {
       const result = await gateWriteAction(router);
-      if (result === "verified") {
-        router.push("/policy/create" as Href);
-      } else if (result === "error") {
+      if (result === 'verified') {
+        router.push('/policy/create' as Href);
+      } else if (result === 'error') {
         setGateError(true);
       }
     } finally {
@@ -132,7 +132,7 @@ export function PolicyListScreen() {
     }
     return (
       <Alert tone="danger" title="Could not load policies">
-        {mapUserFacingError(error, { context: "policy" })}
+        {mapUserFacingError(error, { context: 'policy' })}
       </Alert>
     );
   }
@@ -228,9 +228,9 @@ function buildStyles(t: DesignTokens) {
     },
     card: { marginBottom: t.spacing.s4 },
     cardHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
       gap: t.spacing.s3,
       marginBottom: t.spacing.s2,
     },
@@ -243,15 +243,15 @@ function buildStyles(t: DesignTokens) {
     hint: {
       ...t.type.labelSm,
       color: t.colors.inkMuted,
-      fontStyle: "italic",
+      fontStyle: 'italic',
       marginTop: t.spacing.s1,
     },
     footerActions: { gap: t.spacing.s3, marginTop: t.spacing.s3 },
     alertSpacing: { marginBottom: t.spacing.s4 },
     centered: {
       flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
+      alignItems: 'center',
+      justifyContent: 'center',
       paddingVertical: t.spacing.s8,
     },
     syncHint: {
@@ -259,6 +259,6 @@ function buildStyles(t: DesignTokens) {
       color: t.colors.inkMuted,
       marginBottom: t.spacing.s2,
     },
-    stretch: { alignSelf: "stretch" },
+    stretch: { alignSelf: 'stretch' },
   });
 }

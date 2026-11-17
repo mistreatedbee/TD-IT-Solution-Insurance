@@ -1,16 +1,16 @@
-import React, { useMemo } from "react";
-import { Linking, StyleSheet, Text, View } from "react-native";
-import type { PlanCatalogItem } from "../../api/plans";
-import { COMPANY_CONTACT } from "../../lib/companyContact";
+import React, { useMemo } from 'react';
+import { Linking, StyleSheet, Text, View } from 'react-native';
+import type { PlanCatalogItem } from '../../api/plans';
+import { COMPANY_CONTACT } from '../../lib/companyContact';
 import {
   formatPlanAssetLimitLabel,
   formatPlanPriceParts,
   getMarketingPlanFeatures,
-} from "../../lib/marketing-plan-display";
-import { DesignPage } from "../../components/DesignPage";
-import { Button, GlassCard } from "../../design";
-import { useDesignTokens, type DesignTokens } from "../../theme/designTheme";
-import { PolicyStatusPill } from "../policy/PolicyStatusPill";
+} from '../../lib/marketing-plan-display';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { PolicyStatusPill } from '../policy/PolicyStatusPill';
 
 const VISIBLE_FEATURE_COUNT = 5;
 
@@ -35,7 +35,7 @@ export function PlanCatalogPicker({
   function handlePress(plan: PlanCatalogItem) {
     if (plan.isCustomPricing) {
       void Linking.openURL(
-        `mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent("Business plan quote")}`,
+        `mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent('Business plan quote')}`,
       );
       return;
     }
@@ -58,7 +58,7 @@ export function PlanCatalogPicker({
         return (
           <GlassCard
             key={plan.id}
-            variant={isSelected ? "selected" : "solid"}
+            variant={isSelected ? 'selected' : 'solid'}
             style={styles.planCard}
           >
             {isPopular ? (
@@ -71,7 +71,7 @@ export function PlanCatalogPicker({
                 <Text style={styles.planName}>{plan.name}</Text>
                 {isCurrent ? (
                   <PolicyStatusPill tone="neutral">
-                    {"Current"}
+                    {'Current'}
                   </PolicyStatusPill>
                 ) : null}
               </View>
@@ -109,21 +109,21 @@ export function PlanCatalogPicker({
               <Button
                 label={
                   plan.isCustomPricing
-                    ? "Request a quote"
+                    ? 'Request a quote'
                     : isCurrent
-                      ? "Current plan"
+                      ? 'Current plan'
                       : isSelected && isLoading
-                        ? "Updating…"
+                        ? 'Updating…'
                         : currentPlanId
-                          ? "Switch to this plan"
-                          : "Choose this plan"
+                          ? 'Switch to this plan'
+                          : 'Choose this plan'
                 }
                 variant={
                   plan.isCustomPricing
-                    ? "secondary"
+                    ? 'secondary'
                     : isPopular
-                      ? "primary"
-                      : "secondary"
+                      ? 'primary'
+                      : 'secondary'
                 }
                 loading={isLoading}
                 disabled={isCurrent}
@@ -148,9 +148,9 @@ function buildStyles(t: DesignTokens) {
       borderBottomColor: t.colors.borderSubtle,
     },
     planHeaderRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       gap: t.spacing.s2,
     },
     planName: { ...t.type.title, flex: 1, color: t.colors.ink },
@@ -161,14 +161,14 @@ function buildStyles(t: DesignTokens) {
     },
     planBody: { paddingTop: t.spacing.s3 },
     priceRow: {
-      flexDirection: "row",
-      alignItems: "baseline",
+      flexDirection: 'row',
+      alignItems: 'baseline',
       gap: t.spacing.s1,
     },
     planPrice: { ...t.type.displayMd, color: t.colors.ink },
     planPeriod: { ...t.type.bodySm, color: t.colors.inkMuted },
     assetLimitPill: {
-      alignSelf: "flex-start",
+      alignSelf: 'flex-start',
       backgroundColor: t.colors.infoBg,
       borderRadius: t.radius.pill,
       paddingHorizontal: t.spacing.s3,
@@ -196,6 +196,6 @@ function buildStyles(t: DesignTokens) {
       marginBottom: t.spacing.s2,
     },
     planButton: { marginTop: t.spacing.s3 },
-    stretch: { alignSelf: "stretch" },
+    stretch: { alignSelf: 'stretch' },
   });
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import { ReportTheftSuccessScreen } from '../ReportTheftSuccessScreen';
+import { ThemeProvider } from '../../../theme/ThemeProvider';
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
@@ -24,7 +25,7 @@ jest.mock('../../../config/features', () => ({ FEATURE_CLAIMS_ENABLED: false }))
 
 describe('ReportTheftSuccessScreen — claims flag disabled (preview/production)', () => {
   it('hides "File a claim"', async () => {
-    await render(<ReportTheftSuccessScreen />);
+    await render(<ThemeProvider><ReportTheftSuccessScreen /></ThemeProvider>);
     expect(screen.queryByText('File a claim')).toBeNull();
   });
 });

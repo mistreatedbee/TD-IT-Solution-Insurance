@@ -3,11 +3,11 @@
  * asset StatusBadge vocabulary, so the pill takes its colours from the theme tokens instead.
  * Flagged for design-system-manager review: candidate to fold into StatusBadge's vocabulary.
  */
-import React from "react";
-import { Text, View } from "react-native";
-import { useDesignTokens } from "../../theme/designTheme";
+import React from 'react';
+import { Text, View } from 'react-native';
+import { useDesignTokens } from '../../theme/designTheme';
 
-export type PillTone = "emerald" | "warning" | "danger" | "neutral" | "info";
+export type PillTone = 'emerald' | 'warning' | 'danger' | 'neutral' | 'info';
 
 export function PolicyStatusPill({
   tone,
@@ -23,12 +23,13 @@ export function PolicyStatusPill({
     danger: { fg: t.colors.danger, bg: t.colors.dangerBg },
     info: { fg: t.colors.link, bg: t.colors.infoBg },
     neutral: { fg: t.colors.inkMuted, bg: t.colors.bgSunken },
+    gold: { fg: t.colors.warning, bg: t.colors.warningBg },
   } as const;
-  const c = map[(tone as PillTone) in map ? (tone as PillTone) : "neutral"];
+  const c = map[(tone as PillTone) in map ? (tone as PillTone) : 'neutral'];
   return (
     <View
       style={{
-        alignSelf: "flex-start",
+        alignSelf: 'flex-start',
         backgroundColor: c.bg,
         borderRadius: t.radius.pill,
         paddingHorizontal: t.spacing.s3,
@@ -36,7 +37,7 @@ export function PolicyStatusPill({
       }}
     >
       <Text
-        style={[t.type.labelSm, { color: c.fg, textTransform: "capitalize" }]}
+        style={[t.type.labelSm, { color: c.fg, textTransform: 'capitalize' }]}
       >
         {children}
       </Text>

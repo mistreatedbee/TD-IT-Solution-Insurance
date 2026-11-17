@@ -12,7 +12,9 @@ import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
 import { Alert } from '../../theme/primitives';
 import { AssetPage } from './AssetPage';
 
-function deviceStatusTone(status: string): 'success' | 'warning' | 'inkMuted' | 'danger' {
+function deviceStatusTone(
+  status: string,
+): 'success' | 'warning' | 'inkMuted' | 'danger' {
   switch (status) {
     case 'active':
       return 'success';
@@ -61,7 +63,9 @@ export function DeviceHealthScreen() {
   if (profileQuery.isError || !profileQuery.data) {
     return (
       <AssetPage>
-        <Alert tone="danger">{mapUserFacingError(profileQuery.error, { context: 'asset' })}</Alert>
+        <Alert tone="danger">
+          {mapUserFacingError(profileQuery.error, { context: 'asset' })}
+        </Alert>
       </AssetPage>
     );
   }
@@ -74,10 +78,11 @@ export function DeviceHealthScreen() {
     return (
       <AssetPage>
         <Alert tone="info">No GPS tracker linked to this asset yet.</Alert>
-        <Button label="Connect GPS tracker"
+        <Button
+          label="Connect GPS tracker"
           style={[styles.stretch, styles.action]}
           onPress={() => router.push(`/assets/${id}/activate-tracker` as Href)}
-         />
+        />
       </AssetPage>
     );
   }
@@ -89,8 +94,9 @@ export function DeviceHealthScreen() {
 
       {ui.hardwarePending ? (
         <Alert tone="info" style={styles.pending}>
-          Live telemetry (battery, signal, GPS fix) will appear here once our GPS hardware partner
-          integration is live. Your device is registered and linked.
+          Live telemetry (battery, signal, GPS fix) will appear here once our
+          GPS hardware partner integration is live. Your device is registered
+          and linked.
         </Alert>
       ) : null}
 
@@ -107,7 +113,14 @@ export function DeviceHealthScreen() {
         ) : null}
         <View style={styles.row}>
           <Text style={styles.label}>Status</Text>
-          <Text style={[t.type.label, { color: t.colors[deviceStatusTone(device.status)] }]}>{deviceStatusLabel(device.status)}</Text>
+          <Text
+            style={[
+              t.type.label,
+              { color: t.colors[deviceStatusTone(device.status)] },
+            ]}
+          >
+            {deviceStatusLabel(device.status)}
+          </Text>
         </View>
         {device.activatedAt ? (
           <View style={styles.row}>
@@ -126,10 +139,16 @@ export function DeviceHealthScreen() {
         {profile.telemetry ? (
           <>
             {ui.showBattery && profile.telemetry.batteryPercent != null ? (
-              <MetricRow label="Battery" value={`${profile.telemetry.batteryPercent}%`} />
+              <MetricRow
+                label="Battery"
+                value={`${profile.telemetry.batteryPercent}%`}
+              />
             ) : null}
             {ui.showSignal && profile.telemetry.signalStrength ? (
-              <MetricRow label="Cellular signal" value={profile.telemetry.signalStrength} />
+              <MetricRow
+                label="Cellular signal"
+                value={profile.telemetry.signalStrength}
+              />
             ) : null}
           </>
         ) : (
@@ -139,10 +158,12 @@ export function DeviceHealthScreen() {
         )}
       </GlassCard>
 
-      <Button label="Installation guide"
+      <Button
+        label="Installation guide"
         variant="secondary"
         onPress={() => router.push(`/assets/${id}/installation-guide` as Href)}
-       style={styles.stretch} />
+        style={styles.stretch}
+      />
     </AssetPage>
   );
 }
@@ -161,44 +182,55 @@ function MetricRow({ label, value }: { label: string; value: string }) {
 function buildStyles(t: DesignTokens) {
   return StyleSheet.create({
     centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',},
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     title: {
-    ...t.type.displayMd,
-    color: t.colors.ink,
-    marginBottom: t.spacing.s2,},
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s2,
+    },
     subtitle: {
-    ...t.type.body,
-    color: t.colors.inkMuted,
-    marginBottom: t.spacing.s4,},
+      ...t.type.body,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
     pending: {
-    marginBottom: t.spacing.s4,},
+      marginBottom: t.spacing.s4,
+    },
     card: {
-    marginBottom: t.spacing.s4,},
+      marginBottom: t.spacing.s4,
+    },
     sectionTitle: {
-    ...t.type.title,
-    color: t.colors.ink,
-    marginBottom: t.spacing.s3,},
+      ...t.type.title,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s3,
+    },
     row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: t.spacing.s2,
-    gap: t.spacing.s3,},
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: t.spacing.s2,
+      gap: t.spacing.s3,
+    },
     label: {
-    ...t.type.bodySm,
-    color: t.colors.inkMuted,},
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+    },
     value: {
-    ...t.type.label,
-    color: t.colors.ink,
-    flexShrink: 1,
-    textAlign: 'right',},
+      ...t.type.label,
+      color: t.colors.ink,
+      flexShrink: 1,
+      textAlign: 'right',
+    },
     emptyTelemetry: {
-    ...t.type.bodySm,
-    color: t.colors.inkMuted,},
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+    },
     action: {
-    marginTop: t.spacing.s4,},
+      marginTop: t.spacing.s4,
+    },
 
     stretch: { alignSelf: 'stretch' },
   });

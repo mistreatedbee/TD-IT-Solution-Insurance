@@ -1,18 +1,18 @@
-import { useRouter, type Href } from "expo-router";
-import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useRouter, type Href } from 'expo-router';
+import React, { useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import {
   formatAssetUsage,
   formatPlanPrice,
   resolvePlanForPolicy,
   type PlanCatalogItem,
-} from "../../api/plans";
-import type { Policy } from "../../api/policies";
-import { SurfaceGroup } from "../../components/SurfaceGroup";
-import { Alert, Button, Card } from "../../theme/primitives";
-import { useColors } from "../../theme/ThemeProvider";
-import { useSurfaceStyles } from "../../theme/useSurfaceStyles";
-import { spacing, typography } from "../../theme/tokens";
+} from '../../api/plans';
+import type { Policy } from '../../api/policies';
+import { SurfaceGroup } from '../../components/SurfaceGroup';
+import { Alert, Button, Card } from '../../theme/primitives';
+import { useColors } from '../../theme/ThemeProvider';
+import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
+import { spacing, typography } from '../../theme/tokens';
 
 export interface PlanUsageSummaryProps {
   policy: Policy | null | undefined;
@@ -33,7 +33,7 @@ function PlanUsageContent({
   assetCount,
   showUpgradePrompt,
   styles,
-}: Omit<PlanUsageSummaryProps, "compact"> & {
+}: Omit<PlanUsageSummaryProps, 'compact'> & {
   styles: ReturnType<typeof usePlanUsageStyles>;
 }) {
   const router = useRouter();
@@ -93,7 +93,7 @@ function usePlanUsageStyles() {
         },
         planName: {
           fontSize: typography.sizes.lg,
-          fontWeight: "700",
+          fontWeight: '700',
           color: colors.textPrimary,
           marginBottom: spacing.xs,
         },

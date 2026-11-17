@@ -8,7 +8,7 @@
  * `reportedToPoliceAt` at any time, including after the case is closed
  * (api-design.md §2.3 — no status gate on this endpoint).
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   type PoliceReport,
@@ -17,8 +17,9 @@ import {
 } from '../../api/recovery';
 import { useUpdatePoliceReportMutation } from '../../api/hooks/useRecovery';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { Alert, Button, Card, Input } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert, Input } from '../../theme/primitives';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -34,15 +35,30 @@ interface PoliceReportSectionProps {
 }
 
 function hasAnyValue(report: PoliceReport | undefined): boolean {
-  return Boolean(report?.sapsCaseNumber || report?.reportingStation || report?.reportedToPoliceAt);
+  return Boolean(
+    report?.sapsCaseNumber ||
+    report?.reportingStation ||
+    report?.reportedToPoliceAt,
+  );
 }
 
-export function PoliceReportSection({ caseId, policeReport }: PoliceReportSectionProps) {
+export function PoliceReportSection({
+  caseId,
+  policeReport,
+}: PoliceReportSectionProps) {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const updateMutation = useUpdatePoliceReportMutation();
   const [editing, setEditing] = useState(!hasAnyValue(policeReport));
-  const [sapsCaseNumber, setSapsCaseNumber] = useState(policeReport?.sapsCaseNumber ?? '');
-  const [reportingStation, setReportingStation] = useState(policeReport?.reportingStation ?? '');
-  const [reportedToPoliceAt, setReportedToPoliceAt] = useState(policeReport?.reportedToPoliceAt ?? '');
+  const [sapsCaseNumber, setSapsCaseNumber] = useState(
+    policeReport?.sapsCaseNumber ?? '',
+  );
+  const [reportingStation, setReportingStation] = useState(
+    policeReport?.reportingStation ?? '',
+  );
+  const [reportedToPoliceAt, setReportedToPoliceAt] = useState(
+    policeReport?.reportedToPoliceAt ?? '',
+  );
   const [dateError, setDateError] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -89,55 +105,79 @@ export function PoliceReportSection({ caseId, policeReport }: PoliceReportSectio
 
   if (!editing) {
     return (
-      <Card style={styles.card}>
+      <GlassCard variant="solid" style={styles.card}>
         <Text style={styles.heading}>Police report</Text>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>SAPS case number</Text>
-          <Text style={styles.summaryValue}>{policeReport?.sapsCaseNumber ?? 'Not added yet'}</Text>
+          <Text style={styles.summaryValue}>
+            {policeReport?.sapsCaseNumber ?? 'Not added yet'}
+          </Text>
         </View>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Reporting station</Text>
-          <Text style={styles.summaryValue}>{policeReport?.reportingStation ?? 'Not added yet'}</Text>
+          <Text style={styles.summaryValue}>
+            {policeReport?.reportingStation ?? 'Not added yet'}
+          </Text>
         </View>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Date reported to police</Text>
-          <Text style={styles.summaryValue}>{policeReport?.reportedToPoliceAt ?? 'Not added yet'}</Text>
+          <Text style={styles.summaryValue}>
+            {policeReport?.reportedToPoliceAt ?? 'Not added yet'}
+          </Text>
         </View>
 
-        <Button variant="secondary" onPress={openForEditing}>
-          Update police report
-        </Button>
+        <Button
+          label="Update police report"
+          onPress={openForEditing}
+          variant="secondary"
+        />
 
         {history.length > 0 ? (
           <>
-            <Button variant="tertiary" onPress={() => setShowHistory((v) => !v)}>
-              {showHistory ? 'Hide history' : `Show history (${history.length})`}
-            </Button>
+            <Button
+              variant="glass"
+              label={
+                showHistory
+                  ? 'Hide history'
+                  : `Show history (${history.length})`
+              }
+              onPress={() => setShowHistory((v) => !v)}
+            />
             {showHistory ? (
               <View style={styles.historyList}>
                 {historyNewestFirst.map((entry, index) => (
-                  <View key={`${entry.field}-${entry.changedAt}-${index}`} style={styles.historyRow}>
-                    <Text style={styles.historyField}>{FIELD_LABELS[entry.field]}</Text>
-                    <Text style={styles.historyChange}>
-                      {(entry.previousValue ?? '—') + ' → ' + (entry.newValue ?? '—')}
+                  <View
+                    key={`${entry.field}-${entry.changedAt}-${index}`}
+                    style={styles.historyRow}
+                  >
+                    <Text style={styles.historyField}>
+                      {FIELD_LABELS[entry.field]}
                     </Text>
-                    <Text style={styles.historyDate}>{new Date(entry.changedAt).toLocaleString()}</Text>
+                    <Text style={styles.historyChange}>
+                      {(entry.previousValue ?? '—') +
+                        ' → ' +
+                        (entry.newValue ?? '—')}
+                    </Text>
+                    <Text style={styles.historyDate}>
+                      {new Date(entry.changedAt).toLocaleString()}
+                    </Text>
                   </View>
                 ))}
               </View>
             ) : null}
           </>
         ) : null}
-      </Card>
+      </GlassCard>
     );
   }
 
   return (
-    <Card style={styles.card}>
+    <GlassCard variant="solid" style={styles.card}>
       <Text style={styles.heading}>Police report</Text>
       <Text style={styles.helper}>
-        Optional. If you&rsquo;ve opened a case with SAPS, add the case number here so it&rsquo;s on
-        record — you can add or update it at any time, even after the theft report was filed.
+        Optional. If you&rsquo;ve opened a case with SAPS, add the case number
+        here so it&rsquo;s on record — you can add or update it at any time,
+        even after the theft report was filed.
       </Text>
 
       <Input
@@ -171,12 +211,14 @@ export function PoliceReportSection({ caseId, policeReport }: PoliceReportSectio
       ) : null}
 
       <View style={styles.actions}>
-        <Button variant="primary" loading={updateMutation.isPending} onPress={handleSave}>
-          Save
-        </Button>
+        <Button
+          label="Save"
+          loading={updateMutation.isPending}
+          onPress={handleSave}
+        />
         {hasAnyValue(policeReport) ? (
           <Button
-            variant="tertiary"
+            label="Cancel"
             disabled={updateMutation.isPending}
             onPress={() => {
               setSapsCaseNumber(policeReport?.sapsCaseNumber ?? '');
@@ -186,69 +228,37 @@ export function PoliceReportSection({ caseId, policeReport }: PoliceReportSectio
               setErrorMessage(null);
               setEditing(false);
             }}
-          >
-            Cancel
-          </Button>
+            variant="glass"
+          />
         ) : null}
       </View>
-    </Card>
+    </GlassCard>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.lg,
-    gap: spacing.sm,
-  },
-  heading: {
-    fontSize: typography.sizes.lg,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  helper: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.4,
-    marginBottom: spacing.xs,
-  },
-  summaryRow: {
-    marginBottom: spacing.xs,
-  },
-  summaryLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-  },
-  summaryValue: {
-    fontSize: typography.sizes.sm,
-    color: colors.textPrimary,
-    fontWeight: '600',
-  },
-  alertSpacing: {
-    marginBottom: spacing.sm,
-  },
-  actions: {
-    gap: spacing.sm,
-  },
-  historyList: {
-    marginTop: spacing.sm,
-    gap: spacing.sm,
-  },
-  historyRow: {
-    borderTopWidth: 1,
-    borderTopColor: colors.slate[300],
-    paddingTop: spacing.xs,
-  },
-  historyField: {
-    fontSize: typography.sizes.xs,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  historyChange: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-  },
-  historyDate: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    card: { marginBottom: t.spacing.s4, gap: t.spacing.s2 },
+    heading: { ...t.type.title, color: t.colors.ink },
+    helper: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s1,
+    },
+    summaryRow: { marginBottom: t.spacing.s1 },
+    summaryLabel: { ...t.type.labelSm, color: t.colors.inkMuted },
+    summaryValue: { ...t.type.label, color: t.colors.ink },
+    alertSpacing: { marginBottom: t.spacing.s2 },
+    actions: { gap: t.spacing.s2 },
+    historyList: { marginTop: t.spacing.s2, gap: t.spacing.s2 },
+    historyRow: {
+      borderTopWidth: 1,
+      borderTopColor: t.colors.inkMuted,
+      paddingTop: t.spacing.s1,
+    },
+    historyField: { ...t.type.labelSm, color: t.colors.ink },
+    historyChange: { ...t.type.labelSm, color: t.colors.inkMuted },
+    historyDate: { ...t.type.labelSm, color: t.colors.inkMuted },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

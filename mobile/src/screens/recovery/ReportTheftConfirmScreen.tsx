@@ -2,8 +2,14 @@
  * Phase 2 — Step 2: confirm theft report and submit to recovery API.
  */
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { CheckIcon } from 'lucide-react-native';
 import { useAssetQuery } from '../../api/hooks/useAssets';
 import { useCreateRecoveryCaseMutation } from '../../api/hooks/useRecovery';
@@ -12,8 +18,11 @@ import { newIdempotencyKey } from '../../api/idempotency';
 import { useIsOnline } from '../../network/NetworkProvider';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { formatAssetType } from '../../lib/asset-labels';
-import { Alert, Button, Card, Input, Screen } from '../../theme/primitives';
-import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { minTouchTarget } from '../../theme/tokens';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert, Input } from '../../theme/primitives';
 
 /**
  * Offline-retry policy (docs/organization/05-development-standards.md,
@@ -35,6 +44,8 @@ import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens'
  *       the case that already exists rather than dead-ending the user.
  */
 export function ReportTheftConfirmScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const { assetId } = useLocalSearchParams<{ assetId?: string }>();
   const { data: asset, isLoading } = useAssetQuery(assetId);
@@ -72,7 +83,9 @@ export function ReportTheftConfirmScreen() {
 
     // (a) Definite failure, before sending: nothing left the device.
     if (!isOnline) {
-      setErrorMessage("You're offline. Your report has not been sent. Reconnect and try again.");
+      setErrorMessage(
+        "You're offline. Your report has not been sent. Reconnect and try again.",
+      );
       return;
     }
 
@@ -86,7 +99,12 @@ export function ReportTheftConfirmScreen() {
       // (d) CONFLICT means this exact report already went through — on an
       // earlier attempt, possibly this very retry's predecessor. Never show
       // this as an error; take the user to the case that already exists.
-      if (err instanceof ApiError && err.status === 409 && err.caseId && err.referenceNumber) {
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.caseId &&
+        err.referenceNumber
+      ) {
         goToCase(err.caseId, err.referenceNumber);
         return;
       }
@@ -109,37 +127,39 @@ export function ReportTheftConfirmScreen() {
 
   if (!assetId) {
     return (
-      <Screen>
+      <DesignPage>
         <Alert tone="danger">Missing asset. Go back and select an asset.</Alert>
-      </Screen>
+      </DesignPage>
     );
   }
 
   if (isLoading) {
     return (
-      <Screen scroll={false}>
+      <DesignPage scroll={false}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
-      </Screen>
+      </DesignPage>
     );
   }
 
   return (
-    <Screen>
+    <DesignPage>
       <Text style={styles.title}>Confirm theft report</Text>
 
       {asset ? (
-        <Card style={styles.card}>
+        <GlassCard variant="solid" style={styles.card}>
           <Text style={styles.assetName}>{asset.displayName}</Text>
-          <Text style={styles.meta}>{formatAssetType(asset.assetType ?? 'other_electronics')}</Text>
+          <Text style={styles.meta}>
+            {formatAssetType(asset.assetType ?? 'other_electronics')}
+          </Text>
           {!asset.gpsDeviceId ? (
             <Alert tone="warning">
-              This asset has no GPS device paired. Live tracking will not be available until
-              hardware is installed (Phase 2 pairing flow).
+              This asset has no GPS device paired. Live tracking will not be
+              available until hardware is installed (Phase 2 pairing flow).
             </Alert>
           ) : null}
-        </Card>
+        </GlassCard>
       ) : null}
 
       <Input
@@ -159,15 +179,17 @@ export function ReportTheftConfirmScreen() {
       />
 
       <Text style={styles.disclosure}>
-        When you submit this report, we&rsquo;ll share a short summary (no name or contact
-        details) with our contracted security partners so one of them can take your case. The
-        partner who takes it will see your report details, including anything you type above, to
-        help recover your asset.
+        When you submit this report, we&rsquo;ll share a short summary (no name
+        or contact details) with our contracted security partners so one of them
+        can take your case. The partner who takes it will see your report
+        details, including anything you type above, to help recover your asset.
       </Text>
 
       {!isOnline ? (
         <View style={styles.alertSpacing}>
-          <Alert tone="warning">You&rsquo;re offline. Reconnect before submitting this report.</Alert>
+          <Alert tone="warning">
+            You&rsquo;re offline. Reconnect before submitting this report.
+          </Alert>
         </View>
       ) : null}
 
@@ -177,11 +199,17 @@ export function ReportTheftConfirmScreen() {
         accessibilityRole="checkbox"
         accessibilityState={{ checked: confirmed }}
       >
-        <View style={[styles.checkbox, confirmed ? styles.checkboxChecked : undefined]}>
-          {confirmed ? <CheckIcon size={14} color={colors.textInverse} /> : null}
+        <View
+          style={[
+            styles.checkbox,
+            confirmed ? styles.checkboxChecked : undefined,
+          ]}
+        >
+          {confirmed ? <CheckIcon size={14} color={t.colors.onNavy} /> : null}
         </View>
         <Text style={styles.confirmLabel}>
-          I confirm this asset was stolen or lost and I want to start the recovery process.
+          I confirm this asset was stolen or lost and I want to start the
+          recovery process.
         </Text>
       </Pressable>
 
@@ -192,81 +220,56 @@ export function ReportTheftConfirmScreen() {
       ) : null}
 
       <Button
-        variant="primary"
-        fullWidth
+        label="Submit theft report"
         loading={createCase.isPending}
-        disabled={!confirmed || !isOnline}
+        disabled={!confirmed}
         onPress={handleSubmit}
-      >
-        Submit theft report
-      </Button>
-    </Screen>
+        style={styles.stretch}
+      />
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.lg,
-  },
-  card: {
-    marginBottom: spacing.lg,
-    gap: spacing.sm,
-  },
-  assetName: {
-    fontSize: typography.sizes.lg,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  meta: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-  },
-  notesInput: {
-    minHeight: 96,
-    textAlignVertical: 'top',
-  },
-  disclosure: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.xs * 1.4,
-    marginBottom: spacing.lg,
-  },
-  confirmRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    minHeight: minTouchTarget,
-    marginBottom: spacing.lg,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.slate[300],
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  checkboxChecked: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  confirmLabel: {
-    flex: 1,
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.4,
-  },
-  alertSpacing: {
-    marginBottom: spacing.lg,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s4,
+    },
+    card: { marginBottom: t.spacing.s4, gap: t.spacing.s2 },
+    assetName: { ...t.type.title, color: t.colors.ink },
+    meta: { ...t.type.bodySm, color: t.colors.inkMuted },
+    notesInput: { minHeight: 96, textAlignVertical: 'top' },
+    disclosure: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
+    confirmRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: t.spacing.s2,
+      minHeight: minTouchTarget,
+      marginBottom: t.spacing.s4,
+    },
+    checkbox: {
+      width: 22,
+      height: 22,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: t.colors.inkMuted,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 2,
+    },
+    checkboxChecked: {
+      backgroundColor: t.colors.link,
+      borderColor: t.colors.link,
+    },
+    confirmLabel: { ...t.type.bodySm, flex: 1, color: t.colors.inkMuted },
+    alertSpacing: { marginBottom: t.spacing.s4 },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

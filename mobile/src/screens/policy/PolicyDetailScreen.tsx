@@ -1,30 +1,30 @@
 /**
  * Policy detail — GET /v1/policies/{policyId}.
  */
-import { useLocalSearchParams, useRouter, type Href } from "expo-router";
-import React, { useMemo } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { usePolicyQuery } from "../../api/hooks/usePolicies";
-import { usePlansQuery } from "../../api/hooks/usePlans";
-import { useAssetsQuery } from "../../api/hooks/useAssets";
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import React, { useMemo } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { usePolicyQuery } from '../../api/hooks/usePolicies';
+import { usePlansQuery } from '../../api/hooks/usePlans';
+import { useAssetsQuery } from '../../api/hooks/useAssets';
 import {
   formatAssetUsage,
   formatPlanPrice,
   formatPlanTierName,
   isAtAssetLimit,
   resolvePlanForPolicy,
-} from "../../api/plans";
+} from '../../api/plans';
 import {
   formatDate,
   formatPolicyStatus,
   policyStatusBadgeTone,
-} from "../../lib/asset-labels";
-import { DesignPage } from "../../components/DesignPage";
-import { Button, GlassCard } from "../../design";
-import { useDesignTokens, type DesignTokens } from "../../theme/designTheme";
-import { Alert } from "../../theme/primitives";
-import { PolicyStatusPill } from "./PolicyStatusPill";
-import { mapUserFacingError } from "../../lib/user-facing-errors";
+} from '../../lib/asset-labels';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
+import { PolicyStatusPill } from './PolicyStatusPill';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
 
 export function PolicyDetailScreen() {
   const t = useDesignTokens();
@@ -51,14 +51,14 @@ export function PolicyDetailScreen() {
         <GlassCard variant="solid">
           <Text style={styles.title}>Policy</Text>
           <Alert tone="danger">
-            {mapUserFacingError(error, { context: "policy" })}
+            {mapUserFacingError(error, { context: 'policy' })}
           </Alert>
         </GlassCard>
       </DesignPage>
     );
   }
 
-  const status = policy.status ?? "pending_activation";
+  const status = policy.status ?? 'pending_activation';
   const plans = plansQuery.data?.data ?? [];
   const plan = resolvePlanForPolicy(plans, policy);
   const assetCount = assetsQuery.data?.data?.length ?? 0;
@@ -86,7 +86,7 @@ export function PolicyDetailScreen() {
         />
         <DetailRow
           label="Billing status"
-          value={policy.billing?.billingStatus?.replace(/_/g, " ") ?? "—"}
+          value={policy.billing?.billingStatus?.replace(/_/g, ' ') ?? '—'}
         />
         <DetailRow
           label="Effective date"
@@ -108,7 +108,7 @@ export function PolicyDetailScreen() {
 
       <Button
         variant="secondary"
-        label={atLimit ? "Upgrade plan" : "Change plan"}
+        label={atLimit ? 'Upgrade plan' : 'Change plan'}
         onPress={() => router.push(`/policy/${policy.id}/change-plan` as Href)}
         style={[styles.stretch, styles.section]}
       />
@@ -167,8 +167,8 @@ function buildStyles(t: DesignTokens) {
       color: t.colors.inkMuted,
       marginBottom: t.spacing.s1,
     },
-    hint: { ...t.type.bodySm, color: t.colors.inkMuted, fontStyle: "italic" },
-    centered: { flex: 1, alignItems: "center", justifyContent: "center" },
-    stretch: { alignSelf: "stretch" },
+    hint: { ...t.type.bodySm, color: t.colors.inkMuted, fontStyle: 'italic' },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    stretch: { alignSelf: 'stretch' },
   });
 }

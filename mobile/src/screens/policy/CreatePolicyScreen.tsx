@@ -1,19 +1,19 @@
 /**
  * Choose a protection plan — lists catalog plans and subscribes via POST /v1/policies.
  */
-import { useRouter, type Href } from "expo-router";
-import React, { useMemo, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text } from "react-native";
-import { usePlansQuery } from "../../api/hooks/usePlans";
-import { useCreatePolicyMutation } from "../../api/hooks/usePolicies";
-import type { PlanCatalogItem } from "../../api/plans";
-import { ApiError } from "../../api/errors";
-import { mapUserFacingError } from "../../lib/user-facing-errors";
-import { DesignPage } from "../../components/DesignPage";
-import { Button, GlassCard } from "../../design";
-import { useDesignTokens, type DesignTokens } from "../../theme/designTheme";
-import { Alert } from "../../theme/primitives";
-import { PlanCatalogPicker } from "./PlanCatalogPicker";
+import { useRouter, type Href } from 'expo-router';
+import React, { useMemo, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { usePlansQuery } from '../../api/hooks/usePlans';
+import { useCreatePolicyMutation } from '../../api/hooks/usePolicies';
+import type { PlanCatalogItem } from '../../api/plans';
+import { ApiError } from '../../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
+import { PlanCatalogPicker } from './PlanCatalogPicker';
 
 export function CreatePolicyScreen() {
   const t = useDesignTokens();
@@ -42,14 +42,14 @@ export function CreatePolicyScreen() {
       }
     } catch (err) {
       setSelectedPlanId(null);
-      if (err instanceof ApiError && err.code === "PLAN_REQUIRES_QUOTE") {
+      if (err instanceof ApiError && err.code === 'PLAN_REQUIRES_QUOTE') {
         setError(
-          "Business plans require a custom quote. Contact us to continue.",
+          'Business plans require a custom quote. Contact us to continue.',
         );
-      } else if (err instanceof ApiError && err.code === "ACCOUNT_NOT_ACTIVE") {
-        setError("Verify your email before choosing a plan.");
+      } else if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
+        setError('Verify your email before choosing a plan.');
       } else {
-        setError(mapUserFacingError(err, { context: "policy" }));
+        setError(mapUserFacingError(err, { context: 'policy' }));
       }
     }
   }
@@ -70,7 +70,7 @@ export function CreatePolicyScreen() {
     return (
       <DesignPage>
         <Alert tone="danger">
-          {mapUserFacingError(plansQuery.error, { context: "policy" })}
+          {mapUserFacingError(plansQuery.error, { context: 'policy' })}
         </Alert>
         <Button
           label="Try again"
@@ -131,6 +131,6 @@ function buildStyles(t: DesignTokens) {
     alert: { marginBottom: t.spacing.s4 },
     loader: { marginTop: t.spacing.s8 },
     heroCard: { marginBottom: t.spacing.s4 },
-    stretch: { alignSelf: "stretch" },
+    stretch: { alignSelf: 'stretch' },
   });
 }

@@ -31,7 +31,9 @@ export function InstallationGuideScreen() {
   if (guideQuery.isError || !guideQuery.data) {
     return (
       <AssetPage>
-        <Alert tone="danger">{mapUserFacingError(guideQuery.error, { context: 'asset' })}</Alert>
+        <Alert tone="danger">
+          {mapUserFacingError(guideQuery.error, { context: 'asset' })}
+        </Alert>
       </AssetPage>
     );
   }
@@ -56,7 +58,11 @@ export function InstallationGuideScreen() {
       ))}
 
       {id ? (
-        <Button label="Register tracker ID" onPress={() => router.push(`/assets/${id}/activate-tracker` as Href)} style={styles.stretch} />
+        <Button
+          label="Register tracker ID"
+          onPress={() => router.push(`/assets/${id}/activate-tracker` as Href)}
+          style={styles.stretch}
+        />
       ) : null}
     </AssetPage>
   );
@@ -65,41 +71,50 @@ export function InstallationGuideScreen() {
 function buildStyles(t: DesignTokens) {
   return StyleSheet.create({
     centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',},
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     title: {
-    ...t.type.displayMd,
-    color: t.colors.ink,
-    marginBottom: t.spacing.s2,},
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s2,
+    },
     summary: {
-    ...t.type.body,
-    color: t.colors.inkMuted,
-    marginBottom: t.spacing.s4,},
+      ...t.type.body,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
     stepCard: {
-    marginBottom: t.spacing.s3,},
+      marginBottom: t.spacing.s3,
+    },
     stepHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: t.spacing.s3,
-    marginBottom: t.spacing.s2,},
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: t.spacing.s3,
+      marginBottom: t.spacing.s2,
+    },
     stepBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: t.radius.pill,
-    backgroundColor: t.colors.link,
-    alignItems: 'center',
-    justifyContent: 'center',},
+      width: 28,
+      height: 28,
+      borderRadius: t.radius.pill,
+      backgroundColor: t.colors.link,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     stepBadgeText: {
-    color: t.colors.onNavy,
-    ...t.type.label,},
+      color: t.colors.onNavy,
+      ...t.type.label,
+    },
     stepTitle: {
-    flex: 1,
-    ...t.type.title,
-    color: t.colors.ink,},
+      flex: 1,
+      ...t.type.title,
+      color: t.colors.ink,
+    },
     stepBody: {
-    ...t.type.body,
-    color: t.colors.inkMuted,},
+      ...t.type.body,
+      color: t.colors.inkMuted,
+    },
 
     stretch: { alignSelf: 'stretch' },
   });

@@ -32,7 +32,9 @@ export function DeviceActivationScreen() {
     if (!id) return;
     const trimmed = serialOrImei.trim();
     if (trimmed.length < 6) {
-      setFormError('Enter the IMEI or serial number from your tracker label (at least 6 characters).');
+      setFormError(
+        'Enter the IMEI or serial number from your tracker label (at least 6 characters).',
+      );
       return;
     }
 
@@ -68,8 +70,9 @@ export function DeviceActivationScreen() {
       </Text>
 
       <Alert tone="info" style={styles.info}>
-        Hardware vendor integration is still being finalised. Your device ID will be saved and
-        will activate automatically when partner connectivity goes live.
+        Hardware vendor integration is still being finalised. Your device ID
+        will be saved and will activate automatically when partner connectivity
+        goes live.
       </Alert>
 
       {formError ? (
@@ -95,16 +98,19 @@ export function DeviceActivationScreen() {
         />
       </GlassCard>
 
-      <Button label="Register and link tracker"
+      <Button
+        label="Register and link tracker"
         loading={registerMutation.isPending || linkMutation.isPending}
         onPress={() => void handleActivate()}
-       style={styles.stretch} />
+        style={styles.stretch}
+      />
 
-      <Button label="View installation guide first"
+      <Button
+        label="View installation guide first"
         variant="secondary"
         style={[styles.stretch, styles.secondary]}
         onPress={() => router.push(`/assets/${id}/installation-guide` as Href)}
-       />
+      />
     </AssetPage>
   );
 }
@@ -112,26 +118,33 @@ export function DeviceActivationScreen() {
 function buildStyles(t: DesignTokens) {
   return StyleSheet.create({
     centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',},
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     title: {
-    ...t.type.displayMd,
-    color: t.colors.ink,
-    marginBottom: t.spacing.s2,},
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s2,
+    },
     subtitle: {
-    ...t.type.body,
-    color: t.colors.inkMuted,
-    marginBottom: t.spacing.s4,},
+      ...t.type.body,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
     info: {
-    marginBottom: t.spacing.s4,},
+      marginBottom: t.spacing.s4,
+    },
     alert: {
-    marginBottom: t.spacing.s3,},
+      marginBottom: t.spacing.s3,
+    },
     form: {
-    marginBottom: t.spacing.s4,
-    gap: t.spacing.s3,},
+      marginBottom: t.spacing.s4,
+      gap: t.spacing.s3,
+    },
     secondary: {
-    marginTop: t.spacing.s3,},
+      marginTop: t.spacing.s3,
+    },
 
     stretch: { alignSelf: 'stretch' },
   });

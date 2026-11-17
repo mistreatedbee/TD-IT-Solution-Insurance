@@ -1,28 +1,28 @@
 /**
  * Change protection plan — PATCH /v1/policies/{policyId}/plan.
  */
-import { useLocalSearchParams, useRouter, type Href } from "expo-router";
-import React, { useMemo, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text } from "react-native";
-import { useAssetsQuery } from "../../api/hooks/useAssets";
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import React, { useMemo, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { useAssetsQuery } from '../../api/hooks/useAssets';
 import {
   useChangePolicyPlanMutation,
   usePolicyQuery,
-} from "../../api/hooks/usePolicies";
-import { usePlansQuery } from "../../api/hooks/usePlans";
-import type { PlanCatalogItem } from "../../api/plans";
+} from '../../api/hooks/usePolicies';
+import { usePlansQuery } from '../../api/hooks/usePlans';
+import type { PlanCatalogItem } from '../../api/plans';
 import {
   formatAssetUsage,
   formatPlanPrice,
   resolvePlanForPolicy,
-} from "../../api/plans";
-import { ApiError } from "../../api/errors";
-import { mapUserFacingError } from "../../lib/user-facing-errors";
-import { DesignPage } from "../../components/DesignPage";
-import { Button, GlassCard } from "../../design";
-import { useDesignTokens, type DesignTokens } from "../../theme/designTheme";
-import { Alert } from "../../theme/primitives";
-import { PlanCatalogPicker } from "./PlanCatalogPicker";
+} from '../../api/plans';
+import { ApiError } from '../../api/errors';
+import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
+import { PlanCatalogPicker } from './PlanCatalogPicker';
 
 export function ChangePlanScreen() {
   const t = useDesignTokens();
@@ -57,19 +57,19 @@ export function ChangePlanScreen() {
       router.replace(`/policy/${policy.id}` as Href);
     } catch (err) {
       setSelectedPlanId(null);
-      if (err instanceof ApiError && err.code === "PLAN_REQUIRES_QUOTE") {
+      if (err instanceof ApiError && err.code === 'PLAN_REQUIRES_QUOTE') {
         setError(
-          "Business plans require a custom quote. Contact us to continue.",
+          'Business plans require a custom quote. Contact us to continue.',
         );
       } else if (
         err instanceof ApiError &&
-        err.code === "PLAN_DOWNGRADE_NOT_ALLOWED"
+        err.code === 'PLAN_DOWNGRADE_NOT_ALLOWED'
       ) {
-        setError(mapUserFacingError(err, { context: "policy" }));
-      } else if (err instanceof ApiError && err.code === "ACCOUNT_NOT_ACTIVE") {
-        setError("Verify your email before changing your plan.");
+        setError(mapUserFacingError(err, { context: 'policy' }));
+      } else if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
+        setError('Verify your email before changing your plan.');
       } else {
-        setError(mapUserFacingError(err, { context: "policy" }));
+        setError(mapUserFacingError(err, { context: 'policy' }));
       }
     }
   }
@@ -90,7 +90,7 @@ export function ChangePlanScreen() {
     return (
       <DesignPage>
         <Alert tone="danger">
-          {mapUserFacingError(policyQuery.error, { context: "policy" })}
+          {mapUserFacingError(policyQuery.error, { context: 'policy' })}
         </Alert>
         <Button
           label="Go back"
@@ -105,7 +105,7 @@ export function ChangePlanScreen() {
     return (
       <DesignPage>
         <Alert tone="danger">
-          {mapUserFacingError(plansQuery.error, { context: "policy" })}
+          {mapUserFacingError(plansQuery.error, { context: 'policy' })}
         </Alert>
         <Button
           label="Try again"
@@ -130,7 +130,7 @@ export function ChangePlanScreen() {
         <Text style={styles.currentLabel}>Current plan</Text>
         <Text style={styles.currentName}>{currentPlan.name}</Text>
         <Text style={styles.currentMeta}>
-          {formatPlanPrice(currentPlan as PlanCatalogItem)} ·{" "}
+          {formatPlanPrice(currentPlan as PlanCatalogItem)} ·{' '}
           {formatAssetUsage(assetCount, currentPlan.maxAssets)}
         </Text>
       </GlassCard>
@@ -187,6 +187,6 @@ function buildStyles(t: DesignTokens) {
     alert: { marginBottom: t.spacing.s4 },
     loader: { marginTop: t.spacing.s8 },
     heroCard: { marginBottom: t.spacing.s4 },
-    stretch: { alignSelf: "stretch" },
+    stretch: { alignSelf: 'stretch' },
   });
 }
