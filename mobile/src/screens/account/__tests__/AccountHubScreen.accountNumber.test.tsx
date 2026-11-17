@@ -146,7 +146,7 @@ describe('AccountHubScreen — rows keep their behaviour after the restyle', () 
   it('shows section titles, the account state word and the two-factor line', async () => {
     await renderWithProviders(<AccountHubScreen />);
     expect(screen.getByText('Your protection')).toBeTruthy();
-    expect(screen.getByText('Security')).toBeTruthy();
+    expect(screen.getByText('Settings')).toBeTruthy();
     expect(screen.getByText('active')).toBeTruthy();
     expect(screen.getByText('Two-factor authentication enabled')).toBeTruthy();
   });
