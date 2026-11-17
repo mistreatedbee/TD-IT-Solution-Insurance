@@ -56,7 +56,7 @@ export function AssetImageCard({ item }: { item: AssetTrackingView }) {
                 </View>
               ) : null}
             </View>
-            <ChevronRightIcon size={20} color={t.colors.inkMuted} />
+            <ChevronRightIcon size={20} color={t.colors.iconMuted} />
           </View>
           <Text style={[t.type.bodySm, { color: t.colors.inkMuted, marginTop: t.spacing.s3 }]}>{footer}</Text>
         </GlassCard>

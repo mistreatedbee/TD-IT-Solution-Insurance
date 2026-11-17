@@ -15,7 +15,8 @@ import { useTheme, type DesignMode } from './ThemeProvider';
 
 export interface DesignTokens {
   mode: DesignMode;
-  colors: DesignColors;
+  /** Colours plus `iconMuted`: secondary icons, which read as near-white in the night theme. */
+  colors: DesignColors & { iconMuted: string };
   shadows: (typeof designShadows)['day'];
   spacing: typeof designSpacing;
   radius: typeof designRadius;
@@ -30,7 +31,10 @@ export function useDesignTokens(): DesignTokens {
   return useMemo(
     () => ({
       mode,
-      colors: mode === 'night' ? designColorsNight : designColorsDay,
+      colors:
+        mode === 'night'
+          ? { ...designColorsNight, iconMuted: designColorsNight.ink }
+          : { ...designColorsDay, iconMuted: designColorsDay.inkMuted },
       shadows: designShadows[mode],
       spacing: designSpacing,
       radius: designRadius,

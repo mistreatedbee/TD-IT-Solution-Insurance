@@ -152,7 +152,7 @@ function NotificationPrefsRow({ onPress }: { onPress: () => void }) {
             <Text style={[t.type.title, { color: t.colors.ink }]}>Notification preferences</Text>
             <Text style={[t.type.bodySm, { color: t.colors.inkMuted }]}>Choose how alerts reach you</Text>
           </View>
-          <ChevronRightIcon size={20} color={t.colors.inkMuted} />
+          <ChevronRightIcon size={20} color={t.colors.iconMuted} />
         </View>
       </GlassCard>
     </Pressable>

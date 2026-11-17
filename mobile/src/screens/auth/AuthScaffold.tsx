@@ -167,7 +167,7 @@ export function PasswordField(props: PasswordFieldProps) {
           hitSlop={8}
           style={styles.eye}
         >
-          <Icon size={20} strokeWidth={1.75} color={t.colors.inkMuted} />
+          <Icon size={20} strokeWidth={1.75} color={t.colors.iconMuted} />
         </Pressable>
       }
     />

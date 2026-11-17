@@ -99,22 +99,61 @@ function GradientLayer({ size }: { size: { w: number; h: number } | null }) {
       testID="td-backdrop-gradient"
     >
       <Defs>
-        <LinearGradient id="tdbg" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={colors.bgTop} />
-          <Stop offset="1" stopColor={colors.bgBottom} />
-        </LinearGradient>
-        <RadialGradient id="tdgb" cx="100%" cy="0%" rx="70%" ry="40%" fx="100%" fy="0%" gradientUnits="objectBoundingBox">
-          <Stop offset="0" stopColor={blue.color} stopOpacity={blue.opacity} />
-          <Stop offset="1" stopColor={blue.color} stopOpacity={0} />
-        </RadialGradient>
-        <RadialGradient id="tdgo" cx="0%" cy="100%" rx="60%" ry="35%" fx="0%" fy="100%" gradientUnits="objectBoundingBox">
-          <Stop offset="0" stopColor={orange.color} stopOpacity={orange.opacity} />
-          <Stop offset="1" stopColor={orange.color} stopOpacity={0} />
-        </RadialGradient>
+        {size ? (
+          <>
+            {/* Explicit pixel geometry (userSpaceOnUse): percentage bounding-box gradients stopped painting
+                about 100pt above the bottom of the screen on iOS inside the tab shell. */}
+            <LinearGradient id="tdbg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={size.h}>
+              <Stop offset="0" stopColor={colors.bgTop} />
+              <Stop offset="1" stopColor={colors.bgBottom} />
+            </LinearGradient>
+            <RadialGradient
+              id="tdgb"
+              gradientUnits="userSpaceOnUse"
+              cx={size.w}
+              cy={0}
+              fx={size.w}
+              fy={0}
+              rx={size.w * 0.7}
+              ry={size.h * 0.4}
+            >
+              <Stop offset="0" stopColor={blue.color} stopOpacity={blue.opacity} />
+              <Stop offset="1" stopColor={blue.color} stopOpacity={0} />
+            </RadialGradient>
+            <RadialGradient
+              id="tdgo"
+              gradientUnits="userSpaceOnUse"
+              cx={0}
+              cy={size.h}
+              fx={0}
+              fy={size.h}
+              rx={size.w * 0.6}
+              ry={size.h * 0.35}
+            >
+              <Stop offset="0" stopColor={orange.color} stopOpacity={orange.opacity} />
+              <Stop offset="1" stopColor={orange.color} stopOpacity={0} />
+            </RadialGradient>
+          </>
+        ) : (
+          <>
+            <LinearGradient id="tdbg" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={colors.bgTop} />
+              <Stop offset="1" stopColor={colors.bgBottom} />
+            </LinearGradient>
+            <RadialGradient id="tdgb" cx="100%" cy="0%" rx="70%" ry="40%" fx="100%" fy="0%" gradientUnits="objectBoundingBox">
+              <Stop offset="0" stopColor={blue.color} stopOpacity={blue.opacity} />
+              <Stop offset="1" stopColor={blue.color} stopOpacity={0} />
+            </RadialGradient>
+            <RadialGradient id="tdgo" cx="0%" cy="100%" rx="60%" ry="35%" fx="0%" fy="100%" gradientUnits="objectBoundingBox">
+              <Stop offset="0" stopColor={orange.color} stopOpacity={orange.opacity} />
+              <Stop offset="1" stopColor={orange.color} stopOpacity={0} />
+            </RadialGradient>
+          </>
+        )}
       </Defs>
-      <Rect x={0} y={0} width="100%" height="100%" fill="url(#tdbg)" />
-      <Rect x={0} y={0} width="100%" height="100%" fill="url(#tdgb)" />
-      <Rect x={0} y={0} width="100%" height="100%" fill="url(#tdgo)" />
+      <Rect x={0} y={0} width={size ? size.w : '100%'} height={size ? size.h : '100%'} fill="url(#tdbg)" />
+      <Rect x={0} y={0} width={size ? size.w : '100%'} height={size ? size.h : '100%'} fill="url(#tdgb)" />
+      <Rect x={0} y={0} width={size ? size.w : '100%'} height={size ? size.h : '100%'} fill="url(#tdgo)" />
     </Svg>
   );
 }

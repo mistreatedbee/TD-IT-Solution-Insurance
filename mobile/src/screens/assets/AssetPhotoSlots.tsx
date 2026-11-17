@@ -32,7 +32,7 @@ export function AssetPhotoSlots({ assetType }: { assetType: string }) {
               { borderRadius: t.radius.md, borderColor: t.colors.borderControl, backgroundColor: t.colors.bgSunken, padding: t.spacing.s2 },
             ]}
           >
-            <CameraIcon size={22} color={t.colors.inkMuted} strokeWidth={1.75} />
+            <CameraIcon size={22} color={t.colors.iconMuted} strokeWidth={1.75} />
             <Text style={[t.type.labelSm, { color: t.colors.inkMuted, textAlign: 'center', marginTop: t.spacing.s1 }]}>{label}</Text>
           </View>
         ))}

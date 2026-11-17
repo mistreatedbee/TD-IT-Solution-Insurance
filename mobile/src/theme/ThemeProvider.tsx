@@ -8,7 +8,6 @@ import React, {
   useState,
 } from 'react';
 import {
-  Appearance,
   Platform,
   useColorScheme,
   type ViewStyle,
@@ -82,43 +81,26 @@ function buildThemeValue(
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // Appearance.setColorScheme makes native chrome (status bar, alerts, keyboards) follow the manual choice too;
-  // useColorScheme then reports it, so the palette below needs no separate override path.
+  // The manual choice only drives our own palette. It deliberately does not call Appearance.setColorScheme:
+  // doing so at start-up with "System" forced light mode on phones that are set to dark.
   const systemScheme = useColorScheme();
   const [appearance, setAppearanceState] =
     useState<AppearancePreference>('system');
 
-  const applyToNative = useCallback((pref: AppearancePreference) => {
-    try {
-      // null hands control back to the phone's setting (accepted at runtime; the type omits it).
-      Appearance.setColorScheme?.(
-        (pref === 'system' ? null : pref) as 'light' | 'dark',
-      );
-    } catch {
-      // older runtimes: the palette still follows the preference below
-    }
-  }, []);
-
   useEffect(() => {
     let cancelled = false;
     void loadAppearancePreference().then((pref) => {
-      if (cancelled) return;
-      setAppearanceState(pref);
-      applyToNative(pref);
+      if (!cancelled) setAppearanceState(pref);
     });
     return () => {
       cancelled = true;
     };
-  }, [applyToNative]);
+  }, []);
 
-  const setAppearance = useCallback(
-    (pref: AppearancePreference) => {
-      setAppearanceState(pref);
-      applyToNative(pref);
-      void saveAppearancePreference(pref);
-    },
-    [applyToNative],
-  );
+  const setAppearance = useCallback((pref: AppearancePreference) => {
+    setAppearanceState(pref);
+    void saveAppearancePreference(pref);
+  }, []);
 
   const colorScheme: ColorSchemeName =
     appearance === 'system'

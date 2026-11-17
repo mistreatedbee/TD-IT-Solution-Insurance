@@ -126,7 +126,7 @@ export function SecurityProfileScreen() {
         onPress={handleLogout}
         accessibilityRole="button"
       >
-        <LogOutIcon size={20} color={t.colors.inkMuted} />
+        <LogOutIcon size={20} color={t.colors.iconMuted} />
         <Text style={styles.rowTitle}>Log out</Text>
       </Pressable>
 

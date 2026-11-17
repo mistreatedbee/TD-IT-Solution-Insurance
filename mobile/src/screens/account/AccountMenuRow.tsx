@@ -86,7 +86,7 @@ export function AccountMenuRow({
         {showChevron && onPress ? (
           <ChevronRightIcon
             size={20}
-            color={t.colors.inkMuted}
+            color={t.colors.iconMuted}
             strokeWidth={1.75}
           />
         ) : null}

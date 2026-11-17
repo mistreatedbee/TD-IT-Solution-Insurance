@@ -7,6 +7,7 @@ import {
 import React from 'react';
 import { View } from 'react-native';
 import { useDesignTokens } from '../../../src/theme/designTheme';
+import { useTabBarHidden } from '../../../src/navigation/tabBarVisibility';
 import { Backdrop } from '../../../src/design/Backdrop';
 import {
   FEATURE_ALERTS_ENABLED,
@@ -26,6 +27,11 @@ export default function AppTabsLayout() {
   const tabSceneStyle = useTabSceneStyle();
   const mapTabSceneStyle = useMapTabSceneStyle();
   const { mode } = useDesignTokens();
+  const setTabBarHidden = useTabBarHidden((v) => v.setHidden);
+  // Safety: the tab bar can only be hidden by the full-screen map, so always start the shell with it showing.
+  React.useEffect(() => {
+    setTabBarHidden(false);
+  }, [setTabBarHidden]);
   // The navigation theme paints an opaque default (light grey) behind every tab screen, which would hide the
   // shared gradient. Make it transparent for the tab area only.
   const navTheme = React.useMemo(() => {

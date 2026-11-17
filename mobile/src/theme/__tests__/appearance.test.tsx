@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { Appearance, Text } from 'react-native';
+import { Text } from 'react-native';
 import { ThemeProvider, useTheme } from '../ThemeProvider';
 
 const mockStore = new Map<string, string>();
@@ -37,7 +37,6 @@ function renderProbe() {
 describe('appearance preference', () => {
   beforeEach(() => {
     mockStore.clear();
-    jest.spyOn(Appearance, 'setColorScheme').mockImplementation(() => undefined);
   });
   afterEach(() => jest.restoreAllMocks());
 
@@ -46,13 +45,12 @@ describe('appearance preference', () => {
     expect(screen.getByTestId('pref').props.children).toBe('system');
   });
 
-  it('switches to dark, applies it to the native scheme and remembers it', async () => {
+  it('switches to dark and remembers it', async () => {
     await renderProbe();
     await act(async () => {
       fireEvent.press(screen.getByText('choose-dark'));
     });
     expect(screen.getByTestId('mode').props.children).toBe('night');
-    expect(Appearance.setColorScheme).toHaveBeenCalledWith('dark');
     expect(mockStore.get('td-appearance-preference')).toBe('dark');
   });
 
