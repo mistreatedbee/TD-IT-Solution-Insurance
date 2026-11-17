@@ -1,205 +1,317 @@
 /**
- * Welcome hero: a stylised map showing how assets are tracked. A car moves along a route, a phone and a laptop sit
- * in their own places with pulsing pings and a safe-zone ring, and a glass card cycles through what is being
- * tracked. It is an ILLUSTRATION (labelled "Example"), not live data. Respects reduced motion (still frame).
- * Design tokens only, so it reads in the day and night themes.
+ * Welcome hero: a real map (Apple Maps tiles of Johannesburg, not interactive) with an animated example of assets
+ * being tracked. A car drives a route and leaves a trail; a phone and a laptop sit in place; each asset is shown by
+ * its photo on a map marker with a small name tag; a glass card cycles through what is being tracked.
+ * It is an ILLUSTRATION (labelled "Example"), not live data. Respects reduced motion (still frame). If the map
+ * module is unavailable it falls back to a drawn map. Design tokens only (day and night).
  */
+import React, { Component, useEffect, useMemo, useState } from 'react';
 import {
-  CarIcon,
-  LaptopIcon,
-  SmartphoneIcon,
-  type LucideIcon,
-} from 'lucide-react-native';
-import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+  Image,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import Animated, {
   Easing,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, {
-  Circle,
-  Ellipse,
-  Line,
-  Path,
-  Polyline,
-  Rect,
-} from 'react-native-svg';
+import Svg, { Ellipse, Line, Path, Polyline, Rect } from 'react-native-svg';
+import { getAssetVisual } from '../../../screens/home/assetVisuals';
 import { useDesignTokens } from '../../../theme/designTheme';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 
 type Pt = { x: number; y: number };
 
-/** Car route in map-relative units (0..1), travelled back and forth. */
-const ROUTE: Pt[] = [
-  { x: 0.1, y: 0.8 },
-  { x: 0.3, y: 0.74 },
-  { x: 0.44, y: 0.54 },
-  { x: 0.62, y: 0.48 },
-  { x: 0.8, y: 0.3 },
-  { x: 0.92, y: 0.2 },
-];
-const PHONE: Pt = { x: 0.22, y: 0.3 };
-const LAPTOP: Pt = { x: 0.74, y: 0.72 };
+/** Real map tiles (Johannesburg, city scale) behind the animation. */
+const MAP_CENTER = { latitude: -26.2041, longitude: 28.0473 };
+const MAP_LAT_DELTA = 0.07;
 
-const TRACKED: {
-  key: 'car' | 'phone' | 'laptop';
-  name: string;
-  status: string;
-  Icon: LucideIcon;
-}[] = [
-  {
-    key: 'car',
-    name: 'Car',
-    status: 'Moving · updated just now',
-    Icon: CarIcon,
-  },
-  {
-    key: 'phone',
-    name: 'Phone',
-    status: 'At Home · inside safe zone',
-    Icon: SmartphoneIcon,
-  },
-  {
-    key: 'laptop',
-    name: 'Laptop',
-    status: 'At Office · inside safe zone',
-    Icon: LaptopIcon,
-  },
+/** Car route in map-relative units (0..1), left to right, driven back and forth. */
+const ROUTE: Pt[] = [
+  { x: 0.1, y: 0.9 },
+  { x: 0.3, y: 0.84 },
+  { x: 0.44, y: 0.74 },
+  { x: 0.62, y: 0.68 },
+  { x: 0.8, y: 0.6 },
+  { x: 0.9, y: 0.55 },
 ];
+const PHONE: Pt = { x: 0.24, y: 0.52 };
+const LAPTOP: Pt = { x: 0.74, y: 0.93 };
+
+type Key = 'car' | 'phone' | 'laptop';
+const TRACKED: { key: Key; assetType: string; name: string; status: string }[] =
+  [
+    {
+      key: 'car',
+      assetType: 'vehicle',
+      name: 'Car',
+      status: 'Moving · updated just now',
+    },
+    {
+      key: 'phone',
+      assetType: 'smartphone',
+      name: 'Phone',
+      status: 'At Home · inside safe zone',
+    },
+    {
+      key: 'laptop',
+      assetType: 'laptop',
+      name: 'Laptop',
+      status: 'At Office · inside safe zone',
+    },
+  ];
 
 const CARD_HEIGHT = 58;
 const GAP = 10;
 const SIDE_MARGIN = 16;
+const TAG_HEIGHT = 20;
+const TAG_GAP = 4;
+const TAIL = 7;
+/** Keeps every marker (tag included) fully inside the map, clear of the "Example" label. */
+const MIN_TOP = 30;
 
 export interface ProtectionMapHeroProps {
   /** Total height available, including the info card. */
   height?: number;
 }
 
-function Pulse({
-  size,
-  color,
-  reduced,
-  delay = 0,
-}: {
-  size: number;
-  color: string;
-  reduced: boolean;
-  delay?: number;
-}) {
-  const p = useSharedValue(0);
-  useEffect(() => {
-    if (reduced) return;
-    const id = setTimeout(() => {
-      p.value = withRepeat(
-        withTiming(1, { duration: 2400, easing: Easing.out(Easing.quad) }),
-        -1,
-        false,
-      );
-    }, delay);
-    return () => clearTimeout(id);
-  }, [delay, p, reduced]);
-  const style = useAnimatedStyle(() => ({
-    opacity: interpolate(p.value, [0, 1], [reduced ? 0.25 : 0.55, 0]),
-    transform: [{ scale: interpolate(p.value, [0, 1], [0.6, 2.4]) }],
-  }));
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        {
-          position: 'absolute',
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: 2,
-          borderColor: color,
-        },
-        style,
-      ]}
-    />
-  );
+function loadMapView(): React.ComponentType<Record<string, unknown>> | null {
+  if (Platform.OS === 'web') return null;
+  try {
+    return (
+      require('react-native-maps') as {
+        default: React.ComponentType<Record<string, unknown>>;
+      }
+    ).default;
+  } catch {
+    return null;
+  }
+}
+
+class MapBoundary extends Component<
+  { fallback: React.ReactNode; children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
 }
 
 export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
   const t = useDesignTokens();
+  const isDark = t.mode === 'night';
   const reduced = useReducedMotion();
   const { width } = useWindowDimensions();
+  const MapView = useMemo(loadMapView, []);
 
   const mapW = Math.max(220, width - SIDE_MARGIN * 2);
   const mapH = Math.max(120, height - CARD_HEIGHT - GAP);
-  const pin = Math.max(34, Math.min(46, mapH * 0.2));
+  const thumb = Math.max(36, Math.min(48, mapH * 0.2));
+  const boxW = 96;
+  const boxH = TAG_HEIGHT + TAG_GAP + thumb + TAIL;
 
-  const progress = useSharedValue(reduced ? 0.45 : 0);
+  const progress = useSharedValue(reduced ? 0.5 : 0);
+  const blink = useSharedValue(0);
   const [active, setActive] = useState(0);
 
   useEffect(() => {
     if (reduced) return;
     progress.value = withRepeat(
-      withTiming(1, { duration: 9000, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: 9500, easing: Easing.inOut(Easing.ease) }),
       -1,
       true,
+    );
+    blink.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 900 }),
+        withTiming(0.25, { duration: 900 }),
+      ),
+      -1,
+      false,
     );
     const id = setInterval(
       () => setActive((i) => (i + 1) % TRACKED.length),
       3200,
     );
     return () => clearInterval(id);
-  }, [progress, reduced]);
+  }, [blink, progress, reduced]);
 
   const inputs = useMemo(() => ROUTE.map((_, i) => i / (ROUTE.length - 1)), []);
   const xs = useMemo(() => ROUTE.map((p) => p.x), []);
   const ys = useMemo(() => ROUTE.map((p) => p.y), []);
 
+  // The marker's tail tip sits on the route point.
   const carStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: interpolate(progress.value, inputs, xs) * mapW - pin / 2 },
-      { translateY: interpolate(progress.value, inputs, ys) * mapH - pin / 2 },
+      { translateX: interpolate(progress.value, inputs, xs) * mapW - boxW / 2 },
+      {
+        translateY: Math.max(
+          MIN_TOP,
+          interpolate(progress.value, inputs, ys) * mapH - boxH,
+        ),
+      },
     ],
   }));
+  // The route is left to right, so revealing the drawn trail up to the car's x gives a trail behind the car.
+  const trailClip = useAnimatedStyle(() => ({
+    width: interpolate(progress.value, inputs, xs) * mapW,
+  }));
+  const liveDot = useAnimatedStyle(() => ({ opacity: blink.value }));
 
   const routePoints = ROUTE.map((p) => `${p.x * mapW},${p.y * mapH}`).join(' ');
   const focus = TRACKED[active]!;
 
-  const glass = {
-    backgroundColor: t.colors.glassFill,
-    borderColor: t.colors.glassBorder,
-  };
-
-  const pinNode = (key: 'car' | 'phone' | 'laptop', Icon: LucideIcon) => {
-    const isActive = focus.key === key;
-    return (
-      <View
-        style={[
-          styles.pin,
-          glass,
-          {
-            width: pin,
-            height: pin,
-            borderRadius: pin / 2,
-            borderColor: isActive ? t.colors.brandOrange : t.colors.glassBorder,
-            transform: [{ scale: isActive ? 1.14 : 1 }],
-          },
-        ]}
-      >
-        <Icon
-          size={pin * 0.48}
-          color={isActive ? t.colors.brandOrange : t.colors.ink}
-          strokeWidth={1.9}
+  const tag = (text: string, isActive: boolean, live = false) => (
+    <View
+      style={[
+        styles.tag,
+        {
+          height: TAG_HEIGHT,
+          backgroundColor: t.colors.bgRaised,
+          borderColor: isActive ? t.colors.brandOrange : t.colors.borderSubtle,
+        },
+      ]}
+    >
+      {live ? (
+        <Animated.View
+          style={[
+            styles.liveDot,
+            { backgroundColor: t.colors.brandOrange },
+            liveDot,
+          ]}
         />
+      ) : null}
+      <Text style={[t.type.labelSm, { color: t.colors.ink, fontSize: 10 }]}>
+        {text}
+      </Text>
+    </View>
+  );
+
+  /** Photo marker: the asset image in a rounded square with a pointer, so no circles. */
+  const marker = (key: Key, assetType: string, text: string, live = false) => {
+    const isActive = focus.key === key;
+    const edge = isActive ? t.colors.brandOrange : t.colors.bgRaised;
+    return (
+      <View style={[styles.marker, { width: boxW, height: boxH }]}>
+        {tag(text, isActive, live)}
+        <View style={{ height: TAG_GAP }} />
+        <View
+          style={{
+            transform: [{ scale: isActive ? 1.1 : 1 }],
+            alignItems: 'center',
+          }}
+        >
+          <View
+            style={[
+              styles.thumb,
+              {
+                width: thumb,
+                height: thumb,
+                borderRadius: 12,
+                borderColor: edge,
+                backgroundColor: t.colors.bgRaised,
+              },
+            ]}
+          >
+            <Image
+              source={getAssetVisual(assetType).image}
+              style={styles.thumbImage}
+              resizeMode="contain"
+              accessibilityIgnoresInvertColors
+            />
+          </View>
+          <View
+            style={[
+              styles.tail,
+              { backgroundColor: edge, width: TAIL * 1.6, height: TAIL * 1.6 },
+            ]}
+          />
+        </View>
       </View>
     );
   };
 
   const place = (p: Pt) => ({
     position: 'absolute' as const,
-    left: p.x * mapW - pin / 2,
-    top: p.y * mapH - pin / 2,
+    left: Math.min(Math.max(4, p.x * mapW - boxW / 2), mapW - boxW - 4),
+    top: Math.max(MIN_TOP, p.y * mapH - boxH),
   });
+
+  const DrawnBackdrop = () => (
+    <Svg width={mapW} height={mapH} style={StyleSheet.absoluteFill}>
+      <Rect x={0} y={0} width={mapW} height={mapH} fill={t.colors.bgSunken} />
+      <Ellipse
+        cx={mapW * 0.58}
+        cy={mapH * 0.16}
+        rx={mapW * 0.17}
+        ry={mapH * 0.11}
+        fill={t.colors.success}
+        opacity={0.16}
+      />
+      <Ellipse
+        cx={mapW * 0.1}
+        cy={mapH * 0.58}
+        rx={mapW * 0.12}
+        ry={mapH * 0.1}
+        fill={t.colors.link}
+        opacity={0.14}
+      />
+      {[0.18, 0.38, 0.62, 0.86].map((y) => (
+        <Line
+          key={`h${y}`}
+          x1={0}
+          y1={mapH * y}
+          x2={mapW}
+          y2={mapH * (y + 0.04)}
+          stroke={t.colors.borderSubtle}
+          strokeWidth={1}
+        />
+      ))}
+      {[0.14, 0.34, 0.56, 0.78, 0.94].map((x) => (
+        <Line
+          key={`v${x}`}
+          x1={mapW * x}
+          y1={0}
+          x2={mapW * (x - 0.04)}
+          y2={mapH}
+          stroke={t.colors.borderSubtle}
+          strokeWidth={1}
+        />
+      ))}
+      <Path
+        d={`M0 ${mapH * 0.62} Q ${mapW * 0.4} ${mapH * 0.5} ${mapW} ${mapH * 0.32}`}
+        stroke={t.colors.bgRaised}
+        strokeWidth={9}
+        fill="none"
+        opacity={0.95}
+      />
+      <Path
+        d={`M${mapW * 0.46} 0 Q ${mapW * 0.5} ${mapH * 0.5} ${mapW * 0.36} ${mapH}`}
+        stroke={t.colors.bgRaised}
+        strokeWidth={7}
+        fill="none"
+        opacity={0.9}
+      />
+    </Svg>
+  );
+
+  const glass = {
+    backgroundColor: t.colors.glassFill,
+    borderColor: t.colors.glassBorder,
+  };
+  const cardVisual = getAssetVisual(focus.assetType).image;
 
   return (
     <View
@@ -220,135 +332,78 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
           },
         ]}
       >
-        <Svg width={mapW} height={mapH} style={StyleSheet.absoluteFill}>
-          <Rect
-            x={0}
-            y={0}
-            width={mapW}
-            height={mapH}
-            fill={t.colors.bgSunken}
-          />
-          {/* park and water */}
-          <Ellipse
-            cx={mapW * 0.58}
-            cy={mapH * 0.18}
-            rx={mapW * 0.17}
-            ry={mapH * 0.12}
-            fill={t.colors.success}
-            opacity={0.16}
-          />
-          <Ellipse
-            cx={mapW * 0.12}
-            cy={mapH * 0.55}
-            rx={mapW * 0.12}
-            ry={mapH * 0.1}
-            fill={t.colors.link}
-            opacity={0.14}
-          />
-          {/* minor streets */}
-          {[0.18, 0.38, 0.62, 0.86].map((y) => (
-            <Line
-              key={`h${y}`}
-              x1={0}
-              y1={mapH * y}
-              x2={mapW}
-              y2={mapH * (y + 0.04)}
-              stroke={t.colors.borderSubtle}
-              strokeWidth={1}
+        {MapView ? (
+          <MapBoundary fallback={<DrawnBackdrop />}>
+            <MapView
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+              initialRegion={{
+                ...MAP_CENTER,
+                latitudeDelta: MAP_LAT_DELTA,
+                longitudeDelta: MAP_LAT_DELTA * (mapW / mapH),
+              }}
+              scrollEnabled={false}
+              zoomEnabled={false}
+              rotateEnabled={false}
+              pitchEnabled={false}
+              toolbarEnabled={false}
+              showsCompass={false}
+              showsPointsOfInterest={false}
+              showsBuildings={false}
+              liteMode
+              userInterfaceStyle={isDark ? 'dark' : 'light'}
             />
-          ))}
-          {[0.14, 0.34, 0.56, 0.78, 0.94].map((x) => (
-            <Line
-              key={`v${x}`}
-              x1={mapW * x}
-              y1={0}
-              x2={mapW * (x - 0.04)}
-              y2={mapH}
-              stroke={t.colors.borderSubtle}
-              strokeWidth={1}
+          </MapBoundary>
+        ) : (
+          <DrawnBackdrop />
+        )}
+
+        {/* the trail the car has driven, revealed up to the car */}
+        <Animated.View
+          style={[styles.trailClip, { height: mapH }, trailClip]}
+          pointerEvents="none"
+        >
+          <Svg width={mapW} height={mapH}>
+            <Polyline
+              points={routePoints}
+              stroke={t.colors.bgRaised}
+              strokeWidth={8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
             />
-          ))}
-          {/* main roads */}
-          <Path
-            d={`M0 ${mapH * 0.62} Q ${mapW * 0.4} ${mapH * 0.5} ${mapW} ${mapH * 0.32}`}
-            stroke={t.colors.bgRaised}
-            strokeWidth={9}
-            fill="none"
-            opacity={0.95}
-          />
-          <Path
-            d={`M${mapW * 0.46} 0 Q ${mapW * 0.5} ${mapH * 0.5} ${mapW * 0.36} ${mapH}`}
-            stroke={t.colors.bgRaised}
-            strokeWidth={7}
-            fill="none"
-            opacity={0.9}
-          />
-          {/* the car's route and the laptop's safe zone */}
-          <Polyline
-            points={routePoints}
-            stroke={t.colors.link}
-            strokeWidth={2.5}
-            strokeDasharray="2 7"
-            strokeLinecap="round"
-            fill="none"
-            opacity={0.75}
-          />
-          <Circle
-            cx={LAPTOP.x * mapW}
-            cy={LAPTOP.y * mapH}
-            r={pin * 1.15}
-            stroke={t.colors.success}
-            strokeWidth={1.5}
-            strokeDasharray="5 5"
-            fill={t.colors.success}
-            fillOpacity={0.08}
-          />
-          <Circle
-            cx={PHONE.x * mapW}
-            cy={PHONE.y * mapH}
-            r={pin * 1.15}
-            stroke={t.colors.success}
-            strokeWidth={1.5}
-            strokeDasharray="5 5"
-            fill={t.colors.success}
-            fillOpacity={0.08}
-          />
-        </Svg>
+            <Polyline
+              points={routePoints}
+              stroke={t.colors.brandOrange}
+              strokeWidth={3.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </Svg>
+        </Animated.View>
 
         <Text
           style={[
             t.type.labelSm,
             styles.exampleTag,
-            { color: t.colors.inkMuted },
+            { color: t.colors.ink, backgroundColor: t.colors.bgRaised },
           ]}
         >
           Example
         </Text>
 
         <View style={place(PHONE)} pointerEvents="none">
-          <Pulse
-            size={pin}
-            color={t.colors.link}
-            reduced={reduced}
-            delay={600}
-          />
-          {pinNode('phone', SmartphoneIcon)}
+          {marker('phone', 'smartphone', 'Home')}
         </View>
         <View style={place(LAPTOP)} pointerEvents="none">
-          <Pulse
-            size={pin}
-            color={t.colors.link}
-            reduced={reduced}
-            delay={1500}
-          />
-          {pinNode('laptop', LaptopIcon)}
+          {marker('laptop', 'laptop', 'Office')}
         </View>
         <Animated.View
-          style={[styles.carWrap, { width: pin, height: pin }, carStyle]}
+          style={[styles.carWrap, { width: boxW, height: boxH }, carStyle]}
           pointerEvents="none"
         >
-          <Pulse size={pin} color={t.colors.brandOrange} reduced={reduced} />
-          {pinNode('car', CarIcon)}
+          {marker('car', 'vehicle', 'Car · live', true)}
         </Animated.View>
       </View>
 
@@ -361,20 +416,21 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
             marginTop: GAP,
             borderRadius: t.radius.lg,
             width: mapW,
-            paddingHorizontal: t.spacing.s4,
+            paddingHorizontal: t.spacing.s3,
           },
         ]}
       >
         <View
           style={[
-            styles.cardIcon,
-            { backgroundColor: t.colors.bgSunken, borderRadius: t.radius.md },
+            styles.cardThumb,
+            { borderRadius: 10, backgroundColor: t.colors.bgRaised },
           ]}
         >
-          <focus.Icon
-            size={20}
-            color={t.colors.brandOrange}
-            strokeWidth={1.9}
+          <Image
+            source={cardVisual}
+            style={styles.thumbImage}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
           />
         </View>
         <View style={styles.cardCopy}>
@@ -388,7 +444,9 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
             {focus.status}
           </Text>
         </View>
-        <View style={[styles.dot, { backgroundColor: t.colors.success }]} />
+        <View
+          style={[styles.statusDot, { backgroundColor: t.colors.success }]}
+        />
       </View>
     </View>
   );
@@ -397,22 +455,45 @@ export function ProtectionMapHero({ height = 260 }: ProtectionMapHeroProps) {
 const styles = StyleSheet.create({
   root: { alignItems: 'center', justifyContent: 'center' },
   map: { overflow: 'hidden', borderWidth: 1 },
+  trailClip: { position: 'absolute', left: 0, top: 0, overflow: 'hidden' },
   exampleTag: {
     position: 'absolute',
     top: 8,
-    left: 12,
+    left: 10,
     textTransform: 'uppercase',
     letterSpacing: 1,
+    fontSize: 9,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    overflow: 'hidden',
   },
-  pin: { alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
+  marker: { alignItems: 'center' },
   carWrap: { position: 'absolute', left: 0, top: 0 },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1 },
-  cardIcon: {
-    width: 38,
-    height: 38,
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  liveDot: { width: 6, height: 6, borderRadius: 3 },
+  thumb: {
+    borderWidth: 3,
+    padding: 3,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  thumbImage: { width: '100%', height: '100%' },
+  tail: {
+    marginTop: -TAIL * 0.8,
+    transform: [{ rotate: '45deg' }],
+    zIndex: -1,
+  },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1 },
+  cardThumb: { width: 40, height: 40, padding: 4, overflow: 'hidden' },
   cardCopy: { flex: 1 },
-  dot: { width: 9, height: 9, borderRadius: 5 },
+  statusDot: { width: 9, height: 9, borderRadius: 5 },
 });
