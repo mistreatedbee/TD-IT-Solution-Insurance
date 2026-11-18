@@ -480,3 +480,23 @@ It discharges INC-003 action A-5. Its findings are registered as INC-003 A-8 …
 - **any new security response that hosting headers would affect** (CSP, framing) — re-verify SR-12(d).
 
 **Not changed:** §13's Stage 8 sign-off for Feature 001 is not withdrawn. The findings are registered and owned under INC-003 with dates, and no new Feature 001 build is pending that they would gate. If A-10 or A-13 slips past its date, I will convert it into a scoped hold on further web-auth changes under §13's scoped-hold mechanism.
+
+---
+
+## Addendum (2026-11-17): existing-owner email on sign-up — proposed, flag off, review needed
+
+Author: engineering (change proposal for `cybersecurity-architect` review). This section adds to the review above and changes none of it.
+
+**Gap.** `POST /auth/signup` returns the identical 202 for a new and an already-registered address (FR-5/AC-2) and sends nothing to the existing owner. That is correct for anti-enumeration, but a person signing up with an address they already used sees no message and no explanation.
+
+**Change (flag `SIGNUP_EXISTING_ACCOUNT_EMAIL_ENABLED`, default off, exact string `true` only).** When the address is registered, the backend emails that address ("you already have an account", with a sign-in link). The HTTP response and its timing path are unchanged: the send is fire-and-forget, and the same checks run whether or not the email goes out.
+
+**Controls added against the risks this section of the review raised (mail-bombing, enumeration):**
+- One email per address per hour and at most three per day (`SIGNUP_EXISTING_EMAIL_LIMIT`), counted whether or not the account exists.
+- Existing per-IP signup limiter stays in front of the route.
+- The email contains no account data, no token and no reset link; it only points to the sign-in page.
+- Nothing is sent for an address without an account, and nothing changes in the response body, status or headers.
+
+**Residual risk for the reviewer.** An attacker who controls the sign-up form can still make a victim receive up to three of these emails per day. They cannot learn whether an address is registered from the response. The reviewer should confirm that bound is acceptable, and confirm the Resend sender and template wording.
+
+**Not done.** No Stage 8 disposition has been given. Keep the flag off in every environment until one is recorded.
