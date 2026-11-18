@@ -1,5 +1,7 @@
 import { MenuIcon, XIcon } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
+import { warmUpApi } from '../api/warmup';
+import { SLOW_LOGIN_MESSAGE, useSlowRequestHint } from '../hooks/useSlowRequestHint';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Card, Input, SectionHeading } from '../../components';
 import { useDashboardAuth } from '../auth/DashboardAuthProvider';
@@ -35,6 +37,11 @@ export function PrivilegedLoginPage({
   const [enrollmentTicket, setEnrollmentTicket] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const slowLogin = useSlowRequestHint(loading);
+
+  useEffect(() => {
+    warmUpApi();
+  }, []);
 
   async function finishLogin(accessToken: string, refreshToken: string) {
     await auth.signInWithTokens(accessToken, refreshToken);
@@ -183,6 +190,11 @@ export function PrivilegedLoginPage({
             <Button type="submit" fullWidth loading={loading}>
               Verify
             </Button>
+            {slowLogin ? (
+              <p role="status" className="text-sm text-text-secondary">
+                {SLOW_LOGIN_MESSAGE}
+              </p>
+            ) : null}
             <div className="rounded-lg border border-border bg-background-alt p-3 text-sm text-text-secondary">
               Lost access to your authenticator? Self-service MFA reset isn't available yet for
               staff accounts — contact your administrator to have it reset.
@@ -217,6 +229,11 @@ export function PrivilegedLoginPage({
             <Button type="submit" fullWidth loading={loading}>
               Sign in
             </Button>
+            {slowLogin ? (
+              <p role="status" className="text-sm text-text-secondary">
+                {SLOW_LOGIN_MESSAGE}
+              </p>
+            ) : null}
           </form>
         )}
       </Card>

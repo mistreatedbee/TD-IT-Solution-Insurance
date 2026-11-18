@@ -4,6 +4,8 @@ import { TdButton, TdTextField } from '../components/td';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
 import { login as loginRequest, verifyMfaChallenge } from '../customer/api/auth';
 import { mapUserFacingError } from '../lib/user-facing-errors';
+import { warmUpApi } from '../dashboard/api/warmup';
+import { SLOW_LOGIN_MESSAGE, useSlowRequestHint } from '../dashboard/hooks/useSlowRequestHint';
 import { AuthAlert, AuthLink, MarketingAuthShell } from '../customer/components/MarketingAuthShell';
 import { decodeJwtPayload } from '../lib/jwt';
 import { MfaEnrollmentStep } from '../invitations/MfaEnrollmentStep';
@@ -62,6 +64,11 @@ export function CustomerLoginPage() {
   const [enrollmentTicket, setEnrollmentTicket] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const slowLogin = useSlowRequestHint(loading);
+
+  useEffect(() => {
+    warmUpApi();
+  }, []);
 
   useEffect(() => {
     const activePrivilegedHomePath = getPrivilegedSessionHomePath();
@@ -216,6 +223,11 @@ export function CustomerLoginPage() {
           <TdButton type="submit" className="w-full" loading={loading}>
             Verify
           </TdButton>
+          {slowLogin ? (
+            <p role="status" className="body-sm text-td-ink-muted">
+              {SLOW_LOGIN_MESSAGE}
+            </p>
+          ) : null}
           <div className="body-sm rounded-td-md border border-td-border-subtle bg-td-bg-sunken p-td-3 text-td-ink-muted">
             Need help with your authenticator? If you can’t access your code, set up MFA again and verify with a fresh code.
           </div>
@@ -273,6 +285,11 @@ export function CustomerLoginPage() {
           <TdButton type="submit" className="w-full" loading={loading}>
             Log in
           </TdButton>
+          {slowLogin ? (
+            <p role="status" className="body-sm text-td-ink-muted">
+              {SLOW_LOGIN_MESSAGE}
+            </p>
+          ) : null}
         </form>
       )}
 

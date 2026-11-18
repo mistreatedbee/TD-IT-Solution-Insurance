@@ -103,3 +103,36 @@ describe('CustomerLoginPage — MFA enrollment recovery', () => {
     await waitFor(() => expect(screen.getByText('Customer home')).toBeInTheDocument());
   });
 });
+
+describe('CustomerLoginPage — slow server', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('wakes the server when the page opens and explains a long wait only after a few seconds', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/login') && (init?.method ?? 'GET') === 'POST') return new Promise(() => undefined); // never answers
+      return Promise.reject(new Error('offline'));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderPage();
+
+    // the warm-up ping to the health endpoint is made on open (once per page load, so it may already be spent)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    await user.type(byName('email'), 'a@example.com');
+    await user.type(byName('password'), 'password-123');
+    await user.click(screen.getByRole('button', { name: /sign in|log in/i }));
+
+    expect(screen.queryByText(/Still signing you in/)).not.toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(4100);
+    expect(await screen.findByText(/Still signing you in/)).toBeInTheDocument();
+  });
+});
