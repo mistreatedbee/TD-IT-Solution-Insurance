@@ -46,17 +46,18 @@ const radiusClasses: Record<GlassCardRadius, string> = {
 
 const toneClasses: Record<GlassCardTone, string> = {
   light: 'bg-white/10 border-white/20 text-white shadow-lg shadow-black/20',
-  dark: 'bg-slate-900/10 border-slate-900/10 text-slate-900 shadow-lg shadow-slate-900/10'
+  // design system glass: white translucent fill, white edge, ink text
+  dark: 'bg-td-glass-fill border-td-glass-border text-td-ink shadow-td-glass'
 };
 
 const descriptionToneClasses: Record<GlassCardTone, string> = {
   light: 'text-white/75',
-  dark: 'text-slate-600'
+  dark: 'text-td-ink-muted'
 };
 
 const iconToneClasses: Record<GlassCardTone, string> = {
   light: 'bg-white/15 text-white ring-1 ring-white/20',
-  dark: 'bg-slate-900/5 text-slate-900 ring-1 ring-slate-900/10'
+  dark: 'bg-td-info-bg text-td-link ring-1 ring-td-border-subtle'
 };
 
 export function GlassCard({

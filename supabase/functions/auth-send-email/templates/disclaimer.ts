@@ -22,7 +22,7 @@ export function renderEmailFooter(theme: EmailThemeKey = 'default'): string {
               src="${logoUrl}"
               alt="${escapeHtml(EMAIL_BRAND.name)}"
               width="108"
-              style="display:block;max-width:108px;height:auto;border:0;"
+              style="display:block;max-width:108px;height:auto;border:0;border-radius:12px;"
             />
           </td>
         </tr>
@@ -38,7 +38,7 @@ export function renderEmailFooter(theme: EmailThemeKey = 'default'): string {
           </td>
         </tr>
         <tr>
-          <td style="padding:14px 16px;background:${EMAIL_BRAND.card};border-radius:8px;border-left:3px solid ${themeTokens.stripeColor};">
+          <td style="padding:14px 16px;background:${EMAIL_BRAND.card};border-radius:12px;border-left:3px solid ${themeTokens.stripeColor};">
             <p style="margin:0 0 8px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${EMAIL_BRAND.primary};">
               Disclaimer
             </p>

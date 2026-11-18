@@ -151,11 +151,11 @@ export function PlansSection({ onJoinWaitlist }: { onJoinWaitlist: () => void })
           </div>
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
             <Link to="/get-started">
-              <Button variant="ghost" size="md">
+              <Button variant="primary" size="md">
                 Get started
               </Button>
             </Link>
-            <Button variant="secondary" size="md" onClick={onJoinWaitlist}>
+            <Button variant="ghost" size="md" onClick={onJoinWaitlist}>
               Join waitlist
             </Button>
           </div>

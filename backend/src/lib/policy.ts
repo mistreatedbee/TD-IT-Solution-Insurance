@@ -75,6 +75,14 @@ export const RESEND_VERIFICATION_LIMIT = {
   perAccountWindowSeconds: 60 * 60,
 } as const;
 
+/** Existing-owner email on `POST /auth/signup` for an already-registered address (flag-gated). One email per address
+ * per hour and at most three per day, so the endpoint cannot be used to mail-bomb someone's inbox. */
+export const SIGNUP_EXISTING_EMAIL_LIMIT = {
+  cooldownSeconds: 60 * 60,
+  perAddressAttempts: 3,
+  perAddressWindowSeconds: 24 * 60 * 60,
+} as const;
+
 /** INC-003 A-16: per-IP ceiling on `POST /auth/resend-verification`. The
  * per-email cooldown/ceiling above only bounds abuse of ONE address; this
  * bounds sweeping many addresses from one client (same shape and values as

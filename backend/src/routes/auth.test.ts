@@ -2755,6 +2755,93 @@ describe('ADR-0014 CS-1 — account_created / email_verified audit rows', () => 
     });
   });
 
+  describe('POST /auth/signup — existing-owner email (flag-gated)', () => {
+    function existingHarness(flagOn: boolean) {
+      const existing: AccountRow = {
+        id: randomUUID(),
+        userType: 'customer',
+        accountState: 'active',
+        email: 'owner@example.com',
+        phone: null,
+        mfaRequired: false,
+        partnerOrganizationId: null,
+        invitedBy: null,
+        createdAt: new Date(),
+      };
+      const sent: { accountId: string; email: string }[] = [];
+      const accounts = {
+        async findByEmail(email: string) {
+          return email === existing.email ? existing : null;
+        },
+        async createCustomerAccount(id: string, email: string): Promise<AccountRow> {
+          return { ...existing, id, email, accountState: 'pending_verification' };
+        },
+      };
+      const supabase = {
+        async createUser() {
+          return { userId: randomUUID() };
+        },
+        async sendSignupConfirmationEmail() {
+          return undefined;
+        },
+      } as unknown as SupabaseAdmin;
+      const base = buildMinimalCtx({
+        accounts: accounts as unknown as AppContext['accounts'],
+        supabase,
+      });
+      const ctx: AppContext = {
+        ...base,
+        env: { ...base.env, signupExistingAccountEmailEnabled: flagOn },
+        authNotifications: {
+          ...(base.authNotifications as object),
+          async notifySignupAttemptExistingAccount(params: { accountId: string; email: string }) {
+            sent.push(params);
+            return true;
+          },
+        } as unknown as AppContext['authNotifications'],
+      };
+      return { ctx, existing, sent };
+    }
+    const signupBody = (email: string) => ({ email, password: PASSWORD, consentAccepted: true, client: 'web' });
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+    it('emails the existing owner once and returns the same 202 as for a new address', async () => {
+      const { ctx, existing, sent } = existingHarness(true);
+      const response = await withServer(ctx, (baseUrl) => post(baseUrl, '/auth/signup', signupBody(existing.email)));
+      await settle();
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ message: 'If this email is new, check your inbox to verify your account.' });
+      expect(sent).toEqual([{ accountId: existing.id, email: existing.email }]);
+    });
+
+    it('sends nothing while the flag is off', async () => {
+      const { ctx, existing, sent } = existingHarness(false);
+      const response = await withServer(ctx, (baseUrl) => post(baseUrl, '/auth/signup', signupBody(existing.email)));
+      await settle();
+      expect(response.status).toBe(202);
+      expect(sent).toEqual([]);
+    });
+
+    it('does not email a second time within the cooldown (no mail-bombing)', async () => {
+      const { ctx, existing, sent } = existingHarness(true);
+      await withServer(ctx, async (baseUrl) => {
+        await post(baseUrl, '/auth/signup', signupBody(existing.email));
+        await post(baseUrl, '/auth/signup', signupBody(existing.email));
+        await post(baseUrl, '/auth/signup', signupBody(existing.email));
+      });
+      await settle();
+      expect(sent).toHaveLength(1);
+    });
+
+    it('never emails an address that has no account', async () => {
+      const { ctx, sent } = existingHarness(true);
+      const response = await withServer(ctx, (baseUrl) => post(baseUrl, '/auth/signup', signupBody('nobody@example.com')));
+      await settle();
+      expect(response.status).toBe(202);
+      expect(sent).toEqual([]);
+    });
+  });
+
   describe('POST /auth/verify-email', () => {
     function harness() {
       const auditLog = fakeAuditLogWithEvents();

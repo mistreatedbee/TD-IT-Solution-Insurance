@@ -488,8 +488,10 @@ describe('POST /v1/claims', () => {
 
   it('AC-2: rejects a claim filed before the waiting period clears (policy-effectiveDate path)', async () => {
     const acctId = randomUUID();
-    const now = new Date('2026-10-28T00:00:00.000Z');
-    const policy = samplePolicy(acctId, { effectiveDate: new Date('2026-10-18T00:00:00.000Z') });
+    // Relative to the real clock (the route evaluates "now" itself). A fixed 2026-10-18 policy date stopped
+    // failing on 2026-11-17, exactly when its 30-day waiting period ended.
+    const now = new Date();
+    const policy = samplePolicy(acctId, { effectiveDate: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000) });
     const asset = sampleAsset(acctId, { registeredAt: new Date('2026-01-01T00:00:00.000Z') });
     const harness = createHarness({ accountId: acctId, asset, policy });
     const listened = await listen(harness.app);

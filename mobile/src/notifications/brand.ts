@@ -1,16 +1,22 @@
 /**
- * Brand tokens for mobile push — mirrors auth email brand (Feature 007).
+ * Brand tokens for mobile push, aligned with the current design system (Day theme, td-tokens) and with
+ * the native accent in app.json (`#F5A022`). Used for Android channel LED colours and the brand colour
+ * carried in local notification data. Keep in step with backend NOTIFICATION_BRAND.
+ * Note: the notification icon and accent in app.json only change in a NEW native build.
  */
 export const PUSH_BRAND = {
   name: 'TD IT Solution Insurance',
   shortName: 'TD Insurance',
   tagline: 'Asset Protection & Recovery',
-  primary: '#0B2A4A',
-  primaryMid: '#2C3E50',
+  /** Brand navy. */
+  primary: '#2C3E52',
+  primaryMid: '#2C3E52',
+  /** Brand blue. */
   secondary: '#2780B8',
-  accent: '#3B82F6',
-  /** @deprecated Legacy warm accent — maps to blue per 2026-09 mobile redesign. */
-  accentWarm: '#3B82F6',
+  /** Brand orange: the action colour. Matches the native accent in app.json. */
+  accent: '#F5A022',
+  /** @deprecated Same as `accent`; unused. */
+  accentWarm: '#F5A022',
   logoUrl: 'https://www.tditsolutionsinsurance.co.za/logo.png',
 } as const;
 

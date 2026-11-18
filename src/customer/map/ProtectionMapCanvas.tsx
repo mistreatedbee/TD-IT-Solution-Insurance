@@ -70,9 +70,9 @@ export function ProtectionMapCanvas({
       const isSelected = pin.id === selectedId;
       const marker = L.circleMarker([pin.latitude, pin.longitude], {
         radius: isSelected ? 10 : 8,
-        color: isSelected ? '#0f2d52' : '#1e4d8c',
+        color: isSelected ? '#2C3E52' : '#1D6EA3',
         weight: 2,
-        fillColor: isSelected ? '#c9a227' : '#1e4d8c',
+        fillColor: isSelected ? '#F5A022' : '#2780B8',
         fillOpacity: 0.9,
       });
       marker.bindTooltip(pin.title, { permanent: isSelected, direction: 'top' });

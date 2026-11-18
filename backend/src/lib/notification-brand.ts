@@ -1,13 +1,13 @@
 /**
- * Brand tokens for push notifications — aligned with auth email templates
- * (supabase/functions/auth-send-email/templates/brand.ts) and mobile theme.
+ * Brand tokens for push notifications, aligned with the current design system (Day theme, td-tokens)
+ * and mobile/src/notifications/brand.ts. (Email colours live in email-style.ts.)
  */
 export const NOTIFICATION_BRAND = {
   name: 'TD IT Solution Insurance',
   shortName: 'TD Insurance',
   tagline: 'Asset Protection & Recovery',
-  primary: '#0B2A4A',
-  primaryMid: '#2C3E50',
+  primary: '#2C3E52',
+  primaryMid: '#2C3E52',
   secondary: '#2780B8',
   accent: '#F5A022',
   logoUrl: 'https://www.tditsolutionsinsurance.co.za/logo.png',
