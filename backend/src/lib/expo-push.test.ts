@@ -40,7 +40,7 @@ describe('expo-push', () => {
     expect(payload.subtitle).toBe(content.subtitle);
     expect(payload.categoryId).toBe('account');
     expect(payload.channelId).toBe('account');
-    expect(payload.data?.brandColor).toBe('#2C3E50');
+    expect(payload.data?.brandColor).toBe('#2C3E52');
     expect(payload.data?.logoUrl).toContain('logo.png');
   });
 

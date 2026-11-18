@@ -1,6 +1,12 @@
 /**
  * Branded HTML emails for domain notifications — aligned with auth email brand.
  */
+import {
+  EMAIL_COLORS as C,
+  EMAIL_DARK_MODE_CSS,
+  EMAIL_FONT_DISPLAY,
+  EMAIL_FONT_SANS,
+} from './email-style.js';
 import { NOTIFICATION_BRAND } from './notification-brand.js';
 import { renderDomainEmailFooter, renderDomainEmailSignature } from './email-footer.js';
 
@@ -23,10 +29,10 @@ function wrapBrandedEmail(params: {
   const logoUrl = escapeHtml(NOTIFICATION_BRAND.logoUrl);
   const ctaHtml =
     ctaLabel && ctaUrl
-      ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 0;">
+      ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0 0;">
           <tr>
-            <td style="border-radius:8px;background:${NOTIFICATION_BRAND.accent};">
-              <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:14px 24px;font-size:15px;font-weight:700;color:#1C1917;text-decoration:none;">${escapeHtml(ctaLabel)}</a>
+            <td style="border-radius:16px;background:${C.orange};box-shadow:0 6px 20px rgba(245,160,34,0.34);">
+              <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:15px 30px;font-size:15px;font-weight:700;color:${C.ink};text-decoration:none;border-radius:16px;">${escapeHtml(ctaLabel)}</a>
             </td>
           </tr>
         </table>`
@@ -37,19 +43,22 @@ function wrapBrandedEmail(params: {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
   <title>${escapeHtml(title)}</title>
+  <style>${EMAIL_DARK_MODE_CSS}</style>
 </head>
-<body style="margin:0;padding:0;background:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1C1917;">
+<body style="margin:0;padding:0;background:${C.page};font-family:${EMAIL_FONT_SANS};color:${C.ink};">
   <span style="display:none;max-height:0;overflow:hidden;">${escapeHtml(preheader)}</span>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#FAF8F5;padding:32px 16px;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:${C.page};background-image:linear-gradient(180deg,${C.pageTop} 0%,${C.pageBottom} 100%);padding:32px 16px;">
     <tr><td align="center">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E4DDD1;">
-        <tr><td style="height:4px;background:${NOTIFICATION_BRAND.accent};font-size:0;">&nbsp;</td></tr>
-        <tr><td style="background:${NOTIFICATION_BRAND.primary};padding:24px 28px;">
-          <img src="${logoUrl}" alt="${escapeHtml(NOTIFICATION_BRAND.name)}" width="132" style="display:block;max-width:132px;height:auto;border:0;" />
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:${C.card};border-radius:24px;overflow:hidden;border:1px solid ${C.border};box-shadow:0 8px 32px rgba(44,62,82,0.14);">
+        <tr><td style="height:4px;background:${C.orange};background-image:linear-gradient(90deg,${C.orange} 0%,${C.brandBlueBright} 100%);font-size:0;line-height:0;">&nbsp;</td></tr>
+        <tr><td style="background:${C.navy};background-image:linear-gradient(135deg,${C.navy} 0%,${C.navyEnd} 100%);padding:26px 32px;">
+          <img src="${logoUrl}" alt="${escapeHtml(NOTIFICATION_BRAND.name)}" width="132" style="display:block;max-width:132px;height:auto;border:0;border-radius:14px;" />
         </td></tr>
-        <tr><td style="padding:28px;">
-          <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;color:${NOTIFICATION_BRAND.primary};font-weight:700;">${escapeHtml(title)}</h1>
+        <tr><td style="padding:32px 32px 28px;">
+          <h1 style="margin:0 0 16px;font-family:${EMAIL_FONT_DISPLAY};font-size:26px;line-height:1.25;letter-spacing:-0.01em;color:${C.navy};font-weight:700;">${escapeHtml(title)}</h1>
           ${bodyHtml}
           ${ctaHtml}
           ${renderDomainEmailSignature()}
@@ -69,11 +78,11 @@ export function buildPolicyCreatedEmail(params: {
   policyId: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = `Your ${params.planName} policy has been created.`;
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Your <strong>${escapeHtml(params.planName)}</strong> policy is set up.
     Open the app to review coverage and register your first asset.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Reference: ${escapeHtml(params.policyId)}</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Reference: ${escapeHtml(params.policyId)}</p>`;
 
   return {
     preheader,
@@ -94,12 +103,12 @@ export function buildPolicyPendingActivationEmail(params: {
   policyId: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = `Your ${params.planName} policy is pending activation.`;
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Your <strong>${escapeHtml(params.planName)}</strong> policy has been created and is
     <strong>pending activation</strong>. Coverage starts once billing is configured and payment is confirmed.
   </p>
-  <p style="margin:0 0 12px;font-size:14px;color:#6B6156;">You can register assets in the app while activation is pending.</p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Reference: ${escapeHtml(params.policyId)}</p>`;
+  <p style="margin:0 0 12px;font-size:14px;color:#4A5A6C;">You can register assets in the app while activation is pending.</p>
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Reference: ${escapeHtml(params.policyId)}</p>`;
 
   return {
     preheader,
@@ -119,10 +128,10 @@ export function buildAssetCreatedEmail(params: {
   assetId: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = `${params.assetName} is now on your protection plan.`;
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     <strong>${escapeHtml(params.assetName)}</strong> has been registered on your account.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">We will notify you here if tracking or recovery action is needed.</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">We will notify you here if tracking or recovery action is needed.</p>`;
 
   return {
     preheader,
@@ -143,10 +152,10 @@ export function buildAssetUpdatedEmail(params: {
   changedSummary: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = `${params.assetName} was updated (${params.changedSummary}).`;
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     <strong>${escapeHtml(params.assetName)}</strong> was updated: ${escapeHtml(params.changedSummary)}.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Open the app to review the latest details.</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Open the app to review the latest details.</p>`;
 
   return {
     preheader,
@@ -165,7 +174,7 @@ export function buildAssetRemovedEmail(params: {
   assetName: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = `${params.assetName} was removed from your account.`;
-  const bodyHtml = `<p style="margin:0;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0;font-size:16px;line-height:1.6;color:#14202D;">
     <strong>${escapeHtml(params.assetName)}</strong> has been removed from your protection plan.
     It will no longer appear in your active asset list.
   </p>`;
@@ -189,9 +198,9 @@ export function buildAssetRecoveredEmail(params: {
 }): { subject: string; html: string; preheader: string } {
   const preheader = 'There is an update on one of your registered items.';
   const refLine = params.referenceNumber
-    ? `<p style="margin:0;font-size:14px;color:#6B6156;">Case reference: ${escapeHtml(params.referenceNumber)}</p>`
+    ? `<p style="margin:0;font-size:14px;color:#4A5A6C;">Case reference: ${escapeHtml(params.referenceNumber)}</p>`
     : '';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Great news — <strong>${escapeHtml(params.assetName)}</strong> has been marked
     <strong>recovered</strong> on your account.
   </p>
@@ -212,7 +221,7 @@ export function buildAssetRecoveredEmail(params: {
 
 export function buildPasswordChangedEmail(): { subject: string; html: string; preheader: string } {
   const preheader = 'Your account password was updated.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Your password was changed successfully. If you did not make this change, contact us immediately.
   </p>`;
 
@@ -235,15 +244,15 @@ export function buildPasswordChangedEmail(): { subject: string; html: string; pr
  * information belongs in this email) — only that it happened and what to do. */
 export function buildPushTokenReregisteredAlertEmail(): { subject: string; html: string; preheader: string } {
   const preheader = 'A device notification token on your account was claimed by another account.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     A push notification token previously registered to your account was just re-registered under a
     <strong>different account</strong>. As a precaution, that token has been quarantined and will stop
     delivering notifications to your account after a short grace period unless you tell us otherwise.
   </p>
-  <p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  <p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     If this was you setting up a new device or reinstalling the app, no action is needed.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">
     If this was <strong>not</strong> you, contact support immediately — this can happen if your device or
     a copied notification identifier ended up in someone else's hands.
   </p>`;
@@ -267,13 +276,13 @@ export function buildNewDeviceLoginEmail(params: {
 }): { subject: string; html: string; preheader: string } {
   const preheader = `New sign-in from ${params.deviceName}.`;
   const ipLine = params.ipAddress
-    ? `<p style="margin:0 0 8px;font-size:14px;color:#6B6156;">IP address: ${escapeHtml(params.ipAddress)}</p>`
+    ? `<p style="margin:0 0 8px;font-size:14px;color:#4A5A6C;">IP address: ${escapeHtml(params.ipAddress)}</p>`
     : '';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     We detected a new sign-in to your account from <strong>${escapeHtml(params.deviceName)}</strong>.
   </p>
   ${ipLine}
-  <p style="margin:0;font-size:14px;color:#6B6156;">If this was not you, reset your password and contact support.</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">If this was not you, reset your password and contact support.</p>`;
 
   return {
     preheader,
@@ -290,7 +299,7 @@ export function buildNewDeviceLoginEmail(params: {
 
 export function buildMfaEnabledEmail(): { subject: string; html: string; preheader: string } {
   const preheader = 'Two-factor authentication is now enabled on your account.';
-  const bodyHtml = `<p style="margin:0;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0;font-size:16px;line-height:1.6;color:#14202D;">
     Authenticator-based two-factor authentication is now active. You will need your authenticator app for future sign-ins.
   </p>`;
 
@@ -307,10 +316,10 @@ export function buildMfaEnabledEmail(): { subject: string; html: string; prehead
 
 export function buildAccountLockedEmail(): { subject: string; html: string; preheader: string } {
   const preheader = 'Your account is temporarily locked after too many failed sign-in attempts.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Your account has been temporarily locked to protect it from unauthorised access.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Wait a few minutes and try again, or use the password reset flow if you forgot your password.</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Wait a few minutes and try again, or use the password reset flow if you forgot your password.</p>`;
 
   return {
     preheader,
@@ -327,10 +336,10 @@ export function buildAccountLockedEmail(): { subject: string; html: string; preh
 
 export function buildWelcomeEmail(): { subject: string; html: string; preheader: string } {
   const preheader = `Welcome to ${NOTIFICATION_BRAND.name}.`;
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Welcome to ${escapeHtml(NOTIFICATION_BRAND.name)}. Your account is ready — choose a protection plan and register your first asset in the app.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">We will send alerts here for theft reports, billing, and account security.</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">We will send alerts here for theft reports, billing, and account security.</p>`;
 
   return {
     preheader,
@@ -347,11 +356,11 @@ export function buildWelcomeEmail(): { subject: string; html: string; preheader:
 
 export function buildEmailAlreadyVerifiedEmail(): { subject: string; html: string; preheader: string } {
   const preheader = 'Your email address is already verified.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Your email address is already verified on your ${escapeHtml(NOTIFICATION_BRAND.name)} account.
     Sign in to continue onboarding or manage your assets.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">If you did not request this, you can ignore this email.</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">If you did not request this, you can ignore this email.</p>`;
 
   return {
     preheader,
@@ -389,10 +398,10 @@ export function buildSignupAccountExistsEmail(): { subject: string; html: string
 
 export function buildOnboardingIncompleteEmail(): { subject: string; html: string; preheader: string } {
   const preheader = 'Finish setting up your asset protection in the app.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     You have not added a protection policy yet. It only takes a few minutes to choose a plan and register your first asset.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Open the app to continue onboarding.</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Open the app to continue onboarding.</p>`;
 
   return {
     preheader,
@@ -413,11 +422,11 @@ export function buildPolicyActivatedEmail(params: {
   effectiveDate: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = `Your ${params.planName} policy is now active.`;
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Your <strong>${escapeHtml(params.planName)}</strong> policy is active as of
     <strong>${escapeHtml(params.effectiveDate)}</strong>.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Reference: ${escapeHtml(params.policyId)}</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Reference: ${escapeHtml(params.policyId)}</p>`;
 
   return {
     preheader,
@@ -441,14 +450,14 @@ export function buildPolicyRenewalUpcomingEmail(params: {
 }): { subject: string; html: string; preheader: string } {
   const preheader = `Your ${params.planName} policy renews in ${params.daysUntil} day${params.daysUntil === 1 ? '' : 's'}.`;
   const amountLine = params.amount
-    ? `<p style="margin:0 0 8px;font-size:14px;color:#6B6156;">Estimated renewal amount: ${escapeHtml(params.amount)}</p>`
+    ? `<p style="margin:0 0 8px;font-size:14px;color:#4A5A6C;">Estimated renewal amount: ${escapeHtml(params.amount)}</p>`
     : '';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Your <strong>${escapeHtml(params.planName)}</strong> policy renews on
     <strong>${escapeHtml(params.renewalDate)}</strong> (${params.daysUntil} day${params.daysUntil === 1 ? '' : 's'} from now).
   </p>
   ${amountLine}
-  <p style="margin:0;font-size:14px;color:#6B6156;">Payment collection is not yet live — this is an advance notice only.</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Payment collection is not yet live — this is an advance notice only.</p>`;
 
   return {
     preheader,
@@ -469,11 +478,11 @@ export function buildTheftReportSubmittedEmail(params: {
   caseId: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = 'We have received your report. Open the app for details.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     We received your theft report for <strong>${escapeHtml(params.assetName)}</strong>.
     Our recovery team and security partners have been alerted.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Case reference: ${escapeHtml(params.referenceNumber)}</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Case reference: ${escapeHtml(params.referenceNumber)}</p>`;
 
   return {
     preheader,
@@ -493,11 +502,11 @@ export function buildRecoveryCaseAssignedEmail(params: {
   referenceNumber: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = 'There is an update on your case. Open the app for details.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     A security partner has been assigned to your recovery case for
     <strong>${escapeHtml(params.assetName)}</strong>.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Reference: ${escapeHtml(params.referenceNumber)}</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Reference: ${escapeHtml(params.referenceNumber)}</p>`;
 
   return {
     preheader,
@@ -518,11 +527,11 @@ export function buildRecoveryCaseUpdateEmail(params: {
   statusLabel: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = 'There is an update on your case. Open the app for details.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Your recovery case for <strong>${escapeHtml(params.assetName)}</strong> is now
     <strong>${escapeHtml(params.statusLabel)}</strong>.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Reference: ${escapeHtml(params.referenceNumber)}</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Reference: ${escapeHtml(params.referenceNumber)}</p>`;
 
   return {
     preheader,
@@ -543,12 +552,12 @@ export function buildRecoveryCaseMessageEmail(params: {
   message: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = 'Your recovery partner sent you a message. Open the app for details.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Your recovery partner has a message about your case for
     <strong>${escapeHtml(params.assetName)}</strong>:
   </p>
-  <p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;white-space:pre-wrap;">${escapeHtml(params.message)}</p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Reference: ${escapeHtml(params.referenceNumber)}</p>`;
+  <p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;white-space:pre-wrap;">${escapeHtml(params.message)}</p>
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Reference: ${escapeHtml(params.referenceNumber)}</p>`;
 
   return {
     preheader,
@@ -568,11 +577,11 @@ export function buildRecoverySuccessfulEmail(params: {
   referenceNumber: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = 'There is an update on your case. Open the app for details.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Your asset <strong>${escapeHtml(params.assetName)}</strong> has been marked
     <strong>recovered</strong>. Thank you for working with our recovery team.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Reference: ${escapeHtml(params.referenceNumber)}</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Reference: ${escapeHtml(params.referenceNumber)}</p>`;
 
   return {
     preheader,
@@ -612,12 +621,12 @@ export function buildClaimDecisionNoticeEmail(params: {
 }): { subject: string; html: string; preheader: string } {
   const label = CLAIM_DECISION_NOTICE_SUBJECT_LABEL[params.kind];
   const preheader = 'A decision notice has been issued on your claim. Open the app for full details.';
-  const bodyHtml = `<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#14202D;">
     A decision notice has been issued on your claim (reference ${escapeHtml(params.claimId)}). The full
     notice, verbatim, is below.
   </p>
-  <div style="margin:0 0 16px;padding:16px;background:#FAF8F5;border:1px solid #E4DDD1;border-radius:8px;">
-    <pre style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1C1917;white-space:pre-wrap;word-break:break-word;">${escapeHtml(params.renderedText)}</pre>
+  <div style="margin:0 0 16px;padding:16px;background:#E3EBF3;border:1px solid #D3DEE9;border-radius:16px;">
+    <pre style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#14202D;white-space:pre-wrap;word-break:break-word;">${escapeHtml(params.renderedText)}</pre>
   </div>`;
 
   return {
@@ -638,11 +647,11 @@ export function buildRecoveryCaseClosedEmail(params: {
   referenceNumber: string;
 }): { subject: string; html: string; preheader: string } {
   const preheader = 'Your case has been closed. Open the app for details.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Your recovery case for <strong>${escapeHtml(params.assetName)}</strong> has been closed.
     If you still need assistance, contact our support team.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">Reference: ${escapeHtml(params.referenceNumber)}</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">Reference: ${escapeHtml(params.referenceNumber)}</p>`;
 
   return {
     preheader,
