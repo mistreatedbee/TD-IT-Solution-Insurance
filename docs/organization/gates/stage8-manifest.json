@@ -1197,6 +1197,137 @@
         "verdict": "conditional-sign-off-cleared-scope-only",
         "note": "src/call-centre/pages/SupportCasesPages.tsx (create flow). Implements FR-12 — the accountId-supplied-by-agent path, reachable standalone or from an existing customer lookup. Same joint-gate caveat as web-call-centre-lookup."
       }
+    },
+    {
+      "id": "backend-protection-checklist",
+      "kind": "backend_route",
+      "pattern": "/account/protection-checklist",
+      "feature": "020",
+      "stage8": {
+        "doc": "docs/features/020-protection-score/security-review.md",
+        "verdict": "clear-with-conditions",
+        "note": "Feature 020 Stage 8 (security-engineer): backend CLEAR-WITH-CONDITIONS (F1 limiter and cache before the flag goes on in any distributed build). Condition still open; the flag is on only in the owner-test profile under the 2026-11-17 owner exception."
+      }
+    },
+    {
+      "id": "backend-support-notification-preferences",
+      "kind": "backend_route",
+      "pattern": "/customers/:accountId/notification-preferences",
+      "feature": "010",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-18 CI-1 backfill, recorded by cto so the INC-001 CI-1 gate can pass again. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Call-centre read of a customer's notification preferences (Feature 010). Not named in docs/features/010-call-centre-dashboard/security-review.md. Required before public launch: Stage 8 by cybersecurity-architect.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "backend-support-recovery-case-lookup",
+      "kind": "backend_route",
+      "pattern": "/recovery-cases/:idOrReference",
+      "feature": "010",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-18 CI-1 backfill, recorded by cto so the INC-001 CI-1 gate can pass again. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Call-centre recovery case lookup by id or reference (Feature 010). Same read surface family as the reviewed customer lookup, but this route is not named in the Feature 010 review. Required before public launch: Stage 8.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-audit-log",
+      "kind": "web_route",
+      "pattern": "/admin/audit-log",
+      "feature": "006",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-18 CI-1 backfill, recorded by cto so the INC-001 CI-1 gate can pass again. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. src/admin/pages/AdminAuditLogPage.tsx, the UI over GET /v1/admin/audit-log (ADR-0006 third-trail data). The backend route sits under the reviewed backend-admin group; the web page itself has no Stage 8 record.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-dispatch",
+      "kind": "web_route",
+      "pattern": "/admin/dispatch",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-18 CI-1 backfill, recorded by cto so the INC-001 CI-1 gate can pass again. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Web UI over the directed-dispatch API (ADR-0017, OB-03). The backend routes carry a CS-9 manifest waiver (admin-case-dispatch); this page has no Stage 8 record and dispatch stays under ADR-0017 (Proposed).",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-dispatch-case",
+      "kind": "web_route",
+      "pattern": "/admin/dispatch/cases/:caseId",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-18 CI-1 backfill, recorded by cto so the INC-001 CI-1 gate can pass again. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Web UI over the directed-dispatch API (ADR-0017, OB-03). The backend routes carry a CS-9 manifest waiver (admin-case-dispatch); this page has no Stage 8 record and dispatch stays under ADR-0017 (Proposed).",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-dispatch-approve",
+      "kind": "web_route",
+      "pattern": "/admin/dispatch/cases/:caseId/approve/:pendingApprovalId",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-18 CI-1 backfill, recorded by cto so the INC-001 CI-1 gate can pass again. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Web UI over the directed-dispatch API (ADR-0017, OB-03). The backend routes carry a CS-9 manifest waiver (admin-case-dispatch); this page has no Stage 8 record and dispatch stays under ADR-0017 (Proposed).",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-partner-organizations",
+      "kind": "web_route",
+      "pattern": "/admin/partner-organizations",
+      "feature": "roadmap-08f-4",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-18 CI-1 backfill, recorded by cto so the INC-001 CI-1 gate can pass again. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Admin partner-organisation pages (PartnerOrganizationPages.tsx). The scorecard backend route is a distinct waived entry; these pages have no Stage 8 record.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-admin-partner-organization-scorecard",
+      "kind": "web_route",
+      "pattern": "/admin/partner-organizations/:partnerOrganizationId/scorecard",
+      "feature": "roadmap-08f-4",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-18 CI-1 backfill, recorded by cto so the INC-001 CI-1 gate can pass again. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Admin partner-organisation pages (PartnerOrganizationPages.tsx). The scorecard backend route is a distinct waived entry; these pages have no Stage 8 record.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-call-centre-recovery-cases",
+      "kind": "web_route",
+      "pattern": "/call-centre/recovery-cases",
+      "feature": "010",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-18 CI-1 backfill, recorded by cto so the INC-001 CI-1 gate can pass again. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Call-centre recovery case list/detail (Feature 010 surface). Not named in the Feature 010 security review. Required before public launch: Stage 8.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-call-centre-recovery-case-detail",
+      "kind": "web_route",
+      "pattern": "/call-centre/recovery-cases/:idOrReference",
+      "feature": "010",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-18 CI-1 backfill, recorded by cto so the INC-001 CI-1 gate can pass again. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Call-centre recovery case list/detail (Feature 010 surface). Not named in the Feature 010 security review. Required before public launch: Stage 8.",
+        "owner": "cybersecurity-architect"
+      }
     }
   ]
 }
