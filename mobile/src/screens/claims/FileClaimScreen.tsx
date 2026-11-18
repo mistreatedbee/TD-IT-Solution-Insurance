@@ -14,12 +14,16 @@ import { useCreateClaimMutation } from '../../api/hooks/useClaims';
 import { ApiError } from '../../api/errors';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { formatAssetType } from '../../lib/asset-labels';
-import { Alert, Button, Input, Screen, SelectChipGroup } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert, Input, SelectChipGroup } from '../../theme/primitives';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function FileClaimScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const { data: assetsPage, isLoading: assetsLoading } = useAssetsQuery();
   const { data: policiesPage, isLoading: policiesLoading } = usePoliciesQuery();
@@ -39,7 +43,10 @@ export function FileClaimScreen() {
     () =>
       policies
         .filter((p) => p.id)
-        .map((p) => ({ value: p.id!, label: `${p.planTier ?? 'Policy'} (${p.status ?? 'unknown'})` })),
+        .map((p) => ({
+          value: p.id!,
+          label: `${p.planTier ?? 'Policy'} (${p.status ?? 'unknown'})`,
+        })),
     [policies],
   );
 
@@ -96,12 +103,20 @@ export function FileClaimScreen() {
       });
       setSubmittedClaimId(claim.id);
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'DUPLICATE_OPEN_CLAIM' && err.claimId) {
+      if (
+        err instanceof ApiError &&
+        err.code === 'DUPLICATE_OPEN_CLAIM' &&
+        err.claimId
+      ) {
         setDuplicateClaimId(err.claimId);
         setSubmitError('There is already an open claim for this asset.');
         return;
       }
-      if (err instanceof ApiError && err.code === 'WAITING_PERIOD_NOT_MET' && err.waitingPeriodClearsAt) {
+      if (
+        err instanceof ApiError &&
+        err.code === 'WAITING_PERIOD_NOT_MET' &&
+        err.waitingPeriodClearsAt
+      ) {
         setSubmitError(
           `${mapUserFacingError(err, { context: 'claim' })} Eligible from ${new Date(
             err.waitingPeriodClearsAt,
@@ -115,56 +130,74 @@ export function FileClaimScreen() {
 
   if (submittedClaimId) {
     return (
-      <Screen>
+      <DesignPage>
         <Alert tone="success">Claim submitted.</Alert>
         <View style={styles.actions}>
           <Button
-            variant="primary"
-            fullWidth
-            onPress={() => router.replace(`/claims/${submittedClaimId}` as Href)}
-          >
-            View claim
-          </Button>
-          <Button variant="tertiary" fullWidth onPress={() => router.replace('/claims' as Href)}>
-            Back to claims
-          </Button>
+            label="View claim"
+            onPress={() =>
+              router.replace(`/claims/${submittedClaimId}` as Href)
+            }
+            style={styles.stretch}
+          />
+          <Button
+            label="Back to claims"
+            onPress={() => router.replace('/claims' as Href)}
+            variant="glass"
+            style={styles.stretch}
+          />
         </View>
-      </Screen>
+      </DesignPage>
     );
   }
 
   const loading = assetsLoading || policiesLoading;
 
   return (
-    <Screen>
+    <DesignPage>
       <Text style={styles.title}>File a claim</Text>
       <Text style={styles.subtitle}>
-        Provide details about the loss or theft. Evidence is a written description only — photo
-        upload is not available yet.
+        Provide details about the loss or theft. Evidence is a written
+        description only — photo upload is not available yet.
       </Text>
 
       {loading ? (
-        <ActivityIndicator color={colors.primary} />
+        <ActivityIndicator color={t.colors.link} />
       ) : (
         <>
           {policyOptions.length === 0 ? (
-            <Alert tone="warning">You need an active policy before filing a claim.</Alert>
+            <Alert tone="warning">
+              You need an active policy before filing a claim.
+            </Alert>
           ) : (
             <>
               <Text style={styles.label}>Policy</Text>
-              <SelectChipGroup options={policyOptions} value={policyId ?? ''} onChange={setPolicyId} />
+              <SelectChipGroup
+                options={policyOptions}
+                value={policyId ?? ''}
+                onChange={setPolicyId}
+              />
             </>
           )}
 
           {assetOptions.length === 0 ? (
-            <Alert tone="warning">Register an asset before filing a claim.</Alert>
+            <Alert tone="warning">
+              Register an asset before filing a claim.
+            </Alert>
           ) : (
             <>
               <Text style={styles.label}>Asset</Text>
-              <SelectChipGroup options={assetOptions} value={assetId ?? ''} onChange={setAssetId} />
+              <SelectChipGroup
+                options={assetOptions}
+                value={assetId ?? ''}
+                onChange={setAssetId}
+              />
               {assetId && assets.find((a) => a.id === assetId) ? (
                 <Text style={styles.assetType}>
-                  {formatAssetType(assets.find((a) => a.id === assetId)!.assetType ?? 'other_electronics')}
+                  {formatAssetType(
+                    assets.find((a) => a.id === assetId)!.assetType ??
+                      'other_electronics',
+                  )}
                 </Text>
               ) : null}
             </>
@@ -219,63 +252,47 @@ export function FileClaimScreen() {
           <Alert tone="danger">{submitError}</Alert>
           {duplicateClaimId ? (
             <Button
-              variant="tertiary"
-              fullWidth
+              label="View existing claim"
               onPress={() => router.push(`/claims/${duplicateClaimId}` as Href)}
-            >
-              View existing claim
-            </Button>
+              variant="glass"
+              style={styles.stretch}
+            />
           ) : null}
         </View>
       ) : null}
 
       <Button
-        variant="primary"
-        fullWidth
+        label="Submit claim"
         loading={createClaim.isPending}
         disabled={!canSubmit}
         onPress={handleSubmit}
-      >
-        Submit claim
-      </Button>
-    </Screen>
+        style={styles.stretch}
+      />
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-    marginBottom: spacing.lg,
-  },
-  label: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  assetType: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-    marginBottom: spacing.lg,
-  },
-  multilineInput: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  alertSpacing: {
-    marginBottom: spacing.lg,
-    gap: spacing.sm,
-  },
-  actions: {
-    marginTop: spacing.xl,
-    gap: spacing.md,
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s2,
+    },
+    subtitle: {
+      ...t.type.body,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
+    label: { ...t.type.label, color: t.colors.ink, marginBottom: t.spacing.s2 },
+    assetType: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
+    multilineInput: { minHeight: 100, textAlignVertical: 'top' },
+    alertSpacing: { marginBottom: t.spacing.s4, gap: t.spacing.s2 },
+    actions: { marginTop: t.spacing.s6, gap: t.spacing.s3 },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

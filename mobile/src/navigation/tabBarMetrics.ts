@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { ViewStyle } from 'react-native';
 import { useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
-import { useTheme } from '../theme/ThemeProvider';
+import { useDesignTokens } from '../theme/designTheme';
 import { lightColors } from '../theme/colorSchemes';
 import { spacing } from '../theme/tokens';
 
@@ -46,20 +46,24 @@ export const TAB_SCENE_STYLE: ViewStyle = {
   paddingBottom: FLOATING_TAB_BAR_CLEARANCE,
 };
 
-/** Dynamic tab scene style — content scrolls behind the floating glass tab bar. */
+/**
+ * Dynamic tab scene style — content scrolls behind the floating glass tab bar.
+ * The scene colour is the design gradient's bottom colour, so any strip the page's gradient Backdrop does not
+ * cover (pull-up bounce, the area behind the tab bar) matches the page instead of showing flat white or black.
+ */
 export function useTabSceneStyle(): ViewStyle {
-  const { colors } = useTheme();
+  const { colors } = useDesignTokens();
   return useMemo(
     () => ({
-      backgroundColor: colors.canvas,
+      backgroundColor: colors.bgBottom,
       paddingBottom: 0,
     }),
-    [colors.canvas],
+    [colors.bgBottom],
   );
 }
 
 /** Map tab uses a muted canvas without tab-bar clearance padding. */
 export function useMapTabSceneStyle(): ViewStyle {
-  const { colors } = useTheme();
-  return useMemo(() => ({ backgroundColor: colors.card, paddingBottom: 0 }), [colors.card]);
+  const { colors } = useDesignTokens();
+  return useMemo(() => ({ backgroundColor: colors.bgBottom, paddingBottom: 0 }), [colors.bgBottom]);
 }

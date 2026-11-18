@@ -1,5 +1,6 @@
 import React from 'react';
-import { screen } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
+import { Alert, Linking } from 'react-native';
 import { renderWithProviders } from '../../../test/renderWithProviders';
 import { AccountHubScreen } from '../AccountHubScreen';
 
@@ -129,6 +130,34 @@ describe('AccountHubScreen — no dev rows, claims hidden when disabled', () => 
     expect(screen.queryByText('Send test notification')).toBeNull();
     expect(screen.queryByText('Claims')).toBeNull();
     expect(screen.queryByText('Claims filing coming soon')).toBeNull();
-    expect(screen.getByText('Notification preferences')).toBeTruthy();
+    expect(screen.getByText('Settings')).toBeTruthy();
+    // the setting-type options live behind the Settings row, not on the Account page itself
+    expect(screen.queryByText('Notification preferences')).toBeNull();
+    expect(screen.queryByText('Log out of all devices')).toBeNull();
+  });
+});
+
+describe('AccountHubScreen — rows keep their behaviour after the restyle', () => {
+  beforeEach(() => {
+    useAccountQuery.mockReturnValue({
+      data: { id: 'acc-9', email: 'a@example.com', accountState: 'active', mfaEnrolled: true, accountNumber: null },
+      isLoading: false,
+    });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('shows section titles, the account state word and the two-factor line', async () => {
+    await renderWithProviders(<AccountHubScreen />);
+    expect(screen.getByText('Your protection')).toBeTruthy();
+    expect(screen.getByText('Settings')).toBeTruthy();
+    expect(screen.getByText('active')).toBeTruthy();
+    expect(screen.getByText('Two-factor authentication enabled')).toBeTruthy();
+  });
+
+  it('opens the support email', async () => {
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    await renderWithProviders(<AccountHubScreen />);
+    fireEvent.press(screen.getByText('Contact support'));
+    expect(open).toHaveBeenCalledWith(expect.stringMatching(/^mailto:/));
   });
 });

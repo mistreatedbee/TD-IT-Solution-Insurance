@@ -15,6 +15,7 @@
  * splash (app.json `expo-splash-screen` > `dark`), so dark-mode phones go navy splash -> navy loading screen -> Night UI.
  * The notification icon is a separate monochrome asset and is not touched. Never add text, a border or a shadow.
  */
+import { Buffer } from 'node:buffer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';

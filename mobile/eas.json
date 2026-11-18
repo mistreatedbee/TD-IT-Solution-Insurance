@@ -44,7 +44,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "_comment_INC-002": "LOCATION_TRACKING and HARDWARE_TRACKING forced false by cto directive 2026-09-21 (INC-002). ALERTS/THEFT_REPORTING/SECURITY_OPERATOR forced false by cto directive 2026-09-22 (INC-002-B) — each flag's stage8-manifest.json waiver was premised solely on 'gated via FEATURE_X staying off'; that premise was false while these were true here. None of the seven EXPO_PUBLIC_FEATURE_* flags may be set true in any distributed build until its specific INC-001/INC-002 condition closes AND, for ALERTS/THEFT_REPORTING/SECURITY_OPERATOR, cybersecurity-architect issues an unconditional Stage 8 disposition for the corresponding manifest entries. mobile/scripts/verify-eas-feature-flags.mjs enforces this in CI.",
+        "_comment_INC-002": "LOCATION_TRACKING and HARDWARE_TRACKING forced false by cto directive 2026-09-21 (INC-002). ALERTS/THEFT_REPORTING/SECURITY_OPERATOR forced false by cto directive 2026-09-22 (INC-002-B) \u2014 each flag's stage8-manifest.json waiver was premised solely on 'gated via FEATURE_X staying off'; that premise was false while these were true here. None of the seven EXPO_PUBLIC_FEATURE_* flags may be set true in any distributed build until its specific INC-001/INC-002 condition closes AND, for ALERTS/THEFT_REPORTING/SECURITY_OPERATOR, cybersecurity-architect issues an unconditional Stage 8 disposition for the corresponding manifest entries. mobile/scripts/verify-eas-feature-flags.mjs enforces this in CI.",
         "EXPO_PUBLIC_API_BASE_URL": "https://td-it-solution-insurance.onrender.com",
         "EXPO_PUBLIC_FEATURE_CLAIMS": "false",
         "EXPO_PUBLIC_FEATURE_LOCATION_TRACKING": "false",
@@ -89,6 +89,26 @@
         "EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING": "false",
         "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "false",
         "EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST": "false"
+      }
+    },
+    "owner-test": {
+      "distribution": "internal",
+      "channel": "owner-test",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://td-it-solution-insurance.onrender.com",
+        "EXPO_PUBLIC_FEATURE_CLAIMS": "true",
+        "EXPO_PUBLIC_FEATURE_LOCATION_TRACKING": "true",
+        "EXPO_PUBLIC_FEATURE_KYC": "true",
+        "EXPO_PUBLIC_FEATURE_ALERTS": "true",
+        "EXPO_PUBLIC_FEATURE_THEFT_REPORTING": "true",
+        "EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING": "true",
+        "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "true",
+        "EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST": "true",
+        "_comment_OWNER_EXCEPTION": "OWNER EXCEPTION 2026-11-17 (docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md): TEST-ONLY build for the owner. Every gated feature is ON. There are no real users. Never submit, never share the install link. REMOVE this profile before public launch."
       }
     }
   },

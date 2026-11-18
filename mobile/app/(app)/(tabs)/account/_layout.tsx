@@ -7,9 +7,19 @@ export default function AccountLayout() {
 
   return (
     <Stack screenOptions={screenOptions}>
-      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="index"
+        options={{
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
+        }}
+      />
+      <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       <Stack.Screen name="profile" options={{ title: 'Edit profile' }} />
-      <Stack.Screen name="verification" options={{ title: 'Verification centre' }} />
+      <Stack.Screen
+        name="verification"
+        options={{ title: 'Verification centre' }}
+      />
     </Stack>
   );
 }

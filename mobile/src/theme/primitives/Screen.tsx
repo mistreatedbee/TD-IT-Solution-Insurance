@@ -13,8 +13,9 @@ import {
 } from 'react-native';
 import type { RefreshControlProps } from 'react-native';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
+import { Backdrop } from '../../design/Backdrop';
 import { useTabBarContentInset } from '../../navigation/TabBarInsetContext';
-import { useColors } from '../ThemeProvider';
+import { useDesignTokens } from '../designTheme';
 import { spacing } from '../tokens';
 
 export interface ScreenProps {
@@ -25,6 +26,8 @@ export interface ScreenProps {
   safeAreaEdges?: Edge[];
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  /** Draw the design gradient behind the screen (default). Pages that supply their own Backdrop pass false. */
+  backdrop?: boolean;
 }
 
 export function Screen({
@@ -35,8 +38,9 @@ export function Screen({
   safeAreaEdges = ['top', 'bottom'],
   style,
   contentContainerStyle,
+  backdrop = true,
 }: ScreenProps) {
-  const colors = useColors();
+  const design = useDesignTokens();
   const tabBarInset = useTabBarContentInset();
 
   const scrollBottomInset = useMemo(
@@ -58,9 +62,9 @@ export function Screen({
     </View>
   );
 
-  return (
+  const body = (
     <SafeAreaView
-      style={[styles.safeArea, { backgroundColor: colors.canvas }, style]}
+      style={[styles.safeArea, { backgroundColor: backdrop ? 'transparent' : design.colors.bgPage }, style]}
       edges={safeAreaEdges}
     >
       <KeyboardAvoidingView
@@ -81,6 +85,14 @@ export function Screen({
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+
+  if (!backdrop) return body;
+  return (
+    <View style={styles.safeArea}>
+      <Backdrop variant="gradient" />
+      {body}
+    </View>
   );
 }
 

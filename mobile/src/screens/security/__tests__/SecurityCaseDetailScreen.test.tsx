@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { SecurityCaseDetailScreen } from '../SecurityCaseDetailScreen';
 import { ApiError, NetworkUnavailableError } from '../../../api/errors';
+import { ThemeProvider } from '../../../theme/ThemeProvider';
 
 jest.mock('../../../theme/primitives', () => {
   const React = require('react');
@@ -80,7 +81,7 @@ describe('SecurityCaseDetailScreen — data minimisation (PDM-1)', () => {
   });
 
   it('never renders a "Customer account" label — accountId must not reach the partner UI', async () => {
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('RC-1');
 
     expect(screen.queryByText('Customer account')).toBeNull();
@@ -98,7 +99,7 @@ describe('SecurityCaseDetailScreen — data minimisation (PDM-1)', () => {
       accountId: 'LEAKED-ACCOUNT-ID-MUST-NOT-RENDER',
     });
 
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('RC-1');
 
     expect(screen.queryByText(/LEAKED-ACCOUNT-ID-MUST-NOT-RENDER/)).toBeNull();
@@ -115,7 +116,7 @@ describe('SecurityCaseDetailScreen — offline-tolerance policy', () => {
 
   it('blocks claiming when offline with a definite "has not been claimed" message', async () => {
     mockIsOnline.mockReturnValue(false);
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Claim case');
 
     await act(async () => {
@@ -128,7 +129,7 @@ describe('SecurityCaseDetailScreen — offline-tolerance policy', () => {
 
   it('on NetworkUnavailableError, warns that retrying a successful claim will look unavailable, not success', async () => {
     mockClaimSecurityCase.mockRejectedValueOnce(new NetworkUnavailableError());
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Claim case');
 
     await act(async () => {
@@ -148,7 +149,7 @@ describe('SecurityCaseDetailScreen — offline-tolerance policy', () => {
       .mockResolvedValueOnce(openCase())
       .mockResolvedValueOnce({ ...openCase(), status: 'investigating' });
 
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Claim case');
 
     await act(async () => {
@@ -167,7 +168,7 @@ describe('SecurityCaseDetailScreen — offline-tolerance policy', () => {
     );
     mockGetSecurityCase.mockResolvedValueOnce(openCase()).mockResolvedValueOnce(openCase());
 
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Claim case');
 
     await act(async () => {
@@ -187,7 +188,7 @@ describe('SecurityCaseDetailScreen — terminal status requires a close reason',
   });
 
   it('does not call updateSecurityCaseStatus until a reason is picked for a terminal status', async () => {
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Mark recovered');
 
     await act(async () => {
@@ -212,7 +213,7 @@ describe('SecurityCaseDetailScreen — terminal status requires a close reason',
   });
 
   it('does not show a reason picker for non-terminal status changes', async () => {
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Start investigating');
 
     await act(async () => {
@@ -234,7 +235,7 @@ describe('SecurityCaseDetailScreen — terminal status requires a close reason',
       closeReason: 'handed-to-police',
     });
 
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
 
     expect(await screen.findByText('Handed to police')).toBeTruthy();
   });
@@ -257,7 +258,7 @@ describe('SecurityCaseDetailScreen — dispatch mode: offered (dispatchStatus "p
   });
 
   it('renders only Accept and Decline — no Claim and no STATUS_ACTIONS', async () => {
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Accept');
 
     expect(screen.getByText('Decline')).toBeTruthy();
@@ -269,7 +270,7 @@ describe('SecurityCaseDetailScreen — dispatch mode: offered (dispatchStatus "p
 
   it('accepts the case and shows the resulting held state', async () => {
     mockAcceptSecurityCase.mockResolvedValue(heldCase());
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Accept');
 
     await act(async () => {
@@ -282,7 +283,7 @@ describe('SecurityCaseDetailScreen — dispatch mode: offered (dispatchStatus "p
 
   it('blocks accepting when offline with a definite "has not been accepted" message', async () => {
     mockIsOnline.mockReturnValue(false);
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Accept');
 
     await act(async () => {
@@ -295,7 +296,7 @@ describe('SecurityCaseDetailScreen — dispatch mode: offered (dispatchStatus "p
 
   it('on NetworkUnavailableError, warns to refresh before retrying rather than reporting failure', async () => {
     mockAcceptSecurityCase.mockRejectedValueOnce(new NetworkUnavailableError());
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Accept');
 
     await act(async () => {
@@ -313,7 +314,7 @@ describe('SecurityCaseDetailScreen — dispatch mode: offered (dispatchStatus "p
     );
     mockGetSecurityCase.mockResolvedValueOnce(offeredCase()).mockResolvedValueOnce(heldCase());
 
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Accept');
 
     await act(async () => {
@@ -326,7 +327,7 @@ describe('SecurityCaseDetailScreen — dispatch mode: offered (dispatchStatus "p
 
   it('requires picking a fixed-enum reason before confirming decline, then declines and navigates back', async () => {
     mockDeclineSecurityCase.mockResolvedValue({ caseId: 'case-1', status: 'returned_to_queue' });
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Decline');
 
     await act(async () => {
@@ -361,7 +362,7 @@ describe('SecurityCaseDetailScreen — dispatch mode: held (dispatchStatus "acce
   });
 
   it('renders STATUS_ACTIONS plus Release, and no Claim/Accept/Decline', async () => {
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Release');
 
     expect(screen.getByText('Begin tracking')).toBeTruthy();
@@ -374,7 +375,7 @@ describe('SecurityCaseDetailScreen — dispatch mode: held (dispatchStatus "acce
 
   it('requires picking a fixed-enum reason before confirming release, then releases and navigates back', async () => {
     mockReleaseSecurityCase.mockResolvedValue({ caseId: 'case-1', status: 'returned_to_queue' });
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Release');
 
     await act(async () => {
@@ -406,7 +407,7 @@ describe('SecurityCaseDetailScreen — dispatch mode: held (dispatchStatus "acce
       .mockResolvedValueOnce(heldCase())
       .mockResolvedValueOnce({ ...heldCase(), dispatchStatus: undefined });
 
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
     await screen.findByText('Release');
 
     await act(async () => {
@@ -432,7 +433,7 @@ describe('SecurityCaseDetailScreen — pool mode (dispatchStatus absent) stays b
 
   it('renders Claim case for an open, unassigned case with no dispatchStatus', async () => {
     mockGetSecurityCase.mockResolvedValue(openCase());
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
 
     expect(await screen.findByText('Claim case')).toBeTruthy();
     expect(screen.queryByText('Accept')).toBeNull();
@@ -446,7 +447,7 @@ describe('SecurityCaseDetailScreen — pool mode (dispatchStatus absent) stays b
       status: 'investigating',
       partnerOrganizationId: 'org-1',
     });
-    await render(<SecurityCaseDetailScreen />);
+    await render(<ThemeProvider><SecurityCaseDetailScreen /></ThemeProvider>);
 
     expect(await screen.findByText('Begin tracking')).toBeTruthy();
     expect(screen.queryByText('Release')).toBeNull();

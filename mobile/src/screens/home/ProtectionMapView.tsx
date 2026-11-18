@@ -1,5 +1,6 @@
 import React, { Component, useEffect, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { useTheme } from '../../theme/ThemeProvider';
 import { colors, radius } from '../../theme/tokens';
 import { MapPlaceholder } from '../recovery/MapPlaceholder';
 
@@ -21,6 +22,8 @@ export interface ProtectionMapViewProps {
   pins: MapAssetPin[];
   selectedId?: string | null;
   onSelectPin?: (id: string) => void;
+  /** Fires when the empty map is tapped (not a pin). */
+  onMapPress?: () => void;
   height?: number;
   fullScreen?: boolean;
   mapType?: ProtectionMapType;
@@ -96,6 +99,7 @@ function NativeProtectionMap({
   pins,
   selectedId,
   onSelectPin,
+  onMapPress,
   height,
   fullScreen,
   mapType = 'standard',
@@ -104,6 +108,7 @@ function NativeProtectionMap({
   recordedAt,
   emptyMessage,
 }: ProtectionMapViewProps) {
+  const { isDark } = useTheme();
   const mapsModule = loadMapsModule();
   const mapRef = useRef<MapsModule['default']>(null);
   const selected = pins.find((pin) => pin.id === selectedId) ?? pins[0] ?? null;
@@ -159,6 +164,9 @@ function NativeProtectionMap({
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
         mapType={mapType === 'satellite' ? 'satellite' : 'standard'}
+        // Follow the app's light/dark choice, not just the phone's setting.
+        userInterfaceStyle={isDark ? 'dark' : 'light'}
+        onPress={onMapPress}
         showsUserLocation={false}
         showsMyLocationButton={false}
         rotateEnabled={false}

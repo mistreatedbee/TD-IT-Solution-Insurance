@@ -25,7 +25,7 @@ export function AuthPage({ pattern, children, style, ...screenProps }: AuthPageP
   return (
     <View style={styles.fill} testID="auth-page">
       <Backdrop variant="gradient" pattern={pattern} />
-      <Screen {...screenProps} style={[styles.transparent, style]}>
+      <Screen {...screenProps} backdrop={false} style={[styles.transparent, style]}>
         {children}
       </Screen>
     </View>
@@ -95,6 +95,8 @@ export function AuthText({ children, tone = 'muted', small = false, align = 'lef
 }
 
 export interface AuthLinkProps {
+  /** Less vertical padding, for tight cards. */
+  compact?: boolean;
   label: string;
   onPress: () => void;
   /** Leading plain text rendered before the link (e.g. "New here? "). */
@@ -106,7 +108,7 @@ export interface AuthLinkProps {
 }
 
 /** 48dp-tall text link row, `link` colour, sentence case. */
-export function AuthLink({ label, onPress, prefix, align = 'center', accessibilityLabel, testID, style }: AuthLinkProps) {
+export function AuthLink({ label, onPress, prefix, align = 'center', accessibilityLabel, testID, style, compact = false }: AuthLinkProps) {
   const t = useDesignTokens();
   const justifyContent = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
   return (
@@ -117,7 +119,7 @@ export function AuthLink({ label, onPress, prefix, align = 'center', accessibili
         accessibilityLabel={accessibilityLabel}
         testID={testID}
         onPress={onPress}
-        style={[t.type.label, { color: t.colors.link, textDecorationLine: 'underline', paddingVertical: t.spacing.s3 }]}
+        style={[t.type.label, { color: t.colors.link, textDecorationLine: 'underline', paddingVertical: compact ? t.spacing.s2 : t.spacing.s3 }]}
       >
         {label}
       </Text>
@@ -167,7 +169,7 @@ export function PasswordField(props: PasswordFieldProps) {
           hitSlop={8}
           style={styles.eye}
         >
-          <Icon size={20} strokeWidth={1.75} color={t.colors.inkMuted} />
+          <Icon size={20} strokeWidth={1.75} color={t.colors.iconMuted} />
         </Pressable>
       }
     />

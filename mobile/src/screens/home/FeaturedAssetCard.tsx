@@ -7,7 +7,7 @@ import { formatAssetType } from '../../lib/asset-labels';
 import type { AssetTrackingView } from '../../tracking/types';
 import { useDesignTokens } from '../../theme/designTheme';
 import { assetStatusBadge } from './assetStatus';
-import { getAssetVisual } from './assetVisuals';
+import { AssetTypeImage } from './assetVisuals';
 import { useHomeStyles } from './homeStyles';
 
 function protectionSteps(item: AssetTrackingView): { label: string; done: boolean }[] {
@@ -102,7 +102,6 @@ export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) 
 
   const steps = protectionSteps(item);
   const status = assetStatusBadge(item);
-  const TypeIcon = getAssetVisual(item.assetType).Icon;
 
   return (
     <Pressable
@@ -113,9 +112,7 @@ export function FeaturedAssetCard({ item, onAddAsset }: FeaturedAssetCardProps) 
       <GlassCard radius="xl">
         <Text style={home.eyebrow}>Current protection</Text>
         <View style={styles.titleRow}>
-          <View style={home.iconTile}>
-            <TypeIcon size={24} color={t.colors.ink} strokeWidth={1.75} />
-          </View>
+          <AssetTypeImage assetType={item.assetType} size="md" />
           <View style={styles.titleCopy}>
             <Text style={styles.assetName} numberOfLines={1}>
               {item.displayName}

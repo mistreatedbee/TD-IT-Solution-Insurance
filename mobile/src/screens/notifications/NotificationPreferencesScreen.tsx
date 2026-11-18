@@ -17,7 +17,7 @@
  * other toggle (including theft_critical's own email/sms channels) is a
  * normal, freely-editable control.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
   getNotificationPreferences,
@@ -27,8 +27,10 @@ import {
   type NotificationPreferencesResponse,
 } from '../../api/notifications';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { Alert, Button, Card, Screen, Toggle } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert, Toggle } from '../../theme/primitives';
 import { FEATURE_CLAIMS_ENABLED } from '../../config/features';
 
 type Channel = keyof CategoryChannelPreferences;
@@ -53,7 +55,8 @@ const ALL_CATEGORIES: ReadonlyArray<{
   {
     key: 'device_status',
     label: 'Device status',
-    description: 'GPS, battery, and connectivity updates for your tracked devices.',
+    description:
+      'GPS, battery, and connectivity updates for your tracked devices.',
   },
   {
     key: 'billing',
@@ -63,7 +66,8 @@ const ALL_CATEGORIES: ReadonlyArray<{
   {
     key: 'account',
     label: 'Account & security',
-    description: 'Login alerts and changes to your account or security settings.',
+    description:
+      'Login alerts and changes to your account or security settings.',
   },
   {
     key: 'claims',
@@ -92,7 +96,9 @@ const CATEGORIES: ReadonlyArray<{
   key: NotificationCategory;
   label: string;
   description: string;
-}> = ALL_CATEGORIES.filter((category) => category.key !== 'claims' || FEATURE_CLAIMS_ENABLED);
+}> = ALL_CATEGORIES.filter(
+  (category) => category.key !== 'claims' || FEATURE_CLAIMS_ENABLED,
+);
 
 /** The one channel/category combination the backend will always reject. */
 function isLocked(category: NotificationCategory, channel: Channel): boolean {
@@ -100,9 +106,11 @@ function isLocked(category: NotificationCategory, channel: Channel): boolean {
 }
 
 export function NotificationPreferencesScreen() {
-  const [channels, setChannels] = useState<NotificationPreferencesResponse['channels'] | null>(
-    null,
-  );
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
+  const [channels, setChannels] = useState<
+    NotificationPreferencesResponse['channels'] | null
+  >(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -123,7 +131,11 @@ export function NotificationPreferencesScreen() {
       .finally(() => setIsLoading(false));
   }
 
-  async function handleToggle(category: NotificationCategory, channel: Channel, next: boolean) {
+  async function handleToggle(
+    category: NotificationCategory,
+    channel: Channel,
+    next: boolean,
+  ) {
     if (!channels || isLocked(category, channel)) return;
 
     const key = `${category}.${channel}`;
@@ -138,7 +150,9 @@ export function NotificationPreferencesScreen() {
     setSavingKey(key);
 
     try {
-      const result = await updateNotificationPreferences({ [category]: { [channel]: next } });
+      const result = await updateNotificationPreferences({
+        [category]: { [channel]: next },
+      });
       setChannels(result.channels);
     } catch (err) {
       setChannels(previous);
@@ -149,7 +163,7 @@ export function NotificationPreferencesScreen() {
   }
 
   return (
-    <Screen>
+    <DesignPage>
       <Text style={styles.subtitle}>
         Choose how you want to hear from us, by category and channel.
       </Text>
@@ -164,22 +178,26 @@ export function NotificationPreferencesScreen() {
 
       {isLoading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
       ) : loadError ? (
         <>
           <View style={styles.alertSpacing}>
             <Alert tone="danger">{loadError}</Alert>
           </View>
-          <Button variant="tertiary" onPress={load}>
-            Retry
-          </Button>
+          <Button label="Retry" onPress={load} variant="glass" />
         </>
       ) : channels ? (
         CATEGORIES.map((category) => (
-          <Card key={category.key} style={styles.categoryCard}>
+          <GlassCard
+            variant="solid"
+            key={category.key}
+            style={styles.categoryCard}
+          >
             <Text style={styles.categoryLabel}>{category.label}</Text>
-            <Text style={styles.categoryDescription}>{category.description}</Text>
+            <Text style={styles.categoryDescription}>
+              {category.description}
+            </Text>
 
             {CHANNELS.map((channel) => {
               const locked = isLocked(category.key, channel.key);
@@ -190,78 +208,72 @@ export function NotificationPreferencesScreen() {
                 <View key={key} style={styles.channelRow}>
                   <View style={styles.channelLabelColumn}>
                     <Text style={styles.channelLabel}>{channel.label}</Text>
-                    {savingKey === key ? <Text style={styles.savingHint}>Saving…</Text> : null}
+                    {savingKey === key ? (
+                      <Text style={styles.savingHint}>Saving…</Text>
+                    ) : null}
                   </View>
                   <Toggle
                     value={locked ? true : value}
-                    onValueChange={(next) => handleToggle(category.key, channel.key, next)}
+                    onValueChange={(next) =>
+                      handleToggle(category.key, channel.key, next)
+                    }
                     disabled={locked || savingKey !== null}
                     accessibilityLabel={`${channel.label} notifications for ${category.label}`}
-                    disabledHint={locked ? 'Required — cannot be turned off' : undefined}
+                    disabledHint={
+                      locked ? 'Required — cannot be turned off' : undefined
+                    }
                   />
                 </View>
               );
             })}
-          </Card>
+          </GlassCard>
         ))
       ) : null}
-    </Screen>
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  subtitle: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-  },
-  alertSpacing: {
-    marginBottom: spacing.lg,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing['2xl'],
-  },
-  categoryCard: {
-    marginBottom: spacing.lg,
-  },
-  categoryLabel: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  categoryDescription: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.xs * 1.4,
-    marginBottom: spacing.md,
-  },
-  channelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  channelLabelColumn: {
-    flex: 1,
-  },
-  channelLabel: {
-    fontSize: typography.sizes.sm,
-    color: colors.textPrimary,
-  },
-  savingHint: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s1,
+    },
+    subtitle: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s6,
+    },
+    alertSpacing: { marginBottom: t.spacing.s4 },
+    centered: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: t.spacing.s8,
+    },
+    categoryCard: { marginBottom: t.spacing.s4 },
+    categoryLabel: {
+      ...t.type.label,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s1,
+    },
+    categoryDescription: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s3,
+    },
+    channelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: t.spacing.s1,
+      borderTopWidth: 1,
+      borderTopColor: t.colors.borderSubtle,
+    },
+    channelLabelColumn: { flex: 1 },
+    channelLabel: { ...t.type.bodySm, color: t.colors.ink },
+    savingHint: { ...t.type.labelSm, color: t.colors.inkMuted },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

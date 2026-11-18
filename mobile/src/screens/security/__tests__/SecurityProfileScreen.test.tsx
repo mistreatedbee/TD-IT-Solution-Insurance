@@ -1,6 +1,7 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
 import { SecurityProfileScreen } from '../SecurityProfileScreen';
+import { ThemeProvider } from '../../../theme/ThemeProvider';
 
 jest.mock('../../../theme/primitives', () => {
   const { Text, View } = require('react-native');
@@ -29,7 +30,7 @@ jest.mock('../../../auth/useAccountQuery', () => ({
 
 describe('SecurityProfileScreen', () => {
   it('shows preferences and sign-out rows but no test-notification row', async () => {
-    const view = await render(<SecurityProfileScreen />);
+    const view = await render(<ThemeProvider><SecurityProfileScreen /></ThemeProvider>);
     expect(view.getByText('Notification preferences')).toBeTruthy();
     expect(view.getByText('Log out')).toBeTruthy();
     expect(view.queryByText('Send test notification')).toBeNull();

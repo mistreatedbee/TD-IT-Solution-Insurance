@@ -69,18 +69,24 @@ function isInternalTestingBuild(): boolean {
   return (
     process.env.EAS_BUILD_PROFILE === 'preview' ||
     process.env.EAS_BUILD_PROFILE === 'preview-simulator' ||
-    process.env.EAS_BUILD_PROFILE === 'playInternal'
+    process.env.EAS_BUILD_PROFILE === 'playInternal' ||
+    process.env.EAS_BUILD_PROFILE === 'owner-test'
   );
+}
+
+/** `owner-test` (owner exception 2026-11-17) installs next to the preview builds under its own identifier. */
+function internalTestingSuffix(): string {
+  return process.env.EAS_BUILD_PROFILE === 'owner-test' ? '.ownertest' : '.internal';
 }
 
 function applyInternalTestingIdentifiers(expo: ExpoConfig): ExpoConfig {
   return {
     ...expo,
     ios: expo.ios
-      ? { ...expo.ios, bundleIdentifier: `${expo.ios.bundleIdentifier}.internal` }
+      ? { ...expo.ios, bundleIdentifier: `${expo.ios.bundleIdentifier}${internalTestingSuffix()}` }
       : expo.ios,
     android: expo.android
-      ? { ...expo.android, package: `${expo.android.package}.internal` }
+      ? { ...expo.android, package: `${expo.android.package}${internalTestingSuffix()}` }
       : expo.android,
   };
 }

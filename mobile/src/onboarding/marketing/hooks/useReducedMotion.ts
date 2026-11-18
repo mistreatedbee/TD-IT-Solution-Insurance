@@ -9,7 +9,10 @@ export function useReducedMotion(): boolean {
     void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
       if (mounted) setReduced(value);
     });
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
+    const sub = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      setReduced,
+    );
     return () => {
       mounted = false;
       sub.remove();

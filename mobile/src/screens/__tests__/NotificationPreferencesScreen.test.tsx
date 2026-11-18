@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react-native';
 import { NotificationPreferencesScreen } from '../notifications/NotificationPreferencesScreen';
 import type { NotificationPreferencesResponse } from '../../api/notifications';
+import { ThemeProvider } from '../../theme/ThemeProvider';
 
 jest.mock('../../theme/primitives', () => {
   const React = require('react');
@@ -90,7 +91,7 @@ describe('NotificationPreferencesScreen', () => {
   it('loads and renders every category with its channel toggles', async () => {
     getNotificationPreferences.mockResolvedValue(buildPreferences());
 
-    await render(<NotificationPreferencesScreen />);
+    await render(<ThemeProvider><NotificationPreferencesScreen /></ThemeProvider>);
 
     await waitFor(() => {
       expect(screen.getByText('Theft alerts')).toBeTruthy();
@@ -107,7 +108,7 @@ describe('NotificationPreferencesScreen', () => {
   it('renders the theft_critical push toggle locked with an explanatory note', async () => {
     getNotificationPreferences.mockResolvedValue(buildPreferences());
 
-    await render(<NotificationPreferencesScreen />);
+    await render(<ThemeProvider><NotificationPreferencesScreen /></ThemeProvider>);
 
     await waitFor(() => {
       expect(screen.getByText('Theft alerts')).toBeTruthy();
@@ -122,7 +123,7 @@ describe('NotificationPreferencesScreen', () => {
   it('leaves the theft_critical email toggle freely editable', async () => {
     getNotificationPreferences.mockResolvedValue(buildPreferences());
 
-    await render(<NotificationPreferencesScreen />);
+    await render(<ThemeProvider><NotificationPreferencesScreen /></ThemeProvider>);
 
     await waitFor(() => {
       expect(screen.getByText('Theft alerts')).toBeTruthy();
@@ -138,7 +139,7 @@ describe('NotificationPreferencesScreen', () => {
       buildPreferences({ billing: { push: true, email: true, sms: false } }),
     );
 
-    await render(<NotificationPreferencesScreen />);
+    await render(<ThemeProvider><NotificationPreferencesScreen /></ThemeProvider>);
 
     await waitFor(() => {
       expect(screen.getByText('Billing')).toBeTruthy();
@@ -160,7 +161,7 @@ describe('NotificationPreferencesScreen', () => {
     // Plain rejection with a non-user-facing message maps to the notification context fallback.
     updateNotificationPreferences.mockRejectedValue(new Error('TypeError: fetch failed'));
 
-    await render(<NotificationPreferencesScreen />);
+    await render(<ThemeProvider><NotificationPreferencesScreen /></ThemeProvider>);
 
     await waitFor(() => {
       expect(screen.getByText('Billing')).toBeTruthy();
@@ -184,7 +185,7 @@ describe('NotificationPreferencesScreen', () => {
   it('shows a retry action when the initial load fails', async () => {
     getNotificationPreferences.mockRejectedValueOnce(new Error('TypeError: fetch failed'));
 
-    await render(<NotificationPreferencesScreen />);
+    await render(<ThemeProvider><NotificationPreferencesScreen /></ThemeProvider>);
 
     await waitFor(() => {
       expect(

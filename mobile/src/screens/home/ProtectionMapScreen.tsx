@@ -1,16 +1,17 @@
 /**
  * Full-screen live protection map — Feature 009 Phase 5.
  */
-import { useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import {
   ChevronDownIcon,
   ChevronUpIcon,
   CrosshairIcon,
   LayersIcon,
+  Minimize2Icon,
   MapPinIcon,
   RefreshCwIcon,
 } from 'lucide-react-native';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -27,16 +28,26 @@ import { formatRelativeTime } from '../../location/formatRelativeTime';
 import { GlassSurface } from '../../navigation/GlassSurface';
 import { useLiquidGlassChrome } from '../../navigation/useLiquidGlassChrome';
 import { useFloatingTabBarOffset } from '../../navigation/tabBarMetrics';
+import { useTabBarHidden } from '../../navigation/tabBarVisibility';
 import {
   filterProtectionMapAssets,
   useProtectionMapAssets,
   type ProtectionMapFilter,
 } from '../../tracking/useProtectionMapAssets';
-import { trackingStatusLabel, trackingStatusTone } from '../../tracking/resolveTrackingStatus';
+import {
+  trackingStatusLabel,
+  trackingStatusTone,
+} from '../../tracking/resolveTrackingStatus';
 import type { AssetTrackingView } from '../../tracking/types';
 import { Alert, Badge, Button } from '../../theme/primitives';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
 import { useTheme } from '../../theme/ThemeProvider';
-import { minTouchTarget, radius, spacing, typography } from '../../theme/tokens';
+import {
+  minTouchTarget,
+  radius,
+  spacing,
+  typography,
+} from '../../theme/tokens';
 import { AssetTypeImage } from './assetVisuals';
 import { ProtectionMapView, type ProtectionMapType } from './ProtectionMapView';
 
@@ -47,6 +58,37 @@ const FILTERS: { id: ProtectionMapFilter; label: string }[] = [
   { id: 'needs_attention', label: 'Needs attention' },
 ];
 
+/** Liquid-glass surface used by every card and button floating over the map (light and dark). */
+function MapGlass({
+  style,
+  children,
+  tint,
+}: {
+  style?: React.ComponentProps<typeof GlassSurface>['style'];
+  children: React.ReactNode;
+  tint?: string;
+}) {
+  const glass = useLiquidGlassChrome();
+  return (
+    <GlassSurface
+      style={[
+        {
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: glass.border,
+          overflow: 'hidden',
+        },
+        style,
+      ]}
+      colorScheme={glass.colorScheme}
+      tintColor={tint ?? glass.tint}
+      glassEffectStyle={glass.glassEffectStyle}
+      blurIntensity={glass.blurIntensity}
+    >
+      {children}
+    </GlassSurface>
+  );
+}
+
 const SHEET_COLLAPSED_HEIGHT = 108;
 const SHEET_EXPANDED_HEIGHT = 196;
 
@@ -56,19 +98,35 @@ export function ProtectionMapScreen() {
   const tabBarOffset = useFloatingTabBarOffset();
   const glass = useLiquidGlassChrome();
   const { colors, elevation, isDark } = useTheme();
-  const styles = useMapScreenStyles(colors, elevation, isDark);
+  const d = useDesignTokens();
+  const styles = useMapScreenStyles(colors, elevation, isDark, d);
+  const setTabBarHidden = useTabBarHidden((v) => v.setHidden);
+  const [immersive, setImmersive] = useState(false);
 
   const [filter, setFilter] = useState<ProtectionMapFilter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<ProtectionMapType>('standard');
   const [sheetExpanded, setSheetExpanded] = useState(false);
 
-  const { allAssets, assets, mappableAssets, locationUnavailable, isLoading, isError, error, refetch, isRefetching } =
-    useProtectionMapAssets(filter);
+  const {
+    allAssets,
+    assets,
+    mappableAssets,
+    locationUnavailable,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isRefetching,
+  } = useProtectionMapAssets(filter);
 
   const selected = useMemo(() => {
     if (selectedId) {
-      return assets.find((asset) => asset.assetId === selectedId) ?? mappableAssets[0] ?? null;
+      return (
+        assets.find((asset) => asset.assetId === selectedId) ??
+        mappableAssets[0] ??
+        null
+      );
     }
     return mappableAssets[0] ?? assets[0] ?? null;
   }, [assets, mappableAssets, selectedId]);
@@ -89,12 +147,26 @@ export function ProtectionMapScreen() {
   const trailCoordinates = useMemo(() => {
     const events = historyQuery.data?.data ?? [];
     if (events.length < 2) return [];
-    return [...events]
-      .reverse()
-      .map((event) => ({ latitude: event.latitude, longitude: event.longitude }));
+    return [...events].reverse().map((event) => ({
+      latitude: event.latitude,
+      longitude: event.longitude,
+    }));
   }, [historyQuery.data]);
 
-  const sheetHeight = sheetExpanded ? SHEET_EXPANDED_HEIGHT : SHEET_COLLAPSED_HEIGHT;
+  // Tapping the empty map toggles full screen: overlays and the tab bar slide away, a second tap brings them back.
+  useEffect(() => {
+    setTabBarHidden(immersive);
+    return () => setTabBarHidden(false);
+  }, [immersive, setTabBarHidden]);
+  useFocusEffect(
+    useCallback(() => {
+      return () => setImmersive(false);
+    }, []),
+  );
+
+  const sheetHeight = sheetExpanded
+    ? SHEET_EXPANDED_HEIGHT
+    : SHEET_COLLAPSED_HEIGHT;
   const cardBottom = tabBarOffset + spacing.sm;
   const controlsBottom = cardBottom + sheetHeight + spacing.md;
   const mapEdgePadding = useMemo(
@@ -116,13 +188,15 @@ export function ProtectionMapScreen() {
   }
 
   function toggleMapType() {
-    setMapType((current) => (current === 'standard' ? 'satellite' : 'standard'));
+    setMapType((current) =>
+      current === 'standard' ? 'satellite' : 'standard',
+    );
   }
 
   if (isLoading) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={d.colors.link} />
       </View>
     );
   }
@@ -141,6 +215,7 @@ export function ProtectionMapScreen() {
             setSheetExpanded(true);
           }}
           fullScreen
+          onMapPress={() => setImmersive((v) => !v)}
           mapType={mapType}
           trailCoordinates={trailCoordinates}
           mapEdgePadding={mapEdgePadding}
@@ -149,80 +224,137 @@ export function ProtectionMapScreen() {
         />
 
         {pinCount === 0 ? (
-          <View style={styles.emptyBanner} pointerEvents="none">
-            <MapPinIcon size={18} color={colors.primary} strokeWidth={2.2} />
-            <Text style={styles.emptyBannerText}>
-              No pinned locations yet. Enable tracking on a smartphone asset to appear here.
-            </Text>
+          <View style={styles.emptyBannerWrap} pointerEvents="none">
+            <MapGlass style={styles.emptyBanner}>
+              <MapPinIcon size={18} color={d.colors.ink} strokeWidth={2.2} />
+              <Text style={styles.emptyBannerText}>
+                No pinned locations yet. Enable tracking on a smartphone asset
+                to appear here.
+              </Text>
+            </MapGlass>
           </View>
         ) : null}
       </View>
 
-      <View
-        style={[styles.topOverlay, { paddingTop: insets.top + spacing.sm }]}
-        pointerEvents="box-none"
-      >
-        <View style={styles.titleRow}>
-          <View style={styles.titleBlock}>
-            <Text style={styles.title}>Live protection map</Text>
-            <Text style={styles.subtitle}>
-              Last known locations{pinCount > 0 ? ` · ${pinCount} pinned` : ''}
-            </Text>
-          </View>
-          <View style={styles.titleActions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={isRefetching ? 'Refreshing locations' : 'Refresh locations'}
-              onPress={() => void refetch()}
-              disabled={isRefetching}
-              style={styles.iconButton}
-            >
-              <RefreshCwIcon size={18} color={colors.primary} strokeWidth={2.2} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                mapType === 'satellite' ? 'Switch to standard map' : 'Switch to satellite map'
-              }
-              onPress={toggleMapType}
-              style={styles.iconButton}
-            >
-              <LayersIcon size={18} color={colors.primary} strokeWidth={2.2} />
-            </Pressable>
-          </View>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterContent}
-          style={styles.filterRow}
+      {immersive ? (
+        <View
+          style={[styles.exitWrap, { top: insets.top + spacing.sm }]}
+          pointerEvents="box-none"
         >
-          {FILTERS.map((item) => {
-            const count = filterProtectionMapAssets(allAssets, item.id).length;
-            return (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Exit full screen"
+            onPress={() => setImmersive(false)}
+          >
+            <MapGlass style={styles.iconButton}>
+              <Minimize2Icon size={18} color={d.colors.ink} strokeWidth={2.2} />
+            </MapGlass>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {immersive ? null : (
+        <View
+          style={[styles.topOverlay, { paddingTop: insets.top + spacing.sm }]}
+          pointerEvents="box-none"
+        >
+          <View style={styles.titleRow}>
+            <MapGlass style={styles.titleBlock}>
+              <Text style={styles.title}>Live protection map</Text>
+              <Text style={styles.subtitle}>
+                Last known locations
+                {pinCount > 0 ? ` · ${pinCount} pinned` : ''}
+              </Text>
+            </MapGlass>
+            <View style={styles.titleActions}>
               <Pressable
-                key={item.id}
-                onPress={() => {
-                  setFilter(item.id);
-                  setSelectedId(null);
-                  setSheetExpanded(false);
-                }}
-                style={[styles.filterChip, filter === item.id ? styles.filterChipActive : null]}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isRefetching ? 'Refreshing locations' : 'Refresh locations'
+                }
+                onPress={() => void refetch()}
+                disabled={isRefetching}
               >
-                <Text
-                  style={[styles.filterText, filter === item.id ? styles.filterTextActive : null]}
-                >
-                  {item.label} ({count})
-                </Text>
+                <MapGlass style={styles.iconButton}>
+                  <RefreshCwIcon
+                    size={18}
+                    color={d.colors.ink}
+                    strokeWidth={2.2}
+                  />
+                </MapGlass>
               </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  mapType === 'satellite'
+                    ? 'Switch to standard map'
+                    : 'Switch to satellite map'
+                }
+                onPress={toggleMapType}
+              >
+                <MapGlass style={styles.iconButton}>
+                  <LayersIcon
+                    size={18}
+                    color={d.colors.ink}
+                    strokeWidth={2.2}
+                  />
+                </MapGlass>
+              </Pressable>
+            </View>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterContent}
+            style={styles.filterRow}
+          >
+            {FILTERS.map((item) => {
+              const count = filterProtectionMapAssets(
+                allAssets,
+                item.id,
+              ).length;
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={() => {
+                    setFilter(item.id);
+                    setSelectedId(null);
+                    setSheetExpanded(false);
+                  }}
+                >
+                  <MapGlass
+                    style={styles.filterChip}
+                    tint={
+                      filter === item.id
+                        ? 'rgba(39, 128, 184, 0.38)'
+                        : undefined
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.filterText,
+                        filter === item.id ? styles.filterTextActive : null,
+                      ]}
+                    >
+                      {item.label} ({count})
+                    </Text>
+                  </MapGlass>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {assetsLoadFailed ? (
-        <View style={[styles.locationWarning, styles.loadWarning, { top: insets.top + 132 }]}>
+        <View
+          style={[
+            styles.locationWarning,
+            styles.loadWarning,
+            { top: insets.top + 132 },
+          ]}
+        >
           <Alert tone="danger">
             {mapUserFacingError(error, {
               context: 'location',
@@ -230,62 +362,96 @@ export function ProtectionMapScreen() {
                 'Could not load your assets for the map. Check your connection and tap Refresh locations.',
             })}
           </Alert>
-          <Button variant="secondary" fullWidth style={styles.retryInline} onPress={() => void refetch()}>
+          <Button
+            variant="secondary"
+            fullWidth
+            style={styles.retryInline}
+            onPress={() => void refetch()}
+          >
             Try again
           </Button>
         </View>
       ) : locationUnavailable ? (
         <View style={[styles.locationWarning, { top: insets.top + 132 }]}>
           <Text style={styles.locationWarningText}>
-            Live location summary is unavailable — showing assets without map pins. Pull to refresh
-            after enabling phone tracking.
+            Live location summary is unavailable — showing assets without map
+            pins. Pull to refresh after enabling phone tracking.
           </Text>
         </View>
       ) : null}
 
-      <View style={[styles.mapControls, { bottom: controlsBottom }]} pointerEvents="box-none">
-        <Pressable accessibilityRole="button" onPress={handleCentreSelected} style={styles.iconButton}>
-          <CrosshairIcon size={18} color={colors.primary} strokeWidth={2.2} />
-        </Pressable>
-        {pins.length > 1 ? (
-          <Pressable accessibilityRole="button" onPress={handleCentreAll} style={styles.iconButton}>
-            <Text style={styles.fitAllText}>Fit all</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      <View style={[styles.sheetWrap, { bottom: cardBottom }]} pointerEvents="box-none">
-        <GlassSurface
-          style={[styles.sheet, { borderColor: glass.border }]}
-          colorScheme={glass.colorScheme}
-          tintColor={glass.tint}
-          glassEffectStyle={glass.glassEffectStyle}
-          blurIntensity={glass.blurIntensity}
+      {immersive ? null : (
+        <View
+          style={[styles.mapControls, { bottom: controlsBottom }]}
+          pointerEvents="box-none"
         >
-          <View style={styles.sheetHandle} accessibilityElementsHidden />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Centre on selected asset"
+            onPress={handleCentreSelected}
+          >
+            <MapGlass style={styles.iconButton}>
+              <CrosshairIcon size={18} color={d.colors.ink} strokeWidth={2.2} />
+            </MapGlass>
+          </Pressable>
+          {pins.length > 1 ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Fit all assets"
+              onPress={handleCentreAll}
+            >
+              <MapGlass style={styles.iconButton}>
+                <Text style={styles.fitAllText}>Fit all</Text>
+              </MapGlass>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
 
-          {selected ? (
-            <AssetMapSheet
-              asset={selected}
-              expanded={sheetExpanded}
-              onToggle={() => setSheetExpanded((value) => !value)}
-              onOpenAsset={() => router.push(`/assets/${selected.assetId}` as Href)}
-              trailPointCount={historyQuery.data?.data.length ?? 0}
-              styles={styles}
-              colors={colors}
-            />
-          ) : (
-            <View style={styles.sheetEmpty}>
-              <MapPinIcon size={18} color={colors.slate[500]} strokeWidth={2} />
-              <Text style={styles.sheetEmptyText}>
-                {assets.length === 0
-                  ? 'No assets match this filter.'
-                  : 'No locations on the map yet — enable tracking on a smartphone asset.'}
-              </Text>
-            </View>
-          )}
-        </GlassSurface>
-      </View>
+      {immersive ? null : (
+        <View
+          style={[styles.sheetWrap, { bottom: cardBottom }]}
+          pointerEvents="box-none"
+        >
+          <GlassSurface
+            style={[styles.sheet, { borderColor: glass.border }]}
+            colorScheme={glass.colorScheme}
+            tintColor={glass.tint}
+            glassEffectStyle={glass.glassEffectStyle}
+            blurIntensity={glass.blurIntensity}
+          >
+            <View style={styles.sheetHandle} accessibilityElementsHidden />
+
+            {selected ? (
+              <AssetMapSheet
+                asset={selected}
+                expanded={sheetExpanded}
+                onToggle={() => setSheetExpanded((value) => !value)}
+                onOpenAsset={() =>
+                  router.push(`/assets/${selected.assetId}` as Href)
+                }
+                trailPointCount={historyQuery.data?.data.length ?? 0}
+                styles={styles}
+                colors={colors}
+                d={d}
+              />
+            ) : (
+              <View style={styles.sheetEmpty}>
+                <MapPinIcon
+                  size={18}
+                  color={d.colors.iconMuted}
+                  strokeWidth={2}
+                />
+                <Text style={styles.sheetEmptyText}>
+                  {assets.length === 0
+                    ? 'No assets match this filter.'
+                    : 'No locations on the map yet — enable tracking on a smartphone asset.'}
+                </Text>
+              </View>
+            )}
+          </GlassSurface>
+        </View>
+      )}
     </View>
   );
 }
@@ -300,6 +466,7 @@ function AssetMapSheet({
   trailPointCount,
   styles,
   colors,
+  d,
 }: {
   asset: AssetTrackingView;
   expanded: boolean;
@@ -308,6 +475,7 @@ function AssetMapSheet({
   trailPointCount: number;
   styles: MapScreenStyles;
   colors: ReturnType<typeof useTheme>['colors'];
+  d: DesignTokens;
 }) {
   const location = asset.lastLocation;
   const Chevron = expanded ? ChevronUpIcon : ChevronDownIcon;
@@ -326,12 +494,14 @@ function AssetMapSheet({
           <Text style={styles.sheetTitle} numberOfLines={1}>
             {asset.displayName}
           </Text>
-          <Text style={styles.sheetMeta}>{formatAssetType(asset.assetType)}</Text>
+          <Text style={styles.sheetMeta}>
+            {formatAssetType(asset.assetType)}
+          </Text>
         </View>
         <Badge tone={trackingStatusTone(asset.trackingStatus)}>
           {trackingStatusLabel(asset.trackingStatus)}
         </Badge>
-        <Chevron size={18} color={colors.slate[400]} strokeWidth={2.2} />
+        <Chevron size={18} color={d.colors.iconMuted} strokeWidth={2.2} />
       </Pressable>
 
       {location ? (
@@ -358,7 +528,8 @@ function AssetMapSheet({
         <View style={styles.sheetExpanded}>
           {trailPointCount > 1 ? (
             <Text style={styles.trailHint}>
-              Recent trail: {trailPointCount} recorded points (not live tracking).
+              Recent trail: {trailPointCount} recorded points (not live
+              tracking).
             </Text>
           ) : null}
           <Button variant="secondary" fullWidth onPress={onOpenAsset}>
@@ -374,6 +545,7 @@ function useMapScreenStyles(
   colors: ReturnType<typeof useTheme>['colors'],
   elevation: ReturnType<typeof useTheme>['elevation'],
   isDark: boolean,
+  d: DesignTokens,
 ) {
   const overlayBg = isDark ? colors.background : 'rgba(255,255,255,0.96)';
 
@@ -382,7 +554,7 @@ function useMapScreenStyles(
       StyleSheet.create({
         root: {
           flex: 1,
-          backgroundColor: colors.card,
+          backgroundColor: d.colors.bgPage,
         },
         mapLayer: {
           ...StyleSheet.absoluteFill,
@@ -391,7 +563,7 @@ function useMapScreenStyles(
           flex: 1,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: colors.canvas,
+          backgroundColor: d.colors.bgPage,
         },
         loadWarning: {
           gap: spacing.sm,
@@ -399,24 +571,24 @@ function useMapScreenStyles(
         retryInline: {
           marginTop: spacing.xs,
         },
-        emptyBanner: {
+        emptyBannerWrap: {
           position: 'absolute',
           left: spacing.lg,
           right: spacing.lg,
           top: '38%',
+        },
+        emptyBanner: {
           flexDirection: 'row',
           alignItems: 'center',
           gap: spacing.sm,
-          backgroundColor: overlayBg,
           borderRadius: radius.card,
           paddingHorizontal: spacing.md,
           paddingVertical: spacing.md,
-          ...elevation,
         },
         emptyBannerText: {
           flex: 1,
           fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
+          color: d.colors.inkMuted,
           lineHeight: 20,
         },
         topOverlay: {
@@ -433,20 +605,18 @@ function useMapScreenStyles(
         },
         titleBlock: {
           flex: 1,
-          backgroundColor: overlayBg,
           borderRadius: radius.card,
           paddingHorizontal: spacing.md,
           paddingVertical: spacing.sm,
-          ...elevation,
         },
         title: {
           fontSize: typography.sizes.base,
           fontWeight: '700',
-          color: colors.textPrimary,
+          color: d.colors.ink,
         },
         subtitle: {
           fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
+          color: d.colors.inkMuted,
           marginTop: 2,
         },
         titleActions: {
@@ -464,19 +634,15 @@ function useMapScreenStyles(
           paddingHorizontal: spacing.md,
           paddingVertical: spacing.xs,
           borderRadius: radius.full,
-          backgroundColor: overlayBg,
-          ...elevation,
         },
-        filterChipActive: {
-          backgroundColor: colors.accentBlueTint,
-        },
+        filterChipActive: {},
         filterText: {
           fontSize: typography.sizes.xs,
           fontWeight: '600',
-          color: colors.textSecondary,
+          color: d.colors.inkMuted,
         },
         filterTextActive: {
-          color: colors.glassAccentDeep,
+          color: d.colors.ink,
         },
         locationWarning: {
           position: 'absolute',
@@ -492,6 +658,10 @@ function useMapScreenStyles(
           color: colors.tones.warning.text,
           lineHeight: 18,
         },
+        exitWrap: {
+          position: 'absolute',
+          right: spacing.md,
+        },
         mapControls: {
           position: 'absolute',
           right: spacing.md,
@@ -501,15 +671,13 @@ function useMapScreenStyles(
           width: minTouchTarget,
           height: minTouchTarget,
           borderRadius: minTouchTarget / 2,
-          backgroundColor: overlayBg,
           alignItems: 'center',
           justifyContent: 'center',
-          ...elevation,
         },
         fitAllText: {
           fontSize: typography.sizes.xs,
           fontWeight: '700',
-          color: colors.glassAccentDeep,
+          color: d.colors.link,
         },
         sheetWrap: {
           position: 'absolute',
@@ -548,11 +716,11 @@ function useMapScreenStyles(
         sheetTitle: {
           fontSize: typography.sizes.base,
           fontWeight: '700',
-          color: colors.textPrimary,
+          color: d.colors.ink,
         },
         sheetMeta: {
           fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
+          color: d.colors.inkMuted,
           marginTop: 1,
         },
         locationRow: {
@@ -564,16 +732,16 @@ function useMapScreenStyles(
         sheetCoords: {
           fontSize: typography.sizes.xs,
           fontFamily: 'monospace',
-          color: colors.textPrimary,
+          color: d.colors.ink,
         },
         sheetTime: {
           fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
+          color: d.colors.inkMuted,
           lineHeight: typography.sizes.xs * 1.45,
         },
         sheetHint: {
           fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
+          color: d.colors.inkMuted,
           lineHeight: 20,
           paddingTop: spacing.xs,
           borderTopWidth: StyleSheet.hairlineWidth,
@@ -581,7 +749,7 @@ function useMapScreenStyles(
         },
         trailHint: {
           fontSize: typography.sizes.xs,
-          color: colors.textSecondary,
+          color: d.colors.inkMuted,
           marginBottom: spacing.sm,
         },
         sheetExpanded: {
@@ -597,7 +765,7 @@ function useMapScreenStyles(
         sheetEmptyText: {
           flex: 1,
           fontSize: typography.sizes.sm,
-          color: colors.textSecondary,
+          color: d.colors.inkMuted,
           lineHeight: typography.sizes.sm * 1.45,
         },
       }),

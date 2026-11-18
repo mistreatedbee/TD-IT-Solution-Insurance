@@ -123,13 +123,19 @@ function loadProfiles() {
   const profiles = easJson.build ?? {};
   const resolved = {};
   for (const name of Object.keys(profiles)) {
-    resolved[name] = resolveProfile(profiles, name);
+    resolved[name] = { ...resolveProfile(profiles, name), profileName: name };
   }
   return resolved;
 }
 
+// OWNER EXCEPTION 2026-11-17 (docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md):
+// the owner-only `owner-test` profile is a TEST build with every gated feature ON and no real users. It is
+// treated like the development client for this check, by NAME and nowhere else. Remove this entry (and the
+// profile) before public launch. Every other profile stays fully checked.
+const OWNER_TEST_EXCEPTION_PROFILES = new Set(['owner-test']);
+
 function isDevelopmentProfile(resolved) {
-  return resolved.environment === 'development';
+  return resolved.environment === 'development' || OWNER_TEST_EXCEPTION_PROFILES.has(resolved.profileName);
 }
 
 // EAS defaults `distribution` to "store" when omitted — both "internal" and

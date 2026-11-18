@@ -110,7 +110,10 @@ describe('AssetListScreen', () => {
         },
         { timeout: 10000 },
       );
+      // the card keeps the asset's picture and type label; its footer line gives the tracking state
       expect(screen.getByText('Laptop')).toBeTruthy();
+      expect(screen.getByText('Hardware tracker required')).toBeTruthy();
+      expect(screen.getByTestId('asset-preview-507f1f77bcf86cd799439011')).toBeTruthy();
     },
     15000,
   );

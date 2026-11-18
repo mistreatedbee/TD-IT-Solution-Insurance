@@ -2,7 +2,7 @@
  * Security partner — recovery case queue from GET /v1/security/cases.
  */
 import { useRouter, type Href } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -17,8 +17,11 @@ import {
   type SecurityRecoveryCase,
 } from '../../api/security-cases';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { Alert, Badge, Card, Screen } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
+import { PolicyStatusPill } from '../policy/PolicyStatusPill';
 import type { BadgeTone } from '../../theme/primitives/Badge';
 
 function caseStatusTone(status: string): BadgeTone {
@@ -39,28 +42,34 @@ function CaseRow({
   recoveryCase: SecurityRecoveryCase;
   onPress: () => void;
 }) {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   return (
     <Pressable onPress={onPress}>
-      <Card style={styles.card}>
+      <GlassCard variant="solid" style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.reference}>{recoveryCase.referenceNumber}</Text>
-          <Badge tone={caseStatusTone(recoveryCase.status)}>
+          <PolicyStatusPill tone={caseStatusTone(recoveryCase.status)}>
             {formatStatus(recoveryCase.status)}
-          </Badge>
+          </PolicyStatusPill>
         </View>
-        <Text style={styles.meta}>Asset {recoveryCase.assetId.slice(0, 8)}…</Text>
+        <Text style={styles.meta}>
+          Asset {recoveryCase.assetId.slice(0, 8)}…
+        </Text>
         <Text style={styles.meta}>
           Reported {new Date(recoveryCase.reportedAt).toLocaleString()}
         </Text>
         {!recoveryCase.partnerOrganizationId ? (
           <Text style={styles.unassigned}>Unassigned — tap to claim</Text>
         ) : null}
-      </Card>
+      </GlassCard>
     </Pressable>
   );
 }
 
 export function SecurityCasesListScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const [rows, setRows] = useState<SecurityRecoveryCase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,11 +125,12 @@ export function SecurityCasesListScreen() {
   }
 
   return (
-    <Screen scroll={false} padded={false}>
+    <DesignPage scroll={false} padded={false}>
       <View style={styles.header}>
         <Text style={styles.title}>Recovery cases</Text>
         <Text style={styles.subtitle}>
-          Open cases assigned to your organization plus unassigned cases awaiting pickup.
+          Open cases assigned to your organization plus unassigned cases
+          awaiting pickup.
         </Text>
       </View>
 
@@ -134,13 +144,13 @@ export function SecurityCasesListScreen() {
 
       {loading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
       ) : rows.length === 0 ? (
         <View style={styles.padded}>
           <Text style={styles.empty}>
-            No recovery cases in your queue yet. Cases appear when customers report stolen
-            assets.
+            No recovery cases in your queue yet. Cases appear when customers
+            report stolen assets.
           </Text>
         </View>
       ) : (
@@ -156,7 +166,10 @@ export function SecurityCasesListScreen() {
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void handleRefresh()}
+            />
           }
           ListFooterComponent={
             hasMore ? (
@@ -166,7 +179,7 @@ export function SecurityCasesListScreen() {
                 accessibilityRole="button"
               >
                 {loadingMore ? (
-                  <ActivityIndicator color={colors.primary} />
+                  <ActivityIndicator color={t.colors.link} />
                 ) : (
                   <Text style={styles.loadMoreText}>Load more</Text>
                 )}
@@ -175,86 +188,58 @@ export function SecurityCasesListScreen() {
           }
         />
       )}
-    </Screen>
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
-  },
-  padded: {
-    paddingHorizontal: spacing.xl,
-  },
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  subtitle: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    lineHeight: typography.sizes.sm * 1.4,
-  },
-  alertSpacing: {
-    marginBottom: spacing.md,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  empty: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-  },
-  listContent: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
-  },
-  separator: {
-    height: spacing.md,
-  },
-  card: {
-    marginBottom: 0,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  reference: {
-    fontSize: typography.sizes.base,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    flex: 1,
-  },
-  meta: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  unassigned: {
-    fontSize: typography.sizes.xs,
-    color: colors.accentGoldDeep,
-    fontWeight: '600',
-    marginTop: spacing.sm,
-  },
-  loadMore: {
-    alignItems: 'center',
-    paddingVertical: spacing.lg,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  loadMoreText: {
-    fontSize: typography.sizes.sm,
-    color: colors.accentGoldDeep,
-    fontWeight: '600',
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    header: {
+      paddingHorizontal: t.spacing.s6,
+      paddingTop: t.spacing.s6,
+      paddingBottom: t.spacing.s3,
+    },
+    padded: { paddingHorizontal: t.spacing.s6 },
+    title: { ...t.type.displayMd, color: t.colors.ink },
+    subtitle: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginTop: t.spacing.s1,
+    },
+    alertSpacing: { marginBottom: t.spacing.s3 },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    empty: { ...t.type.body, color: t.colors.inkMuted },
+    listContent: {
+      paddingHorizontal: t.spacing.s6,
+      paddingBottom: t.spacing.s6,
+    },
+    separator: { height: t.spacing.s3 },
+    card: { marginBottom: 0 },
+    cardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: t.spacing.s3,
+      marginBottom: t.spacing.s2,
+    },
+    reference: { ...t.type.label, color: t.colors.ink, flex: 1 },
+    meta: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginTop: t.spacing.s1,
+    },
+    unassigned: {
+      ...t.type.labelSm,
+      color: t.colors.ink,
+      marginTop: t.spacing.s2,
+    },
+    loadMore: {
+      alignItems: 'center',
+      paddingVertical: t.spacing.s4,
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    loadMoreText: { ...t.type.label, color: t.colors.ink },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

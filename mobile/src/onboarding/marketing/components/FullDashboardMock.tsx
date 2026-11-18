@@ -1,13 +1,7 @@
-import {
-  BellIcon,
-  CarIcon,
-  LaptopIcon,
-  MapPinIcon,
-  ShieldCheckIcon,
-  SmartphoneIcon,
-} from 'lucide-react-native';
+import { BellIcon, MapPinIcon, ShieldCheckIcon } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { AssetPhoto } from './AssetPhoto';
 import { BRAND } from '../../../brand/constants';
 import { DemoBadge } from './DemoBadge';
 import { colors, radius, spacing, typography } from '../../../theme/tokens';
@@ -24,9 +18,9 @@ export function FullDashboardMock() {
         </View>
 
         <Text style={[styles.sectionTitle, styles.mt]}>My assets</Text>
-        <AssetRow name="MacBook Pro" Icon={LaptopIcon} />
-        <AssetRow name="iPhone" Icon={SmartphoneIcon} />
-        <AssetRow name="Vehicle" Icon={CarIcon} />
+        <AssetRow name="MacBook Pro" type="laptop" />
+        <AssetRow name="iPhone" type="smartphone" />
+        <AssetRow name="Vehicle" type="vehicle" />
 
         <Text style={[styles.sectionTitle, styles.mt]}>Alerts</Text>
         <View style={styles.alertBox}>
@@ -44,7 +38,15 @@ export function FullDashboardMock() {
   );
 }
 
-function OverviewStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function OverviewStat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
   return (
     <View style={styles.statBox}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -54,10 +56,10 @@ function OverviewStat({ label, value, hint }: { label: string; value: string; hi
   );
 }
 
-function AssetRow({ name, Icon }: { name: string; Icon: typeof LaptopIcon }) {
+function AssetRow({ name, type }: { name: string; type: string }) {
   return (
     <View style={styles.assetRow}>
-      <Icon size={18} color={BRAND.secondary} />
+      <AssetPhoto type={type} size={34} />
       <Text style={styles.assetName}>{name}</Text>
       <View style={styles.protectedPill}>
         <ShieldCheckIcon size={12} color={colors.success} />

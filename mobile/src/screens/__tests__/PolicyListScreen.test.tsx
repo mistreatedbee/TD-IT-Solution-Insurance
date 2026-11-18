@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ThemeProvider } from '../../theme/ThemeProvider';
 import { PolicyListScreen } from '../policy/PolicyListScreen';
 
 jest.mock('../../theme/primitives', () => {
@@ -59,7 +60,7 @@ const { useAssetsQuery } = jest.requireMock('../../api/hooks/useAssets') as {
 
 async function renderWithClient(ui: React.ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  await render(<ThemeProvider><QueryClientProvider client={client}>{ui}</QueryClientProvider></ThemeProvider>);
 }
 
 describe('PolicyListScreen', () => {

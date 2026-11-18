@@ -73,13 +73,13 @@ export function ProfileCompletionCard({
         </View>
         {pending.map((item) => (
           <View key={item.id} style={styles.checkItem}>
-            <CircleIcon size={16} color={t.colors.inkMuted} strokeWidth={1.75} />
+            <CircleIcon size={16} color={t.colors.iconMuted} strokeWidth={1.75} />
             <Text style={home.textBodySm}>{item.label}</Text>
           </View>
         ))}
       </View>
 
-      <ChevronRightIcon size={20} color={t.colors.inkMuted} strokeWidth={1.75} />
+      <ChevronRightIcon size={20} color={t.colors.iconMuted} strokeWidth={1.75} />
     </Pressable>
   );
 

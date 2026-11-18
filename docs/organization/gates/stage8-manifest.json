@@ -1328,6 +1328,18 @@
         "reason": "2026-11-18 CI-1 backfill, recorded by cto so the INC-001 CI-1 gate can pass again. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Call-centre recovery case list/detail (Feature 010 surface). Not named in the Feature 010 security review. Required before public launch: Stage 8.",
         "owner": "cybersecurity-architect"
       }
+    },
+    {
+      "id": "mobile-account-settings",
+      "kind": "mobile_route",
+      "pattern": "(app)/(tabs)/account/settings",
+      "feature": "007",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-18 CI-1 backfill, recorded by cto. The Settings screen (Appearance; links to notification preferences, two-factor, privacy notice, terms, delete-account request; log out and log out of all devices) is a navigation hub added by the mobile redesign. It adds no new data surface: every destination keeps its own manifest entry (mobile-notification-preferences, mobile-auth, mobile-account-deletion-request). Appearance is a device-only display preference. The two log-out actions reuse the already-reviewed logout and logout-all calls moved from the Account screen. NO Stage 8 review was performed for the screen itself; this is a waiver, not a sign-off.",
+        "owner": "cybersecurity-architect"
+      }
     }
   ]
 }

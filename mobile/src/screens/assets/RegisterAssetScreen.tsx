@@ -12,8 +12,10 @@ import { usePlanUsage } from '../../api/hooks/usePlanUsage';
 import { assetLimitUpgradeMessage } from '../../api/plans';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { AssetTypePickerGrid } from '../../components/AssetTypePickerGrid';
-import { Alert, Button, FormField, Input, Screen, SelectChipGroup } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert, FormField, Input, SelectChipGroup } from '../../theme/primitives';
+import { AssetPage } from './AssetPage';
 
 type DetailFields = Record<string, string>;
 type TrackerIntent = 'yes' | 'no' | 'unsure';
@@ -157,6 +159,8 @@ function vehicleStepCount(hasTrackerStep: boolean): number {
 }
 
 export function RegisterAssetScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const { policy, currentPlan } = usePlanUsage();
   const createMutation = useCreateAssetMutation();
@@ -276,7 +280,8 @@ export function RegisterAssetScreen() {
     createMutation.error.code === 'ASSET_LIMIT_REACHED';
 
   return (
-    <Screen>
+    <AssetPage>
+      <GlassCard variant="solid">
       {/* Title comes from the stack header (assets/_layout.tsx) — don't repeat it here. */}
       <Text
         style={styles.progress}
@@ -293,7 +298,7 @@ export function RegisterAssetScreen() {
           {showUpgradeCta ? (
             <Button
               variant="secondary"
-              fullWidth
+              label="Change plan"
               onPress={() => {
                 if (policy?.id) {
                   router.push(`/policy/${policy.id}/change-plan` as Href);
@@ -302,9 +307,7 @@ export function RegisterAssetScreen() {
                 }
               }}
               style={styles.upgradeButton}
-            >
-              Change plan
-            </Button>
+            />
           ) : null}
         </View>
       ) : null}
@@ -399,61 +402,31 @@ export function RegisterAssetScreen() {
       ) : null}
 
       <Button
-        fullWidth
+        label={step < totalSteps - 1 ? 'Continue' : 'Register asset'}
         style={styles.primaryAction}
         loading={createMutation.isPending}
         onPress={handleNext}
-      >
-        {step < totalSteps - 1 ? 'Continue' : 'Register asset'}
-      </Button>
+      />
       {step > 0 ? (
-        <Button variant="tertiary" onPress={() => setStep(step - 1)}>
-          Back
-        </Button>
+        <Button variant="glass" label="Back" style={styles.secondaryAction} onPress={() => setStep(step - 1)} />
       ) : (
-        <Button variant="tertiary" onPress={() => router.back()}>
-          Cancel
-        </Button>
+        <Button variant="glass" label="Cancel" style={styles.secondaryAction} onPress={() => router.back()} />
       )}
-    </Screen>
+      </GlassCard>
+    </AssetPage>
   );
 }
 
-const styles = StyleSheet.create({
-  progress: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-  },
-  sectionLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '600',
-    color: colors.slate[800],
-    marginBottom: spacing.sm,
-  },
-  sectionHint: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.45,
-    marginBottom: spacing.md,
-  },
-  previewHint: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.4,
-    marginBottom: spacing.lg,
-  },
-  trackerAlert: {
-    marginTop: spacing.md,
-  },
-  alertSpacing: {
-    marginBottom: spacing.lg,
-    gap: spacing.sm,
-  },
-  primaryAction: {
-    marginTop: spacing.md,
-  },
-  upgradeButton: {
-    marginTop: spacing.sm,
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    progress: { ...t.type.label, color: t.colors.inkMuted, marginBottom: t.spacing.s4 },
+    sectionLabel: { ...t.type.label, color: t.colors.ink, marginBottom: t.spacing.s2 },
+    sectionHint: { ...t.type.bodySm, color: t.colors.inkMuted, marginBottom: t.spacing.s3 },
+    previewHint: { ...t.type.bodySm, color: t.colors.inkMuted, marginBottom: t.spacing.s4 },
+    trackerAlert: { marginTop: t.spacing.s3 },
+    alertSpacing: { marginBottom: t.spacing.s4, gap: t.spacing.s2 },
+    primaryAction: { marginTop: t.spacing.s3, alignSelf: 'stretch' },
+    secondaryAction: { marginTop: t.spacing.s2, alignSelf: 'stretch' },
+    upgradeButton: { marginTop: t.spacing.s2, alignSelf: 'stretch' },
+  });
+}

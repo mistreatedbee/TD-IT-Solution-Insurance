@@ -3,7 +3,7 @@
  */
 import { useRouter } from 'expo-router';
 import { BellIcon, LogOutIcon } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { logout, logoutAll } from '../../api/auth';
 import { revokePushTokenFromBackend } from '../../notifications/push';
@@ -11,11 +11,16 @@ import { clearRefreshToken } from '../../auth/secure-storage';
 import { useSessionStore } from '../../auth/session-store';
 import { useAccountQuery } from '../../auth/useAccountQuery';
 import { queryClient } from '../../query/queryClient';
-import { Badge, Card, Screen } from '../../theme/primitives';
-import { colors, minTouchTarget, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { PolicyStatusPill } from '../policy/PolicyStatusPill';
+import { minTouchTarget } from '../../theme/tokens';
 import type { Href } from 'expo-router';
 
 export function SecurityProfileScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const { data: account, isLoading } = useAccountQuery();
   const setSignedOut = useSessionStore((s) => s.setSignedOut);
@@ -49,7 +54,11 @@ export function SecurityProfileScreen() {
       'This cannot be undone from this screen — every other device will need to log in again.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Yes, log out everywhere', style: 'destructive', onPress: () => void confirmLogoutAll() },
+        {
+          text: 'Yes, log out everywhere',
+          style: 'destructive',
+          onPress: () => void confirmLogoutAll(),
+        },
       ],
     );
   }
@@ -70,42 +79,54 @@ export function SecurityProfileScreen() {
   }
 
   return (
-    <Screen>
+    <DesignPage>
       <Text style={styles.title}>Profile</Text>
 
-      <Card style={styles.card}>
+      <GlassCard variant="solid" style={styles.card}>
         <Text style={styles.label}>Email</Text>
-        <Text style={styles.value}>{isLoading ? 'Loading…' : account?.email ?? '—'}</Text>
+        <Text style={styles.value}>
+          {isLoading ? 'Loading…' : (account?.email ?? '—')}
+        </Text>
 
         <View style={styles.divider} />
 
         <Text style={styles.label}>Role</Text>
-        <Badge tone="gold">Security partner operator</Badge>
+        <PolicyStatusPill tone="gold">
+          {'Security partner operator'}
+        </PolicyStatusPill>
 
         <View style={styles.divider} />
 
         <Text style={styles.label}>Account status</Text>
         {account ? (
-          <Badge tone={account.accountState === 'active' ? 'emerald' : 'gold'}>
-            {account.accountState}
-          </Badge>
+          <PolicyStatusPill
+            tone={account.accountState === 'active' ? 'emerald' : 'gold'}
+          >
+            {String(account.accountState)}
+          </PolicyStatusPill>
         ) : null}
-      </Card>
+      </GlassCard>
 
       <Pressable
         style={styles.row}
         onPress={() => router.push('/notification-preferences' as Href)}
         accessibilityRole="button"
       >
-        <BellIcon size={20} color={colors.primary} />
+        <BellIcon size={20} color={t.colors.link} />
         <View style={styles.rowTextColumn}>
           <Text style={styles.rowTitle}>Notification preferences</Text>
-          <Text style={styles.rowSubtitle}>Choose which case alerts you receive</Text>
+          <Text style={styles.rowSubtitle}>
+            Choose which case alerts you receive
+          </Text>
         </View>
       </Pressable>
 
-      <Pressable style={styles.row} onPress={handleLogout} accessibilityRole="button">
-        <LogOutIcon size={20} color={colors.textSecondary} />
+      <Pressable
+        style={styles.row}
+        onPress={handleLogout}
+        accessibilityRole="button"
+      >
+        <LogOutIcon size={20} color={t.colors.iconMuted} />
         <Text style={styles.rowTitle}>Log out</Text>
       </Pressable>
 
@@ -115,59 +136,48 @@ export function SecurityProfileScreen() {
         accessibilityRole="button"
         disabled={isLoggingOutAll}
       >
-        <LogOutIcon size={20} color={colors.fieldErrorText} />
-        <Text style={[styles.rowTitle, { color: colors.fieldErrorText }]}>
-          {isLoggingOutAll ? 'Logging out everywhere…' : 'Log out of all devices'}
+        <LogOutIcon size={20} color={t.colors.danger} />
+        <Text style={[styles.rowTitle, { color: t.colors.danger }]}>
+          {isLoggingOutAll
+            ? 'Logging out everywhere…'
+            : 'Log out of all devices'}
         </Text>
       </Pressable>
-    </Screen>
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.xl,
-  },
-  card: {
-    marginBottom: spacing.xl,
-  },
-  label: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  value: {
-    fontSize: typography.sizes.base,
-    color: colors.textPrimary,
-    marginBottom: spacing.md,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginBottom: spacing.md,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: minTouchTarget,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  rowTextColumn: {
-    flex: 1,
-  },
-  rowTitle: {
-    fontSize: typography.sizes.base,
-    color: colors.textPrimary,
-    fontWeight: '600',
-  },
-  rowSubtitle: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s6,
+    },
+    card: { marginBottom: t.spacing.s6 },
+    label: {
+      ...t.type.labelSm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s1,
+    },
+    value: { ...t.type.body, color: t.colors.ink, marginBottom: t.spacing.s3 },
+    divider: {
+      height: 1,
+      backgroundColor: t.colors.borderSubtle,
+      marginBottom: t.spacing.s3,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: t.spacing.s3,
+      minHeight: minTouchTarget,
+      paddingVertical: t.spacing.s3,
+      borderBottomWidth: 1,
+      borderBottomColor: t.colors.borderSubtle,
+    },
+    rowTextColumn: { flex: 1 },
+    rowTitle: { ...t.type.label, color: t.colors.ink },
+    rowSubtitle: { ...t.type.labelSm, color: t.colors.inkMuted },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

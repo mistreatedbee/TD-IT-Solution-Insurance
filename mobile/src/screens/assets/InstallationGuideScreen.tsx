@@ -2,45 +2,51 @@
  * Configurable GPS tracker installation guide (Feature 009 Phase 4).
  */
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useInstallationGuideQuery } from '../../api/hooks/useAssetTrackingProfile';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { Alert, Button, Card, Screen } from '../../theme/primitives';
-import { colors, radius, spacing, typography } from '../../theme/tokens';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
+import { AssetPage } from './AssetPage';
 
 export function InstallationGuideScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const guideQuery = useInstallationGuideQuery();
 
   if (guideQuery.isLoading) {
     return (
-      <Screen scroll={false}>
+      <AssetPage scroll={false}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
-      </Screen>
+      </AssetPage>
     );
   }
 
   if (guideQuery.isError || !guideQuery.data) {
     return (
-      <Screen>
-        <Alert tone="danger">{mapUserFacingError(guideQuery.error, { context: 'asset' })}</Alert>
-      </Screen>
+      <AssetPage>
+        <Alert tone="danger">
+          {mapUserFacingError(guideQuery.error, { context: 'asset' })}
+        </Alert>
+      </AssetPage>
     );
   }
 
   const guide = guideQuery.data;
 
   return (
-    <Screen>
+    <AssetPage>
       <Text style={styles.title}>{guide.title}</Text>
       <Text style={styles.summary}>{guide.summary}</Text>
 
       {guide.steps.map((step, index) => (
-        <Card key={step.id} style={styles.stepCard}>
+        <GlassCard variant="solid" key={step.id} style={styles.stepCard}>
           <View style={styles.stepHeader}>
             <View style={styles.stepBadge}>
               <Text style={styles.stepBadgeText}>{index + 1}</Text>
@@ -48,67 +54,68 @@ export function InstallationGuideScreen() {
             <Text style={styles.stepTitle}>{step.title}</Text>
           </View>
           <Text style={styles.stepBody}>{step.body}</Text>
-        </Card>
+        </GlassCard>
       ))}
 
       {id ? (
-        <Button fullWidth onPress={() => router.push(`/assets/${id}/activate-tracker` as Href)}>
-          Register tracker ID
-        </Button>
+        <Button
+          label="Register tracker ID"
+          onPress={() => router.push(`/assets/${id}/activate-tracker` as Href)}
+          style={styles.stretch}
+        />
       ) : null}
-    </Screen>
+    </AssetPage>
   );
 }
 
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  summary: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-    lineHeight: 22,
-  },
-  stepCard: {
-    marginBottom: spacing.md,
-  },
-  stepHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  stepBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.full,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepBadgeText: {
-    color: colors.background,
-    fontWeight: '700',
-    fontSize: typography.sizes.sm,
-  },
-  stepTitle: {
-    flex: 1,
-    fontSize: typography.sizes.lg,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  stepBody: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: 22,
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    centered: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s2,
+    },
+    summary: {
+      ...t.type.body,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
+    stepCard: {
+      marginBottom: t.spacing.s3,
+    },
+    stepHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: t.spacing.s3,
+      marginBottom: t.spacing.s2,
+    },
+    stepBadge: {
+      width: 28,
+      height: 28,
+      borderRadius: t.radius.pill,
+      backgroundColor: t.colors.link,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stepBadgeText: {
+      color: t.colors.onNavy,
+      ...t.type.label,
+    },
+    stepTitle: {
+      flex: 1,
+      ...t.type.title,
+      color: t.colors.ink,
+    },
+    stepBody: {
+      ...t.type.body,
+      color: t.colors.inkMuted,
+    },
+
+    stretch: { alignSelf: 'stretch' },
+  });
+}

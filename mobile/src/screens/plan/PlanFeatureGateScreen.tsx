@@ -1,5 +1,5 @@
 import { useRouter, type Href } from 'expo-router';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
   PLAN_FEATURE_COPY,
@@ -7,30 +7,34 @@ import {
 } from '../../lib/plan-entitlements';
 import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
 import { SubpageHeader } from '../../navigation/SubpageHeader';
-import { Alert, Button, Screen } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
 
 export interface PlanFeatureGateScreenProps {
   feature: PlanEntitlementKey;
 }
 
 export function PlanFeatureGateScreen({ feature }: PlanFeatureGateScreenProps) {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const { planName, isLoading, changePlanHref } = usePlanEntitlements();
   const copy = PLAN_FEATURE_COPY[feature];
 
   if (isLoading) {
     return (
-      <Screen scroll={false}>
+      <DesignPage scroll={false}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
-      </Screen>
+      </DesignPage>
     );
   }
 
   return (
-    <Screen>
+    <DesignPage>
       <SubpageHeader />
       <Alert tone="info">Upgrade required</Alert>
       <Text style={styles.title}>{copy.title}</Text>
@@ -43,50 +47,43 @@ export function PlanFeatureGateScreen({ feature }: PlanFeatureGateScreenProps) {
       <View style={styles.actions}>
         {changePlanHref ? (
           <Button
-            variant="primary"
-            fullWidth
+            label={`Upgrade to ${copy.requiredPlan}`}
+            style={styles.stretch}
             onPress={() => router.push(changePlanHref as Href)}
-          >
-            {`Upgrade to ${copy.requiredPlan}`}
-          </Button>
+          />
         ) : null}
-        <Button variant="secondary" fullWidth onPress={() => router.back()}>
-          Go back
-        </Button>
+        <Button
+          label="Go back"
+          onPress={() => router.back()}
+          variant="secondary"
+          style={styles.stretch}
+        />
       </View>
-    </Screen>
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  body: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.45,
-    marginBottom: spacing.md,
-  },
-  planLine: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-  },
-  planName: {
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  actions: {
-    gap: spacing.sm,
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginTop: t.spacing.s4,
+      marginBottom: t.spacing.s2,
+    },
+    body: {
+      ...t.type.body,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s3,
+    },
+    planLine: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s6,
+    },
+    planName: { color: t.colors.ink },
+    actions: { gap: t.spacing.s2 },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

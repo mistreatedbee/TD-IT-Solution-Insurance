@@ -2,55 +2,83 @@
  * Phase 2 — Step 1: choose which asset to report stolen.
  */
 import { useRouter, type Href } from 'expo-router';
-import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useAssetsQuery } from '../../api/hooks/useAssets';
 import type { Asset } from '../../api/assets';
 import { formatAssetType } from '../../lib/asset-labels';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { Alert, Badge, Card, Screen } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
+import { PolicyStatusPill } from '../policy/PolicyStatusPill';
 
-function AssetPickRow({ asset, onPress }: { asset: Asset; onPress: () => void }) {
+function AssetPickRow({
+  asset,
+  onPress,
+}: {
+  asset: Asset;
+  onPress: () => void;
+}) {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   return (
     <Pressable onPress={onPress} style={styles.row}>
-      <Card style={styles.rowCard}>
+      <GlassCard variant="solid" style={styles.rowCard}>
         <Text style={styles.assetName}>{asset.displayName}</Text>
-        <Badge tone="gold">{formatAssetType(asset.assetType ?? 'other_electronics')}</Badge>
+        <PolicyStatusPill tone="gold">
+          {formatAssetType(asset.assetType ?? 'other_electronics')}
+        </PolicyStatusPill>
         <Text style={styles.gpsHint}>
-          {asset.gpsDeviceId ? 'GPS device paired' : 'No GPS device — recovery may be limited'}
+          {asset.gpsDeviceId
+            ? 'GPS device paired'
+            : 'No GPS device — recovery may be limited'}
         </Text>
-      </Card>
+      </GlassCard>
     </Pressable>
   );
 }
 
 export function ReportTheftSelectScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const { data, isLoading, isError, error } = useAssetsQuery();
 
-  const assets = (data?.data ?? []).filter((a) => (a.status ?? 'active') === 'active');
+  const assets = (data?.data ?? []).filter(
+    (a) => (a.status ?? 'active') === 'active',
+  );
 
   function openConfirm(assetId: string) {
-    router.push(`/report-theft/confirm?assetId=${encodeURIComponent(assetId)}` as Href);
+    router.push(
+      `/report-theft/confirm?assetId=${encodeURIComponent(assetId)}` as Href,
+    );
   }
 
   return (
-    <Screen>
+    <DesignPage>
       <Text style={styles.title}>Report a stolen asset</Text>
       <Text style={styles.subtitle}>
-        Choose the asset you need to recover. We&apos;ll alert our security partners and start
-        tracking if GPS hardware is paired.
+        Choose the asset you need to recover. We&apos;ll alert our security
+        partners and start tracking if GPS hardware is paired.
       </Text>
 
       <Alert tone="info">
-        Recovery is best-effort — it depends on GPS signal, device power, and partner availability.
-        This does not guarantee your asset will be recovered.
+        Recovery is best-effort — it depends on GPS signal, device power, and
+        partner availability. This does not guarantee your asset will be
+        recovered.
       </Alert>
 
       {isLoading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.colors.link} />
         </View>
       ) : isError ? (
         <Alert tone="danger">
@@ -58,54 +86,46 @@ export function ReportTheftSelectScreen() {
         </Alert>
       ) : assets.length === 0 ? (
         <Text style={styles.empty}>
-          You have no active assets to report. Register an asset first from the Assets tab.
+          You have no active assets to report. Register an asset first from the
+          Assets tab.
         </Text>
       ) : (
         assets.map((asset) =>
           asset.id ? (
-            <AssetPickRow key={asset.id} asset={asset} onPress={() => openConfirm(asset.id!)} />
+            <AssetPickRow
+              key={asset.id}
+              asset={asset}
+              onPress={() => openConfirm(asset.id!)}
+            />
           ) : null,
         )
       )}
-    </Screen>
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-    marginBottom: spacing.lg,
-  },
-  row: {
-    marginBottom: spacing.md,
-  },
-  rowCard: {
-    gap: spacing.sm,
-  },
-  assetName: {
-    fontSize: typography.sizes.base,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  gpsHint: {
-    fontSize: typography.sizes.xs,
-    color: colors.slate[500],
-  },
-  empty: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    marginTop: spacing.lg,
-  },
-  centered: {
-    paddingVertical: spacing['2xl'],
-    alignItems: 'center',
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s2,
+    },
+    subtitle: {
+      ...t.type.body,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
+    row: { marginBottom: t.spacing.s3 },
+    rowCard: { gap: t.spacing.s2 },
+    assetName: { ...t.type.label, color: t.colors.ink },
+    gpsHint: { ...t.type.labelSm, color: t.colors.inkMuted },
+    empty: {
+      ...t.type.body,
+      color: t.colors.inkMuted,
+      marginTop: t.spacing.s4,
+    },
+    centered: { paddingVertical: t.spacing.s8, alignItems: 'center' },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

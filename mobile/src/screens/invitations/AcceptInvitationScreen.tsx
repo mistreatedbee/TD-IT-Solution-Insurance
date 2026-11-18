@@ -3,7 +3,7 @@
  * Reached via `tditinsurance://invitations/accept?token=...` deep link.
  */
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { MfaQrCode } from '../../components/MfaQrCode';
 import { mfaEnroll, mfaEnrollVerify } from '../../api/auth';
@@ -12,8 +12,10 @@ import { ApiError } from '../../api/errors';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { setRefreshToken } from '../../auth/secure-storage';
 import { useSessionStore } from '../../auth/session-store';
-import { Alert, Button, Input, OtpInput, Screen } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert, Input, OtpInput } from '../../theme/primitives';
 
 type Step = 'loading' | 'invalid' | 'accept' | 'mfa' | 'done';
 
@@ -21,6 +23,8 @@ type Step = 'loading' | 'invalid' | 'accept' | 'mfa' | 'done';
 const INVITATION_PASSWORD_MIN_LENGTH = 14;
 
 export function AcceptInvitationScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const { token } = useLocalSearchParams<{ token?: string }>();
   const setSignedIn = useSessionStore((s) => s.setSignedIn);
@@ -62,7 +66,9 @@ export function AcceptInvitationScreen() {
     // Invitations create privileged accounts: backend/src/routes/invitations.ts
     // checks `isPasswordValidForUserType(password, 'privileged')` (14). INC-003 §30 C-11 follow-up.
     if (password.length < INVITATION_PASSWORD_MIN_LENGTH) {
-      setErrorMessage(`Password must be at least ${INVITATION_PASSWORD_MIN_LENGTH} characters.`);
+      setErrorMessage(
+        `Password must be at least ${INVITATION_PASSWORD_MIN_LENGTH} characters.`,
+      );
       return;
     }
     if (password !== confirmPassword) {
@@ -74,7 +80,9 @@ export function AcceptInvitationScreen() {
     try {
       const result = await acceptInvitation(token, password);
       setEnrollmentTicket(result.enrollmentTicket);
-      const enroll = await mfaEnroll({ enrollmentTicket: result.enrollmentTicket });
+      const enroll = await mfaEnroll({
+        enrollmentTicket: result.enrollmentTicket,
+      });
       setEnrollment(enroll);
       setStep('mfa');
     } catch (err) {
@@ -98,7 +106,10 @@ export function AcceptInvitationScreen() {
         code,
       });
       await setRefreshToken(result.refreshToken);
-      setSignedIn({ accessToken: result.accessToken, sessionId: result.sessionId });
+      setSignedIn({
+        accessToken: result.accessToken,
+        sessionId: result.sessionId,
+      });
       setStep('done');
     } catch (err) {
       setOtp('');
@@ -110,57 +121,66 @@ export function AcceptInvitationScreen() {
 
   if (displayStep === 'loading') {
     return (
-      <Screen>
+      <DesignPage>
         <Text style={styles.title}>Loading invitation&hellip;</Text>
-      </Screen>
+      </DesignPage>
     );
   }
 
   if (displayStep === 'invalid') {
     return (
-      <Screen>
+      <DesignPage>
         <Text style={styles.title}>Invitation unavailable</Text>
         <Text style={styles.subtitle}>
-          This invitation link is invalid, expired, or has already been used. Ask your administrator
-          to send a new invitation.
+          This invitation link is invalid, expired, or has already been used.
+          Ask your administrator to send a new invitation.
         </Text>
-        <Button variant="primary" fullWidth onPress={() => router.replace('/(auth)/login')}>
-          Go to log in
-        </Button>
-      </Screen>
+        <Button
+          label="Go to log in"
+          onPress={() => router.replace('/(auth)/login')}
+          style={styles.stretch}
+        />
+      </DesignPage>
     );
   }
 
   if (displayStep === 'done') {
     return (
-      <Screen>
+      <DesignPage>
         <Alert tone="success">
-          You&apos;re all set. Your account is ready — mandatory two-factor authentication is now
-          enabled.
+          You&apos;re all set. Your account is ready — mandatory two-factor
+          authentication is now enabled.
         </Alert>
         <View style={styles.actions}>
-          <Button variant="primary" fullWidth onPress={() => router.replace('/(app)/(tabs)' as Href)}>
-            Continue
-          </Button>
+          <Button
+            label="Continue"
+            onPress={() => router.replace('/(app)/(tabs)' as Href)}
+            style={styles.stretch}
+          />
         </View>
-      </Screen>
+      </DesignPage>
     );
   }
 
   if (displayStep === 'mfa' && enrollment) {
     return (
-      <Screen>
+      <DesignPage>
         <Text style={styles.title}>Set up two-factor authentication</Text>
         <Text style={styles.subtitle}>
-          Scan the QR code with your authenticator app, then enter the 6-digit code to finish
-          setting up your account.
+          Scan the QR code with your authenticator app, then enter the 6-digit
+          code to finish setting up your account.
         </Text>
         <View style={styles.qrWrapper}>
-          <MfaQrCode value={enrollment.qrCodeImage} size={200} style={styles.qrImage} />
+          <MfaQrCode
+            value={enrollment.qrCodeImage}
+            size={200}
+            style={styles.qrImage}
+          />
         </View>
         <View style={styles.manualKeyBlock}>
           <Text style={styles.manualKeyLabel}>
-            Can&apos;t scan the code? Enter this key manually in your authenticator app:
+            Can&apos;t scan the code? Enter this key manually in your
+            authenticator app:
           </Text>
           <Text selectable style={styles.manualKey}>
             {enrollment.manualEntryKey}
@@ -178,17 +198,19 @@ export function AcceptInvitationScreen() {
           onComplete={handleMfaComplete}
           loading={isSubmitting}
         />
-      </Screen>
+      </DesignPage>
     );
   }
 
   return (
-    <Screen>
+    <DesignPage>
       <Text style={styles.title}>Accept your invitation</Text>
       <Text style={styles.subtitle}>
         You&apos;ve been invited to join TD IT Solution Insurance
         {userType ? ` as ${userType.replace(/_/g, ' ')}` : ''}.
-        {email ? ` Set a password for ${email} to continue.` : ' Set a password to continue.'}
+        {email
+          ? ` Set a password for ${email} to continue.`
+          : ' Set a password to continue.'}
       </Text>
 
       {errorMessage ? (
@@ -197,7 +219,12 @@ export function AcceptInvitationScreen() {
         </View>
       ) : null}
 
-      <Input label="Password" type="password" value={password} onChangeText={setPassword} />
+      <Input
+        label="Password"
+        type="password"
+        value={password}
+        onChangeText={setPassword}
+      />
       <Input
         label="Confirm password"
         type="password"
@@ -206,61 +233,52 @@ export function AcceptInvitationScreen() {
       />
 
       <View style={styles.actions}>
-        <Button variant="primary" fullWidth loading={isSubmitting} onPress={handleAccept}>
-          Accept invitation
-        </Button>
+        <Button
+          label="Accept invitation"
+          loading={isSubmitting}
+          onPress={handleAccept}
+          style={styles.stretch}
+        />
       </View>
-    </Screen>
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.base * 1.4,
-    marginBottom: spacing.xl,
-  },
-  alertSpacing: {
-    marginBottom: spacing.lg,
-  },
-  actions: {
-    marginTop: spacing.lg,
-  },
-  qrWrapper: {
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  qrImage: {
-    width: 200,
-    height: 200,
-  },
-  manualKeyBlock: {
-    marginBottom: spacing.xl,
-  },
-  manualKeyLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: spacing.xs,
-  },
-  manualKey: {
-    fontFamily: 'monospace',
-    fontSize: typography.sizes.base,
-    color: colors.textPrimary,
-    textAlign: 'center',
-    backgroundColor: colors.slate[50],
-    padding: spacing.md,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.slate[100],
-    letterSpacing: 1,
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s2,
+    },
+    subtitle: {
+      ...t.type.body,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s6,
+    },
+    alertSpacing: { marginBottom: t.spacing.s4 },
+    actions: { marginTop: t.spacing.s4 },
+    qrWrapper: { alignItems: 'center', marginBottom: t.spacing.s4 },
+    qrImage: { width: 200, height: 200 },
+    manualKeyBlock: { marginBottom: t.spacing.s6 },
+    manualKeyLabel: {
+      ...t.type.label,
+      color: t.colors.ink,
+      textAlign: 'center',
+      marginBottom: t.spacing.s1,
+    },
+    manualKey: {
+      ...t.type.body,
+      fontFamily: 'monospace',
+      color: t.colors.ink,
+      textAlign: 'center',
+      backgroundColor: t.colors.inkMuted,
+      padding: t.spacing.s3,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: t.colors.inkMuted,
+      letterSpacing: 1,
+    },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

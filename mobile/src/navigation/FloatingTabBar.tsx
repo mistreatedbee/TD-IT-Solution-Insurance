@@ -14,7 +14,9 @@ import {
   FEATURE_LOCATION_TRACKING_ENABLED,
 } from '../config/features';
 import { useProtectionDashboard } from '../tracking/useProtectionDashboard';
+import { designColorsDay, designColorsNight } from '../theme/designTokens.generated';
 import { useTheme } from '../theme/ThemeProvider';
+import { useTabBarHidden } from './tabBarVisibility';
 import { minTouchTarget, spacing } from '../theme/tokens';
 import { floatingTabBarBottomPadding } from './tabBarMetrics';
 import { GlassSurface } from './GlassSurface';
@@ -96,9 +98,9 @@ function TabButton({
     badgeCount > 0 ? `${label}, ${badgeCount} open alert${badgeCount === 1 ? '' : 's'}` : label;
 
   const iconColor = focused
-    ? colors.glassAccentDeep
+    ? designColorsDay.brandOrange
     : isDark
-      ? colors.slate[400]
+      ? designColorsNight.ink
       : colors.textSecondary;
 
   return (
@@ -188,12 +190,12 @@ function createTabBarStyles(
       tabLabel: {
         fontSize: 10,
         fontWeight: '600',
-        color: isDark ? colors.slate[400] : colors.textSecondary,
+        color: isDark ? designColorsNight.ink : colors.textSecondary,
       },
       // glassAccentDeep is only ~3.9:1 on white — fine for the icon, too low for a 10px label (WCAG AA).
       // The active tab is still signalled by the teal icon; the label uses the text-grade colour.
       tabLabelActive: {
-        color: colors.glassTextPrimary,
+        color: isDark ? designColorsNight.ink : colors.glassTextPrimary,
       },
     }),
   };
@@ -207,6 +209,7 @@ export function FloatingTabBar({ state, navigation, variant = 'customer' }: Floa
     () => createTabBarStyles(colors, isDark, glass.border),
     [colors, glass.border, isDark],
   );
+  const hidden = useTabBarHidden((v) => v.hidden);
   const activeRouteName = state.routes[state.index]?.name;
   const { data: dashboard } = useProtectionDashboard();
   const alertCount = FEATURE_ALERTS_ENABLED ? dashboard?.alertCount ?? 0 : 0;
@@ -232,6 +235,8 @@ export function FloatingTabBar({ state, navigation, variant = 'customer' }: Floa
       navigation.navigate(route.name);
     }
   }
+
+  if (hidden) return null;
 
   return (
     <View style={[styles.wrap, { paddingBottom: floatingTabBarBottomPadding(insets.bottom) }]}>

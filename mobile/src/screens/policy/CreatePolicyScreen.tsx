@@ -2,18 +2,22 @@
  * Choose a protection plan — lists catalog plans and subscribes via POST /v1/policies.
  */
 import { useRouter, type Href } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { usePlansQuery } from '../../api/hooks/usePlans';
 import { useCreatePolicyMutation } from '../../api/hooks/usePolicies';
 import type { PlanCatalogItem } from '../../api/plans';
 import { ApiError } from '../../api/errors';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { Alert, Button, Screen } from '../../theme/primitives';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { DesignPage } from '../../components/DesignPage';
+import { Button, GlassCard } from '../../design';
+import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
+import { Alert } from '../../theme/primitives';
 import { PlanCatalogPicker } from './PlanCatalogPicker';
 
 export function CreatePolicyScreen() {
+  const t = useDesignTokens();
+  const styles = useMemo(() => buildStyles(t), [t]);
   const router = useRouter();
   const plansQuery = usePlansQuery();
   const createMutation = useCreatePolicyMutation();
@@ -39,7 +43,9 @@ export function CreatePolicyScreen() {
     } catch (err) {
       setSelectedPlanId(null);
       if (err instanceof ApiError && err.code === 'PLAN_REQUIRES_QUOTE') {
-        setError('Business plans require a custom quote. Contact us to continue.');
+        setError(
+          'Business plans require a custom quote. Contact us to continue.',
+        );
       } else if (err instanceof ApiError && err.code === 'ACCOUNT_NOT_ACTIVE') {
         setError('Verify your email before choosing a plan.');
       } else {
@@ -50,30 +56,41 @@ export function CreatePolicyScreen() {
 
   if (plansQuery.isLoading) {
     return (
-      <Screen scroll={false}>
-        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
-      </Screen>
+      <DesignPage scroll={false}>
+        <ActivityIndicator
+          size="large"
+          color={t.colors.link}
+          style={styles.loader}
+        />
+      </DesignPage>
     );
   }
 
   if (plansQuery.isError) {
     return (
-      <Screen>
-        <Alert tone="danger">{mapUserFacingError(plansQuery.error, { context: 'policy' })}</Alert>
-        <Button variant="secondary" onPress={() => plansQuery.refetch()}>
-          Try again
-        </Button>
-      </Screen>
+      <DesignPage>
+        <Alert tone="danger">
+          {mapUserFacingError(plansQuery.error, { context: 'policy' })}
+        </Alert>
+        <Button
+          label="Try again"
+          onPress={() => plansQuery.refetch()}
+          variant="secondary"
+        />
+      </DesignPage>
     );
   }
 
   return (
-    <Screen>
-      <Text style={styles.title}>Choose a protection plan</Text>
-      <Text style={styles.body}>
-        Select the plan that fits how many devices you want to protect. Your subscription starts
-        once billing is configured — no payment is taken on this screen.
-      </Text>
+    <DesignPage>
+      <GlassCard radius="xl" style={styles.heroCard}>
+        <Text style={styles.title}>Choose a protection plan</Text>
+        <Text style={styles.body}>
+          Select the plan that fits how many devices you want to protect. Your
+          subscription starts once billing is configured — no payment is taken
+          on this screen.
+        </Text>
+      </GlassCard>
 
       {error ? (
         <Alert tone="danger" style={styles.alert}>
@@ -82,7 +99,9 @@ export function CreatePolicyScreen() {
       ) : null}
 
       {plans.length === 0 ? (
-        <Alert tone="info">No plans are available right now. Please try again later.</Alert>
+        <Alert tone="info">
+          No plans are available right now. Please try again later.
+        </Alert>
       ) : (
         <PlanCatalogPicker
           plans={plans}
@@ -92,30 +111,26 @@ export function CreatePolicyScreen() {
         />
       )}
 
-      <Button variant="tertiary" onPress={() => router.back()}>
-        Cancel
-      </Button>
-    </Screen>
+      <Button label="Cancel" onPress={() => router.back()} variant="glass" />
+    </DesignPage>
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.md,
-  },
-  body: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: typography.sizes.sm * 1.4,
-    marginBottom: spacing.lg,
-  },
-  alert: {
-    marginBottom: spacing.lg,
-  },
-  loader: {
-    marginTop: spacing['2xl'],
-  },
-});
+function buildStyles(t: DesignTokens) {
+  return StyleSheet.create({
+    title: {
+      ...t.type.displayMd,
+      color: t.colors.ink,
+      marginBottom: t.spacing.s3,
+    },
+    body: {
+      ...t.type.bodySm,
+      color: t.colors.inkMuted,
+      marginBottom: t.spacing.s4,
+    },
+    alert: { marginBottom: t.spacing.s4 },
+    loader: { marginTop: t.spacing.s8 },
+    heroCard: { marginBottom: t.spacing.s4 },
+    stretch: { alignSelf: 'stretch' },
+  });
+}

@@ -35,7 +35,8 @@ async function fetchPublicPlans(): Promise<PublicPlansResult> {
       } else if (err instanceof ApiError && err.status === 404) {
         error = null;
       } else {
-        error = 'Live plan pricing is temporarily unavailable. Showing current plan guide.';
+        error =
+          'Live plan pricing is temporarily unavailable. Showing current plan guide.';
       }
       return {
         plans: MARKETING_PLAN_CATALOG_FALLBACK,

@@ -38,7 +38,8 @@ export function Button({
   const palette = {
     primary: { bg: t.colors.actionPrimary, fg: t.colors.onActionPrimary, border: 'transparent' },
     secondary: { bg: t.colors.actionSecondary, fg: t.colors.onActionSecondary, border: 'transparent' },
-    glass: { bg: blurEnabled ? t.colors.glassFill : t.colors.bgRaised, fg: t.colors.ink, border: t.colors.glassBorder },
+    // Design pack: .td-btn--glass uses border-control (visible on every surface), not the white glass edge.
+    glass: { bg: blurEnabled ? t.colors.glassFill : t.colors.bgRaised, fg: t.colors.ink, border: t.colors.borderControl },
     danger: { bg: t.colors.danger, fg: t.mode === 'night' ? t.colors.onActionPrimary : t.colors.onNavy, border: 'transparent' },
   }[variant];
 
@@ -64,7 +65,7 @@ export function Button({
             paddingHorizontal: t.spacing.s6,
             backgroundColor: palette.bg,
             borderColor: palette.border,
-            borderWidth: variant === 'glass' ? 1 : 0,
+            borderWidth: variant === 'glass' ? 1.5 : 0,
           },
           focused && {
             outlineColor: t.colors.focusRing,

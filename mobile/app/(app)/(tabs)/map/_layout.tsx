@@ -6,6 +6,7 @@ import { FEATURE_LOCATION_TRACKING_ENABLED } from '../../../../src/config/featur
 import { LocationTrackingUnavailableScreen } from '../../../../src/screens/location/LocationTrackingUnavailableScreen';
 import { PlanFeatureGateScreen } from '../../../../src/screens/plan/PlanFeatureGateScreen';
 import { useAppStackScreenOptions } from '../../../../src/navigation/useAppStackScreenOptions';
+import { useDesignTokens } from '../../../../src/theme/designTheme';
 import { useColors } from '../../../../src/theme/ThemeProvider';
 
 function MapStack() {
@@ -21,10 +22,11 @@ function MapStack() {
 function MapEntitlementGate() {
   const { hasLocationHistory, isLoading } = usePlanEntitlements();
   const colors = useColors();
+  const design = useDesignTokens();
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: design.colors.bgPage }}>
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );

@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { ReportTheftConfirmScreen } from '../recovery/ReportTheftConfirmScreen';
 import { ApiError, NetworkUnavailableError } from '../../api/errors';
+import { ThemeProvider } from '../../theme/ThemeProvider';
 
 jest.mock('../../theme/primitives', () => {
   const React = require('react');
@@ -99,7 +100,7 @@ describe('ReportTheftConfirmScreen — notes-field data minimisation (PDM-7 / F-
   });
 
   it('does not solicit a police case number into the shared notes field, and points to the dedicated police-report flow instead', async () => {
-    await render(<ReportTheftConfirmScreen />);
+    await render(<ThemeProvider><ReportTheftConfirmScreen /></ThemeProvider>);
 
     expect(screen.queryByText(/Any police case number/)).toBeNull();
     expect(
@@ -116,7 +117,7 @@ describe('ReportTheftConfirmScreen — customer disclosure (PDM-9)', () => {
   });
 
   it('renders the security-partner data-sharing disclosure before submit, visible without extra interaction', async () => {
-    await render(<ReportTheftConfirmScreen />);
+    await render(<ThemeProvider><ReportTheftConfirmScreen /></ThemeProvider>);
 
     expect(
       screen.getByText(
@@ -139,7 +140,7 @@ describe('ReportTheftConfirmScreen — offline-retry policy', () => {
 
   it('blocks submission when offline with a definite "not sent" message, and never calls the mutation', async () => {
     mockIsOnline.mockReturnValue(false);
-    await render(<ReportTheftConfirmScreen />);
+    await render(<ThemeProvider><ReportTheftConfirmScreen /></ThemeProvider>);
 
     await pressConfirmCheckbox();
     await pressSubmit();
@@ -152,7 +153,7 @@ describe('ReportTheftConfirmScreen — offline-retry policy', () => {
 
   it('shows an uncertain-delivery message (not "not sent") on NetworkUnavailableError, since the request may have reached the server', async () => {
     mockMutateAsync.mockRejectedValueOnce(new NetworkUnavailableError());
-    await render(<ReportTheftConfirmScreen />);
+    await render(<ThemeProvider><ReportTheftConfirmScreen /></ThemeProvider>);
 
     await pressConfirmCheckbox();
     await pressSubmit();
@@ -168,7 +169,7 @@ describe('ReportTheftConfirmScreen — offline-retry policy', () => {
   it('reuses the same idempotency key across retries of the same submission intent', async () => {
     mockMutateAsync.mockRejectedValueOnce(new NetworkUnavailableError());
     mockMutateAsync.mockResolvedValueOnce({ id: 'case-1', referenceNumber: 'RC-1' });
-    await render(<ReportTheftConfirmScreen />);
+    await render(<ThemeProvider><ReportTheftConfirmScreen /></ThemeProvider>);
 
     await pressConfirmCheckbox();
     await pressSubmit();
@@ -189,7 +190,7 @@ describe('ReportTheftConfirmScreen — offline-retry policy', () => {
       .mockReturnValueOnce('key-2');
     mockMutateAsync.mockRejectedValueOnce(new NetworkUnavailableError());
     mockMutateAsync.mockResolvedValueOnce({ id: 'case-1', referenceNumber: 'RC-1' });
-    await render(<ReportTheftConfirmScreen />);
+    await render(<ThemeProvider><ReportTheftConfirmScreen /></ThemeProvider>);
 
     await pressConfirmCheckbox();
     await pressSubmit();
@@ -218,7 +219,7 @@ describe('ReportTheftConfirmScreen — offline-retry policy', () => {
         },
       }),
     );
-    await render(<ReportTheftConfirmScreen />);
+    await render(<ThemeProvider><ReportTheftConfirmScreen /></ThemeProvider>);
 
     await pressConfirmCheckbox();
     await pressSubmit();

@@ -1,4 +1,7 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter, type Href } from 'expo-router';
+import { ChevronLeftIcon } from 'lucide-react-native';
+import { Pressable } from 'react-native';
+import { useDesignTokens } from '../../../src/theme/designTheme';
 import React from 'react';
 import { FEATURE_CLAIMS_ENABLED } from '../../../src/config/features';
 import { ClaimsComingSoonScreen } from '../../../src/screens/claims/ClaimsComingSoonScreen';
@@ -6,10 +9,29 @@ import { useAppStackScreenOptions } from '../../../src/navigation/useAppStackScr
 
 function ClaimsStack() {
   const screenOptions = useAppStackScreenOptions();
+  const router = useRouter();
+  const t = useDesignTokens();
 
   return (
     <Stack screenOptions={screenOptions}>
-      <Stack.Screen name="index" options={{ title: 'Claims' }} />
+      <Stack.Screen
+        name="index"
+        options={{
+          title: 'Claims',
+          // First screen of this nested stack: the native back button has nothing to pop, so go back to the
+          // screen that opened Claims (or Account if there is none).
+          headerLeft: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              hitSlop={12}
+              onPress={() => (router.canGoBack() ? router.back() : router.replace('/(app)/(tabs)/account' as Href))}
+            >
+              <ChevronLeftIcon size={26} color={t.colors.link} />
+            </Pressable>
+          ),
+        }}
+      />
       <Stack.Screen name="new" options={{ title: 'File a claim' }} />
       <Stack.Screen name="[id]" options={{ title: 'Claim details' }} />
     </Stack>

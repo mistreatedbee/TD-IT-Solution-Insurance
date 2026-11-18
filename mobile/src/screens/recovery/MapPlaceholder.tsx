@@ -22,7 +22,11 @@ export function MapPlaceholder({
   const hasCoords = latitude != null && longitude != null;
 
   return (
-    <View style={styles.container} accessibilityRole="image" accessibilityLabel="Map preview">
+    <View
+      style={styles.container}
+      accessibilityRole="image"
+      accessibilityLabel="Map preview"
+    >
       <View style={styles.grid}>
         {hasCoords ? (
           <View style={styles.pinWrap}>
@@ -37,7 +41,9 @@ export function MapPlaceholder({
             {latitude!.toFixed(5)}, {longitude!.toFixed(5)}
           </Text>
           {recordedAt ? (
-            <Text style={styles.coordsMeta}>Updated {new Date(recordedAt).toLocaleString()}</Text>
+            <Text style={styles.coordsMeta}>
+              Updated {new Date(recordedAt).toLocaleString()}
+            </Text>
           ) : null}
         </View>
       ) : (

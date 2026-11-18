@@ -44,12 +44,17 @@ function PlanUsageContent({
     <>
       <Text style={styles.label}>Current plan</Text>
       <Text style={styles.planName}>{plan.name}</Text>
-      <Text style={styles.meta}>{formatPlanPrice(plan as PlanCatalogItem)}</Text>
-      <Text style={styles.meta}>{formatAssetUsage(assetCount, plan.maxAssets)}</Text>
+      <Text style={styles.meta}>
+        {formatPlanPrice(plan as PlanCatalogItem)}
+      </Text>
+      <Text style={styles.meta}>
+        {formatAssetUsage(assetCount, plan.maxAssets)}
+      </Text>
       {showUpgradePrompt && atLimit ? (
         <View style={styles.upgradeBlock}>
           <Alert tone="warning">
-            You&apos;ve used all asset slots on {plan.name}. Upgrade to register more devices.
+            You&apos;ve used all asset slots on {plan.name}. Upgrade to register
+            more devices.
           </Alert>
           <Button
             variant="secondary"
