@@ -377,11 +377,11 @@ export function buildEmailAlreadyVerifiedEmail(): { subject: string; html: strin
 
 export function buildSignupAccountExistsEmail(): { subject: string; html: string; preheader: string } {
   const preheader = 'Someone tried to create an account with your email address.';
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
     Someone tried to create a new ${escapeHtml(NOTIFICATION_BRAND.name)} account with this email address, but you already have one.
     Sign in to continue, or reset your password if you have forgotten it.
   </p>
-  <p style="margin:0;font-size:14px;color:#6B6156;">If this was not you, you can ignore this email. Your account has not been changed.</p>`;
+  <p style="margin:0;font-size:14px;color:#4A5A6C;">If this was not you, you can ignore this email. Your account has not been changed.</p>`;
 
   return {
     preheader,
