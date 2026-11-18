@@ -11,7 +11,12 @@ const tdRadius = Object.fromEntries(tdTokens.radius.tokens.map((t) => [`td-${t.n
 const tdShadow = Object.fromEntries(tdTokens.shadow.tokens.map((t) => [`td-${t.name.replace('shadow-', '')}`, `var(--td-${t.name})`]));
 const tdBlur = Object.fromEntries(tdTokens.blur.tokens.map((t) => [`td-${t.name.replace('blur-', '')}`, `var(--td-${t.name})`]));
 
-export default {content: [
+export default {
+  // `dark:` classes apply only in the app's own Night theme (<html data-theme="night">), not whenever the visitor's
+  // system is dark. With the default (media), a dark-mode visitor got dark-theme text colours on a light page,
+  // for example pale blue links on white. Night is not exposed to users yet, so the site is light for everyone.
+  darkMode: ['selector', '[data-theme="night"]'],
+  content: [
   './index.html',
   './src/**/*.{js,ts,jsx,tsx}'
 ],
@@ -118,9 +123,9 @@ export default {content: [
       fontFamily: {
         'td-display': 'var(--td-font-display)',
         'td-sans': 'var(--td-font-sans)',
-        heading: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
-        body: ['Public Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        glass: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif']
+        heading: ['var(--td-font-display)'],
+        body: ['var(--td-font-sans)'],
+        glass: ['var(--td-font-sans)']
       }
     }
   }

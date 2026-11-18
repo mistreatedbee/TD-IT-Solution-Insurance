@@ -53,7 +53,7 @@ export function LogoGlyph({
 
 
 }: {className?: string;tone?: LogoTone;}) {
-  const stroke = tone === 'navy' ? '#0B2A4A' : '#FFFFFF';
+  const stroke = tone === 'navy' ? '#2C3E52' : '#FFFFFF';
   return (
     <svg
       viewBox="0 0 32 32"
@@ -115,7 +115,7 @@ export function Logo({
   className = '',
   imageClassName
 }: LogoProps) {
-  const textColor = tone === 'navy' ? 'text-[#0B2A4A]' : 'text-white';
+  const textColor = tone === 'navy' ? 'text-[#2C3E52]' : 'text-white';
   const subColor = tone === 'navy' ? 'text-[#5A7492]' : 'text-white/70';
 
   const content =
@@ -157,7 +157,7 @@ export function Logo({
       <a
         href={href}
         aria-label={label}
-        className="inline-flex rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0B2A4A] focus-visible:ring-offset-2">
+        className="inline-flex rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2C3E52] focus-visible:ring-offset-2">
         
         {content}
       </a>);

@@ -12,6 +12,7 @@ import {
   buildNewDeviceLoginEmail,
   buildPasswordChangedEmail,
   buildPushTokenReregisteredAlertEmail,
+  buildSignupAccountExistsEmail,
 } from './domain-email-templates.js';
 import { isResendConfigured, sendResendEmail } from './resend-email.js';
 
@@ -26,6 +27,8 @@ export interface AuthNotificationService {
   notifyMfaEnabled(params: { accountId: string }): Promise<void>;
   notifyAccountLocked(params: { accountId: string }): Promise<void>;
   notifyEmailAlreadyVerified(params: { accountId: string; email: string }): Promise<boolean>;
+  /** Sign-up was attempted with this account's address. Email only; never reveals anything on screen. */
+  notifySignupAttemptExistingAccount(params: { accountId: string; email: string }): Promise<boolean>;
   /** SR-007-2: alerts the LOSING account of a cross-account push-token
    * takeover claim — fired once, at the moment the claim is first
    * quarantined (`isNewTakeoverClaim` on `RegisterPushTokenResult`), never
@@ -169,6 +172,16 @@ export function createAuthNotificationService(deps: {
       }
 
       const message = buildEmailAlreadyVerifiedEmail();
+      await sendResendEmail(deps.env, { to: email, subject: message.subject, html: message.html });
+      return true;
+    },
+
+    async notifySignupAttemptExistingAccount({ accountId, email }) {
+      const account = await deps.accounts.findById(accountId);
+      if (!account) return false;
+      if (!isResendConfigured(deps.env)) return false;
+
+      const message = buildSignupAccountExistsEmail();
       await sendResendEmail(deps.env, { to: email, subject: message.subject, html: message.html });
       return true;
     },

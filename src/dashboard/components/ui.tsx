@@ -34,7 +34,11 @@ export function StatusBadge({ value }: { value: string }) {
         : value === 'open' ||
             value === 'pending_verification' ||
             value === 'investigating' ||
-            value === 'pending'
+            value === 'pending' ||
+            // alert severities: anything that needs attention reads as amber, not plain grey
+            value === 'warning' ||
+            value === 'high' ||
+            value === 'critical'
           ? 'gold'
           : 'neutral';
   return <Badge tone={tone}>{value.replace(/_/g, ' ')}</Badge>;
