@@ -7,9 +7,12 @@
  * translucent glass.
  */
 
-/** Full-bleed OB-17 glass-gradient canvas behind account/profile content. */
+/**
+ * Padding wrapper for account/profile content. The gradient now comes from the page backdrop (TdBackdrop),
+ * so this canvas is transparent: a second gradient here showed as a pale panel with hard edges.
+ */
 export const customerCanvas =
-  'font-glass -mx-4 min-h-full bg-glass-gradient px-4 pb-8 pt-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8';
+  'font-glass -mx-4 min-h-full px-4 pb-8 pt-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8';
 
 /** Elevated flat-white group (borderless, soft shadow, OB-17 24px radius). */
 export const customerSurfaceGroup =
