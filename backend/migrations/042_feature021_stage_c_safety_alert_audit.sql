@@ -1,7 +1,9 @@
 -- Feature 021 stage (c) (docs/features/021-theft-protection-signals/04-stage-c-went-dark-and-channels.md):
 -- audit trail for safety-alert channel dispatch (TP-14).
 --
--- Status: WRITTEN, NOT YET APPLIED to any project. Correct this header when applied (see migrations/032).
+-- Status: APPLIED 2026-11-19 to the linked Supabase project (owner request, test-only phase), one
+-- statement at a time; verified afterwards (new columns and audit_event_type values present).
+-- Superseded status line, kept for audit: "WRITTEN, NOT YET APPLIED to any project."
 -- Single-statement-per-value pattern, as migrations/035 and 041.
 
 alter type app.audit_event_type add value if not exists 'safety_alert_dispatch';

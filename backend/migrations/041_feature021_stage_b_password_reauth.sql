@@ -7,8 +7,9 @@
 --    able to satisfy an admin Tier A step-up. Refresh copies it forward and never renews it.
 -- 2. Audit event types for the re-authentication and the guarded changes themselves.
 --
--- Status: WRITTEN, NOT YET APPLIED to any project. Whoever applies this must correct this header
--- per the precedent migrations/032 documents. Plain nullable column, no default, no backfill, no
+-- Status: APPLIED 2026-11-19 to the linked Supabase project (owner request, test-only phase), one
+-- statement at a time; verified afterwards (new columns and audit_event_type values present).
+-- Superseded status line, kept for audit: "WRITTEN, NOT YET APPLIED to any project." Plain nullable column, no default, no backfill, no
 -- index (always read by primary key).
 --
 -- NOTE: `alter type ... add value` cannot run inside a transaction block on older Postgres; this
