@@ -8,7 +8,7 @@
  */
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert as RNAlert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert as RNAlert, Linking, StyleSheet, Text, View } from 'react-native';
 import {
   useAssetLocationQuery,
   useGrantAssetLocationConsentMutation,
@@ -24,6 +24,11 @@ import { formatAssetType, formatDate } from '../../lib/asset-labels';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import {
   LocationConsentModal,
+  LocationPermissionDeniedError,
+  LocationServicesDisabledError,
+  LocationTimeoutError,
+  isCoarseAccuracy,
+  useForegroundPermissionState,
   clearLinkedSmartphoneAssetId,
   clearLocationTrackingConsent,
   formatRelativeTime,
@@ -50,6 +55,16 @@ import { AssetPage } from './AssetPage';
 function formatDetailValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
   return String(value);
+}
+
+const PERMISSION_DENIED_MESSAGE =
+  'Location permission is off for this app, so tracking has not been turned on. Allow location in your phone settings, then try again.';
+const SERVICES_OFF_MESSAGE =
+  'Location services are off on this phone, so tracking has not been turned on. Turn them on in your phone settings, then try again.';
+
+function formatReportedAt(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? 'unknown time' : d.toLocaleString();
 }
 
 function protectionSteps(
@@ -84,6 +99,7 @@ export function AssetDetailScreen() {
   const grantConsentMutation = useGrantAssetLocationConsentMutation();
   const { hasIncidentManagement, changePlanHref } = usePlanEntitlements();
   const isOnline = useIsOnline();
+  const { state: permission, refresh: refreshPermission } = useForegroundPermissionState();
 
   const [linkedAssetId, setLinkedAssetIdState] = useState<string | null>(null);
   const [consentGranted, setConsentGrantedState] = useState(false);
@@ -170,7 +186,31 @@ export function AssetDetailScreen() {
         throw grantErr;
       }
 
-      const fix = await requestForegroundLocation();
+      let fix;
+      try {
+        fix = await requestForegroundLocation();
+      } catch (permErr) {
+        // No OS permission / services off: we have no fix, so the screen must not claim tracking is
+        // active. Revert the local consent + link (as the grant-failure path does) and tell the user.
+        if (
+          permErr instanceof LocationPermissionDeniedError ||
+          permErr instanceof LocationServicesDisabledError
+        ) {
+          await setLocationTrackingConsent('denied');
+          await clearLinkedSmartphoneAssetId();
+          setConsentGrantedState(false);
+          setLinkedAssetIdState(null);
+          setShowConsentModal(false);
+          setActionError(
+            permErr instanceof LocationServicesDisabledError
+              ? SERVICES_OFF_MESSAGE
+              : PERMISSION_DENIED_MESSAGE,
+          );
+          void refreshPermission();
+          return;
+        }
+        throw permErr;
+      }
       await reportMutation.mutateAsync({
         assetId: id,
         body: {
@@ -188,7 +228,9 @@ export function AssetDetailScreen() {
       // (b) A dropped connection here doesn't mean nothing happened — the
       // server-side consent record or the location report may have already
       // landed. Don't claim either definitely failed; prompt a check instead.
-      if (err instanceof NetworkUnavailableError) {
+      if (err instanceof LocationTimeoutError) {
+        setActionError(err.message);
+      } else if (err instanceof NetworkUnavailableError) {
         setActionError(
           "We couldn't confirm this reached the server. Check your connection — if tracking doesn't start, turn it off and on again.",
         );
@@ -294,7 +336,15 @@ export function AssetDetailScreen() {
       await refetchLocation();
       await locationSummary.refetch();
     } catch (err) {
-      if (err instanceof NetworkUnavailableError) {
+      if (err instanceof LocationPermissionDeniedError) {
+        setActionError(PERMISSION_DENIED_MESSAGE);
+        void refreshPermission();
+      } else if (err instanceof LocationServicesDisabledError) {
+        setActionError(SERVICES_OFF_MESSAGE);
+        void refreshPermission();
+      } else if (err instanceof LocationTimeoutError) {
+        setActionError(err.message);
+      } else if (err instanceof NetworkUnavailableError) {
         setActionError("We couldn't confirm the location update was received. Check your connection and try again.");
       } else {
         setActionError(mapUserFacingError(err, { context: 'location' }));
@@ -345,6 +395,17 @@ export function AssetDetailScreen() {
     trackingStatus === 'last_known' ||
     trackingActive;
   const steps = protectionSteps(tracked, protectedState);
+
+  const permissionLabel = !permission
+    ? ''
+    : !permission.servicesEnabled
+      ? 'location services are off'
+      : permission.granted
+        ? 'allowed'
+        : permission.canAskAgain
+          ? 'not allowed yet'
+          : 'denied';
+  const coarse = isCoarseAccuracy(location?.accuracyMeters);
 
   const timeline = buildAssetTimeline({
     registeredAt: asset.registeredAt,
@@ -428,6 +489,29 @@ export function AssetDetailScreen() {
           <Alert tone="danger" style={styles.actionAlert}>
             {actionError}
           </Alert>
+        ) : null}
+        {isSmartphone && FEATURE_LOCATION_TRACKING_ENABLED && permission ? (
+          <View style={styles.permissionBlock}>
+            <Text style={styles.permissionText}>Location permission: {permissionLabel}</Text>
+            {trackingActive && mapCoords?.recordedAt ? (
+              <Text style={styles.permissionText}>
+                Last reported from this phone at {formatReportedAt(mapCoords.recordedAt)}
+              </Text>
+            ) : null}
+            {trackingActive && permission.granted && permission.servicesEnabled && coarse ? (
+              <Text style={styles.permissionText}>
+                Precise location is off. Turn it on in your phone settings for a more accurate position.
+              </Text>
+            ) : null}
+            {!permission.granted || !permission.servicesEnabled ? (
+              <Button
+                label="Open Settings"
+                variant="secondary"
+                onPress={() => void Linking.openSettings()}
+                style={styles.stretch}
+              />
+            ) : null}
+          </View>
         ) : null}
         {isSmartphone ? (
           !FEATURE_LOCATION_TRACKING_ENABLED ? (
@@ -609,6 +693,8 @@ function buildStyles(t: DesignTokens) {
     stepLabel: { ...t.type.labelSm, color: t.colors.inkMuted, textAlign: 'center' },
     stepLabelDone: { color: t.colors.ink },
     mapWrap: { borderRadius: t.radius.md, overflow: 'hidden', marginBottom: t.spacing.s2 },
+    permissionBlock: { gap: t.spacing.s2, marginBottom: t.spacing.s3 },
+    permissionText: { ...t.type.bodySm, color: t.colors.inkMuted },
     lastSeen: { ...t.type.bodySm, color: t.colors.inkMuted, marginBottom: t.spacing.s3 },
     locationSpinner: { marginVertical: t.spacing.s3 },
     actionAlert: { marginBottom: t.spacing.s3 },

@@ -13,6 +13,7 @@
  * not read `account` here.
  */
 import { create } from 'zustand';
+import { clearLocalLocationState } from '../location/consent';
 import type { components } from '../api/generated/identity-service';
 
 export type Account = components['schemas']['Account'];
@@ -45,8 +46,12 @@ export const useSessionStore = create<SessionState>((set) => ({
     set({ status: 'signed-in', accessToken, sessionId }),
   setAccessToken: (accessToken) => set({ accessToken }),
   setAccount: (account) => set({ account }),
-  setSignedOut: () =>
-    set({ status: 'signed-out', accessToken: null, sessionId: null, account: null }),
+  setSignedOut: () => {
+    // Every logout / forced-logout / log-out-all path ends here, so account switching on one phone
+    // never inherits the previous account's location consent or linked smartphone asset.
+    void clearLocalLocationState();
+    set({ status: 'signed-out', accessToken: null, sessionId: null, account: null });
+  },
 }));
 
 /** Non-hook accessor for use inside src/api/client.ts (outside React). */

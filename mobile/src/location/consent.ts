@@ -40,3 +40,8 @@ export async function hasActiveLocationTracking(): Promise<boolean> {
   const linkedAssetId = await getLinkedSmartphoneAssetId();
   return consent === 'granted' && Boolean(linkedAssetId);
 }
+
+/** Clears device-local consent and linked asset (logout / account switching). Never throws. */
+export async function clearLocalLocationState(): Promise<void> {
+  await Promise.allSettled([clearLocationTrackingConsent(), clearLinkedSmartphoneAssetId()]);
+}

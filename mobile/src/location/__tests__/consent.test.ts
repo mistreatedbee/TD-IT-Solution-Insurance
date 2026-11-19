@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import {
   clearLinkedSmartphoneAssetId,
+  clearLocalLocationState,
   clearLocationTrackingConsent,
   getLinkedSmartphoneAssetId,
   getLocationTrackingConsent,
@@ -51,5 +52,18 @@ describe('location/consent', () => {
     await setLocationTrackingConsent('granted');
     await clearLocationTrackingConsent();
     expect(await getLocationTrackingConsent()).toBeNull();
+  });
+});
+
+describe('location/consent clearLocalLocationState', () => {
+  it('clears both consent and linked asset, and never throws', async () => {
+
+    await setLocationTrackingConsent('granted');
+    await setLinkedSmartphoneAssetId('asset-1');
+    await clearLocalLocationState();
+    expect(await getLocationTrackingConsent()).toBeNull();
+    expect(await getLinkedSmartphoneAssetId()).toBeNull();
+    (SecureStore.deleteItemAsync as jest.Mock).mockRejectedValueOnce(new Error('boom'));
+    await expect(clearLocalLocationState()).resolves.toBeUndefined();
   });
 });

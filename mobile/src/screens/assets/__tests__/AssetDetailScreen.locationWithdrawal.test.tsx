@@ -80,6 +80,11 @@ const mockRequestForegroundLocation = jest.fn(async () => ({
 jest.mock('../../../location', () => ({
   LocationConsentModal: () => null,
   formatRelativeTime: () => 'just now',
+  LocationPermissionDeniedError: class LocationPermissionDeniedError extends Error {},
+  LocationServicesDisabledError: class LocationServicesDisabledError extends Error {},
+  LocationTimeoutError: class LocationTimeoutError extends Error {},
+  isCoarseAccuracy: () => false,
+  useForegroundPermissionState: () => ({ state: null, refresh: jest.fn() }),
   getLinkedSmartphoneAssetId: jest.fn(async () => 'asset-1'),
   getLocationTrackingConsent: jest.fn(async () => 'granted'),
   requestForegroundLocation: () => mockRequestForegroundLocation(),

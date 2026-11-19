@@ -17,6 +17,36 @@ export class LocationPermissionDeniedError extends Error {
   }
 }
 
+export class LocationTimeoutError extends Error {
+  constructor(message = "We couldn't get your location. Move somewhere with a clearer signal and try again.") {
+    super(message);
+    this.name = 'LocationTimeoutError';
+  }
+}
+
+/** Fixes with an accuracy radius above this are treated as coarse ("Precise location is off"). */
+export const COARSE_ACCURACY_METERS = 500;
+export const LOCATION_FIX_TIMEOUT_MS = 15_000;
+
+export function isCoarseAccuracy(accuracyMeters: number | null | undefined): boolean {
+  return typeof accuracyMeters === 'number' && accuracyMeters > COARSE_ACCURACY_METERS;
+}
+
+export interface ForegroundPermissionState {
+  granted: boolean;
+  canAskAgain: boolean;
+  servicesEnabled: boolean;
+}
+
+/** Reads permission state without ever showing an OS dialog. */
+export async function getForegroundPermissionState(): Promise<ForegroundPermissionState> {
+  const [servicesEnabled, perm] = await Promise.all([
+    Location.hasServicesEnabledAsync(),
+    Location.getForegroundPermissionsAsync(),
+  ]);
+  return { granted: perm.granted, canAskAgain: perm.canAskAgain, servicesEnabled };
+}
+
 export class LocationServicesDisabledError extends Error {
   constructor(message = 'Location services are turned off on this device.') {
     super(message);
@@ -41,10 +71,38 @@ export async function requestForegroundLocationPermission(): Promise<boolean> {
   return result.granted;
 }
 
-export async function getForegroundLocationFix(): Promise<ForegroundLocationFix> {
-  const position = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.Balanced,
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new LocationTimeoutError()), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
   });
+}
+
+/** One fix with a ~15s timeout and a single retry; throws LocationTimeoutError (plain language) on failure. */
+export async function getForegroundLocationFix(): Promise<ForegroundLocationFix> {
+  let position: Location.LocationObject | undefined;
+  for (let attempt = 0; attempt < 2 && !position; attempt += 1) {
+    try {
+      position = await withTimeout(
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        LOCATION_FIX_TIMEOUT_MS,
+      );
+    } catch (err) {
+      if (attempt === 1) {
+        throw err instanceof LocationTimeoutError ? err : new LocationTimeoutError();
+      }
+    }
+  }
+  if (!position) throw new LocationTimeoutError();
 
   return {
     latitude: position.coords.latitude,
