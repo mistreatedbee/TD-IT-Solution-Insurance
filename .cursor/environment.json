@@ -1,0 +1,17 @@
+{
+  "name": "TD IT Solution Insurance",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "web-dev",
+      "command": "npm run dev -- --host 0.0.0.0",
+      "description": "Vite dev server for the web app (marketing site + design-system showcase) on port 5173. Needs no secrets. The backend API (backend/) and Expo app (mobile/) are separate deployables run on demand; the backend fail-fasts without Supabase/MongoDB credentials, so it is not auto-started here."
+    }
+  ],
+  "ports": [
+    {
+      "name": "web",
+      "port": 5173
+    }
+  ]
+}
