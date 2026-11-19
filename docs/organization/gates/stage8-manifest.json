@@ -1246,6 +1246,18 @@
       }
     },
     {
+      "id": "web-admin-locations",
+      "kind": "web_route",
+      "pattern": "/admin/locations",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-19 recorded by cto go-with-conditions under the owner test-only exception (docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md). NO Stage 8 review has been performed; this is an explicit waiver, not a sign-off. src/admin/pages/AdminLocationsPage.tsx over GET /v1/admin/locations (backend/src/routes/admin-locations.ts): read-only, admin-only, rate limited, every call an audited bulk disclosure, mounted only when ADMIN_LOCATIONS_ENABLED=true (off by default). Known deviation from ADR-0009 SDL-5: a bulk list of customer locations with no recovery-case reference. Before public launch: switch off, or rebuild case-scoped and put through a full Stage 8 review.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
       "id": "web-admin-dispatch",
       "kind": "web_route",
       "pattern": "/admin/dispatch",

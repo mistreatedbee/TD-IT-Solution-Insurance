@@ -18,3 +18,6 @@ The product owner stated, in the working session on 2026-11-17: "everything we a
 
 ## Why recorded
 The existing controls were written to stop a real-user incident (INC-002). The owner has accepted that risk for a no-real-users test system. This record makes the exception visible, bounded and reversible.
+
+## Addendum 2026-11-19: admin Locations list (cto go-with-conditions)
+The Admin Dashboard Locations page and `GET /v1/admin/locations` (read-only, admin-only, audited as a bulk disclosure) are added under this exception. It is mounted only when the Render variable `ADMIN_LOCATIONS_ENABLED=true`; unset means off and the route returns 404. It deviates from ADR-0009 SDL-5 (staff location reads should cite a recovery case) because it lists all located phones and trackers. Stage 8: recorded waiver `web-admin-locations`, no review performed. Reversal, added to the list above: set `ADMIN_LOCATIONS_ENABLED` off, and before public launch either put the route through a full Stage 8 review with a case-reference purpose, or remove it. cybersecurity-architect to queue the review.
