@@ -215,6 +215,19 @@ export const PROTECTION_REAUTH_LIMIT = {
   windowSeconds: 15 * 60,
 } as const;
 
+/**
+ * Feature 021 stage (c) - safety-alert channel dispatch and went-dark rules (TP-14, TP-03).
+ * Starting values for product/compliance review; tunable without a code-path change.
+ */
+export const SAFETY_ALERT_DEDUPE_WINDOW_SECONDS = 6 * 60 * 60; // one alert per account+type+device per 6h
+export const SAFETY_ALERT_ACCOUNT_RATE_LIMIT = { attempts: 6, windowSeconds: 24 * 60 * 60 } as const; // per account+type per day
+
+export const WENT_DARK_DEFAULT_EXPECTED_INTERVAL_SECONDS = 15 * 60; // when the tracker reports none
+export const WENT_DARK_GRACE_SECONDS = 10 * 60; // tolerance on top of the expected interval
+// Silent beyond interval + grace -> 'quiet'. Silent beyond N intervals + grace -> 'lost_contact'.
+export const WENT_DARK_LOST_CONTACT_AFTER_INTERVALS = 12;
+export const WENT_DARK_MOVING_ESCALATION_FACTOR = 0.5; // last state 'moving': lost-contact threshold halved, priority high
+
 export const PRIVILEGED_USER_TYPES = ['admin', 'security_company_operator', 'support_agent'] as const;
 export type PrivilegedUserType = (typeof PRIVILEGED_USER_TYPES)[number];
 

@@ -37,7 +37,7 @@ const COL = {
   resultCount: 9,
   decision: 10,
 } as const;
-const COLUMN_COUNT = 12;
+const COLUMN_COUNT = 13;
 
 function createFakeDb() {
   const calls: Array<{ text: string; params: unknown[] }> = [];

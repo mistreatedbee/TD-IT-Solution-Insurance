@@ -684,3 +684,28 @@ export function buildProtectionChangedEmail(params: {
     html: wrapBrandedEmail({ preheader, title, bodyHtml, ctaLabel: 'Contact support', ctaUrl: `${NOTIFICATION_BRAND.siteUrl}` }),
   };
 }
+
+/** Feature 021 stage (c) - safety alert email. Wording comes from safety-alert-copy.ts (no location, no verdict). */
+export function buildSafetyAlertEmail(params: {
+  title: string;
+  paragraphs: string[];
+}): { subject: string; html: string; preheader: string } {
+  const preheader = params.paragraphs[0] ?? params.title;
+  const bodyHtml = params.paragraphs
+    .map(
+      (p) =>
+        `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">${escapeHtml(p)}</p>`,
+    )
+    .join('');
+  return {
+    preheader,
+    subject: `${params.title} — ${NOTIFICATION_BRAND.name}`,
+    html: wrapBrandedEmail({
+      preheader,
+      title: params.title,
+      bodyHtml,
+      ctaLabel: 'Open the app',
+      ctaUrl: `${NOTIFICATION_BRAND.siteUrl}`,
+    }),
+  };
+}

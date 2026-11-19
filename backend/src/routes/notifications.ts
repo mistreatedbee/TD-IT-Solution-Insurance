@@ -47,6 +47,7 @@ const preferencesPatchSchema = z
     claims: channelPreferenceSchema.optional(),
     general: channelPreferenceSchema.optional(),
     marketing: channelPreferenceSchema.optional(),
+    safety_alerts: channelPreferenceSchema.optional(),
   })
   .refine((value) => Object.values(value).some((entry) => entry !== undefined), {
     message: 'At least one category must be provided',
