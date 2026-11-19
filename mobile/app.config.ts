@@ -1,4 +1,5 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config';
+import { withInfoPlist, type ConfigPlugin } from 'expo/config-plugins';
 
 import appJson from './app.json';
 
@@ -55,6 +56,78 @@ function stripLocationFromConfig(expo: ExpoConfig): ExpoConfig {
       : expo.android,
   };
 }
+
+/**
+ * OWNER EXCEPTION 2026-11-17 addendum (2026-11-19, background tracking): Android background
+ * location is declared ONLY for the owner-test EAS profile, and only while both the location
+ * tracking and background location flags are "true" for it. Every other profile (and local
+ * `expo start`, where EAS_BUILD_PROFILE is unset) never gets ACCESS_BACKGROUND_LOCATION,
+ * FOREGROUND_SERVICE / FOREGROUND_SERVICE_LOCATION or the expo-location background options.
+ * iOS is untouched: no UIBackgroundModes "location", isIosBackgroundLocationEnabled stays unset.
+ * Enforced in CI by scripts/verify-background-location-config.mjs. Reverse before public launch.
+ */
+export const BACKGROUND_LOCATION_PROFILE = 'owner-test';
+
+export const ANDROID_BACKGROUND_PERMISSIONS = [
+  'android.permission.ACCESS_BACKGROUND_LOCATION',
+  'android.permission.FOREGROUND_SERVICE',
+  'android.permission.FOREGROUND_SERVICE_LOCATION',
+] as const;
+
+function backgroundLocationAllowed(): boolean {
+  return (
+    process.env.EAS_BUILD_PROFILE === BACKGROUND_LOCATION_PROFILE &&
+    process.env.EXPO_PUBLIC_FEATURE_LOCATION_TRACKING === 'true' &&
+    process.env.EXPO_PUBLIC_FEATURE_BACKGROUND_LOCATION === 'true'
+  );
+}
+
+function applyAndroidBackgroundLocation(expo: ExpoConfig): ExpoConfig {
+  const plugins = (expo.plugins ?? []).map((plugin) => {
+    if (plugin === 'expo-location') {
+      return ['expo-location', { isAndroidBackgroundLocationEnabled: true, isAndroidForegroundServiceEnabled: true }];
+    }
+    if (Array.isArray(plugin) && plugin[0] === 'expo-location') {
+      return [
+        'expo-location',
+        {
+          ...((plugin[1] as Record<string, unknown> | undefined) ?? {}),
+          isAndroidBackgroundLocationEnabled: true,
+          isAndroidForegroundServiceEnabled: true,
+        },
+      ];
+    }
+    return plugin;
+  }) as ExpoConfig['plugins'];
+  const permissions = [...(expo.android?.permissions ?? [])];
+  for (const permission of ANDROID_BACKGROUND_PERMISSIONS) {
+    if (!permissions.includes(permission)) permissions.push(permission);
+  }
+  return {
+    ...expo,
+    plugins,
+    android: expo.android ? { ...expo.android, permissions } : expo.android,
+  };
+}
+
+/**
+ * iOS stays untouched by background tracking (CTO condition 4). expo-task-manager is auto-applied
+ * by prebuild as a legacy plugin and adds UIBackgroundModes "fetch" to every iOS build; this app
+ * does not use background fetch, so that entry (and any "location" entry) is removed again, leaving
+ * UIBackgroundModes exactly as app.json declares it ("remote-notification").
+ */
+const IOS_BACKGROUND_MODES_TO_REMOVE = ['fetch', 'location'];
+
+const withIosBackgroundModesUnchanged: ConfigPlugin = (config) =>
+  withInfoPlist(config, (cfg) => {
+    const modes = cfg.modResults.UIBackgroundModes;
+    if (Array.isArray(modes)) {
+      cfg.modResults.UIBackgroundModes = modes.filter(
+        (mode: unknown) => typeof mode !== 'string' || !IOS_BACKGROUND_MODES_TO_REMOVE.includes(mode),
+      );
+    }
+    return cfg;
+  });
 
 /**
  * The production bundle ID / Android package (`app.json` → `expo.ios.bundleIdentifier`
@@ -132,7 +205,11 @@ function applyAndroidMapsKey(base: ExpoConfig): ExpoConfig {
 export default ({ config }: ConfigContext): ExpoConfig => {
   let base = { ...appJson.expo, ...config } as ExpoConfig;
   base = locationTrackingEnabled() ? base : stripLocationFromConfig(base);
+  if (locationTrackingEnabled() && backgroundLocationAllowed()) {
+    base = applyAndroidBackgroundLocation(base);
+  }
   base = applyAndroidMapsKey(base);
+  base = withIosBackgroundModesUnchanged(base);
   if (process.env.EAS_BUILD_PROFILE === 'playInternal') {
     return applyPlayConsoleBoundPackage(base);
   }

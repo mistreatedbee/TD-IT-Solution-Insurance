@@ -5,8 +5,11 @@
 import { apiFetch } from './client';
 import type { AssetType } from './assets';
 
-/** 'periodic_foreground' is the 2-minute in-app timer (owner-test flag); the backend accepts it only behind LOCATION_EXTENDED_TRIGGERS_ENABLED. */
-export type LocationTrigger = 'foreground_open' | 'manual_refresh' | 'periodic_foreground';
+/**
+ * 'periodic_foreground' is the 2-minute in-app timer and 'background' the Android background task
+ * (both owner-test flags only); the backend accepts both only behind LOCATION_EXTENDED_TRIGGERS_ENABLED.
+ */
+export type LocationTrigger = 'foreground_open' | 'manual_refresh' | 'periodic_foreground' | 'background';
 
 export interface AssetLocationPoint {
   latitude: number;

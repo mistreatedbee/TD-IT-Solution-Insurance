@@ -2,7 +2,11 @@
  * Authenticated app shell — stack over tabs so pushed routes get a native back button.
  */
 import { Stack } from 'expo-router';
-import React from 'react';
+import React, { useEffect } from 'react';
+import {
+  isBackgroundLocationSupported,
+  startBackgroundLocationUpdates,
+} from '../../src/location/backgroundLocation';
 import { useLocationReporter } from '../../src/location/useLocationReporter';
 import { useAppStackScreenOptions } from '../../src/navigation/useAppStackScreenOptions';
 
@@ -10,6 +14,11 @@ export default function AppLayout() {
   const screenOptions = useAppStackScreenOptions();
   // Reports on open/resume when tracking is enabled, consent + linked asset + OS permission exist.
   useLocationReporter();
+  // Owner-test Android only: resume background updates on sign-in if "all the time" was already
+  // granted and every gate passes. Never shows a permission dialog.
+  useEffect(() => {
+    if (isBackgroundLocationSupported()) void startBackgroundLocationUpdates();
+  }, []);
 
   return (
     <Stack screenOptions={{ ...screenOptions, headerShown: false }}>

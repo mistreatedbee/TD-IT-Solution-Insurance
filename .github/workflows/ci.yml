@@ -169,5 +169,13 @@ jobs:
       - name: INC-004 layer 2 - transform-and-evaluate features.ts per eas.json profile
         run: node scripts/verify-feature-flags-transform.mjs
 
+      # OWNER EXCEPTION 2026-11-17 addendum (2026-11-19): Android background location
+      # (ACCESS_BACKGROUND_LOCATION / FOREGROUND_SERVICE*) may appear in the owner-test build only.
+      # Resolves app.config + plugin mods for every eas.json profile and fails on any other profile.
+      - name: Background location only in owner-test (resolved Expo config per profile)
+        run: |
+          node scripts/verify-background-location-config.mjs --self-test
+          node scripts/verify-background-location-config.mjs
+
       - name: INC-004 layer 3 - expo export bundle smoke test (flags inlined, no raw lookups)
         run: node scripts/verify-feature-flags-bundle.mjs
