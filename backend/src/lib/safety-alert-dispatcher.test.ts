@@ -133,7 +133,7 @@ describe('safety alert dispatcher', () => {
   });
 
   it('an audit failure does not block delivery', async () => {
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const t = setup({ auditFails: true });
     expect((await t.d.dispatch(alert)).status).toBe('delivered');
     spy.mockRestore();
