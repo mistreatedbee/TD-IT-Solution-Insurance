@@ -187,6 +187,34 @@ export function createAssetsRepo(db: Db) {
       return rows.map(toAsset);
     },
 
+    /**
+     * Admin map of every located asset: phones that reported themselves and assets with a hardware tracker.
+     * Audited callers only (bulk disclosure of locations across customers).
+     */
+    async listLocatedForAdmin(
+      filters: { source?: 'phone' | 'hardware' },
+      limit: number,
+      cursor: MongoDecodedCursor | null,
+    ): Promise<AssetDocument[]> {
+      const filter: Record<string, unknown> = {
+        ...mongoCursorFilter(cursor),
+        lastLocation: { $ne: null },
+        status: { $ne: 'removed' },
+      };
+      if (filters.source === 'phone') filter.locationSource = 'self_device';
+      if (filters.source === 'hardware') filter.gpsDeviceId = { $type: 'string' };
+      const rows = await collection().find(filter).sort({ createdAt: -1, _id: -1 }).limit(limit).toArray();
+      return rows.map(toAsset);
+    },
+
+    /** Batch read for admin views that join assets to something else. Audited callers only. */
+    async findManyForAdmin(assetIds: string[]): Promise<AssetDocument[]> {
+      const ids = assetIds.filter((id) => ObjectId.isValid(id)).map((id) => new ObjectId(id));
+      if (ids.length === 0) return [];
+      const rows = await collection().find({ _id: { $in: ids } }).toArray();
+      return rows.map(toAsset);
+    },
+
     async findByIdForAdmin(assetId: string): Promise<AssetDocument | null> {
       if (!ObjectId.isValid(assetId)) return null;
       const row = await collection().findOne({ _id: new ObjectId(assetId) });

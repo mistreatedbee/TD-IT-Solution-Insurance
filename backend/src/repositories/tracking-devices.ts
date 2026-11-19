@@ -89,6 +89,13 @@ export function createTrackingDevicesRepo(db: Db) {
       return toDocument({ _id: result.insertedId, ...doc });
     },
 
+    async findManyByIdsForAdmin(deviceIds: string[]): Promise<TrackingDeviceDocument[]> {
+      const ids = deviceIds.filter((id) => ObjectId.isValid(id)).map((id) => new ObjectId(id));
+      if (ids.length === 0) return [];
+      const rows = await collection().find({ _id: { $in: ids } }).toArray();
+      return rows.map(toDocument);
+    },
+
     async findBySerial(serialOrImei: string): Promise<TrackingDeviceDocument | null> {
       const row = await collection().findOne({ serialOrImei: normalizeSerial(serialOrImei) });
       return row ? toDocument(row) : null;

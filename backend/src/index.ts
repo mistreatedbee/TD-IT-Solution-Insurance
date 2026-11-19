@@ -40,6 +40,7 @@ import { createInvitationsRouter } from './routes/invitations.js';
 import { createAdminAccountsRouter } from './routes/admin-accounts.js';
 import { createAdminPoliciesRouter } from './routes/admin-policies.js';
 import { createAdminAssetsRouter } from './routes/admin-assets.js';
+import { createAdminLocationsRouter } from './routes/admin-locations.js';
 import { createAdminPlansRouter } from './routes/admin-plans.js';
 import { createAdminPartnerOrganizationsRouter } from './routes/admin-partner-organizations.js';
 import { createAdminPartnerOrganizationScorecardRouter } from './routes/admin-partner-organization-scorecard.js';
@@ -174,6 +175,8 @@ async function main(): Promise<void> {
   v1.use(createAdminAccountsRouter(ctx));
   v1.use(createAdminPoliciesRouter(ctx));
   v1.use(createAdminAssetsRouter(ctx));
+  // Test-only exception (OWNER-EXCEPTION-2026-11-17): bulk location list is off unless ADMIN_LOCATIONS_ENABLED=true.
+  if (process.env.ADMIN_LOCATIONS_ENABLED === 'true') v1.use(createAdminLocationsRouter(ctx));
   v1.use(createAdminPlansRouter(ctx));
   v1.use(createAdminPartnerOrganizationsRouter(ctx));
   v1.use(createAdminPartnerOrganizationScorecardRouter(ctx));
