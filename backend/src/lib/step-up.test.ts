@@ -111,17 +111,24 @@ describe('lib/step-up requireStepUp (unit, no HTTP)', () => {
   });
 
   it('mfaVerifiedAt exactly at the window boundary is still fresh (inclusive <=)', async () => {
-    const ctx = fakeCtx({
-      revokedAt: null,
-      mfaVerifiedAt: new Date(Date.now() - WINDOW_SECONDS * 1000),
-    });
-    const middleware = requireStepUp(ctx, WINDOW_SECONDS);
-    const next = vi.fn();
+    // Frozen clock: with a real clock a millisecond can pass between building the date and the check (flaky).
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    try {
+      const ctx = fakeCtx({
+        revokedAt: null,
+        mfaVerifiedAt: new Date(Date.now() - WINDOW_SECONDS * 1000),
+      });
+      const middleware = requireStepUp(ctx, WINDOW_SECONDS);
+      const next = vi.fn();
 
-    await middleware(fakeReq({ sessionId: randomUUID() }), {} as Response, next);
+      await middleware(fakeReq({ sessionId: randomUUID() }), {} as Response, next);
 
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(next.mock.calls[0]![0]).toBeUndefined();
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(next.mock.calls[0]![0]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('propagates unexpected session-store errors to next() rather than throwing', async () => {
