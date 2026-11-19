@@ -9,6 +9,11 @@ export {
   getForegroundLocationFix,
   LocationPermissionDeniedError,
   LocationServicesDisabledError,
+  LocationTimeoutError,
+  getForegroundPermissionState,
+  isCoarseAccuracy,
 } from './requestForegroundLocation';
-export type { ForegroundLocationFix } from './requestForegroundLocation';
+export type { ForegroundLocationFix, ForegroundPermissionState } from './requestForegroundLocation';
 export { useLocationReporter, maybeReportForegroundLocation } from './useLocationReporter';
+export { clearLocalLocationState } from './consent';
+export { useForegroundPermissionState } from './useForegroundPermissionState';

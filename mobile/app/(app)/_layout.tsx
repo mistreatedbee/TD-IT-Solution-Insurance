@@ -3,10 +3,13 @@
  */
 import { Stack } from 'expo-router';
 import React from 'react';
+import { useLocationReporter } from '../../src/location/useLocationReporter';
 import { useAppStackScreenOptions } from '../../src/navigation/useAppStackScreenOptions';
 
 export default function AppLayout() {
   const screenOptions = useAppStackScreenOptions();
+  // Reports on open/resume when tracking is enabled, consent + linked asset + OS permission exist.
+  useLocationReporter();
 
   return (
     <Stack screenOptions={{ ...screenOptions, headerShown: false }}>

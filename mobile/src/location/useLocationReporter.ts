@@ -9,7 +9,7 @@ import { FEATURE_LOCATION_TRACKING_ENABLED } from '../config/features';
 import { getLinkedSmartphoneAssetId, getLocationTrackingConsent } from './consent';
 import {
   getForegroundLocationFix,
-  requestForegroundLocationPermission,
+  getForegroundPermissionState,
 } from './requestForegroundLocation';
 
 async function maybeReportForegroundLocation(triggeredBy: 'foreground_open' | 'manual_refresh') {
@@ -25,8 +25,9 @@ async function maybeReportForegroundLocation(triggeredBy: 'foreground_open' | 'm
   const assetId = await getLinkedSmartphoneAssetId();
   if (!assetId) return;
 
-  const granted = await requestForegroundLocationPermission();
-  if (!granted) return;
+  // Never show an OS dialog from the background-ish open/resume path.
+  const perm = await getForegroundPermissionState();
+  if (!perm.servicesEnabled || !perm.granted) return;
 
   const fix = await getForegroundLocationFix();
   await reportAssetLocation(assetId, {
@@ -42,6 +43,14 @@ async function maybeReportForegroundLocation(triggeredBy: 'foreground_open' | 'm
  * Hook for the authenticated app shell — listens for foreground transitions
  * and reports location for the bound smartphone asset when consented.
  */
+/** Non-blocking, but not silent: logs the error class only (never coordinates or messages with PII). */
+function runReport(): void {
+  maybeReportForegroundLocation('foreground_open').catch((err: unknown) => {
+    const name = err instanceof Error ? err.name : 'UnknownError';
+    console.warn(`[location-reporter] foreground report failed: ${name}`);
+  });
+}
+
 export function useLocationReporter(): void {
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
@@ -51,16 +60,12 @@ export function useLocationReporter(): void {
     // circumstance for a build with location tracking disabled.
     if (!FEATURE_LOCATION_TRACKING_ENABLED) return;
 
-    maybeReportForegroundLocation('foreground_open').catch(() => {
-      // Non-blocking — permission denied, network error, or backend unavailable.
-    });
+    runReport();
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       const wasBackground = appState.current.match(/inactive|background/);
       if (wasBackground && nextState === 'active') {
-        maybeReportForegroundLocation('foreground_open').catch(() => {
-          // Non-blocking.
-        });
+        runReport();
       }
       appState.current = nextState;
     });

@@ -1,4 +1,7 @@
+import { clearLocalLocationState } from '../../location/consent';
 import { useSessionStore } from '../session-store';
+
+jest.mock('../../location/consent', () => ({ clearLocalLocationState: jest.fn(async () => undefined) }));
 
 describe('auth/session-store', () => {
   beforeEach(() => {
@@ -43,5 +46,11 @@ describe('auth/session-store', () => {
     expect(state.status).toBe('signed-out');
     expect(state.accessToken).toBeNull();
     expect(state.account).toBeNull();
+  });
+
+  it('setSignedOut clears device-local location consent and linked asset (account switching)', () => {
+    useSessionStore.getState().setSignedIn({ accessToken: 'tok', sessionId: 'sess' });
+    useSessionStore.getState().setSignedOut();
+    expect(clearLocalLocationState).toHaveBeenCalled();
   });
 });
