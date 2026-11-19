@@ -89,3 +89,46 @@ are found.** Verified: current code passes with 7 flags; the old dynamic form, a
 
 Closes only when INC-004-2 through INC-004-9 are done, a release-artifact device test passes, and
 `cto` records the window and count.
+
+---
+
+## 9. 2026-11-17 — INC-004-2 and INC-004-3 implemented (`mobile-engineer`; not yet merged/reviewed)
+
+Worktree branch `feat/inc-004-flag-proof`. Implemented exactly:
+
+- **INC-004-2.** `mobile/src/config/features.ts`: the dead `EAS_BUILD_PROFILE` branch is removed
+  (it stays in `app.config.ts`); `featureEnabled(raw)` is now `__DEV__ ? raw !== 'false' : raw === 'true'`
+  as §6 specifies. In a release bundle only the exact string `"true"` enables a flag. Dev bundles
+  (Metro / Expo Go / Jest) keep fail-open, because §6 prescribes that split. Jest: new block with
+  `__DEV__ = false` over all 8 flags (unset, `"false"`, `"False"`, `"TRUE"`, blank, `"1"` OFF; `"true"` ON).
+- **INC-004-3 layer 1.** `expo/no-dynamic-env-var` was already an error (eslint-config-expo); added a CI
+  grep for `process.env[` in app code (tests excluded). **Existed (lint); grep is new.**
+- **Layer 2.** New `mobile/scripts/verify-feature-flags-transform.mjs`: per eas.json profile, production
+  Babel transform with that profile's env, evaluated with `__DEV__ = false` and empty runtime env; asserts
+  each flag equals the declared value, and deletes each key in turn and asserts OFF. Also fails on any
+  dynamic read or on a `featureEnabled()` call that is not a static flag read.
+- **Layer 3.** New `mobile/scripts/verify-feature-flags-bundle.mjs`: `expo export --platform android
+  --no-bytecode --no-minify --clear` per distinct flag environment; asserts no raw lookup /
+  `EXPO_PUBLIC_FEATURE_` / `EAS_BUILD_PROFILE` survives in code, `featureEnabled` is the inlined
+  `raw === 'true'`, and each flag assignment carries the eas.json literal. `--clear` is required: the
+  Metro transform cache is not keyed on `EXPO_PUBLIC_*` values (a stale cache produced a false failure).
+- **Layer 4 (discovery fix, §5).** Existed (`c05a4a0`; `npm run verify:eas-feature-flags`, wired in the
+  frontend CI job). Unchanged.
+- CI: three new steps appended to the `mobile` job in `.github/workflows/ci.yml`; nothing removed.
+  `mobile/package.json` was not touched, so these are direct `node` commands, not npm scripts.
+
+**Remains:** review by `mobile-architect`, `cybersecurity-architect`, `security-engineer`; CI must run
+green on the real runner; INC-004-4 to -9 (notably INC-004-8 device test of a real EAS release artifact,
+INC-004-5 `aapt2`). Layers 2 and 3 compare the bundle to eas.json; they do not by themselves reject an
+eas.json that wrongly says `"true"` (layer 4 / the Stage 8 manifest check does). No EAS build until
+these are green and merged.
+
+### 9.1 Addendum 2026-11-19 — `owner-test` profile and release policy (`mobile-engineer`)
+
+Per the coordinator's 2026-11-19 status (main now has the `owner-test` profile, exempted by name in
+`verify-eas-feature-flags.mjs`; see `OWNER-EXCEPTION-2026-11-17-test-only-build.md`): layers 2 and 3
+now also enforce a policy check, `owner-test` must declare all 8 flags `"true"`, and every other
+profile except the `development` dev client must declare all 8 `"false"`. Verified against
+`origin/main:mobile/eas.json` (6 profiles). This branch has not been rebased: that needs a commit or
+stash, which this role may not run; the branch's only overlap with main is the unchanged
+`verify-eas-feature-flags.mjs` allow-list, which is left untouched here and so is preserved on rebase.

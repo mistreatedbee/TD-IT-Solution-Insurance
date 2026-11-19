@@ -151,3 +151,23 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # INC-004-3 (docs/organization/incidents/INC-004-mobile-feature-flags-not-inlined.md §6):
+      # four layers that prove a released bundle keeps every EXPO_PUBLIC_FEATURE_* flag
+      # fail-closed. Layer 1 = `expo/no-dynamic-env-var` (error in eslint-config-expo, run by
+      # the Lint step above) + the grep below. Layer 4 = the discovery guard
+      # `npm run verify:eas-feature-flags` in the frontend job. Wired as direct node
+      # commands: mobile/package.json is deliberately not edited by this change.
+      - name: INC-004 layer 1b - no dynamic process.env[...] reads in app code
+        run: |
+          if grep -rnE 'process\.env\[' src app app.config.ts --include='*.ts' --include='*.tsx' \
+              --exclude-dir=__tests__ --exclude-dir=node_modules --exclude-dir=generated; then
+            echo "::error::dynamic process.env[...] read found; Expo does not inline it (INC-004)"
+            exit 1
+          fi
+
+      - name: INC-004 layer 2 - transform-and-evaluate features.ts per eas.json profile
+        run: node scripts/verify-feature-flags-transform.mjs
+
+      - name: INC-004 layer 3 - expo export bundle smoke test (flags inlined, no raw lookups)
+        run: node scripts/verify-feature-flags-bundle.mjs
