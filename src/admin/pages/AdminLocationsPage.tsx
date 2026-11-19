@@ -3,11 +3,12 @@
  * `GET /admin/locations` endpoint; each load is recorded as a bulk disclosure. Security partners do not use
  * this page: their location access is limited to cases assigned to them (ADR-0017).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MapPin } from 'lucide-react';
 import { Badge, Button, Card, SectionHeading, StatBlock } from '../../components';
 import { DataTable, InlineAlert, LoadingState } from '../../dashboard/components/ui';
 import { ProtectionMapCanvas, type ProtectionMapPin } from '../../customer/map/ProtectionMapCanvas';
+import { ApiError } from '../../dashboard/api/errors';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { listAdminLocations, type AdminLocation, type LocationSource } from '../api/admin-locations';
 import { AdminNavLink } from '../layout/AdminLayout';
@@ -41,11 +42,23 @@ export function AdminLocationsPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [source, setSource] = useState<'phone' | 'hardware' | ''>('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [notEnabled, setNotEnabled] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const refresh = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  function describe(err: unknown): void {
+    if (err instanceof ApiError && err.status === 404) {
+      setNotEnabled(true);
+      return;
+    }
+    setError(mapUserFacingError(err, { context: 'admin' }));
+  }
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setNotEnabled(false);
     listAdminLocations({ source: source || undefined })
       .then((page) => {
         if (cancelled) return;
@@ -53,14 +66,17 @@ export function AdminLocationsPage() {
         setCursor(page.pagination.nextCursor);
         setHasMore(page.pagination.hasMore);
       })
-      .catch((err) => setError(mapUserFacingError(err, { context: 'admin' })))
+      .catch((err) => {
+        if (!cancelled) describe(err);
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [source]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, reloadKey]);
 
   async function loadMore() {
     if (!cursor) return;
@@ -70,7 +86,7 @@ export function AdminLocationsPage() {
       setCursor(page.pagination.nextCursor);
       setHasMore(page.pagination.hasMore);
     } catch (err) {
-      setError(mapUserFacingError(err, { context: 'admin' }));
+      describe(err);
     }
   }
 
@@ -103,11 +119,18 @@ export function AdminLocationsPage() {
           A phone position is the last place the app captured while it was open, not a live track. Live means recorded
           in the last 10 minutes; Recent means under 24 hours. Every load of this page is written to the audit log.
         </p>
+        <p className="mt-2 text-xs font-medium text-text-secondary">
+          Location reported by the customer's phone or tracker; not verified; no dispatch from here.
+        </p>
       </Card>
 
       <Card padding="lg">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <SectionHeading as="h1" title="Locations" size="md" className="mb-0" />
+          <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={refresh} disabled={loading}>
+            Refresh
+          </Button>
           <select
             aria-label="Filter by source"
             value={source}
@@ -118,11 +141,15 @@ export function AdminLocationsPage() {
             <option value="phone">Phones</option>
             <option value="hardware">GPS trackers</option>
           </select>
+          </div>
         </div>
 
+        {notEnabled ? (
+          <InlineAlert tone="info">Locations is not enabled in this environment.</InlineAlert>
+        ) : null}
         {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
 
-        {loading ? (
+        {notEnabled ? null : loading ? (
           <LoadingState />
         ) : (
           <div className="space-y-6">
@@ -134,6 +161,7 @@ export function AdminLocationsPage() {
                 </p>
               ) : null}
             </div>
+            <div className="overflow-x-auto">
             <DataTable
               emptyMessage="No located assets match this filter."
               columns={[
@@ -180,9 +208,15 @@ export function AdminLocationsPage() {
                   header: 'Open',
                   render: (row) => <AdminNavLink to={`/admin/assets/${(row as unknown as AdminLocation).assetId}`}>Asset</AdminNavLink>,
                 },
+                {
+                  key: 'accountId',
+                  header: 'Customer',
+                  render: (row) => <AdminNavLink to={`/admin/accounts/${(row as unknown as AdminLocation).accountId}`}>Customer</AdminNavLink>,
+                },
               ]}
               rows={rows as unknown as Array<Record<string, unknown>>}
             />
+            </div>
             {hasMore ? (
               <Button variant="secondary" size="sm" onClick={() => void loadMore()}>
                 Load more

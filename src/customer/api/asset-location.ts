@@ -17,6 +17,10 @@ export interface AssetLocationSummaryItem {
   assetType: string;
   lastLocation?: AssetLocationPoint | null;
   locationSource?: 'self_device' | null;
+  /** Convenience copies of the last-location fields; the backend may send either shape. */
+  recordedAt?: string | null;
+  accuracy?: number | null;
+  source?: 'self_device' | 'hardware_tracker' | null;
 }
 
 export interface AssetLocationSummaryPage {

@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ApiError } from '../../dashboard/api/errors';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { AdminLocationsPage } from './AdminLocationsPage';
@@ -63,5 +64,16 @@ describe('AdminLocationsPage', () => {
     vi.mocked(listAdminLocations).mockRejectedValue(new Error('boom'));
     renderPage();
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+  });
+
+  it('treats 404 as not enabled, then refresh loads, links the customer and shows the note', async () => {
+    vi.mocked(listAdminLocations).mockRejectedValueOnce(new ApiError(404, { error: { message: 'nf' } } as never));
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/not enabled in this environment/)).toBeInTheDocument());
+    vi.mocked(listAdminLocations).mockResolvedValue(page([loc()]));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(screen.getByText('iPhone 15')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: 'Customer' })).toHaveAttribute('href', '/admin/accounts/a1');
+    expect(screen.getByText(/not verified; no dispatch from here/)).toBeInTheDocument();
   });
 });
