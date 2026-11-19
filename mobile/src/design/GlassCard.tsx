@@ -20,17 +20,23 @@ export function GlassCard({ variant = 'glass', strong = false, radius = 'lg', ch
   const t = useDesignTokens();
   const { blurEnabled } = useReducedTransparency();
   const isGlass = variant !== 'solid';
-  const useBlur = isGlass && blurEnabled;
+  // Android: no BlurView and no elevation on a see-through card. Android draws an elevation shadow as an
+  // opaque panel behind a translucent view, and the experimental Android blur can render as a flat white
+  // layer; both showed as a white block inside every card (owner report, 2026-11-19). The frosted look on
+  // Android comes from the translucent glass fill over the page backdrop instead.
+  const android = Platform.OS === 'android';
+  const useBlur = isGlass && blurEnabled && !android;
   const r = t.radius[radius];
 
-  // Reduced transparency / low-end Android: bg-raised, no blur, border kept.
+  // Reduced transparency: bg-raised, no blur, border kept. Android glass: translucent fill, no blur.
   const fill = isGlass && blurEnabled ? t.colors.glassFill : t.colors.bgRaised;
   const selected = variant === 'selected';
+  const shadow = isGlass && !android ? t.shadows.glass : null;
 
   return (
     <View
       testID={testID}
-      style={[{ borderRadius: r, backgroundColor: useBlur ? 'transparent' : fill }, isGlass ? t.shadows.glass : null, style]}
+      style={[{ borderRadius: r, backgroundColor: useBlur || android ? 'transparent' : fill }, shadow, style]}
     >
       <View
         style={{
@@ -38,6 +44,7 @@ export function GlassCard({ variant = 'glass', strong = false, radius = 'lg', ch
           borderWidth: selected ? 2 : 1,
           borderColor: selected ? t.colors.focusRing : isGlass ? t.colors.glassBorder : t.colors.borderSubtle,
           overflow: 'hidden',
+          backgroundColor: android ? fill : undefined,
         }}
       >
         {useBlur ? (
@@ -47,7 +54,6 @@ export function GlassCard({ variant = 'glass', strong = false, radius = 'lg', ch
               pointerEvents="none"
               intensity={strong ? t.blur.glassStrong : t.blur.glass}
               tint={t.mode === 'night' ? 'dark' : 'light'}
-              experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
               style={StyleSheet.absoluteFill}
             />
             <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: fill }]} />
