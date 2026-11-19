@@ -16,6 +16,7 @@ import {
   ASSET_LOCATION_GRANT_LIMIT,
 } from '../lib/policy.js';
 import type { AssetDocument } from '../repositories/assets.js';
+import { EXTENDED_LOCATION_EVENT_TRIGGERS } from '../repositories/location-events.js';
 import {
   serializeAsset,
   serializeAssetLocation,
@@ -123,6 +124,24 @@ export function createAssetsRouter(ctx: AppContext): Router {
         // unreachable while this is off regardless of request contents.
         if (ctx.env.locationIngestionEnabled !== true) {
           next(apiError('UPSTREAM_UNAVAILABLE', undefined, 3600));
+          return;
+        }
+
+        // Extended triggers (periodic_foreground / background) are behind a
+        // second fail-closed switch. While it is off they are refused exactly
+        // as an unknown enum value would be (VALIDATION_ERROR), before any
+        // DB/session work, so today's behaviour is unchanged.
+        const triggeredBy = (req.body as LocationReportBody).triggeredBy;
+        if (
+          triggeredBy !== undefined &&
+          EXTENDED_LOCATION_EVENT_TRIGGERS.includes(triggeredBy) &&
+          ctx.env.locationExtendedTriggersEnabled !== true
+        ) {
+          next(
+            apiError('VALIDATION_ERROR', {
+              details: ["Invalid enum value. Expected 'foreground_open' | 'manual_refresh'"],
+            }),
+          );
           return;
         }
 

@@ -170,6 +170,20 @@ export interface Env {
   locationIngestionEnabled?: boolean;
 
   /**
+   * Fail-closed switch for the two extended `triggeredBy` values on
+   * `POST /v1/assets/:assetId/location-report` — `periodic_foreground` and
+   * `background` (test-only phase, CTO GO-WITH-CONDITIONS). `true` only when
+   * `LOCATION_EXTENDED_TRIGGERS_ENABLED` is exactly the string `"true"`;
+   * missing, blank or any other value is off. When off the route rejects
+   * those two values with VALIDATION_ERROR and behaves exactly as before for
+   * `foreground_open` / `manual_refresh` / omitted. This switch does not
+   * bypass `locationIngestionEnabled` (both must be on for an extended
+   * trigger to be stored) and does not change ASSET_LOCATION_REPORT_LIMIT.
+   * Optional so hand-built `Env` test fixtures compile; `undefined` = off.
+   */
+  locationExtendedTriggersEnabled?: boolean;
+
+  /**
    * Sign-up for an already-registered address emails the existing owner ("you already have an account").
    * The on-screen response stays the identical uniform 202 either way (FR-5/AC-2); only an email is added.
    * Fail-closed, same convention as `locationIngestionEnabled`: only the exact string "true" enables it.
@@ -507,6 +521,20 @@ export function loadEnv(): Env {
     );
   }
 
+  // Fail-closed switch for the extended location-report triggers
+  // (periodic_foreground / background) — same convention as
+  // LOCATION_INGESTION_ENABLED above: only the exact string "true" enables it.
+  const locationExtendedTriggersEnabledRaw = process.env.LOCATION_EXTENDED_TRIGGERS_ENABLED;
+  const locationExtendedTriggersEnabled = locationExtendedTriggersEnabledRaw === 'true';
+  if (locationExtendedTriggersEnabledRaw !== undefined && !locationExtendedTriggersEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] LOCATION_EXTENDED_TRIGGERS_ENABLED is set to an unrecognized value ` +
+        `("${locationExtendedTriggersEnabledRaw}"). Treating as disabled (fail-closed). ` +
+        'Set it to exactly "true" to enable, or unset it to disable.',
+    );
+  }
+
   // Fail-closed: only the exact string "true" turns on the existing-owner sign-up email.
   const signupExistingAccountEmailEnabled = process.env.SIGNUP_EXISTING_ACCOUNT_EMAIL_ENABLED === 'true';
 
@@ -660,6 +688,7 @@ export function loadEnv(): Env {
     invitationAcceptRedirectUrl,
     expoAccessToken,
     locationIngestionEnabled,
+    locationExtendedTriggersEnabled,
     signupExistingAccountEmailEnabled,
     claimsNotice,
     claimsApiEnabled,

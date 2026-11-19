@@ -113,7 +113,7 @@ async function main(): Promise<void> {
 
     // eslint-disable-next-line no-console
     console.log(
-      `[bootstrap-mongo] location_events: ${locationEventsCreated ? 'created' : 'already existed'}, indexes ensured`,
+      `[bootstrap-mongo] location_events: ${locationEventsCreated ? 'created' : 'already existed (validator re-applied via collMod)'}, indexes ensured`,
     );
 
     await bootstrapAlertsCollections(db);

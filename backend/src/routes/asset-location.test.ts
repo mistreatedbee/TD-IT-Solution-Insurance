@@ -270,7 +270,7 @@ function createHarness(opts: {
         accuracyMeters: number | null;
         recordedAt: Date;
         source: 'self_device' | 'hardware';
-        triggeredBy?: 'foreground_open' | 'manual_refresh' | null;
+        triggeredBy?: LocationEventDocument['triggeredBy'];
         deviceId?: string | null;
       }) {
         const event: LocationEventDocument = {
@@ -533,6 +533,86 @@ describe('POST /assets/:assetId/location-report', () => {
 
     expect(response.status).toBe(200);
     expect(storedEvents).toHaveLength(1);
+  });
+
+  describe('extended triggers (LOCATION_EXTENDED_TRIGGERS_ENABLED)', () => {
+    async function report(
+      envOverrides: Partial<Env>,
+      payload: Record<string, unknown>,
+    ): Promise<{ status: number; body: { error?: { code: string } }; storedEvents: LocationEventDocument[] }> {
+      const accountId = randomUUID();
+      const phone = sampleSmartphone(accountId);
+      const { app, sessionId, env, storedEvents } = createHarness({ accountId, assets: [phone], envOverrides });
+      const listened = await listen(app);
+      server = listened.server;
+      const response = await fetch(`${listened.baseUrl}/assets/${phone.id}/location-report`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ latitude: -25.7479, longitude: 28.2293, ...payload }),
+      });
+      const body = (await response.json()) as { error?: { code: string } };
+      await new Promise<void>((resolve) => listened.server.close(() => resolve()));
+      server = undefined;
+      return { status: response.status, body, storedEvents };
+    }
+
+    for (const trigger of ['periodic_foreground', 'background'] as const) {
+      it(`rejects ${trigger} with VALIDATION_ERROR when the switch is unset (fail-closed)`, async () => {
+        const r = await report({ locationExtendedTriggersEnabled: undefined }, { triggeredBy: trigger });
+        expect(r.status).toBe(400);
+        expect(r.body.error?.code).toBe('VALIDATION_ERROR');
+        expect(r.storedEvents).toHaveLength(0);
+      });
+
+      it(`rejects ${trigger} with VALIDATION_ERROR when the switch is explicitly false`, async () => {
+        const r = await report({ locationExtendedTriggersEnabled: false }, { triggeredBy: trigger });
+        expect(r.status).toBe(400);
+        expect(r.body.error?.code).toBe('VALIDATION_ERROR');
+        expect(r.storedEvents).toHaveLength(0);
+      });
+
+      it(`stores ${trigger} faithfully when the switch is on`, async () => {
+        const r = await report({ locationExtendedTriggersEnabled: true }, { triggeredBy: trigger });
+        expect(r.status).toBe(200);
+        expect(r.storedEvents).toHaveLength(1);
+        expect(r.storedEvents[0]?.triggeredBy).toBe(trigger);
+      });
+
+      it(`still refuses ${trigger} with 503 when ingestion itself is off, even with the switch on`, async () => {
+        const r = await report(
+          { locationIngestionEnabled: false, locationExtendedTriggersEnabled: true },
+          { triggeredBy: trigger },
+        );
+        expect(r.status).toBe(503);
+        expect(r.storedEvents).toHaveLength(0);
+      });
+    }
+
+    for (const enabled of [undefined, true] as const) {
+      for (const trigger of ['foreground_open', 'manual_refresh'] as const) {
+        it(`stores ${trigger} unchanged (switch ${String(enabled)})`, async () => {
+          const r = await report({ locationExtendedTriggersEnabled: enabled }, { triggeredBy: trigger });
+          expect(r.status).toBe(200);
+          expect(r.storedEvents[0]?.triggeredBy).toBe(trigger);
+        });
+      }
+
+      it(`defaults a missing triggeredBy to manual_refresh (switch ${String(enabled)})`, async () => {
+        const r = await report({ locationExtendedTriggersEnabled: enabled }, {});
+        expect(r.status).toBe(200);
+        expect(r.storedEvents[0]?.triggeredBy).toBe('manual_refresh');
+      });
+    }
+
+    it('still rejects an unknown triggeredBy with VALIDATION_ERROR when the switch is on', async () => {
+      const r = await report({ locationExtendedTriggersEnabled: true }, { triggeredBy: 'always_on' });
+      expect(r.status).toBe(400);
+      expect(r.body.error?.code).toBe('VALIDATION_ERROR');
+      expect(r.storedEvents).toHaveLength(0);
+    });
   });
 
   it('returns 404 for another account asset', async () => {

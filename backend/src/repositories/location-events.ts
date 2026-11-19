@@ -4,7 +4,21 @@
 import { ObjectId, type Db, type Collection } from 'mongodb';
 
 export type LocationEventSource = 'self_device' | 'hardware';
-export type LocationEventTrigger = 'foreground_open' | 'manual_refresh';
+/**
+ * `periodic_foreground` / `background` are the extended triggers — accepted by
+ * the location-report route only while LOCATION_EXTENDED_TRIGGERS_ENABLED=true.
+ */
+export const LOCATION_EVENT_TRIGGERS = [
+  'foreground_open',
+  'manual_refresh',
+  'periodic_foreground',
+  'background',
+] as const;
+export type LocationEventTrigger = (typeof LOCATION_EVENT_TRIGGERS)[number];
+export const EXTENDED_LOCATION_EVENT_TRIGGERS: readonly LocationEventTrigger[] = [
+  'periodic_foreground',
+  'background',
+];
 
 export interface LocationEventDocument {
   id: string;
