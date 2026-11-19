@@ -28,6 +28,7 @@ import {
 import { useIsOnline } from '../../network/NetworkProvider';
 import { Alert } from '../../theme/primitives';
 import { useDesignTokens } from '../../theme/designTheme';
+import { BackgroundLocationOffer } from '../../location/BackgroundLocationOffer';
 import { enableLocationTrackingForAsset } from '../location/enableTrackingForAsset';
 
 const PERMISSION_DENIED_MESSAGE =
@@ -127,6 +128,16 @@ export function OneTapPhoneProtectionCard() {
   );
 
   if (message && !undecided) {
+    // After protection is on, offer background ("all the time") reporting — owner-test Android
+    // only; the offer renders nothing anywhere else.
+    if (message.tone === 'success') {
+      return (
+        <>
+          <Alert tone={message.tone}>{message.text}</Alert>
+          <BackgroundLocationOffer />
+        </>
+      );
+    }
     return <Alert tone={message.tone}>{message.text}</Alert>;
   }
   if (!undecided || !phone) return null;

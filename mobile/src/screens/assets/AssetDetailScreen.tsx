@@ -37,6 +37,7 @@ import {
   requestForegroundLocation,
   setLocationTrackingConsent,
 } from '../../location';
+import { BackgroundLocationOffer } from '../../location/BackgroundLocationOffer';
 import { enableLocationTrackingForAsset } from '../location/enableTrackingForAsset';
 import { mergeAssetsWithLocations } from '../../tracking/buildAssetTrackingView';
 import { useAssetLocationSummaryQuery } from '../../api/hooks/useAssetLocation';
@@ -482,6 +483,8 @@ export function AssetDetailScreen() {
                 loading={actionLoading || withdrawMutation.isPending}
                 onPress={handleDisableTracking}
                variant="glass" style={styles.stretch} />
+              {/* Background ("all the time") offer — owner-test Android only, after protection is on. */}
+              <BackgroundLocationOffer />
             </View>
           ) : linkedAssetId && !isThisPhoneLinked ? (
             <Alert tone="info">

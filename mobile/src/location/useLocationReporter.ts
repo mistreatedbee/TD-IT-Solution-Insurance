@@ -9,9 +9,10 @@
  * leaves the foreground, when this hook unmounts (sign-out — it lives in the signed-in shell) and
  * as soon as consent or the linked asset is withdrawn. No background location of any kind.
  *
- * Seam for a later background sender (NOT implemented here): it must call
- * `canReportLocation()` and skip when `wasLocationSentRecently()` is true, then call
- * `markLocationSent()` after a successful send, so foreground and background never double up.
+ * Seam used by the Android background sender (`backgroundLocation.ts`, owner-test only, behind
+ * `FEATURE_BACKGROUND_LOCATION_ENABLED`): it calls `canReportLocation()`, skips when
+ * `wasLocationSentRecently()` is true, then calls `markLocationSent()` after a successful send,
+ * so foreground and background never double up. This hook itself never runs in the background.
  */
 import { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';

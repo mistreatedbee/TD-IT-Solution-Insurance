@@ -69,10 +69,22 @@ jest.mock('expo-location', () => ({
   hasServicesEnabledAsync: jest.fn(async () => true),
   getForegroundPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
   requestForegroundPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
+  // Background ("all the time") — denied by default; owner-test background tests opt in.
+  getBackgroundPermissionsAsync: jest.fn(async () => ({ granted: false, status: 'denied' })),
+  requestBackgroundPermissionsAsync: jest.fn(async () => ({ granted: false, status: 'denied' })),
+  hasStartedLocationUpdatesAsync: jest.fn(async () => false),
+  startLocationUpdatesAsync: jest.fn(async () => {}),
+  stopLocationUpdatesAsync: jest.fn(async () => {}),
   getCurrentPositionAsync: jest.fn(async () => ({
     coords: { latitude: -26.2041, longitude: 28.0473, accuracy: 12 },
     timestamp: Date.now(),
   })),
+}));
+
+// expo-task-manager has no native side in Jest; defineTask records the task body.
+jest.mock('expo-task-manager', () => ({
+  defineTask: jest.fn(),
+  isTaskRegisteredAsync: jest.fn(async () => false),
 }));
 
 jest.mock('react-native-maps', () => {

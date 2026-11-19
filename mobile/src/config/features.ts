@@ -90,3 +90,15 @@ export const FEATURE_PROTECTION_CHECKLIST_ENABLED = featureEnabled(
 export const FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED = featureEnabled(
   process.env.EXPO_PUBLIC_FEATURE_LAUNCH_LOCATION_PROMPT,
 );
+
+/**
+ * OWNER EXCEPTION 2026-11-17 (test-only build), addendum 2026-11-19 (background tracking):
+ * Android background location reporting (`src/location/backgroundLocation.ts`, expo-task-manager
+ * task, foreground-service notification). "true" in the owner-test profile only, "false" in every
+ * distributed profile; `app.config.ts` only adds ACCESS_BACKGROUND_LOCATION / FOREGROUND_SERVICE*
+ * for `EAS_BUILD_PROFILE === 'owner-test'`. No Stage 8 review has been performed — see the waiver
+ * in docs/organization/gates/stage8-manifest.json. ADR-0009 §19 is Proposed, not ratified.
+ */
+export const FEATURE_BACKGROUND_LOCATION_ENABLED = featureEnabled(
+  process.env.EXPO_PUBLIC_FEATURE_BACKGROUND_LOCATION,
+);
