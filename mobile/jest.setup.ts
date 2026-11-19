@@ -90,6 +90,22 @@ jest.mock('react-native-maps', () => {
   };
 });
 
+// react-native-webview has no native side in Jest: a View that records injected JS so tests can assert on it.
+jest.mock('react-native-webview', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const injected: string[] = [];
+  const MockWebView = React.forwardRef((props: Record<string, unknown>, ref: unknown) => {
+    React.useImperativeHandle(ref, () => ({
+      injectJavaScript: (js: string) => injected.push(js),
+      reload: () => undefined,
+    }));
+    return React.createElement(View, props);
+  });
+  MockWebView.displayName = 'MockWebView';
+  return { __esModule: true, default: MockWebView, WebView: MockWebView, __injected: injected };
+});
+
 jest.mock('expo-blur', () => {
   const React = require('react');
   const { View } = require('react-native');

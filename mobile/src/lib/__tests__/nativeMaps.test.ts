@@ -10,7 +10,7 @@ jest.mock('expo-constants', () => ({
   },
 }));
 
-import { nativeMapsAvailable } from '../nativeMaps';
+import { nativeMapsAvailable, webMapFallbackActive } from '../nativeMaps';
 
 describe('nativeMapsAvailable', () => {
   const original = Platform.OS;
@@ -38,5 +38,17 @@ describe('nativeMapsAvailable', () => {
     expect(nativeMapsAvailable()).toBe(true);
     Object.defineProperty(Platform, 'OS', { value: 'web' });
     expect(nativeMapsAvailable()).toBe(false);
+  });
+
+  it('uses the OpenStreetMap web map only on Android without a key', () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android' });
+    mockExtra.value = { androidMapsKeyConfigured: false };
+    expect(webMapFallbackActive()).toBe(true);
+    mockExtra.value = { androidMapsKeyConfigured: true };
+    expect(webMapFallbackActive()).toBe(false);
+    Object.defineProperty(Platform, 'OS', { value: 'ios' });
+    expect(webMapFallbackActive()).toBe(false);
+    Object.defineProperty(Platform, 'OS', { value: 'web' });
+    expect(webMapFallbackActive()).toBe(false);
   });
 });

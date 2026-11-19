@@ -23,6 +23,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAssetLocationHistoryQuery } from '../../api/hooks/useAssetLocationHistory';
 import { formatAssetType } from '../../lib/asset-labels';
+import { webMapFallbackActive } from '../../lib/nativeMaps';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { formatRelativeTime } from '../../location/formatRelativeTime';
 import { GlassSurface } from '../../navigation/GlassSurface';
@@ -283,23 +284,26 @@ export function ProtectionMapScreen() {
                   />
                 </MapGlass>
               </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                  mapType === 'satellite'
-                    ? 'Switch to standard map'
-                    : 'Switch to satellite map'
-                }
-                onPress={toggleMapType}
-              >
-                <MapGlass style={styles.iconButton}>
-                  <LayersIcon
-                    size={18}
-                    color={d.colors.ink}
-                    strokeWidth={2.2}
-                  />
-                </MapGlass>
-              </Pressable>
+              {/* The OpenStreetMap fallback (Android without a Google key) has no satellite layer. */}
+              {webMapFallbackActive() ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    mapType === 'satellite'
+                      ? 'Switch to standard map'
+                      : 'Switch to satellite map'
+                  }
+                  onPress={toggleMapType}
+                >
+                  <MapGlass style={styles.iconButton}>
+                    <LayersIcon
+                      size={18}
+                      color={d.colors.ink}
+                      strokeWidth={2.2}
+                    />
+                  </MapGlass>
+                </Pressable>
+              )}
             </View>
           </View>
 
