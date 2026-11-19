@@ -26,7 +26,9 @@ export const locationEventsJsonSchemaValidator: Document = {
       recordedAt: { bsonType: 'date' },
       receivedAt: { bsonType: 'date' },
       source: { enum: ['self_device', 'hardware'] },
-      triggeredBy: { enum: ['foreground_open', 'manual_refresh', null] },
+      triggeredBy: {
+        enum: ['foreground_open', 'manual_refresh', 'periodic_foreground', 'background', null],
+      },
       deviceId: { bsonType: ['string', 'null'] },
     },
   },
@@ -54,6 +56,16 @@ export async function bootstrapLocationEventsCollections(db: Db): Promise<{
       validator: locationEventsJsonSchemaValidator,
     });
     collectionsEnsured.push(LOCATION_EVENTS_COLLECTION);
+  } else {
+    // Idempotent: re-apply the current validator to an existing collection
+    // (same create-or-collMod pattern as alerts / notification / support-case
+    // bootstraps). Needed so the widened `triggeredBy` enum reaches a live
+    // collection created before it. Only the validator is set — the
+    // collection's existing validationLevel / validationAction are left as-is.
+    await db.command({
+      collMod: LOCATION_EVENTS_COLLECTION,
+      validator: locationEventsJsonSchemaValidator,
+    });
   }
 
   await db.collection(LOCATION_EVENTS_COLLECTION).createIndexes(locationEventsIndexes);

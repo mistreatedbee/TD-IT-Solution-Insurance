@@ -41,6 +41,12 @@ services:
       # Existing-owner email on sign-up: off until cybersecurity-architect signs off (Feature 001 security review addendum).
       - key: SIGNUP_EXISTING_ACCOUNT_EMAIL_ENABLED
         value: "false"
+      # Extended location-report triggers (periodic_foreground / background).
+      # Declared WITHOUT a value (unset = off, fail-closed). Test-only phase;
+      # only the exact string "true" enables it, and only alongside
+      # LOCATION_INGESTION_ENABLED=true. Set in the Render dashboard, not here.
+      - key: LOCATION_EXTENDED_TRIGGERS_ENABLED
+        sync: false
       # INC-003 A-16 / ADR-0014 G-1: web signup/resend go through the backend
       # (client: 'web'). Declared WITHOUT a value: the project owner sets it to
       # this environment's web origin + /auth/callback?type=signup in the Render

@@ -3,7 +3,7 @@
  * security-review.md §16.4 SR-018-11 / CR-018-10 — production boot-time
  * guard against placeholder claim-notice config.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { parseTrustProxyHops, MAX_TRUST_PROXY_HOPS, loadEnv } from './env.js';
 
 describe('parseTrustProxyHops', () => {
@@ -108,6 +108,32 @@ describe('loadEnv — SR-018-11 / CR-018-10 production placeholder-notice-config
   it('does not block non-production startup with placeholder notice config, even with the flag on', () => {
     resetEnv({ NODE_ENV: 'development', CLAIMS_API_ENABLED: 'true' });
     expect(() => loadEnv()).not.toThrow();
+  });
+
+  describe('LOCATION_EXTENDED_TRIGGERS_ENABLED — fail-closed switch', () => {
+    it('defaults to false when unset', () => {
+      resetEnv({ LOCATION_EXTENDED_TRIGGERS_ENABLED: undefined });
+      expect(loadEnv().locationExtendedTriggersEnabled).toBe(false);
+    });
+
+    it('enables only on the exact string "true"', () => {
+      resetEnv({ LOCATION_EXTENDED_TRIGGERS_ENABLED: 'true' });
+      expect(loadEnv().locationExtendedTriggersEnabled).toBe(true);
+    });
+
+    it('treats unrecognised values as off and warns', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      try {
+        for (const bad of ['TRUE', '1', 'yes', '']) {
+          warn.mockClear();
+          resetEnv({ LOCATION_EXTENDED_TRIGGERS_ENABLED: bad });
+          expect(loadEnv().locationExtendedTriggersEnabled).toBe(false);
+          expect(warn.mock.calls.some((c) => String(c[0]).includes('LOCATION_EXTENDED_TRIGGERS_ENABLED'))).toBe(true);
+        }
+      } finally {
+        warn.mockRestore();
+      }
+    });
   });
 
   describe('OB-03 CS-7 — DIRECTED_DISPATCH_ENABLED / PARTNER_LOCATION_SHARING_ENABLED', () => {
