@@ -17,7 +17,7 @@
 export type ChevronMotifTone = 'navy' | 'secondary' | 'gold';
 
 const TONE_CLASSES: Record<ChevronMotifTone, string> = {
-  navy: 'text-primary',
+  navy: 'text-td-link',
   secondary: 'text-secondary',
   gold: 'text-accent-gold-deep'
 };
@@ -64,7 +64,7 @@ export function ChevronMotifField({ className = '' }: ChevronMotifFieldProps) {
   return (
     <div
       aria-hidden="true"
-      className={`relative aspect-square w-full max-w-[560px] overflow-hidden rounded-[40px] bg-background-alt ${className}`}>
+      className={`relative aspect-square w-full max-w-[560px] overflow-hidden rounded-[40px] bg-td-bg-raised ${className}`}>
       {/* Outer, largest chevron — gold, mirrored to echo the diamond silhouette */}
       <ChevronMotif
         tone="gold"

@@ -124,7 +124,7 @@ export function StatBlock({
       
 
       <span
-        className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 sm:text-sm">
+        className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-td-ink-muted sm:text-sm">
         
         {label}
       </span>

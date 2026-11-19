@@ -36,7 +36,7 @@ const toneClasses: Record<ArrowLinkTone, string> = {
   default:
   'text-secondary hover:text-accent-gold-deep focus-visible:outline-primary dark:text-dark-secondary dark:hover:text-dark-accent-gold',
   muted:
-  'text-gray-600 hover:text-gray-900 focus-visible:outline-gray-600 dark:text-gray-400 dark:hover:text-gray-100',
+  'text-td-ink-muted hover:text-td-ink focus-visible:outline-td-focus-ring',
   inverse:
   'text-white hover:text-white/80 focus-visible:outline-white'
 };

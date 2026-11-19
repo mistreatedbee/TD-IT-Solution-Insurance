@@ -120,7 +120,7 @@ export function DispatchQueuePage() {
           <select
             value={status}
             onChange={(e) => setFilter('status', e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
             aria-label="Filter by case status"
           >
             <option value="">All statuses</option>
@@ -133,7 +133,7 @@ export function DispatchQueuePage() {
           <select
             value={dispatchStatus}
             onChange={(e) => setFilter('dispatchStatus', e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
             aria-label="Filter by dispatch status"
           >
             <option value="">All dispatch statuses</option>
@@ -269,8 +269,8 @@ function DispatchAction({ caseItem, onUpdated }: { caseItem: AdminDispatchCase; 
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-border p-4">
-      <p className="text-sm font-medium text-text-primary">Dispatch to a partner organization</p>
+    <div className="space-y-3 rounded-lg border border-td-border-subtle p-4">
+      <p className="text-sm font-medium text-td-ink">Dispatch to a partner organization</p>
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
       {info ? <InlineAlert tone="info">{info}</InlineAlert> : null}
       {pendingLink ? (
@@ -285,7 +285,7 @@ function DispatchAction({ caseItem, onUpdated }: { caseItem: AdminDispatchCase; 
         <select
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+          className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
           aria-label="Dispatch to organization"
         >
           <option value="">Select partner org…</option>
@@ -299,7 +299,7 @@ function DispatchAction({ caseItem, onUpdated }: { caseItem: AdminDispatchCase; 
           Dispatch
         </Button>
       </div>
-      <p className="text-xs text-text-secondary">Only orgs marked active are listed; the server re-checks eligibility.</p>
+      <p className="text-xs text-td-ink-muted">Only orgs marked active are listed; the server re-checks eligibility.</p>
 
       {stepUpOpen ? (
         <StepUpDialog
@@ -377,8 +377,8 @@ function ReDispatchAction({ caseItem, onUpdated }: { caseItem: AdminDispatchCase
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-border p-4">
-      <p className="text-sm font-medium text-text-primary">Re-dispatch</p>
+    <div className="space-y-3 rounded-lg border border-td-border-subtle p-4">
+      <p className="text-sm font-medium text-td-ink">Re-dispatch</p>
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
       {info ? <InlineAlert tone="info">{info}</InlineAlert> : null}
       {pendingBanner ? (
@@ -396,7 +396,7 @@ function ReDispatchAction({ caseItem, onUpdated }: { caseItem: AdminDispatchCase
         <select
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+          className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
           aria-label="Re-dispatch target"
         >
           <option value="">Return to queue (no org)</option>
@@ -409,7 +409,7 @@ function ReDispatchAction({ caseItem, onUpdated }: { caseItem: AdminDispatchCase
         <select
           value={reason}
           onChange={(e) => setReason(e.target.value as RedispatchReason | '')}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+          className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
           aria-label="Re-dispatch reason"
         >
           <option value="">Select a reason…</option>
@@ -508,7 +508,7 @@ export function DispatchCaseDetailPage() {
                 <span>
                   {lastLocation.latitude}, {lastLocation.longitude}
                   <br />
-                  <span className="text-xs text-text-secondary">
+                  <span className="text-xs text-td-ink-muted">
                     Viewing this location is logged against your admin account.
                   </span>
                 </span>

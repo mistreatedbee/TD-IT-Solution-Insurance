@@ -42,14 +42,14 @@ export function IndustryCard({
 }: IndustryCardProps) {
   const isInteractive = typeof onClick === 'function';
   const Root = isInteractive ? 'button' : 'div';
-  return <Root type={isInteractive ? 'button' : undefined} onClick={onClick} className={['group relative w-full overflow-hidden rounded-lg border border-slate-200 bg-white text-left shadow-sm transition', isInteractive ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2' : '', className].filter(Boolean).join(' ')}>
+  return <Root type={isInteractive ? 'button' : undefined} onClick={onClick} className={['group relative w-full overflow-hidden rounded-lg border border-td-border-subtle bg-td-bg-raised text-left shadow-sm transition', isInteractive ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2' : '', className].filter(Boolean).join(' ')}>
       <span aria-hidden="true" className={`block h-1.5 w-full ${accentBarStyles[accent]}`} />
       <div className="p-6">
         <span className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-md ${accentIconStyles[accent]}`}>
           <IconComponent className="h-5 w-5" aria-hidden="true" />
         </span>
-        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+        <h3 className="text-base font-semibold text-td-ink">{title}</h3>
+        <p className="mt-2 text-sm leading-relaxed text-td-ink-muted">
           {description}
         </p>
       </div>

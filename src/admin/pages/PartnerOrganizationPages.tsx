@@ -47,8 +47,8 @@ export function PartnerOrganizationsListPage() {
       {loading ? (
         <LoadingState />
       ) : rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-12 text-center">
-          <p className="text-sm font-medium text-text-primary">No partner organizations yet</p>
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-td-border-subtle py-12 text-center">
+          <p className="text-sm font-medium text-td-ink">No partner organizations yet</p>
         </div>
       ) : (
         <DataTable
@@ -59,7 +59,7 @@ export function PartnerOrganizationsListPage() {
               render: (row) => (
                 <Link
                   to={`/admin/partner-organizations/${String(row.id)}/scorecard`}
-                  className="font-medium text-primary hover:underline"
+                  className="font-medium text-td-link hover:underline"
                 >
                   {String(row.name)}
                 </Link>
@@ -73,7 +73,7 @@ export function PartnerOrganizationsListPage() {
               render: (row) => (
                 <Link
                   to={`/admin/partner-organizations/${String(row.id)}/scorecard`}
-                  className="text-sm font-medium text-primary hover:underline"
+                  className="text-sm font-medium text-td-link hover:underline"
                 >
                   View scorecard
                 </Link>
@@ -105,9 +105,9 @@ function NullableStat({
   if (value === null) {
     return (
       <div className="flex flex-col items-start text-left">
-        <div className="font-bold leading-none tracking-tight text-text-primary text-4xl sm:text-5xl">—</div>
-        <span className="mt-4 block h-1 w-10 rounded-full bg-slate-200" aria-hidden="true" />
-        <span className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 sm:text-sm">
+        <div className="font-bold leading-none tracking-tight text-td-ink text-4xl sm:text-5xl">—</div>
+        <span className="mt-4 block h-1 w-10 rounded-full bg-td-bg-sunken" aria-hidden="true" />
+        <span className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-td-ink-muted sm:text-sm">
           {label}
         </span>
       </div>
@@ -169,11 +169,11 @@ export function PartnerOrganizationScorecardPage({ partnerOrganizationId }: { pa
           size="md"
           className="mb-0"
         />
-        <Link to="/admin/partner-organizations" className="text-sm font-medium text-primary hover:underline">
+        <Link to="/admin/partner-organizations" className="text-sm font-medium text-td-link hover:underline">
           Back to partner organizations
         </Link>
       </div>
-      <p className="mb-6 text-sm text-text-secondary">
+      <p className="mb-6 text-sm text-td-ink-muted">
         Recovery-case outcomes claimed by this partner organization, plus release/reassign activity by its
         operators. Defaults to the full case history; filter by claim date below.
       </p>
@@ -199,7 +199,7 @@ export function PartnerOrganizationScorecardPage({ partnerOrganizationId }: { pa
       {!loading && data ? (
         <div className="space-y-8">
           {(data.range.from || data.range.to) && (
-            <p className="text-xs text-text-secondary">
+            <p className="text-xs text-td-ink-muted">
               Showing cases claimed {data.range.from ? `from ${data.range.from}` : ''}
               {data.range.from && data.range.to ? ' ' : ''}
               {data.range.to ? `to ${data.range.to}` : ''}.

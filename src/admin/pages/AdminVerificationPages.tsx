@@ -29,7 +29,7 @@ export function VerificationQueuePage() {
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title="Identity verification queue" size="md" className="mb-4" />
-      <p className="mb-4 text-sm text-text-secondary">
+      <p className="mb-4 text-sm text-td-ink-muted">
         Review customer identity submissions awaiting admin decision.
       </p>
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
@@ -168,7 +168,7 @@ export function VerificationReviewPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <SectionHeading as="h1" title="Verification review" size="md" />
-        <Link to="/admin/verification" className="text-sm text-primary hover:underline">
+        <Link to="/admin/verification" className="text-sm text-td-link hover:underline">
           Back to queue
         </Link>
       </div>

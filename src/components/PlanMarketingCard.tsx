@@ -46,7 +46,7 @@ export function PlanMarketingCard({
 
   return (
     <article
-      className={`relative flex h-full flex-col rounded-2xl bg-white transition-shadow duration-300 ${
+      className={`relative flex h-full flex-col rounded-2xl bg-td-bg-raised transition-shadow duration-300 ${
         isPopular
           ? 'z-10 border-2 border-accent-gold-deep shadow-glow-gold lg:-mt-3 lg:mb-3'
           : selected

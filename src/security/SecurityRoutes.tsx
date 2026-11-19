@@ -22,7 +22,7 @@ function SecurityOperatorUnavailable() {
     <div className="flex min-h-full items-center justify-center p-6">
       <Card padding="lg">
         <SectionHeading as="h1" title="Security partner dashboard unavailable" size="md" className="mb-2" />
-        <p className="text-sm text-text-secondary">
+        <p className="text-sm text-td-ink-muted">
           This dashboard is not yet available. Please check back later.
         </p>
       </Card>

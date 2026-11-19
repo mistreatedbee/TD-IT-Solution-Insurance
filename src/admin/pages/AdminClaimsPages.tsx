@@ -45,7 +45,7 @@ const FRAUD_FLAG_LABELS: Record<FraudFlag, string> = {
  * never shown to customers (`claim-serializers.ts`); this view is admin-only.
  */
 function FraudFlagBadges({ flags }: { flags: FraudFlag[] }) {
-  if (flags.length === 0) return <span className="text-text-secondary">—</span>;
+  if (flags.length === 0) return <span className="text-td-ink-muted">—</span>;
   return (
     <div className="flex flex-wrap gap-1">
       {flags.map((flag) => (
@@ -127,7 +127,7 @@ export function ClaimsQueuePage() {
           <select
             value={status}
             onChange={(e) => setFilter('status', e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
           >
             <option value="">All statuses</option>
             {CLAIM_STATUSES.map((s) => (
@@ -140,13 +140,13 @@ export function ClaimsQueuePage() {
             value={accountId}
             onChange={(e) => setFilter('accountId', e.target.value)}
             placeholder="Account ID"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
           />
           <input
             value={policyId}
             onChange={(e) => setFilter('policyId', e.target.value)}
             placeholder="Policy ID"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
           />
         </div>
       </div>
@@ -365,12 +365,12 @@ function ClaimActions({
           </Button>
         ) : null}
         {available.length === 0 ? (
-          <p className="text-sm text-text-secondary">No further admin actions are available for this claim.</p>
+          <p className="text-sm text-td-ink-muted">No further admin actions are available for this claim.</p>
         ) : null}
       </div>
 
       {open === 'more_info_requested' ? (
-        <div className="space-y-3 rounded-lg border border-border p-4">
+        <div className="space-y-3 rounded-lg border border-td-border-subtle p-4">
           <Input
             label="Review note (required, shown to the customer)"
             type="textarea"
@@ -391,7 +391,7 @@ function ClaimActions({
       ) : null}
 
       {open === 'approved' ? (
-        <div className="space-y-3 rounded-lg border border-border p-4">
+        <div className="space-y-3 rounded-lg border border-td-border-subtle p-4">
           <Input
             label="Approved amount"
             type="text"
@@ -400,7 +400,7 @@ function ClaimActions({
             placeholder={String(claim.claimedAmount)}
           />
           {claim.coverageLimit.configured ? (
-            <p className="text-xs text-text-secondary">
+            <p className="text-xs text-td-ink-muted">
               Coverage limit for this asset type: {formatCurrency(claim.coverageLimit.limitAmount, claim.coverageLimit.limitCurrency ?? claim.claimedAmountCurrency)}
             </p>
           ) : null}
@@ -440,16 +440,16 @@ function ClaimActions({
       ) : null}
 
       {open === 'rejected' ? (
-        <div className="space-y-3 rounded-lg border border-border p-4">
+        <div className="space-y-3 rounded-lg border border-td-border-subtle p-4">
           <div>
-            <label htmlFor="reject-ground-code" className="mb-1.5 block text-sm font-medium text-slate-800">
+            <label htmlFor="reject-ground-code" className="mb-1.5 block text-sm font-medium text-td-ink">
               Ground code (required)
             </label>
             <select
               id="reject-ground-code"
               value={rejectionGroundCode}
               onChange={(e) => setRejectionGroundCode(e.target.value as ClaimRejectionGroundCode | '')}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              className="w-full rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
             >
               <option value="">Select a ground code…</option>
               {CLAIM_REJECTION_GROUND_CODES.map((code) => (
@@ -497,16 +497,16 @@ function ClaimActions({
       ) : null}
 
       {open === 'closed' ? (
-        <div className="space-y-3 rounded-lg border border-border p-4">
+        <div className="space-y-3 rounded-lg border border-td-border-subtle p-4">
           <div>
-            <label htmlFor="close-ground" className="mb-1.5 block text-sm font-medium text-slate-800">
+            <label htmlFor="close-ground" className="mb-1.5 block text-sm font-medium text-td-ink">
               Close ground (required)
             </label>
             <select
               id="close-ground"
               value={closeGround}
               onChange={(e) => setCloseGround(e.target.value as ClaimAdminCloseGround | '')}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              className="w-full rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
             >
               <option value="">Select a close ground…</option>
               {CLAIM_ADMIN_CLOSE_GROUNDS.map((ground) => (
@@ -644,9 +644,9 @@ export function ClaimDetailPage() {
 
       <Card padding="lg">
         <SectionHeading as="h2" title="Incident" size="md" className="mb-3" />
-        <p className="text-sm text-text-primary">{claim.incidentDescription}</p>
+        <p className="text-sm text-td-ink">{claim.incidentDescription}</p>
         {claim.evidenceDescription ? (
-          <p className="mt-2 text-sm text-text-secondary">Evidence: {claim.evidenceDescription}</p>
+          <p className="mt-2 text-sm text-td-ink-muted">Evidence: {claim.evidenceDescription}</p>
         ) : null}
       </Card>
 
@@ -655,9 +655,9 @@ export function ClaimDetailPage() {
           <SectionHeading as="h2" title="Review notes" size="md" className="mb-3" />
           <ul className="space-y-2">
             {claim.reviewNotes.map((note, i) => (
-              <li key={i} className="rounded-lg border border-border p-3 text-sm">
+              <li key={i} className="rounded-lg border border-td-border-subtle p-3 text-sm">
                 <p>{note.text}</p>
-                <p className="mt-1 text-xs text-text-secondary">{new Date(note.createdAt).toLocaleString()}</p>
+                <p className="mt-1 text-xs text-td-ink-muted">{new Date(note.createdAt).toLocaleString()}</p>
               </li>
             ))}
           </ul>

@@ -123,7 +123,7 @@ export function Logo({
   <img
     src="/logo.png"
     alt={label}
-    className={`${imageClassName ?? REAL_LOGO_HEIGHT[size]} w-auto ${
+    className={`${imageClassName ?? REAL_LOGO_HEIGHT[size]} w-auto [[data-theme=night]_&]:rounded-td-md [[data-theme=night]_&]:bg-white [[data-theme=night]_&]:p-1.5 ${
     href ? 'transition-opacity hover:opacity-80' : ''} ${
     className}`} /> :
 

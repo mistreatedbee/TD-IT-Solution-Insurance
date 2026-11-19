@@ -95,11 +95,11 @@ function PreferenceSwitch({
       />
       <span
         aria-hidden
-        className="h-6 w-11 rounded-full bg-border transition-colors peer-checked:bg-primary peer-disabled:bg-border peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary"
+        className="h-6 w-11 rounded-full bg-td-border-control transition-colors peer-checked:bg-td-action-secondary peer-disabled:bg-td-border-subtle peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary"
       />
       <span
         aria-hidden
-        className="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-background shadow transition-transform peer-checked:translate-x-5"
+        className="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-td-bg-page shadow transition-transform peer-checked:translate-x-5"
       />
     </label>
   );
@@ -181,9 +181,9 @@ export function CustomerNotificationPreferencesPage() {
         CATEGORIES.map((category) => (
           <Card key={category.key} padding="lg" interactive={false}>
             <SectionHeading as="h3" title={category.label} size="md" className="mb-1" />
-            <p className="mb-4 text-sm text-text-secondary">{category.description}</p>
+            <p className="mb-4 text-sm text-td-ink-muted">{category.description}</p>
 
-            <div className="divide-y divide-border">
+            <div className="divide-y divide-td-border-subtle">
               {CHANNELS.map((channel) => {
                 const locked = isLocked(category.key, channel.key);
                 const value = channels[category.key]?.[channel.key] ?? false;
@@ -193,13 +193,13 @@ export function CustomerNotificationPreferencesPage() {
                 return (
                   <div key={key} className="flex items-center justify-between gap-4 py-3">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-text-primary">{channel.label}</p>
+                      <p className="text-sm font-medium text-td-ink">{channel.label}</p>
                       {locked ? (
-                        <p className="text-xs text-text-secondary">
+                        <p className="text-xs text-td-ink-muted">
                           Required — cannot be turned off
                         </p>
                       ) : savingKey === key ? (
-                        <p className="text-xs text-text-secondary">Saving…</p>
+                        <p className="text-xs text-td-ink-muted">Saving…</p>
                       ) : null}
                     </div>
                     <PreferenceSwitch

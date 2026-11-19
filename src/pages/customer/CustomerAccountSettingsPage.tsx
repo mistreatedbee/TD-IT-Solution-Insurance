@@ -84,8 +84,8 @@ export function CustomerAccountSettingsPage() {
         <CustomerScreenSection title="Profile">
           <CustomerSurfaceGroup>
             <div className={customerSurfaceRow}>
-              <p className="text-sm font-semibold text-text-primary">Profile & verification</p>
-              <p className="mt-1 text-sm text-text-secondary">
+              <p className="text-sm font-semibold text-td-ink">Profile & verification</p>
+              <p className="mt-1 text-sm text-td-ink-muted">
                 Update personal details, residential address, emergency contact, and submit identity
                 verification.
               </p>
@@ -122,8 +122,8 @@ export function CustomerAccountSettingsPage() {
         <CustomerScreenSection title="Preferences">
           <CustomerSurfaceGroup>
             <div className={customerSurfaceRow}>
-              <p className="text-sm font-semibold text-text-primary">Notifications</p>
-              <p className="mt-1 text-sm text-text-secondary">
+              <p className="text-sm font-semibold text-td-ink">Notifications</p>
+              <p className="mt-1 text-sm text-td-ink-muted">
                 Choose how you receive alerts, billing updates, and account messages by category and
                 channel.
               </p>
@@ -137,7 +137,7 @@ export function CustomerAccountSettingsPage() {
             </div>
             <CustomerInsetDivider />
             <div className={customerSurfaceRow}>
-              <p className="text-sm font-semibold text-text-primary">Security</p>
+              <p className="text-sm font-semibold text-td-ink">Security</p>
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                 <Link to="/forgot-password">
                   <Button variant="secondary" size="sm">
@@ -152,7 +152,7 @@ export function CustomerAccountSettingsPage() {
           </CustomerSurfaceGroup>
         </CustomerScreenSection>
 
-        <p className="px-1 text-sm text-text-secondary">
+        <p className="px-1 text-sm text-td-ink-muted">
           Need to add or update coverage?{' '}
           <ArrowLink href="/get-started" size="sm">
             Go to setup

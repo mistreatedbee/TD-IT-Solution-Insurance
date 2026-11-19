@@ -121,7 +121,7 @@ export function StepUpDialog({
     >
       <Card padding="lg" interactive={false} className="w-full max-w-sm">
         <SectionHeading as="h2" title="Verify your identity" size="md" className="mb-1" />
-        <p className="mb-4 text-sm text-text-secondary">
+        <p className="mb-4 text-sm text-td-ink-muted">
           This action requires a fresh authentication code from your authenticator app.
         </p>
 
@@ -135,7 +135,7 @@ export function StepUpDialog({
         ) : null}
 
         {phase === 'requesting-challenge' ? (
-          <p className="text-sm text-text-secondary">Preparing verification…</p>
+          <p className="text-sm text-td-ink-muted">Preparing verification…</p>
         ) : expired ? (
           <Button fullWidth onClick={() => void startChallenge()}>
             Get a new code prompt

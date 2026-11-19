@@ -50,7 +50,7 @@ export function AssetBadge({
     'relative flex w-full flex-col overflow-hidden rounded-xl border text-left transition-all duration-200',
     selected
       ? 'border-primary bg-primary text-white shadow-md ring-2 ring-primary/20'
-      : 'border-primary/10 bg-white text-text-primary shadow-resting hover:shadow-hover',
+      : 'border-primary/10 bg-td-bg-raised text-td-ink shadow-resting hover:shadow-hover',
     disabled ? 'cursor-not-allowed opacity-50' : '',
     interactive && !disabled
       ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2'
@@ -108,14 +108,14 @@ export function AssetBadge({
     <div className={`flex flex-col items-center justify-center gap-3 p-4 text-center ${size === 'sm' ? 'gap-2 p-3' : ''}`}>
       {selected && (
         <span className="absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-white" aria-hidden="true">
-          <CheckIcon className="h-3 w-3 text-slate-900" strokeWidth={3} />
+          <CheckIcon className="h-3 w-3 text-td-ink" strokeWidth={3} />
         </span>
       )}
       <span
         className={[
           'flex items-center justify-center rounded-full',
           size === 'sm' ? 'h-8 w-8' : 'h-10 w-10',
-          selected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-700',
+          selected ? 'bg-white/15 text-white' : 'bg-td-bg-sunken text-td-ink-muted',
         ].join(' ')}
         aria-hidden="true"
       >
@@ -126,7 +126,7 @@ export function AssetBadge({
           {displayLabel}
         </span>
         {description && (
-          <span className={`text-xs leading-tight ${selected ? 'text-slate-300' : 'text-slate-500'}`}>
+          <span className={`text-xs leading-tight ${selected ? 'text-slate-300' : 'text-td-ink-muted'}`}>
             {description}
           </span>
         )}

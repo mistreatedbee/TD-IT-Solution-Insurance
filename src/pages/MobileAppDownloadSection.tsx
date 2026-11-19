@@ -19,12 +19,12 @@ function StoreBadge({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex min-h-[52px] min-w-[200px] flex-col justify-center rounded-xl border border-border bg-white px-5 py-3 shadow-resting transition hover:border-primary hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold-deep focus-visible:ring-offset-2"
+      className="inline-flex min-h-[52px] min-w-[200px] flex-col justify-center rounded-xl border border-td-border-subtle bg-td-bg-raised px-5 py-3 shadow-resting transition hover:border-primary hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold-deep focus-visible:ring-offset-2"
     >
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-td-ink-muted">
         {platform === 'ios' ? 'Download on the' : 'Get it on'}
       </span>
-      <span className="text-base font-bold text-text-primary">{label}</span>
+      <span className="text-base font-bold text-td-ink">{label}</span>
     </a>
   );
 }
@@ -33,7 +33,7 @@ export function MobileAppDownloadSection() {
   const storeLinksAvailable = hasMobileStoreLinks();
 
   return (
-    <section id="mobile-app" className="scroll-mt-20 border-t border-border bg-background-alt">
+    <section id="mobile-app" className="scroll-mt-20 border-t border-td-border-subtle bg-td-bg-raised">
       <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8 lg:py-20">
         <Reveal>
           <div className="grid gap-10 lg:grid-cols-[1fr_auto] lg:items-center">
@@ -45,7 +45,7 @@ export function MobileAppDownloadSection() {
                 subtitle="Register assets, view your policy, and report theft from your phone — with GPS-assisted recovery when tracking hardware is paired."
               />
               {!storeLinksAvailable ? (
-                <p className="mt-4 max-w-xl text-sm text-text-secondary">
+                <p className="mt-4 max-w-xl text-sm text-td-ink-muted">
                   App Store and Google Play links will appear here as soon as internal testing
                   completes. Create an account on the web now — your login works in the mobile app
                   too.

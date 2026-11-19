@@ -4,6 +4,7 @@ import { warmUpApi } from '../api/warmup';
 import { SLOW_LOGIN_MESSAGE, useSlowRequestHint } from '../hooks/useSlowRequestHint';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Card, Input, SectionHeading } from '../../components';
+import { TdBackdrop } from '../../components/td';
 import { useDashboardAuth } from '../auth/DashboardAuthProvider';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { InlineAlert } from './ui';
@@ -11,8 +12,8 @@ import { MfaEnrollmentStep } from '../../invitations/MfaEnrollmentStep';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'block rounded-md px-3 py-2 text-sm font-medium transition-colors',
-    isActive ? 'bg-primary-tint text-primary' : 'text-text-secondary hover:bg-background-alt hover:text-text-primary',
+    'block rounded-td-md px-3 py-2 text-sm font-medium transition-colors',
+    isActive ? 'bg-td-info-bg text-td-link' : 'text-td-ink-muted hover:bg-td-bg-sunken hover:text-td-ink',
   ].join(' ');
 
 export function PrivilegedLoginPage({
@@ -157,10 +158,10 @@ export function PrivilegedLoginPage({
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center bg-surface-navy-deep p-4">
+    <TdBackdrop className="flex min-h-full items-center justify-center p-4 font-td-sans">
       <Card padding="lg" interactive={false} className="w-full max-w-md">
         <SectionHeading as="h1" title={title} size="md" className="mb-1" />
-        <p className="mb-6 text-sm text-text-secondary">{subtitle}</p>
+        <p className="mb-6 text-sm text-td-ink-muted">{subtitle}</p>
 
         {idleLogout ? (
           <InlineAlert tone="info">You were signed out after 15 minutes of inactivity. Sign in again to continue.</InlineAlert>
@@ -191,17 +192,17 @@ export function PrivilegedLoginPage({
               Verify
             </Button>
             {slowLogin ? (
-              <p role="status" className="text-sm text-text-secondary">
+              <p role="status" className="text-sm text-td-ink-muted">
                 {SLOW_LOGIN_MESSAGE}
               </p>
             ) : null}
-            <div className="rounded-lg border border-border bg-background-alt p-3 text-sm text-text-secondary">
+            <div className="rounded-td-md border border-td-border-subtle bg-td-bg-raised p-3 text-sm text-td-ink-muted">
               Lost access to your authenticator? Self-service MFA reset isn't available yet for
               staff accounts — contact your administrator to have it reset.
             </div>
             <button
               type="button"
-              className="w-full text-sm font-medium text-primary hover:text-primary/80 disabled:opacity-50"
+              className="w-full text-sm font-medium text-td-link hover:underline disabled:opacity-50"
               disabled={loading}
               onClick={() => void onRetryEnrollment()}
             >
@@ -230,14 +231,14 @@ export function PrivilegedLoginPage({
               Sign in
             </Button>
             {slowLogin ? (
-              <p role="status" className="text-sm text-text-secondary">
+              <p role="status" className="text-sm text-td-ink-muted">
                 {SLOW_LOGIN_MESSAGE}
               </p>
             ) : null}
           </form>
         )}
       </Card>
-    </div>
+    </TdBackdrop>
   );
 }
 
@@ -273,7 +274,7 @@ export function DashboardShell({
   }, [mobileNavOpen]);
 
   return (
-    <div className="flex min-h-full bg-background-alt">
+    <TdBackdrop className="flex min-h-full font-td-sans">
       {mobileNavOpen ? (
         <button
           type="button"
@@ -286,16 +287,16 @@ export function DashboardShell({
       <aside
         id="dashboard-mobile-nav"
         className={[
-          'fixed inset-y-0 left-0 z-40 flex w-64 max-w-[80vw] shrink-0 flex-col border-r border-border bg-background p-4 transition-transform duration-200 ease-out',
+          'fixed inset-y-0 left-0 z-40 flex w-64 max-w-[80vw] shrink-0 flex-col border-r border-td-glass-border bg-td-bg-raised p-4 shadow-[var(--td-shadow-glass)] transition-transform duration-200 ease-out',
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
-          'md:static md:z-auto md:w-56 md:max-w-none md:translate-x-0',
+          'md:static md:z-auto md:w-56 md:bg-td-glass-fill md:backdrop-blur-td-glass md:max-w-none md:translate-x-0',
         ].join(' ')}
       >
         <div className="mb-6 flex items-center justify-between gap-2">
           <SectionHeading as="h2" title={brand} size="md" className="mb-0" />
           <button
             type="button"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-text-secondary transition-colors hover:bg-background-alt hover:text-text-primary md:hidden"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-td-md border border-td-border-subtle text-td-ink-muted transition-colors hover:bg-td-bg-sunken hover:text-td-ink md:hidden"
             aria-label="Close navigation"
             onClick={() => setMobileNavOpen(false)}
           >
@@ -315,10 +316,10 @@ export function DashboardShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b border-border bg-background px-4 py-3 md:hidden">
+        <div className="flex items-center gap-3 border-b border-td-border-subtle bg-td-bg-raised px-4 py-3 md:hidden">
           <button
             type="button"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-text-primary transition-colors hover:bg-background-alt"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-td-md border border-td-border-subtle text-td-ink transition-colors hover:bg-td-bg-sunken"
             aria-expanded={mobileNavOpen}
             aria-controls="dashboard-mobile-nav"
             aria-label={mobileNavOpen ? 'Close navigation' : 'Open navigation'}
@@ -330,10 +331,10 @@ export function DashboardShell({
               <MenuIcon className="h-5 w-5" aria-hidden="true" />
             )}
           </button>
-          <span className="truncate text-sm font-semibold text-text-primary">{brand}</span>
+          <span className="truncate text-sm font-semibold text-td-ink">{brand}</span>
         </div>
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
-    </div>
+    </TdBackdrop>
   );
 }

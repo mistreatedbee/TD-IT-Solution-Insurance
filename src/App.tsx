@@ -51,8 +51,8 @@ export function App() {
           height: '100%',
           width: '100%',
           overflow: 'hidden',
-          backgroundColor: '#ffffff',
-          color: '#111827',
+          backgroundColor: 'var(--td-bg-page)',
+          color: 'var(--td-ink)',
           fontSize: 14,
           lineHeight: '20px'
         }}>
@@ -62,7 +62,7 @@ export function App() {
             flex: 1,
             height: '100%',
             overflowY: 'auto',
-            backgroundColor: '#ffffff'
+            backgroundColor: 'var(--td-bg-page)'
           }}>
           
           <Routes>

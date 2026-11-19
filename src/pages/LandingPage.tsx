@@ -48,7 +48,7 @@ export function LandingPage() {
       <LandingHeader />
 
       {/* 1. Hero — v2 minimal split: copy left, motif right (desktop) */}
-      <Section spacing="none" width="full" bleed className="relative overflow-hidden bg-white">
+      <Section spacing="none" width="full" bleed className="relative overflow-hidden bg-td-bg-raised">
         <div className="relative mx-auto grid w-full max-w-7xl grid-cols-1 gap-12 px-6 pb-20 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-8 lg:px-8 lg:pb-28 lg:pt-24">
           <Reveal direction="left" distance={32}>
             <div className="max-w-xl">
@@ -169,7 +169,7 @@ export function LandingPage() {
               title="Recovery-first protection, built in Nelspruit"
               subtitle="TD IT Solution (Pty) Ltd was established by Thabo Derrick Magagula to help South Africans protect electrically movable assets — from TVs and laptops to phones and business equipment — with discreet GPS tracking and coordinated recovery when something goes missing."
             />
-            <p className="mt-6 max-w-md text-base text-text-secondary">
+            <p className="mt-6 max-w-md text-base text-td-ink-muted">
               We only collect what we need, and we handle personal information under South African
               data protection law (POPIA). See our{' '}
               <ArrowLink href="/privacy" size="sm">
@@ -257,22 +257,22 @@ export function LandingPage() {
         />
         <div className="mx-auto mt-10 grid max-w-3xl gap-8 text-center sm:grid-cols-2 sm:text-left">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Address</p>
-            <address className="mt-2 not-italic text-base text-text-primary">
+            <p className="text-sm font-semibold uppercase tracking-wide text-td-ink-muted">Address</p>
+            <address className="mt-2 not-italic text-base text-td-ink">
               {COMPANY_CONTACT.addressLines.map((line) => (
                 <span key={line} className="block">
                   {line}
                 </span>
               ))}
             </address>
-            <p className="mt-4 text-sm text-text-secondary">{COMPANY_CONTACT.officeHours}</p>
+            <p className="mt-4 text-sm text-td-ink-muted">{COMPANY_CONTACT.officeHours}</p>
           </div>
           <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Phone & email</p>
-            <ul className="mt-2 space-y-2 text-base text-text-primary">
+            <p className="text-sm font-semibold uppercase tracking-wide text-td-ink-muted">Phone & email</p>
+            <ul className="mt-2 space-y-2 text-base text-td-ink">
               {COMPANY_CONTACT.phones.map((phone) => (
                 <li key={phone.href}>
-                  <a href={phone.href} className="font-medium text-primary hover:underline">
+                  <a href={phone.href} className="font-medium text-td-link hover:underline">
                     {phone.display}
                   </a>
                 </li>
@@ -280,13 +280,13 @@ export function LandingPage() {
               <li>
                 <a
                   href={`mailto:${COMPANY_CONTACT.email}`}
-                  className="font-medium text-primary hover:underline"
+                  className="font-medium text-td-link hover:underline"
                 >
                   {COMPANY_CONTACT.email}
                 </a>
               </li>
             </ul>
-            <p className="mt-4 text-sm text-text-secondary">
+            <p className="mt-4 text-sm text-td-ink-muted">
               Contact: {COMPANY_CONTACT.founderName}
             </p>
           </div>

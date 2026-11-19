@@ -94,7 +94,7 @@ export function AdminAuditLogPage() {
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title="Audit log" size="md" className="mb-2" />
-      <p className="mb-6 text-sm text-text-secondary">
+      <p className="mb-6 text-sm text-td-ink-muted">
         Privileged-access and authentication events, filterable by account, event type, and date range. Read-only —
         there is no way to edit or delete entries from this panel.
       </p>
@@ -112,12 +112,12 @@ export function AdminAuditLogPage() {
           onChange={(e) => setAccountId(e.target.value)}
           placeholder="uuid"
         />
-        <label className="flex flex-col gap-1 text-sm text-text-primary">
+        <label className="flex flex-col gap-1 text-sm text-td-ink">
           Event type
           <select
             value={eventType}
             onChange={(e) => setEventType(e.target.value as AdminAuditEventType | '')}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
           >
             <option value="">All event types</option>
             {ADMIN_AUDIT_EVENT_TYPES.map((type) => (
@@ -138,8 +138,8 @@ export function AdminAuditLogPage() {
       {loading ? (
         <LoadingState />
       ) : rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-12 text-center">
-          <p className="text-sm font-medium text-text-primary">No audit log entries match these filters</p>
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-td-border-subtle py-12 text-center">
+          <p className="text-sm font-medium text-td-ink">No audit log entries match these filters</p>
         </div>
       ) : (
         <>

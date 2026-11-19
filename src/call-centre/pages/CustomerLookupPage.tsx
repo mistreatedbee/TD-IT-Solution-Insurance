@@ -88,28 +88,28 @@ function NotificationPreferencesPanel({ accountId }: { accountId: string }) {
       {loading ? <LoadingState label="Loading notification preferences…" /> : null}
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
       {prefs ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="bg-background-alt">
+        <div className="overflow-x-auto rounded-lg border border-td-border-subtle">
+          <table className="min-w-full divide-y divide-td-border-subtle text-sm">
+            <thead className="bg-td-bg-raised">
               <tr>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Category</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Push</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Email</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">SMS</th>
+                <th className="px-4 py-2 text-left font-semibold text-td-ink-muted">Category</th>
+                <th className="px-4 py-2 text-left font-semibold text-td-ink-muted">Push</th>
+                <th className="px-4 py-2 text-left font-semibold text-td-ink-muted">Email</th>
+                <th className="px-4 py-2 text-left font-semibold text-td-ink-muted">SMS</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border bg-background">
+            <tbody className="divide-y divide-td-border-subtle bg-td-bg-page">
               {Object.entries(prefs.channels).map(([category, channels]) => (
                 <tr key={category}>
-                  <td className="px-4 py-2 text-text-primary">{category.replace(/_/g, ' ')}</td>
-                  <td className="px-4 py-2 text-text-primary">{channels.push ? 'On' : 'Off'}</td>
-                  <td className="px-4 py-2 text-text-primary">{channels.email ? 'On' : 'Off'}</td>
-                  <td className="px-4 py-2 text-text-primary">{channels.sms ? 'On' : 'Off'}</td>
+                  <td className="px-4 py-2 text-td-ink">{category.replace(/_/g, ' ')}</td>
+                  <td className="px-4 py-2 text-td-ink">{channels.push ? 'On' : 'Off'}</td>
+                  <td className="px-4 py-2 text-td-ink">{channels.email ? 'On' : 'Off'}</td>
+                  <td className="px-4 py-2 text-td-ink">{channels.sms ? 'On' : 'Off'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <p className="px-4 py-2 text-xs text-text-secondary">
+          <p className="px-4 py-2 text-xs text-td-ink-muted">
             Last updated {new Date(prefs.updatedAt).toLocaleString()}. Agent-visibility only — preferences
             cannot be changed from here.
           </p>
@@ -188,10 +188,10 @@ function RecoveryCasePanel({
   }
 
   return (
-    <li className="rounded-lg border border-border bg-background p-4">
-      <p className="text-sm font-medium text-text-primary">
+    <li className="rounded-lg border border-td-border-subtle bg-td-bg-page p-4">
+      <p className="text-sm font-medium text-td-ink">
         <Link
-          className="text-primary hover:underline"
+          className="text-td-link hover:underline"
           to={`/call-centre/recovery-cases/${encodeURIComponent(recoveryCase.id)}`}
         >
           {recoveryCase.referenceNumber}
@@ -200,10 +200,10 @@ function RecoveryCasePanel({
       </p>
 
       {recoveryCase.callCentreNotes.length > 0 ? (
-        <ul className="mt-3 space-y-2 border-t border-border pt-3 text-sm text-text-secondary">
+        <ul className="mt-3 space-y-2 border-t border-td-border-subtle pt-3 text-sm text-td-ink-muted">
           {recoveryCase.callCentreNotes.map((note) => (
             <li key={`${note.createdAt}-${note.agentAccountId}`}>
-              <span className="block text-xs text-text-secondary">
+              <span className="block text-xs text-td-ink-muted">
                 {new Date(note.createdAt).toLocaleString()}
               </span>
               {note.text}
@@ -211,7 +211,7 @@ function RecoveryCasePanel({
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-xs text-text-secondary">No call-centre notes yet.</p>
+        <p className="mt-2 text-xs text-td-ink-muted">No call-centre notes yet.</p>
       )}
 
       <form className="mt-4 space-y-2" onSubmit={(e) => void onAddNote(e)}>
@@ -304,7 +304,7 @@ export function CustomerLookupPage() {
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title="Customer lookup" size="md" className="mb-2" />
-      <p className="mb-6 text-sm text-text-secondary">
+      <p className="mb-6 text-sm text-td-ink-muted">
         Search by customer email, registered phone, or policy ID. Purpose-limited read — every lookup and note is audit-logged.
       </p>
 
@@ -403,7 +403,7 @@ export function CustomerLookupPage() {
           />
           <div>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-text-primary">Support cases</h2>
+              <h2 className="text-sm font-semibold text-td-ink">Support cases</h2>
               <Link to={`/call-centre/cases/new?accountId=${encodeURIComponent(result.accountId)}`}>
                 <Button type="button" size="sm" variant="secondary">
                   Open a new case for this customer
@@ -413,14 +413,14 @@ export function CustomerLookupPage() {
             {result.supportCases.length > 0 ? (
               <ul className="space-y-2 text-sm">
                 {result.supportCases.map((supportCase) => (
-                  <li key={supportCase.id} className="rounded-lg border border-border bg-background p-3">
+                  <li key={supportCase.id} className="rounded-lg border border-td-border-subtle bg-td-bg-page p-3">
                     <Link
-                      className="font-medium text-primary hover:underline"
+                      className="font-medium text-td-link hover:underline"
                       to={`/call-centre/cases/${supportCase.id}`}
                     >
                       {supportCase.referenceNumber}
                     </Link>{' '}
-                    <span className="text-text-secondary">
+                    <span className="text-td-ink-muted">
                       · {formatSupportCaseCategory(supportCase.category)} · {supportCase.status.replace(/_/g, ' ')} ·{' '}
                       {new Date(supportCase.createdAt).toLocaleString()}
                     </span>{' '}
@@ -429,23 +429,23 @@ export function CustomerLookupPage() {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-text-secondary">No open support cases for this customer.</p>
+              <p className="text-sm text-td-ink-muted">No open support cases for this customer.</p>
             )}
           </div>
           {result.subscription ? (
             <div>
-              <h2 className="mb-3 text-sm font-semibold text-text-primary">Subscription</h2>
-              <div className="rounded-lg border border-border bg-background p-4 text-sm">
-                <p className="font-medium text-text-primary">
+              <h2 className="mb-3 text-sm font-semibold text-td-ink">Subscription</h2>
+              <div className="rounded-lg border border-td-border-subtle bg-td-bg-page p-4 text-sm">
+                <p className="font-medium text-td-ink">
                   {result.subscription.planName ?? formatPlanTierLabel(result.subscription.planSlug)}
                 </p>
                 <dl className="mt-2 grid gap-2 sm:grid-cols-2">
                   <div>
-                    <dt className="text-xs text-text-secondary">Asset usage</dt>
+                    <dt className="text-xs text-td-ink-muted">Asset usage</dt>
                     <dd>{result.subscription.assetUsageLabel}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-text-secondary">Support level</dt>
+                    <dt className="text-xs text-td-ink-muted">Support level</dt>
                     <dd>{result.subscription.supportLevel}</dd>
                   </div>
                 </dl>
@@ -453,27 +453,27 @@ export function CustomerLookupPage() {
             </div>
           ) : result.policies && result.policies.length > 0 ? (
             <div>
-              <h2 className="mb-3 text-sm font-semibold text-text-primary">Subscription</h2>
+              <h2 className="mb-3 text-sm font-semibold text-td-ink">Subscription</h2>
               <ul className="space-y-3 text-sm">
                 {result.policies.map((policy) => (
-                  <li key={policy.id} className="rounded-lg border border-border bg-background p-4">
-                    <p className="font-medium text-text-primary">
+                  <li key={policy.id} className="rounded-lg border border-td-border-subtle bg-td-bg-page p-4">
+                    <p className="font-medium text-td-ink">
                       {policy.planName ?? formatPlanTierLabel(policy.planTier)} · {policy.status}
                     </p>
                     <dl className="mt-2 grid gap-2 sm:grid-cols-2">
                       {formatPolicyPrice(policy) ? (
                         <div>
-                          <dt className="text-xs text-text-secondary">Monthly</dt>
+                          <dt className="text-xs text-td-ink-muted">Monthly</dt>
                           <dd>{formatPolicyPrice(policy)}</dd>
                         </div>
                       ) : null}
                       <div>
-                        <dt className="text-xs text-text-secondary">Asset usage</dt>
+                        <dt className="text-xs text-td-ink-muted">Asset usage</dt>
                         <dd>{formatPolicyAssetUsage(policy, result.assetCount)}</dd>
                       </div>
                       {policy.supportLevel ? (
                         <div>
-                          <dt className="text-xs text-text-secondary">Support level</dt>
+                          <dt className="text-xs text-td-ink-muted">Support level</dt>
                           <dd>{formatSupportLevel(policy.supportLevel)}</dd>
                         </div>
                       ) : null}
@@ -490,11 +490,11 @@ export function CustomerLookupPage() {
           ) : null}
           {result.assets.length > 0 ? (
             <div>
-              <h2 className="mb-2 text-sm font-semibold text-text-primary">Assets</h2>
-              <ul className="space-y-2 text-sm text-text-secondary">
+              <h2 className="mb-2 text-sm font-semibold text-td-ink">Assets</h2>
+              <ul className="space-y-2 text-sm text-td-ink-muted">
                 {result.assets.map((asset) => (
-                  <li key={asset.id} className="rounded-lg border border-border bg-background p-3">
-                    <p className="text-text-primary">
+                  <li key={asset.id} className="rounded-lg border border-td-border-subtle bg-td-bg-page p-3">
+                    <p className="text-td-ink">
                       {asset.displayName} · {asset.assetType} · {asset.status}
                     </p>
                     <p className="mt-1 text-xs">
@@ -507,12 +507,12 @@ export function CustomerLookupPage() {
             </div>
           ) : null}
           <div>
-            <h2 className="mb-2 text-sm font-semibold text-text-primary">Notification preferences</h2>
+            <h2 className="mb-2 text-sm font-semibold text-td-ink">Notification preferences</h2>
             <NotificationPreferencesPanel key={result.accountId} accountId={result.accountId} />
           </div>
           {result.recoveryCases.length > 0 ? (
             <div>
-              <h2 className="mb-3 text-sm font-semibold text-text-primary">Open recovery cases</h2>
+              <h2 className="mb-3 text-sm font-semibold text-td-ink">Open recovery cases</h2>
               <ul className="space-y-4">
                 {result.recoveryCases.map((recoveryCase) => (
                   <RecoveryCasePanel

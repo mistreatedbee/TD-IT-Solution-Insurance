@@ -15,9 +15,9 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 }
 
 const toneClasses: Record<BadgeTone, string> = {
-  neutral: 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
-  gold: 'bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200',
-  emerald: 'bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200'
+  neutral: 'bg-td-bg-sunken text-td-ink-muted ring-1 ring-inset ring-td-border-subtle',
+  gold: 'bg-td-warning-bg text-td-warning',
+  emerald: 'bg-td-success-bg text-td-success'
 };
 
 const sizeClasses: Record<BadgeSize, string> = {

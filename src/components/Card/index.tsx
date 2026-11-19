@@ -45,15 +45,15 @@ export function Card<T extends CardAs = 'div'>({
   const isFocusable = typeof (rest as { onClick?: unknown }).onClick === 'function';
 
   const tagClassName = [
-  'group relative overflow-hidden rounded-2xl bg-white',
-  'border border-border shadow-resting',
+  'group relative overflow-hidden rounded-td-lg bg-td-bg-raised text-td-ink',
+  'border border-td-border-subtle shadow-[var(--td-shadow-glass)]',
   'transition-all duration-300 ease-out',
   paddingClasses[padding],
   interactive ?
-  'hover:-translate-y-1 hover:border-accent-gold/40 hover:shadow-elevated' :
+  'hover:-translate-y-1 hover:border-td-brand-orange hover:shadow-[var(--td-shadow-float)]' :
   '',
   isFocusable ?
-  'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2' :
+  'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-td-focus-ring focus-visible:ring-offset-2' :
   '',
   className].
 
@@ -77,7 +77,7 @@ export function Card<T extends CardAs = 'div'>({
       {interactive &&
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 left-0 w-1 origin-top scale-y-0 bg-accent-gold-deep transition-transform duration-300 ease-out group-hover:scale-y-100 group-focus-visible:scale-y-100" />
+        className="pointer-events-none absolute inset-y-0 left-0 w-1 origin-top scale-y-0 bg-td-brand-orange transition-transform duration-300 ease-out group-hover:scale-y-100 group-focus-visible:scale-y-100" />
 
       }
       {children}
@@ -96,13 +96,13 @@ export function CardHeader({ title, description, icon, className = '' }: CardHea
   return (
     <div className={`flex items-start gap-4 ${className}`}>
       {icon &&
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-gold-tint text-primary">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-td-warning-bg text-td-accent-text">
           {icon}
         </span>
       }
       <div className="min-w-0">
-        <h3 className="text-base font-semibold leading-6 text-slate-900">{title}</h3>
-        {description && <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>}
+        <h3 className="text-base font-semibold leading-6 text-td-ink">{title}</h3>
+        {description && <p className="mt-1 text-sm leading-6 text-td-ink-muted">{description}</p>}
       </div>
     </div>);
 
@@ -114,7 +114,7 @@ export interface CardBodyProps {
 }
 
 export function CardBody({ children, className = '' }: CardBodyProps) {
-  return <div className={`mt-4 text-sm leading-6 text-slate-600 ${className}`}>{children}</div>;
+  return <div className={`mt-4 text-sm leading-6 text-td-ink-muted ${className}`}>{children}</div>;
 }
 
 export interface CardFooterProps {
@@ -124,7 +124,7 @@ export interface CardFooterProps {
 
 export function CardFooter({ children, className = '' }: CardFooterProps) {
   return (
-    <div className={`mt-6 flex items-center gap-3 border-t border-slate-100 pt-4 ${className}`}>
+    <div className={`mt-6 flex items-center gap-3 border-t border-td-border-subtle pt-4 ${className}`}>
       {children}
     </div>);
 

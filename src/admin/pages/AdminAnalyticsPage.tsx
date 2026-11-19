@@ -65,7 +65,7 @@ export function AdminAnalyticsPage() {
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title="Daily active users" size="md" className="mb-2" />
-      <p className="mb-6 text-sm text-text-secondary">
+      <p className="mb-6 text-sm text-td-ink-muted">
         Session-start deduplication per customer per calendar day ({data?.timezone ?? 'Africa/Johannesburg'}).
         Zero is expected until real customers use the mobile app.
       </p>
@@ -92,7 +92,7 @@ export function AdminAnalyticsPage() {
           </div>
 
           <div>
-            <h2 className="mb-3 text-sm font-semibold text-text-primary">Daily series</h2>
+            <h2 className="mb-3 text-sm font-semibold text-td-ink">Daily series</h2>
             <DataTable
               columns={[
                 { key: 'dayBucket', header: 'Day' },

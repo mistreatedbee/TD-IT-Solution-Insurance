@@ -97,7 +97,7 @@ export function Carousel({
         aria-label={label}
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className={`relative w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 rounded-lg ${className}`}
+        className={`relative w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-td-focus-ring focus-visible:ring-offset-2 rounded-lg ${className}`}
         {...rest}>
         
         <div className="overflow-hidden" ref={emblaRef}>
@@ -116,8 +116,8 @@ export function Carousel({
               aria-selected={index === selected}
               aria-label={`Go to slide ${index + 1}`}
               onClick={() => emblaApi?.scrollTo(index)}
-              className={`h-2 rounded-full transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 ${
-              index === selected ? 'w-6 bg-slate-900' : 'w-2 bg-slate-300 hover:bg-slate-400'}`
+              className={`h-2 rounded-full transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-td-focus-ring focus-visible:ring-offset-2 ${
+              index === selected ? 'w-6 bg-td-ink' : 'w-2 bg-td-border-control hover:bg-td-border-control'}`
               } />
 
             )}
@@ -153,7 +153,7 @@ export function CarouselArrowButton({ direction, disabled, onClick }: CarouselAr
       onClick={onClick}
       disabled={disabled}
       aria-label={direction === 'prev' ? 'Previous slide' : 'Next slide'}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2">
+      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-td-border-subtle bg-td-bg-raised text-td-ink-muted transition-colors hover:bg-td-bg-sunken hover:text-td-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-td-bg-raised focus:outline-none focus-visible:ring-2 focus-visible:ring-td-focus-ring focus-visible:ring-offset-2">
       
       <Icon className="h-4 w-4" aria-hidden="true" />
     </button>);

@@ -19,10 +19,10 @@ export function TermsOfServicePage() {
       </Section>
       <Section width="narrow">
         <SectionHeading eyebrow="Legal" title="Terms of Service" as="h1" size="lg" />
-        <div className="prose mt-8 max-w-none space-y-6 text-base text-text-secondary">
+        <div className="prose mt-8 max-w-none space-y-6 text-base text-td-ink-muted">
           <p>These terms cover use of this website only. They are not an insurance policy.</p>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">Use of this site</h2>
+            <h2 className="text-lg font-semibold text-td-ink">Use of this site</h2>
             <p>
               This site provides information about TD IT Solution Insurance, lets you create a
               customer account, and join our pre-launch waitlist. Policy purchase and claims
@@ -30,7 +30,7 @@ export function TermsOfServicePage() {
             </p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">No insurance is in force</h2>
+            <h2 className="text-lg font-semibold text-td-ink">No insurance is in force</h2>
             <p>
               Joining the waitlist or browsing this site does not create, imply, or bind any
               insurance cover. Cover, once available, will be subject to separate policy
@@ -38,21 +38,21 @@ export function TermsOfServicePage() {
             </p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">Liability</h2>
+            <h2 className="text-lg font-semibold text-td-ink">Liability</h2>
             <p>
               This site is provided "as is." We aim for accuracy but make no warranty that
               content is error-free or uninterrupted.
             </p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">Governing law</h2>
+            <h2 className="text-lg font-semibold text-td-ink">Governing law</h2>
             <p>These terms are governed by the law of the Republic of South Africa.</p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">Contact</h2>
+            <h2 className="text-lg font-semibold text-td-ink">Contact</h2>
             <p>
               Questions about these terms:{' '}
-              <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-primary hover:underline">
+              <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-td-link hover:underline">
                 {COMPANY_CONTACT.email}
               </a>
               .

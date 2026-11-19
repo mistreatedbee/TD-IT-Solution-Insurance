@@ -43,7 +43,7 @@ export function TestimonialCard({
 
   return (
     <figure
-      className={`relative flex h-full w-full max-w-md flex-col rounded-xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8 ${className}`}>
+      className={`relative flex h-full w-full max-w-md flex-col rounded-xl border border-td-border-subtle bg-td-bg-raised p-6 shadow-sm sm:p-8 ${className}`}>
       
       {logoUrl ?
       <img
@@ -56,16 +56,16 @@ export function TestimonialCard({
       <blockquote className="relative flex-1">
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -left-1 -top-6 select-none font-serif text-7xl leading-none text-slate-300 sm:-top-7 sm:text-8xl">
+          className="pointer-events-none absolute -left-1 -top-6 select-none font-serif text-7xl leading-none text-td-border-control sm:-top-7 sm:text-8xl">
           
           &ldquo;
         </span>
-        <p className="relative text-base italic leading-relaxed text-slate-700 sm:text-lg">
+        <p className="relative text-base italic leading-relaxed text-td-ink-muted sm:text-lg">
           {quote}
         </p>
       </blockquote>
 
-      <figcaption className="mt-6 flex items-center gap-3 border-t border-slate-100 pt-6">
+      <figcaption className="mt-6 flex items-center gap-3 border-t border-td-border-subtle pt-6">
         {avatarUrl ?
         <img
           src={avatarUrl}
@@ -75,17 +75,17 @@ export function TestimonialCard({
 
         <span
           aria-hidden="true"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-td-bg-sunken text-sm font-semibold text-td-ink-muted">
           
             {getInitials(authorName)}
           </span>
         }
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-slate-900">
+          <span className="block truncate text-sm font-semibold text-td-ink">
             {authorName}
           </span>
           {meta ?
-          <span className="block truncate text-sm text-slate-500">{meta}</span> :
+          <span className="block truncate text-sm text-td-ink-muted">{meta}</span> :
           null}
         </span>
       </figcaption>

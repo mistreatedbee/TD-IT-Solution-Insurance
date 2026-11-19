@@ -62,13 +62,13 @@ export function WaitlistForm() {
 
   if (status === 'unavailable') {
     return (
-      <div aria-live="polite" id={statusRegionId} className="rounded-2xl border border-slate-200 bg-white p-6 text-left">
+      <div aria-live="polite" id={statusRegionId} className="rounded-2xl border border-td-border-subtle bg-td-bg-raised p-6 text-left">
         <Badge tone="neutral">Not connected yet</Badge>
-        <p className="mt-3 text-base text-text-secondary">
+        <p className="mt-3 text-base text-td-ink-muted">
           Thanks for your interest — we're not able to save waitlist entries yet, because this
           form isn't connected to a backend. Nothing you entered was stored. Please check back
           soon, or email us at{' '}
-          <a href={`mailto:${COMPANY_CONTACT.email}`} className="font-medium text-primary hover:underline">
+          <a href={`mailto:${COMPANY_CONTACT.email}`} className="font-medium text-td-link hover:underline">
             {COMPANY_CONTACT.email}
           </a>{' '}
           and we&apos;ll add you to the list directly.
@@ -99,7 +99,7 @@ export function WaitlistForm() {
         />
       </div>
 
-      <p id={`${statusRegionId}-popia`} className="mt-4 text-base text-text-secondary">
+      <p id={`${statusRegionId}-popia`} className="mt-4 text-base text-td-ink-muted">
         We'll only use your email to let you know when TD IT Solution Insurance launches. We
         won't send you marketing, and we won't share your details with anyone else. You can ask us
         to delete them at any time — see our{' '}
@@ -116,9 +116,9 @@ export function WaitlistForm() {
       </div>
 
       {status === 'error' && (
-        <p aria-live="polite" className="mt-4 text-sm text-red-600">
+        <p aria-live="polite" className="mt-4 text-sm text-td-danger">
           Something went wrong submitting the form. Try again, or email us directly at{' '}
-          <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-primary hover:underline">
+          <a href={`mailto:${COMPANY_CONTACT.email}`} className="text-td-link hover:underline">
             {COMPANY_CONTACT.email}
           </a>{' '}
           and we&apos;ll add you to the list.
