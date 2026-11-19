@@ -9,6 +9,31 @@ const LINKED_ASSET_KEY = 'td_insurance.linked_smartphone_asset_id';
 
 export type LocationTrackingConsent = 'granted' | 'denied';
 
+/**
+ * In-process change notification so the foreground reporter can stop its periodic timer the
+ * moment consent is withdrawn (and restart it when consent is granted), instead of waiting for
+ * the next tick. Fired after the SecureStore write settles. Listeners must not throw.
+ */
+type ConsentChangeListener = () => void;
+const consentListeners = new Set<ConsentChangeListener>();
+
+export function subscribeLocationConsentChange(listener: ConsentChangeListener): () => void {
+  consentListeners.add(listener);
+  return () => {
+    consentListeners.delete(listener);
+  };
+}
+
+function notifyConsentChange(): void {
+  for (const listener of [...consentListeners]) {
+    try {
+      listener();
+    } catch {
+      // A listener failure must never break a consent write.
+    }
+  }
+}
+
 export async function getLocationTrackingConsent(): Promise<LocationTrackingConsent | null> {
   const value = await SecureStore.getItemAsync(CONSENT_KEY);
   if (value === 'granted' || value === 'denied') return value;
@@ -17,10 +42,12 @@ export async function getLocationTrackingConsent(): Promise<LocationTrackingCons
 
 export async function setLocationTrackingConsent(consent: LocationTrackingConsent): Promise<void> {
   await SecureStore.setItemAsync(CONSENT_KEY, consent);
+  notifyConsentChange();
 }
 
 export async function clearLocationTrackingConsent(): Promise<void> {
   await SecureStore.deleteItemAsync(CONSENT_KEY);
+  notifyConsentChange();
 }
 
 export async function getLinkedSmartphoneAssetId(): Promise<string | null> {
@@ -29,10 +56,12 @@ export async function getLinkedSmartphoneAssetId(): Promise<string | null> {
 
 export async function setLinkedSmartphoneAssetId(assetId: string): Promise<void> {
   await SecureStore.setItemAsync(LINKED_ASSET_KEY, assetId);
+  notifyConsentChange();
 }
 
 export async function clearLinkedSmartphoneAssetId(): Promise<void> {
   await SecureStore.deleteItemAsync(LINKED_ASSET_KEY);
+  notifyConsentChange();
 }
 
 export async function hasActiveLocationTracking(): Promise<boolean> {

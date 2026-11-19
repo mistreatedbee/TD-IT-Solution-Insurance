@@ -129,6 +129,7 @@ jest.mock('expo-glass-effect', () => {
 jest.mock('expo-image-picker', () => ({
   requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true })),
   requestCameraPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  getCameraPermissionsAsync: jest.fn(async () => ({ granted: false, canAskAgain: true })),
   launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
   launchCameraAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
   UIImagePickerPreferredAssetRepresentationMode: {

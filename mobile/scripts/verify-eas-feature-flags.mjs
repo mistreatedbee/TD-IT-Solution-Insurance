@@ -71,7 +71,7 @@ function loadJson(path) {
 // time. The old `featureEnabled('EXPO_PUBLIC_FEATURE_X')` string form read `process.env[key]`
 // dynamically, which is NOT inlined, so every gated flag silently shipped ON. Discovery now
 // requires the static form, and the legacy string form is reported as a violation.
-const MIN_EXPECTED_FLAGS = 7;
+const MIN_EXPECTED_FLAGS = 9;
 
 function discoverFlags() {
   // Strip comments first so explanatory text (e.g. a note quoting `process.env[key]`) is not scanned as code.

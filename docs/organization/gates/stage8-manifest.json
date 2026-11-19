@@ -1364,6 +1364,18 @@
         "reason": "2026-11-19 recorded by cto (MERGE NOW for PR #24) under the owner test-only exception. WebView that loads third-party script (Leaflet 1.9.4 from unpkg, SRI-pinned) and map tiles from tile.openstreetmap.org; CSP restricts to those, originWhitelist about:blank, file access and geolocation off, postMessage checked against known pin ids, no coordinate logging, drawn-map fallback on failure. Tile requests reveal approximate asset location to a third party. NO Stage 8 review performed; real review owed before public launch, with a tile-provider decision (integration-architect), a POPIA note (compliance-specialist), and bundling Leaflet locally instead of unpkg.",
         "owner": "cybersecurity-architect"
       }
+    },
+    {
+      "id": "mobile-launch-permissions-and-periodic-location",
+      "kind": "mobile_component_group",
+      "pattern": "mobile/src/permissions/ (LaunchPermissionsPrompt, launchPermissions), mobile/src/screens/home/OneTapPhoneProtectionCard.tsx, mobile/src/screens/location/enableTrackingForAsset.ts, periodic timer in mobile/src/location/useLocationReporter.ts",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-19 recorded by mobile-engineer at cto's direction (go-with-conditions) under the owner test-only exception (docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md, addendum 2026-11-19). Owner-test only, gated via EXPO_PUBLIC_FEATURE_LAUNCH_LOCATION_PROMPT (\"false\" in every distributed profile). Covers: (1) the first-open permissions explainer, location step (foreground 'when in use' only; never records consent, links an asset, reads or sends a position) then camera step (camera permission only; no capture, no upload); 'Not now' re-offered at most once per 7 days; permanently denied shows Open Settings, never the OS prompt; (2) the home one-tap 'Turn on protection for this phone', which reuses LocationConsentModal and the shared enableLocationTrackingForAsset consent path; (3) 2-minute periodic foreground reporting in useLocationReporter (triggeredBy periodic_foreground; same gate re-checked every tick; stops on background, sign-out and consent withdrawal; no background location). Increases location-report volume while INC-001 A-7 (no server-side consent check on location-report) is open; A-7 must be fixed before public launch. NO Stage 8 review performed; a real review by cybersecurity-architect and compliance-specialist (explainer wording for location and camera, one-tap path, reporting interval) is owed before launch.",
+        "owner": "cybersecurity-architect"
+      }
     }
   ]
 }

@@ -79,3 +79,14 @@ export const FEATURE_SECURITY_OPERATOR_ENABLED = featureEnabled(
 export const FEATURE_PROTECTION_CHECKLIST_ENABLED = featureEnabled(
   process.env.EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST,
 );
+
+/**
+ * OWNER EXCEPTION 2026-11-17 (test-only build), addendum 2026-11-19: the first-launch
+ * permissions explainer (foreground "when in use" location step, then camera step) and the
+ * 2-minute periodic foreground location report in `useLocationReporter`. "true" in the
+ * owner-test profile only, "false" in every distributed profile. No Stage 8 review has been
+ * performed — see the waiver in docs/organization/gates/stage8-manifest.json.
+ */
+export const FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED = featureEnabled(
+  process.env.EXPO_PUBLIC_FEATURE_LAUNCH_LOCATION_PROMPT,
+);
