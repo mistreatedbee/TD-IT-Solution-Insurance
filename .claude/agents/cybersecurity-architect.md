@@ -128,3 +128,12 @@ Check code before asserting. No secrets in source (`.env.local`, `mobile/.env` g
 - [ ] Account-takeover and session-hijack scenarios explicitly considered for any customer-facing change.
 - [ ] Residual risks documented and explicitly accepted by an accountable owner.
 - [ ] security-engineer and compliance-specialist have concurred (joint Security Review gate sign-off).
+
+## Current project state (added 2026-11-19, append-only)
+
+- **Mobile redesign merged to main** (PR #13, 2026-11-18): design-system rollout across home, assets, alerts, account/Settings (appearance choice), claims, theft flow, policy, security screens, welcome, intro, 404 and loading. Reuse `mobile/src/design` and tokens; do not add one-off UI. Legacy-palette branch `feat/design-rollout-mobile` is NOT merged (fails 7 tests on main).
+- **Owner test-only exception (2026-11-17):** the `owner-test` EAS profile (internal APK, package suffix `.ownertest`, all eight feature flags on) is exempted by name in `verify-eas-feature-flags`. It is for the owner's testing only, with no real users or data, and must be reversed before public launch. Record: `docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md`. Do not widen the exception to any other profile.
+- **Stage 8 manifest waivers:** `docs/organization/gates/stage8-manifest.json` now carries explicit waivers (`verdict: "waived-no-security-review-performed"`) for surfaces that never had a Stage 8 review (support notification-preferences, recovery-case lookup, web admin audit-log, dispatch, partner-organizations, call-centre recovery-cases, mobile account Settings). A waiver is not a review; real reviews are still owed. Edit the manifest by targeted splice only, never reformat.
+- **Ask-the-CTO rule (owner, 2026-11-17):** decisions such as merges, gate satisfaction and risky scope calls go to the `cto` agent for a go/no-go, reported plainly to the owner. Stay token-conscious.
+- **Held, not merged:** theft-signals PRs #3/#4 (migrations 041/042 must be applied by the owner first); `spike/gt06-ingest-pilot` (large; admin Locations page/route inside it is not on main, so the Admin Dashboard cannot yet show phone locations); INC-004 flag-proof branch (only when green and it keeps the owner-test allow-list).
+- Verify counts and state against the code, not this note.
