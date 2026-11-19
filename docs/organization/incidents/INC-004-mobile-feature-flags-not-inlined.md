@@ -132,3 +132,11 @@ profile except the `development` dev client must declare all 8 `"false"`. Verifi
 `origin/main:mobile/eas.json` (6 profiles). This branch has not been rebased: that needs a commit or
 stash, which this role may not run; the branch's only overlap with main is the unchanged
 `verify-eas-feature-flags.mjs` allow-list, which is left untouched here and so is preserved on rebase.
+
+### 9.2 CTO disposition, 2026-11-19
+- PR #19 (feat/inc-004-flag-proof) merged to main after green CI (run 44495476502).
+- INC-004-2 and INC-004-3 (layers 2 and 3): implemented, reviews pending. Owed: mobile-architect, cybersecurity-architect, security-engineer (INC-004-2) and security-engineer (INC-004-3). Original due date 2026-10-21 missed; new due date 2026-12-03. Findings go in follow-up PRs, not a revert.
+- Layer 1: `expo/no-dynamic-env-var` comes from eslint-config-expo; security-engineer to confirm it is enforced as an error. Until confirmed, record it as owed. A CI grep for `process.env[` in app code was added.
+- Dev-only fail-open (`__DEV__ ? raw !== 'false' : raw === 'true'`) accepted as the §6 default, pending cybersecurity-architect confirmation.
+- §7 constraints unchanged: the INC-002 halt and no-upload rule (including internal APK links) stay in force; only the owner-test exception profile is exempt.
+- Incident remains open per §8: INC-004-4 to -9 outstanding (priority INC-004-4 compliance re-assessment, INC-004-8 real-device release-build test).
