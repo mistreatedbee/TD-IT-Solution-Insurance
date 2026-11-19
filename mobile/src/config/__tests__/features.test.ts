@@ -212,3 +212,63 @@ describe('FEATURE_SECURITY_OPERATOR_ENABLED', () => {
     expect(FEATURE_SECURITY_OPERATOR_ENABLED).toBe(true);
   });
 });
+
+/**
+ * INC-004-2: in a release bundle (`__DEV__ === false`) every flag fails CLOSED — only the
+ * exact string "true" enables it. Dev bundles (`__DEV__ === true`, the Jest default) keep the
+ * fail-open convenience asserted above.
+ */
+describe('release bundle (__DEV__ = false) fails closed for every flag', () => {
+  const FLAGS: Array<[string, string]> = [
+    ['EXPO_PUBLIC_FEATURE_CLAIMS', 'FEATURE_CLAIMS_ENABLED'],
+    ['EXPO_PUBLIC_FEATURE_LOCATION_TRACKING', 'FEATURE_LOCATION_TRACKING_ENABLED'],
+    ['EXPO_PUBLIC_FEATURE_KYC', 'FEATURE_KYC_ENABLED'],
+    ['EXPO_PUBLIC_FEATURE_ALERTS', 'FEATURE_ALERTS_ENABLED'],
+    ['EXPO_PUBLIC_FEATURE_THEFT_REPORTING', 'FEATURE_THEFT_REPORTING_ENABLED'],
+    ['EXPO_PUBLIC_FEATURE_HARDWARE_TRACKING', 'FEATURE_HARDWARE_TRACKING_ENABLED'],
+    ['EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR', 'FEATURE_SECURITY_OPERATOR_ENABLED'],
+    ['EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST', 'FEATURE_PROTECTION_CHECKLIST_ENABLED'],
+  ];
+  const g = globalThis as unknown as { __DEV__: boolean };
+  const ORIGINAL_DEV = g.__DEV__;
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const [env] of FLAGS) saved[env] = process.env[env];
+    g.__DEV__ = false;
+    jest.resetModules();
+  });
+
+  afterEach(() => {
+    g.__DEV__ = ORIGINAL_DEV;
+    for (const [env] of FLAGS) {
+      if (saved[env] === undefined) delete process.env[env];
+      else process.env[env] = saved[env];
+    }
+    jest.resetModules();
+  });
+
+  function load(env: string, value: string | undefined, exportName: string): boolean {
+    for (const [e] of FLAGS) delete process.env[e];
+    if (value !== undefined) process.env[env] = value;
+    jest.resetModules();
+    return require('../features')[exportName];
+  }
+
+  describe.each(FLAGS)('%s', (env, exportName) => {
+    it.each([
+      ['unset', undefined],
+      ['"false"', 'false'],
+      ['"False"', 'False'],
+      ['"TRUE"', 'TRUE'],
+      ['blank', ''],
+      ['"1"', '1'],
+    ])('is OFF when %s', (_label, value) => {
+      expect(load(env, value, exportName)).toBe(false);
+    });
+
+    it('is ON only for the exact string "true"', () => {
+      expect(load(env, 'true', exportName)).toBe(true);
+    });
+  });
+});

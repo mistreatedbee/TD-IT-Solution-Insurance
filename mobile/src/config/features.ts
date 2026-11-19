@@ -7,30 +7,25 @@
  * must not expose Feature 009 surfaces that bypassed Stage 8 security review.
  * See `mobile/eas.json` for per-profile values and `mobile/.env.example`.
  *
- * Convention: default (unset env var, local `expo start` without `.env`, or
- * Jest) is `true` — surfaces stay visible in ad hoc local development unless
- * a build profile or `.env` explicitly sets the var to `"false"`. `eas.json`'s
- * preview and production profiles set gated flags to `"false"`.
+ * Convention (INC-004-2, fail closed): in a release bundle (`__DEV__ === false`) ONLY the
+ * exact string "true" enables a flag; unset, "True", blank or anything else is OFF. In a
+ * dev bundle (`__DEV__ === true`: Metro / Expo Go / Jest) the local-development convenience
+ * is kept: anything except the exact string "false" is ON.
  *
- * INC-002 (2026-09-21): a real EAS build profile is fail-open under the rule
- * above — a missing/typo'd key in `eas.json` silently ships with the gated
- * surface enabled. EAS sets `EAS_BUILD_PROFILE` on every cloud build, so for
- * any build going through EAS (not local `expo start`), an unset var now
- * fails closed instead. Local dev keeps the fail-open convenience.
+ * History: INC-002 added an `EAS_BUILD_PROFILE` branch here. It was dead code — that variable
+ * is not `EXPO_PUBLIC_`-prefixed so Expo never inlines it into the bundle (INC-004) — and
+ * has been removed. `EAS_BUILD_PROFILE` is still read in Node at build time by `app.config.ts`.
  */
 
 /**
  * `raw` MUST be passed as a literal `process.env.EXPO_PUBLIC_*` member access
  * at every call site. Expo's Babel preset only substitutes the value of a
- * static reference at bundle time; a dynamic `process.env[key]` read is left
+ * static reference at bundle time; a computed-key env read is left
  * as-is and is `undefined` in a shipped native bundle, which silently turned
  * every gated flag ON regardless of `eas.json` (lint: expo/no-dynamic-env-var).
  */
 function featureEnabled(raw: string | undefined): boolean {
-  if (process.env.EAS_BUILD_PROFILE) {
-    return raw === 'true';
-  }
-  return raw !== 'false';
+  return __DEV__ ? raw !== 'false' : raw === 'true';
 }
 
 /** Claims backend has not shipped — see `app/(app)/claims/_layout.tsx`. */
