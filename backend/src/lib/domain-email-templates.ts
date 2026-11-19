@@ -705,9 +705,9 @@ export function buildProtectionChangedEmail(params: {
         'Someone entered an incorrect password too many times while confirming a protection change. We signed that device out.';
   }
   const preheader = title;
-  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">${what}</p>
-  <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#6B6156;">When: ${escapeHtml(when)}<br/>Device: ${device}</p>
-  <p style="margin:0;font-size:16px;line-height:1.6;color:#1C1917;">Not you? Reset your password and contact support.</p>`;
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">${what}</p>
+  <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#4A5A6C;">When: ${escapeHtml(when)}<br/>Device: ${device}</p>
+  <p style="margin:0;font-size:16px;line-height:1.6;color:#14202D;">Not you? Reset your password and contact support.</p>`;
   return {
     preheader,
     subject: `${title} - ${NOTIFICATION_BRAND.name}`,
@@ -724,7 +724,7 @@ export function buildSafetyAlertEmail(params: {
   const bodyHtml = params.paragraphs
     .map(
       (p) =>
-        `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">${escapeHtml(p)}</p>`,
+        `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">${escapeHtml(p)}</p>`,
     )
     .join('');
   return {

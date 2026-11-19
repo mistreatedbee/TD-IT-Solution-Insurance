@@ -38,7 +38,9 @@ describe('email palette (design system, Day theme)', () => {
 });
 
 describe('every notification email uses the current design', () => {
-  const sample = new Proxy({}, { get: (_t, k) => (typeof k === 'string' ? `Sample ${k}` : undefined) });
+  // Strings by default; a few builders take a Date or a list of paragraphs.
+  const typed: Record<string, unknown> = { at: new Date('2026-01-01T00:00:00Z'), paragraphs: ['Sample paragraph'] };
+  const sample = new Proxy({}, { get: (_t, k) => (typeof k === 'string' ? (k in typed ? typed[k] : `Sample ${k}`) : undefined) });
   const builders = Object.entries(templates).filter(([n, f]) => n.startsWith('build') && typeof f === 'function');
 
   it('covers all the builders', () => expect(builders.length).toBeGreaterThanOrEqual(20));
