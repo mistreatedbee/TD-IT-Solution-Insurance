@@ -21,3 +21,10 @@ The existing controls were written to stop a real-user incident (INC-002). The o
 
 ## Addendum 2026-11-19: admin Locations list (cto go-with-conditions)
 The Admin Dashboard Locations page and `GET /v1/admin/locations` (read-only, admin-only, audited as a bulk disclosure) are added under this exception. It is mounted only when the Render variable `ADMIN_LOCATIONS_ENABLED=true`; unset means off and the route returns 404. It deviates from ADR-0009 SDL-5 (staff location reads should cite a recovery case) because it lists all located phones and trackers. Stage 8: recorded waiver `web-admin-locations`, no review performed. Reversal, added to the list above: set `ADMIN_LOCATIONS_ENABLED` off, and before public launch either put the route through a full Stage 8 review with a case-reference purpose, or remove it. cybersecurity-architect to queue the review.
+
+## Addendum 2026-11-19: key-free maps on Android (PR #24, cto MERGE NOW)
+The owner's Google Cloud free trial has ended, so Google Maps requests are refused, and the Android build has no Maps key. Android maps now use an in-app WebView with Leaflet and the public OpenStreetMap tile server (Stage 8 waiver `mobile-leaflet-webview-map`, no review performed).
+- The public OSM tile server is for low-volume testing only.
+- Tile requests reveal the approximate area of a shown asset to a third party (OpenStreetMap).
+- Before public launch: (a) tile provider decision by integration-architect (commercial OSM-based tiles, or a restored Google billing account), recorded as an ADR; (b) POPIA note from compliance-specialist on location reaching a third party through tile requests; (c) Stage 8 review of the WebView; and bundle Leaflet locally instead of loading it from unpkg.
+- Owner action: Google Cloud billing must be upgraded by 2026-12-19, or the native (keyed) Google map path stays unavailable. The Maps key was removed from the EAS build environment on 2026-11-19 so Android uses the OpenStreetMap path.

@@ -1352,6 +1352,18 @@
         "reason": "2026-11-18 CI-1 backfill, recorded by cto. The Settings screen (Appearance; links to notification preferences, two-factor, privacy notice, terms, delete-account request; log out and log out of all devices) is a navigation hub added by the mobile redesign. It adds no new data surface: every destination keeps its own manifest entry (mobile-notification-preferences, mobile-auth, mobile-account-deletion-request). Appearance is a device-only display preference. The two log-out actions reuse the already-reviewed logout and logout-all calls moved from the Account screen. NO Stage 8 review was performed for the screen itself; this is a waiver, not a sign-off.",
         "owner": "cybersecurity-architect"
       }
+    },
+    {
+      "id": "mobile-leaflet-webview-map",
+      "kind": "mobile_component_group",
+      "pattern": "mobile/src/components/LeafletMapView.tsx (used by ProtectionMapView and ProtectionMapHero on Android without a Google Maps key)",
+      "feature": "009",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-19 recorded by cto (MERGE NOW for PR #24) under the owner test-only exception. WebView that loads third-party script (Leaflet 1.9.4 from unpkg, SRI-pinned) and map tiles from tile.openstreetmap.org; CSP restricts to those, originWhitelist about:blank, file access and geolocation off, postMessage checked against known pin ids, no coordinate logging, drawn-map fallback on failure. Tile requests reveal approximate asset location to a third party. NO Stage 8 review performed; real review owed before public launch, with a tile-provider decision (integration-architect), a POPIA note (compliance-specialist), and bundling Leaflet locally instead of unpkg.",
+        "owner": "cybersecurity-architect"
+      }
     }
   ]
 }
