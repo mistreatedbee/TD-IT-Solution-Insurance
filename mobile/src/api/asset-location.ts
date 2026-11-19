@@ -5,7 +5,8 @@
 import { apiFetch } from './client';
 import type { AssetType } from './assets';
 
-export type LocationTrigger = 'foreground_open' | 'manual_refresh';
+/** 'periodic_foreground' is the 2-minute in-app timer (owner-test flag); the backend accepts it only behind LOCATION_EXTENDED_TRIGGERS_ENABLED. */
+export type LocationTrigger = 'foreground_open' | 'manual_refresh' | 'periodic_foreground';
 
 export interface AssetLocationPoint {
   latitude: number;

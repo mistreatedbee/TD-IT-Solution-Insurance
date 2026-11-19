@@ -28,3 +28,27 @@ The owner's Google Cloud free trial has ended, so Google Maps requests are refus
 - Tile requests reveal the approximate area of a shown asset to a third party (OpenStreetMap).
 - Before public launch: (a) tile provider decision by integration-architect (commercial OSM-based tiles, or a restored Google billing account), recorded as an ADR; (b) POPIA note from compliance-specialist on location reaching a third party through tile requests; (c) Stage 8 review of the WebView; and bundle Leaflet locally instead of loading it from unpkg.
 - Owner action: Google Cloud billing must be upgraded by 2026-12-19, or the native (keyed) Google map path stays unavailable. The Maps key was removed from the EAS build environment on 2026-11-19 so Android uses the OpenStreetMap path.
+
+## Addendum 2026-11-19: opening permissions prompt and 2-minute foreground location reporting (cto go-with-conditions)
+Recorded by `mobile-engineer` at `cto`'s direction. Added under this exception, owner-test build only, behind the new flag `EXPO_PUBLIC_FEATURE_LAUNCH_LOCATION_PROMPT` ("true" in `owner-test` only, "false" in `preview`, `playInternal`, `preview-simulator` and `production`; the owner-test allow-list in `verify-eas-feature-flags.mjs` is not widened). Stage 8 waiver `mobile-launch-permissions-and-periodic-location`, no review performed.
+
+What was added:
+- **Opening permissions explainer** (`mobile/src/permissions/`), shown on first open before or after sign-in, built only from `mobile/src/design` components and day/night tokens. Two steps:
+  - **Location step first.** Wording: location is used only while the app is open; your location is not shared until you turn on protection for an asset; you can change this in Settings. "Allow" asks for foreground ("when in use") permission only.
+  - **Camera step second** (owner scope addition, same day). Wording: the camera is used to take photos in the app, today your profile picture; nothing is taken or uploaded unless you choose to; you can change this in Settings. "Allow" calls `expo-image-picker` `requestCameraPermissionsAsync` only. No new native permission was added (the existing `cameraPermission` string in `app.json` is used).
+- **One-tap "Turn on protection for this phone"** on the home screen, shown after sign-in only when the customer has exactly one active smartphone asset and no consent decision is stored. It opens the same `LocationConsentModal` and runs the same consent code as the asset screen (`enableLocationTrackingForAsset`, now shared by both).
+- **2-minute periodic foreground reporting** in the existing reporter (`mobile/src/location/useLocationReporter.ts`, mounted in the signed-in shell), sent as `triggeredBy: 'periodic_foreground'`. The backend accepts that value only when its own switch `LOCATION_EXTENDED_TRIGGERS_ENABLED=true` is on (separate PR); until then those reports are rejected and the app treats that as a quiet failure.
+
+Conditions (all binding, all implemented and covered by tests):
+1. "Allow" on the location step never calls `POST /assets/:id/location-consent`, never links an asset, never starts the reporter and never reads or sends a position. Turning on protection stays a separate, explicit step through the consent modal.
+2. "Allow" on the camera step only asks for camera permission. It never opens the camera, never picks a photo and never uploads anything.
+3. "Not now" on either step is re-offered at most once every 7 days (stored on the device).
+4. Permanently denied (`canAskAgain` false): the OS prompt is never shown again; the step offers "Open Settings" (`Linking.openSettings`) instead.
+5. Before sign-in nothing location-related runs apart from the explainer and the OS permission prompt.
+6. The one-tap path shows the consent text before anything is recorded. If OS permission is already granted, only the OS prompt is skipped; the consent modal, the local consent record and the server consent POST still happen first.
+7. Periodic reports run only while the app is in the foreground. Each tick re-checks the same gate (location-tracking flag, consent, linked smartphone asset, granted permission). The timer stops when the app goes to the background, on sign-out, and as soon as consent is withdrawn. A resume report and a timer tick never both fire together. No background location, no `ACCESS_BACKGROUND_LOCATION`, no "Always" permission.
+8. A seam is left for a later background sender (shared `canReportLocation()` gate and a shared last-sent timestamp so a background send within 2 minutes of a foreground send is skipped). No background sender has been built.
+
+**Higher exposure while INC-001 A-7 is open.** These changes mean more location reports, and more often: an OS grant at first open plus a report every 2 minutes while the app is open. The server still does not check for a consent record before accepting a location report (INC-001 A-7). Consent is enforced on the device only. So the exposure from A-7 is larger than before this addendum. **A-7 must be fixed before public launch.** That sits alongside, not in place of, the reversal list above.
+
+Reversal, added to the list above: set `EXPO_PUBLIC_FEATURE_LAUNCH_LOCATION_PROMPT` to "false" (or delete it with the `owner-test` profile). Before any public use, `cybersecurity-architect` and `compliance-specialist` must do a real Stage 8 review of the explainer wording (location and camera), the one-tap path and the periodic reporting interval, and A-7 must be closed.

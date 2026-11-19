@@ -24,6 +24,8 @@ import {
 } from '../src/query/queryClient';
 import { AnalyticsBootstrap } from '../src/analytics/AnalyticsBootstrap';
 import { LoadingScreen } from '../src/components/LoadingScreen';
+import { FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED } from '../src/config/features';
+import { LaunchPermissionsPrompt } from '../src/permissions/LaunchPermissionsPrompt';
 import { useDesignTokens } from '../src/theme/designTheme';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 import { useDesignFonts } from '../src/theme/designFonts';
@@ -148,6 +150,9 @@ function RootLayoutInner() {
             <Stack.Screen name="verify-email" />
             <Stack.Screen name="invitations/accept" />
           </Stack>
+          {/* Owner-test only: first-launch location (foreground) + camera explainer. It never
+              records tracking consent, links an asset or reports a location. */}
+          {FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED ? <LaunchPermissionsPrompt /> : null}
         </NetworkProvider>
       </PersistQueryClientProvider>
     </GestureHandlerRootView>

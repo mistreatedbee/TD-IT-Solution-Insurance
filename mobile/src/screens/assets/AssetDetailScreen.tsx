@@ -35,9 +35,9 @@ import {
   getLinkedSmartphoneAssetId,
   getLocationTrackingConsent,
   requestForegroundLocation,
-  setLinkedSmartphoneAssetId,
   setLocationTrackingConsent,
 } from '../../location';
+import { enableLocationTrackingForAsset } from '../location/enableTrackingForAsset';
 import { mergeAssetsWithLocations } from '../../tracking/buildAssetTrackingView';
 import { useAssetLocationSummaryQuery } from '../../api/hooks/useAssetLocation';
 import { useAssetTrackingProfileQuery } from '../../api/hooks/useAssetTrackingProfile';
@@ -155,72 +155,26 @@ export function AssetDetailScreen() {
     setActionLoading(true);
     setActionError(null);
     try {
-      // INC-002 §11.3 SR-INC002-M4 / INC-001 §4.2(d): consent must be
-      // recorded BEFORE the OS location-permission dialog is requested, and
-      // an OS grant is never treated as the consent event itself. This is
-      // the client-side consent record.
-      await setLocationTrackingConsent('granted');
-      await setLinkedSmartphoneAssetId(id);
-      setConsentGrantedState(true);
-      setLinkedAssetIdState(id);
-
-      // INC-002 §12/§13 SR-INC002-W1 — record the server-side consent-grant
-      // artefact at the same point as the local record, still before the OS
-      // permission prompt fires.
-      try {
-        await grantConsentMutation.mutateAsync(id);
-      } catch (grantErr) {
-        // security-engineer finding (2026-10-06): the local writes above are
-        // optimistic — if the server-side consent record fails, the device
-        // must not be left believing it has consent it doesn't. Revert
-        // before rethrowing so the outer catch's messaging and this
-        // function's "tracking active" state agree with what the server
-        // actually has on record. No server-side consent-gate backstop
-        // exists on the location-report endpoint today (tracked separately
-        // as a defense-in-depth follow-up), so this client-side reversion is
-        // the only thing preventing a false "tracking enabled" state here.
-        await setLocationTrackingConsent('denied');
-        await clearLinkedSmartphoneAssetId();
-        setConsentGrantedState(false);
-        setLinkedAssetIdState(null);
-        throw grantErr;
-      }
-
-      let fix;
-      try {
-        fix = await requestForegroundLocation();
-      } catch (permErr) {
-        // No OS permission / services off: we have no fix, so the screen must not claim tracking is
-        // active. Revert the local consent + link (as the grant-failure path does) and tell the user.
-        if (
-          permErr instanceof LocationPermissionDeniedError ||
-          permErr instanceof LocationServicesDisabledError
-        ) {
-          await setLocationTrackingConsent('denied');
-          await clearLinkedSmartphoneAssetId();
-          setConsentGrantedState(false);
-          setLinkedAssetIdState(null);
-          setShowConsentModal(false);
-          setActionError(
-            permErr instanceof LocationServicesDisabledError
-              ? SERVICES_OFF_MESSAGE
-              : PERMISSION_DENIED_MESSAGE,
-          );
-          void refreshPermission();
-          return;
-        }
-        throw permErr;
-      }
-      await reportMutation.mutateAsync({
+      // The consent-then-permission ordering lives in one shared function (also used by the
+      // home-screen one-tap card): local consent + link, then the server consent POST, then the
+      // OS permission (skipped only if already granted), then one report. See
+      // `src/screens/location/enableTrackingForAsset.ts`.
+      const result = await enableLocationTrackingForAsset({
         assetId: id,
-        body: {
-          latitude: fix.latitude,
-          longitude: fix.longitude,
-          accuracyMeters: fix.accuracyMeters,
-          capturedAt: fix.capturedAt,
-          triggeredBy: 'manual_refresh',
+        grantServerConsent: (assetId) => grantConsentMutation.mutateAsync(assetId),
+        reportLocation: (assetId, body) => reportMutation.mutateAsync({ assetId, body }),
+        onLocalStateChange: (linked) => {
+          setConsentGrantedState(linked !== null);
+          setLinkedAssetIdState(linked);
         },
       });
+      if (result.kind !== 'enabled') {
+        // No OS permission / services off: tracking has been reverted; tell the user.
+        setShowConsentModal(false);
+        setActionError(result.kind === 'services_off' ? SERVICES_OFF_MESSAGE : PERMISSION_DENIED_MESSAGE);
+        void refreshPermission();
+        return;
+      }
       setShowConsentModal(false);
       await refetchLocation();
       await locationSummary.refetch();

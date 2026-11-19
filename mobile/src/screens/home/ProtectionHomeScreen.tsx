@@ -24,6 +24,7 @@ import { useProfileSummaryQuery } from '../../api/hooks/useCustomerProfile';
 import {
   FEATURE_ALERTS_ENABLED,
   FEATURE_KYC_ENABLED,
+  FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED,
   FEATURE_LOCATION_TRACKING_ENABLED,
   FEATURE_PROTECTION_CHECKLIST_ENABLED,
   FEATURE_THEFT_REPORTING_ENABLED,
@@ -36,6 +37,7 @@ import { FeaturedProtectionCard } from './FeaturedProtectionCard';
 import { HomeHeader } from './HomeHeader';
 import { HomeHeroActions } from './HomeHeroActions';
 import { HomeMapPreview } from './HomeMapPreview';
+import { OneTapPhoneProtectionCard } from './OneTapPhoneProtectionCard';
 import { ProtectionHealthCard } from './ProtectionHealthCard';
 import { checklistActionHref, isChecklistActionAvailable } from './checklistActions';
 import { ProfileCompletionCard } from './ProfileCompletionCard';
@@ -314,6 +316,10 @@ export function ProtectionHomeScreen() {
       />
 
       {FEATURE_PROTECTION_CHECKLIST_ENABLED ? <ProtectionChecklistSection /> : null}
+
+      {FEATURE_LOCATION_TRACKING_ENABLED && FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED ? (
+        <OneTapPhoneProtectionCard />
+      ) : null}
 
       <HomeHeroActions
         showTheftReporting={FEATURE_THEFT_REPORTING_ENABLED}
