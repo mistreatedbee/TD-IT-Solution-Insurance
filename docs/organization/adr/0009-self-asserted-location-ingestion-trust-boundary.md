@@ -494,3 +494,57 @@ Every consumer of `location_events` and `assets.lastLocation` was traced in this
 **18.7(e) — SDL-2 re-verified independently and still holds.** Re-traced on 2026-08-28 rather than accepted from §18.4: `security-cases.ts` matches no location identifier at all; no `claims.ts` or `payments.ts` route file exists; `recovery_cases.lastLocation` still has no writer. **No self-asserted coordinate reaches a dispatch, pricing, adjudication or third-party-instruction path.** SDL-2 is the one requirement that has held throughout this incident, and SDL-12's conditional acceptance of no-attestation survives on it.
 
 **This section changes no requirement and authorizes nothing.** §18.6's conditions on re-enabling ingestion stand in full, and SD-FU-02's absence is now named as a sixth item on that list rather than left inside "SDL-6, substantially met."
+
+---
+
+## 19. Proposed amendment — extended triggers (periodic foreground, Android background) for the owner-test build only
+
+**Status: PROPOSED — not approved, not ratified.** · **Filed by:** `solution-architect`, 2026-11-19 · **Append-only. No text above is edited.** SDL-1 … SDL-12 remain binding as written; this section proposes one bounded, flag-gated relaxation of SDL-11 and records it so the relaxation is findable, not implicit in code.
+
+### 19.1 What `cto` allowed on 2026-11-19, and under what authority
+
+`cto` allowed the following **for the `owner-test` EAS profile only**, under the owner test-only exception at [`docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md`](../incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md) (internal APK, `.ownertest` package suffix, owner's own device, no real users or data; to be reversed before public launch). That allowance is a test-only go-ahead. It is not ratification of this amendment, not a Stage 8 sign-off, and not a consent design.
+
+1. **Opening location-permission prompt.** The app requests the OS location permission at launch. **An OS permission grant never counts as consent.** SDL-4 is unchanged: consent is a stored, server-side object, and no such object exists yet (INC-001 A-7 open).
+2. **Periodic foreground reporting**, every 2 minutes while the app is open. Stored with `triggeredBy: 'periodic_foreground'`.
+3. **Android background tracking** using an `expo-location` background task with a foreground-service notification. Balanced accuracy, about 100 m distance / 5 min interval. Stored with `triggeredBy: 'background'`. **`owner-test` profile only, enforced in CI.** Every other profile must fail the build if it enables this.
+
+**Server side.** The two new `triggeredBy` values are accepted **only when `LOCATION_EXTENDED_TRIGGERS_ENABLED=true`**. With the switch unset or set to anything else, the server accepts only the Phase 1 set (`foreground_open`, `manual_refresh`). **This deliberately relaxes SDL-11's third bullet**, which constrained `triggeredBy` to the Phase 1 set so that a background variant could not arrive without a server-side change. Gating it behind a switch keeps that intent: the server change is explicit, named, and off by default. `ASSET_LOCATION_REPORT_LIMIT` (20 per 15 min per account) **stays as it is.** One report every 2 minutes in the foreground uses about 7–8 of the 20 per 15 minutes. The background cadence uses about 3. Together they stay under the limit, so the limiter continues to cap density as SDL-3 requires. `LOCATION_INGESTION_ENABLED` (§18.6) still gates every write, before this switch is consulted.
+
+**Current state of the tree, with the search behind it (§18.3's rule).** `rg "triggeredBy|LOCATION_EXTENDED_TRIGGERS_ENABLED|periodic_foreground" backend/src` on 2026-11-19, working tree of `feat/mobile-launch-location-prompt`: the request schema (`backend/src/lib/asset-location-validation.ts`) and the `location_events` validator (`backend/src/db/location-events-collections.ts`) both still allow only `foreground_open | manual_refresh`, and the switch name does not appear anywhere. **The server half is therefore not yet implemented.** When it is, both the Zod schema and the Mongo `$jsonSchema` enum must change together. If only the Zod schema changes, the write is rejected at the store.
+
+### 19.2 Privacy cost, stated plainly
+
+This change produces exactly the record SDL-3's limiter and §12's second revisit trigger were written to prevent: **a dense movement history of the person carrying the phone.** The density goes from a point when the customer opens the app to a point roughly every 2–5 minutes, including while the app is closed. That is enough to reconstruct home, workplace, daily routine and overnight location. It makes RR-2 worse: an attacker who takes over an account gets a continuous trail, not occasional points. It also makes the open retention gap (SDL-8 / SD-FU-03, no evidenced purge on `location_events` at this density) and the plaintext on-device cache (SD-FU-09) costlier for every day they stay open. Under the owner exception the only data subject is the owner, who has accepted this cost for themself. That acceptance does not carry over to anyone else.
+
+### 19.3 Decision options
+
+| Option | What it means | Consequence |
+|---|---|---|
+| **A. Approve for general availability, with conditions** | The two values and the switch become a permanent part of the contract. Profiles other than `owner-test` may enable them once every precondition in §19.4 is met. | SDL-11's third bullet is formally amended. §12's background/periodic trigger is discharged by a completed review, not bypassed. |
+| **B. Keep test-only** (proposed default until §19.4 is met) | The switch stays off in every environment except one serving the owner-test build. CI keeps the background capability limited to `owner-test`. All of it is reversed with the owner exception before public launch. | SDL-11 stays in force for all real users. The relaxation is time-limited and has a recorded exit. |
+| **C. Reject and remove** | Delete the two server values and `LOCATION_EXTENDED_TRIGGERS_ENABLED`, and remove the periodic and background client code and the background permission. | Back to strict SDL-11. Owner testing goes back to foreground and on-demand reporting only. |
+
+### 19.4 Preconditions before any profile other than `owner-test` may enable this
+
+All of these are required. None can be waived by a product decision (same standing as §17.3(3)):
+
+1. **INC-001 A-7 is closed:** a server-side consent object is checked on every write (SDL-4), with step-up on opt-in, out-of-band notice, and immediate server-side opt-out (SDL-9). Consent must cover the periodic/background collection profile specifically, not just "location".
+2. **A chaired Stage 8 by `cybersecurity-architect`**, with `security-engineer` concurrence, covering the background task, the foreground-service notification, the CI profile gate, the switch's fail-closed behaviour, and a fresh look at the limiter's size for this cadence.
+3. **A POPIA review by `compliance-specialist`:** lawful basis and consent wording for continuous collection, and a **retention period for `location_events` at the higher density**, enforced by a scheduled, evidenced purge (SDL-8 / SD-FU-03) before the first non-owner record is written.
+4. **The Google Play background-location permission declaration** (`ACCESS_BACKGROUND_LOCATION` policy form, in-app prominent disclosure, video) is filed and accepted before any Play-distributed build includes the permission.
+5. **iOS is out of scope.** Nothing here authorizes iOS background location (`UIBackgroundModes: location`, "Always" permission). That would need its own amendment.
+
+SDL-2 is unaffected by every option. A denser self-asserted trail is still a self-asserted trail. It may not dispatch, price, adjudicate, or instruct a third party, and SDL-12's no-attestation acceptance still depends on that.
+
+### 19.5 Reviewers
+
+| Role | Responsibility |
+|---|---|
+| `solution-architect` | Owner of this amendment |
+| `cybersecurity-architect` | Trust-boundary authority for SDL-3/SDL-11. Chairs Stage 8 (§19.4(2)) |
+| `compliance-specialist` | POPIA, consent wording, retention at the new density (§19.4(3)) |
+| `mobile-architect` | Background task, foreground-service design, CI profile enforcement, Play declaration (§19.4(4)) |
+| `cto` | **Approval.** Picks option A, B or C |
+
+**Signed:** none. This section is a proposal. Until `cto` records a decision here, the operative position is the 2026-11-19 test-only allowance in §19.1, limited to the `owner-test` profile and the owner exception.
