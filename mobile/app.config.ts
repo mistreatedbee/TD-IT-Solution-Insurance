@@ -112,9 +112,27 @@ function applyPlayConsoleBoundPackage(expo: ExpoConfig): ExpoConfig {
   };
 }
 
+/**
+ * Android maps need a Google Maps key or the native MapView crashes the app the moment it renders
+ * (2026-11-19: the owner-test APK closed a few seconds after opening, on the welcome map). The key
+ * comes only from the build environment (EAS secret GOOGLE_MAPS_ANDROID_API_KEY), never source.
+ * Without it, `extra.androidMapsKeyConfigured` is false and the app shows its drawn map fallback.
+ */
+function applyAndroidMapsKey(base: ExpoConfig): ExpoConfig {
+  const key = process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim();
+  const extra = { ...(base.extra ?? {}), androidMapsKeyConfigured: Boolean(key) };
+  if (!key || !base.android) return { ...base, extra };
+  return {
+    ...base,
+    extra,
+    android: { ...base.android, config: { ...(base.android.config ?? {}), googleMaps: { apiKey: key } } },
+  };
+}
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   let base = { ...appJson.expo, ...config } as ExpoConfig;
   base = locationTrackingEnabled() ? base : stripLocationFromConfig(base);
+  base = applyAndroidMapsKey(base);
   if (process.env.EAS_BUILD_PROFILE === 'playInternal') {
     return applyPlayConsoleBoundPackage(base);
   }
