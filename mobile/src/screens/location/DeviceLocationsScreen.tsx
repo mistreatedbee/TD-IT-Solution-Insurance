@@ -7,6 +7,7 @@ import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -87,7 +88,9 @@ export function DeviceLocationsScreen() {
   }
 
   return (
-    <DesignPage>
+    <DesignPage
+      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />}
+    >
       <Text style={styles.subtitle}>
         All devices with a last-known location appear on the map. Smartphones
         report from this app; other asset types need a GPS tracker.

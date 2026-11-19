@@ -59,3 +59,43 @@ describe('location/requestForegroundLocation', () => {
     expect(fix.capturedAt).toBeTruthy();
   });
 });
+
+describe('location/getForegroundLocationFix timeout + retry', () => {
+  beforeEach(() => {
+    (Location.getCurrentPositionAsync as jest.Mock).mockReset();
+  });
+  const { getForegroundLocationFix, LocationTimeoutError, isCoarseAccuracy, LOCATION_FIX_TIMEOUT_MS } =
+    jest.requireActual('../requestForegroundLocation');
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('retries once after a timeout and then succeeds', async () => {
+    jest.useFakeTimers();
+    (Location.getCurrentPositionAsync as jest.Mock)
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValueOnce({ coords: { latitude: 1, longitude: 2, accuracy: 10 }, timestamp: 1000 });
+    const p = getForegroundLocationFix();
+    await jest.advanceTimersByTimeAsync(LOCATION_FIX_TIMEOUT_MS + 10);
+    await expect(p).resolves.toMatchObject({ latitude: 1, accuracyMeters: 10 });
+    expect(Location.getCurrentPositionAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws a plain-language LocationTimeoutError after the retry also fails', async () => {
+    jest.useFakeTimers();
+    (Location.getCurrentPositionAsync as jest.Mock).mockImplementation(() => new Promise(() => {}));
+    const p = getForegroundLocationFix();
+    const assertion = expect(p).rejects.toThrow(/couldn't get your location/i);
+    await jest.advanceTimersByTimeAsync(LOCATION_FIX_TIMEOUT_MS * 2 + 50);
+    await assertion;
+    expect(Location.getCurrentPositionAsync).toHaveBeenCalledTimes(2);
+    await expect(p).rejects.toBeInstanceOf(LocationTimeoutError);
+  });
+
+  it('treats large accuracy radii as coarse', () => {
+    expect(isCoarseAccuracy(2000)).toBe(true);
+    expect(isCoarseAccuracy(15)).toBe(false);
+    expect(isCoarseAccuracy(null)).toBe(false);
+  });
+});

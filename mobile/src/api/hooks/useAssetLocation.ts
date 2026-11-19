@@ -17,6 +17,8 @@ export function assetLocationQueryKey(assetId: string) {
   return ['assets', assetId, 'location'] as const;
 }
 
+export const LOCATION_REFETCH_INTERVAL_MS = 30_000;
+
 const EMPTY_LOCATION_SUMMARY: AssetLocationSummaryPage = { data: [] };
 
 export function useAssetLocationSummaryQuery() {
@@ -36,6 +38,7 @@ export function useAssetLocationSummaryQuery() {
       }
     },
     retry: false,
+    refetchInterval: LOCATION_REFETCH_INTERVAL_MS,
   });
 }
 

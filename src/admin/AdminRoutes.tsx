@@ -17,6 +17,7 @@ import { VerificationQueuePage, VerificationReviewPage } from './pages/AdminVeri
 import { PlanCreatePage, PlanEditRoute, PlansListPage } from './pages/AdminPlansPages';
 import { AdminAnalyticsPage } from './pages/AdminAnalyticsPage';
 import { AdminAuditLogPage } from './pages/AdminAuditLogPage';
+import { AdminLocationsPage } from './pages/AdminLocationsPage';
 import { InviteStaffPage } from './pages/InviteStaffPage';
 import { ClaimDetailPage, ClaimsQueuePage } from './pages/AdminClaimsPages';
 import { PartnerOrganizationScorecardPage, PartnerOrganizationsListPage } from './pages/PartnerOrganizationPages';
@@ -92,6 +93,7 @@ export default function AdminRoutes() {
             <Route path="policies" element={<PoliciesListPage />} />
             <Route path="policies/:policyId" element={<PolicyDetailRoute />} />
             <Route path="assets" element={<AssetsListPage />} />
+            <Route path="locations" element={<AdminLocationsPage />} />
             <Route path="assets/:assetId" element={<AssetDetailRoute />} />
             <Route path="plans" element={<PlansListPage />} />
             <Route path="plans/new" element={<PlanCreatePage />} />
