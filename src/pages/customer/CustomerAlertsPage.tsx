@@ -62,7 +62,7 @@ export function CustomerAlertsPage() {
     <div className="font-glass space-y-6">
       <div>
         <SectionHeading as="h1" title="Alerts" size="md" className="mb-2" />
-        <p className="text-sm text-glass-text-secondary">
+        <p className="text-sm text-td-ink-muted">
           Action items and updates for your protection. Critical security alerts cannot be disabled.
         </p>
       </div>
@@ -74,8 +74,8 @@ export function CustomerAlertsPage() {
         <SkeletonGroup count={4} shape="rect" height={84} />
       ) : alerts.length === 0 ? (
         <Card padding="md" className="rounded-glass-card">
-          <p className="font-semibold text-glass-text-primary">All clear</p>
-          <p className="mt-1 text-sm text-glass-text-secondary">No alerts need your attention right now.</p>
+          <p className="font-semibold text-td-ink">All clear</p>
+          <p className="mt-1 text-sm text-td-ink-muted">No alerts need your attention right now.</p>
         </Card>
       ) : (
         <div className="space-y-3">
@@ -86,21 +86,21 @@ export function CustomerAlertsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <StatusBadge value={alert.severity} />
-                    <span className="text-xs uppercase text-text-secondary">{alert.category}</span>
+                    <span className="text-xs uppercase text-td-ink-muted">{alert.category}</span>
                   </div>
                   <button
                     type="button"
-                    className="text-xs font-semibold text-text-secondary hover:text-text-primary disabled:opacity-50"
+                    className="text-xs font-semibold text-td-ink-muted hover:text-td-ink disabled:opacity-50"
                     disabled={dismissingId === alert.id}
                     onClick={() => void dismiss(alert.id)}
                   >
                     Dismiss
                   </button>
                 </div>
-                <p className="mt-2 font-semibold text-text-primary">{alert.title}</p>
-                <p className="mt-1 text-sm text-text-secondary">{alert.body}</p>
+                <p className="mt-2 font-semibold text-td-ink">{alert.title}</p>
+                <p className="mt-1 text-sm text-td-ink-muted">{alert.body}</p>
                 {href ? (
-                  <Link to={href} className="mt-3 inline-block text-sm font-semibold text-primary hover:underline">
+                  <Link to={href} className="mt-3 inline-block text-sm font-semibold text-td-link hover:underline">
                     View details
                   </Link>
                 ) : null}
@@ -110,7 +110,7 @@ export function CustomerAlertsPage() {
         </div>
       )}
 
-      <Link to="/dashboard/notifications" className="text-sm font-semibold text-primary hover:underline">
+      <Link to="/dashboard/notifications" className="text-sm font-semibold text-td-link hover:underline">
         Notification preferences
       </Link>
     </div>

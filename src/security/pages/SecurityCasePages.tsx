@@ -101,7 +101,7 @@ export function CasesListPage() {
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title="Recovery case queue" size="md" className="mb-2" />
-      <p className="mb-4 text-sm text-text-secondary">
+      <p className="mb-4 text-sm text-td-ink-muted">
         Open cases assigned to your organization plus unassigned cases awaiting pickup.
       </p>
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
@@ -115,7 +115,7 @@ export function CasesListPage() {
                 key: 'referenceNumber',
                 header: 'Reference',
                 render: (row) => (
-                  <Link className="text-primary hover:underline" to={`/security/cases/${row.id}`}>
+                  <Link className="text-td-link hover:underline" to={`/security/cases/${row.id}`}>
                     {String(row.referenceNumber)}
                   </Link>
                 ),
@@ -514,7 +514,7 @@ export function CaseDetailPage() {
         ) : null}
       </div>
       {pendingDeclineConfirm ? (
-        <div className="mt-4 rounded border border-border-default p-4">
+        <div className="mt-4 rounded border border-td-border-subtle-default p-4">
           <p className="mb-2 text-sm font-medium">Why is this case being declined?</p>
           <div className="flex flex-col gap-2">
             {DECLINE_REASON_OPTIONS.map((option) => (
@@ -541,7 +541,7 @@ export function CaseDetailPage() {
         </div>
       ) : null}
       {pendingReleaseConfirm ? (
-        <div className="mt-4 rounded border border-border-default p-4">
+        <div className="mt-4 rounded border border-td-border-subtle-default p-4">
           <p className="mb-2 text-sm font-medium">Why is this case being released?</p>
           <div className="flex flex-col gap-2">
             {RELEASE_REASON_OPTIONS.map((option) => (
@@ -568,7 +568,7 @@ export function CaseDetailPage() {
         </div>
       ) : null}
       {pendingTerminalStatus ? (
-        <div className="mt-4 rounded border border-border-default p-4">
+        <div className="mt-4 rounded border border-td-border-subtle-default p-4">
           <p className="mb-2 text-sm font-medium">
             Why is this case being {pendingTerminalStatus === 'recovered' ? 'marked recovered' : 'closed'}?
           </p>
@@ -602,19 +602,19 @@ export function CaseDetailPage() {
         </div>
       ) : null}
       {contactOpen ? (
-        <div className="mt-4 rounded border border-border-default p-4">
+        <div className="mt-4 rounded border border-td-border-subtle-default p-4">
           <label htmlFor="contact-customer-message" className="mb-2 block text-sm font-medium">
             Message to customer
           </label>
           <textarea
             id="contact-customer-message"
-            className="w-full rounded border border-border-default p-2 text-sm"
+            className="w-full rounded border border-td-border-subtle-default p-2 text-sm"
             rows={4}
             maxLength={CONTACT_MESSAGE_MAX_LENGTH}
             value={contactMessage}
             onChange={(e) => setContactMessage(e.target.value.slice(0, CONTACT_MESSAGE_MAX_LENGTH))}
           />
-          <p className="mt-1 text-xs text-text-secondary">
+          <p className="mt-1 text-xs text-td-ink-muted">
             {contactMessage.length}/{CONTACT_MESSAGE_MAX_LENGTH} characters
           </p>
           {contactError ? (
@@ -642,7 +642,7 @@ export function CaseDetailPage() {
           <InlineAlert tone="info">Message sent to the customer.</InlineAlert>
         </div>
       ) : null}
-      <p className="mt-6 text-xs text-text-secondary">
+      <p className="mt-6 text-xs text-td-ink-muted">
         Live GPS map and location history require Phase 2 GPS ingestion — not yet connected.
       </p>
     </Card>

@@ -30,12 +30,12 @@ export interface InputProps extends
 }
 
 const baseFieldClasses =
-'block w-full rounded-md border bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition-colors outline-none focus:ring-2 focus:ring-offset-0 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400';
+'block w-full rounded-td-md border bg-td-bg-raised px-3 py-2 text-sm text-td-ink placeholder:text-td-ink-muted transition-colors outline-none focus:ring-2 focus:ring-offset-0 disabled:cursor-not-allowed disabled:bg-td-bg-sunken disabled:text-td-ink-muted';
 
 const stateClasses = (hasError: boolean) =>
 hasError ?
-'border-red-500 focus:border-red-500 focus:ring-red-200' :
-'border-slate-300 hover:border-slate-400 focus:border-primary focus:ring-accent-gold-deep/30';
+'border-td-danger focus:border-td-danger focus:ring-td-danger' :
+'border-td-border-control hover:border-td-border-control focus:border-td-focus-ring focus:ring-td-focus-ring';
 
 // OB-17: floating-label fields use the single ratified accent
 // (--glass-accent) rather than the pre-OB-17 gold accent — opt-in via
@@ -43,8 +43,8 @@ hasError ?
 // elsewhere in the app.
 const floatingStateClasses = (hasError: boolean) =>
 hasError ?
-'border-red-500 focus:border-red-500 focus:ring-red-200' :
-'border-slate-300 hover:border-slate-400 focus:border-glass-accent focus:ring-glass-accent/30';
+'border-td-danger focus:border-td-danger focus:ring-td-danger' :
+'border-td-border-control hover:border-td-border-control focus:border-glass-accent focus:ring-glass-accent/30';
 
 export const Input = forwardRef<HTMLInputElement | HTMLTextAreaElement, InputProps>(
   function Input(
@@ -81,12 +81,12 @@ export const Input = forwardRef<HTMLInputElement | HTMLTextAreaElement, InputPro
             className={
             hideLabel ?
             'sr-only' :
-            'mb-1.5 block text-sm font-medium text-slate-800'
+            'mb-1.5 block text-sm font-medium text-td-ink'
             }>
 
             {label}
             {required &&
-            <span className="ml-0.5 text-red-600" aria-hidden="true">
+            <span className="ml-0.5 text-td-danger" aria-hidden="true">
                 *
               </span>
             }
@@ -124,7 +124,7 @@ export const Input = forwardRef<HTMLInputElement | HTMLTextAreaElement, InputPro
           <p
             id={messageId}
             className={`mt-1.5 flex items-start gap-1 text-xs ${
-            hasError ? 'text-red-600' : 'text-slate-500'}`
+            hasError ? 'text-td-danger' : 'text-td-ink-muted'}`
             }>
 
               {hasError &&
@@ -148,7 +148,7 @@ export const Input = forwardRef<HTMLInputElement | HTMLTextAreaElement, InputPro
     // tokens doc §3/§5.3.
     const floatingFieldClasses = `peer ${baseFieldClasses.replace('rounded-md', 'rounded-glass-input').replace('px-3 py-2', 'px-3.5 pb-2 pt-5')} placeholder:text-transparent ${floatingStateClasses(hasError)}`;
     const floatingLabelClasses =
-      'pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-slate-500 transition-all duration-200 ease-[var(--ease-standard)] ' +
+      'pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-td-ink-muted transition-all duration-200 ease-[var(--ease-standard)] ' +
       'peer-focus:top-2.5 peer-focus:translate-y-0 peer-focus:text-[length:var(--glass-text-xs)] peer-focus:text-glass-accent-deep ' +
       'peer-[:not(:placeholder-shown)]:top-2.5 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-[length:var(--glass-text-xs)] peer-[:not(:placeholder-shown)]:text-glass-text-secondary';
 
@@ -189,7 +189,7 @@ export const Input = forwardRef<HTMLInputElement | HTMLTextAreaElement, InputPro
 
             {label}
             {required &&
-            <span className="ml-0.5 text-red-600" aria-hidden="true">
+            <span className="ml-0.5 text-td-danger" aria-hidden="true">
                 *
               </span>
             }
@@ -200,7 +200,7 @@ export const Input = forwardRef<HTMLInputElement | HTMLTextAreaElement, InputPro
         <p
           id={messageId}
           className={`mt-1.5 flex items-start gap-1 text-xs ${
-          hasError ? 'text-red-600' : 'text-slate-500'}`
+          hasError ? 'text-td-danger' : 'text-td-ink-muted'}`
           }>
 
             {hasError &&

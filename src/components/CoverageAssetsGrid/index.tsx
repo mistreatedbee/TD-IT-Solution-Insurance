@@ -26,7 +26,7 @@ export function CoverageAssetsGrid() {
       {COVERAGE_ASSET_ORDER.map((type, index) => (
         <Reveal key={type} delay={index * 0.04} className="h-full">
           <article
-            className="flex h-[170px] w-full flex-col overflow-hidden rounded-[14px] border border-primary/10 bg-white shadow-resting"
+            className="flex h-[170px] w-full flex-col overflow-hidden rounded-[14px] border border-primary/10 bg-td-bg-raised shadow-resting"
             aria-label={ASSET_COVERAGE_LABELS[type]}
           >
             <div className="flex min-h-0 flex-1 items-center justify-center px-2 pb-1 pt-2.5">

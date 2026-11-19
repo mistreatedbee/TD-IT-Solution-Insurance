@@ -198,17 +198,17 @@ export function CustomerProfilePage() {
             <div className={customerSurfaceRow}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-text-secondary">
+                  <p className="text-xs font-medium uppercase tracking-wide text-td-ink-muted">
                     Profile completion
                   </p>
-                  <p className="text-2xl font-semibold text-primary">{profile.completionPercent}%</p>
+                  <p className="text-2xl font-semibold text-td-link">{profile.completionPercent}%</p>
                 </div>
                 <StatusBadge value={verificationStatusLabel(profile.verificationStatus)} />
               </div>
-              <ul className="mt-4 space-y-1.5 text-sm text-text-secondary">
+              <ul className="mt-4 space-y-1.5 text-sm text-td-ink-muted">
                 {profile.completionChecklist.map((item) => (
                   <li key={item.id} className="flex items-start gap-2">
-                    <span aria-hidden className="text-primary">
+                    <span aria-hidden className="text-td-link">
                       {item.done ? '✓' : '○'}
                     </span>
                     <span>{item.label}</span>
@@ -228,7 +228,7 @@ export function CustomerProfilePage() {
             <div className="space-y-4">
               <SectionHeading as="h3" title="Personal details" size="md" />
               {profile.idNumberMasked ? (
-                <p className="text-sm text-text-secondary">ID on file: {profile.idNumberMasked}</p>
+                <p className="text-sm text-td-ink-muted">ID on file: {profile.idNumberMasked}</p>
               ) : null}
               <div className="grid gap-4 sm:grid-cols-2">
                 <Input floatingLabel
@@ -341,7 +341,7 @@ export function CustomerProfilePage() {
         <CustomerScreenSection title="Verification">
           <CustomerSurfaceGroup className={`${customerSurfacePadding} space-y-4`}>
             <SectionHeading as="h3" title="Identity verification" size="md" />
-            <p className="text-sm text-text-secondary">
+            <p className="text-sm text-td-ink-muted">
               Submit your profile for review once all required fields are complete. Document upload
               is not required at this stage.
             </p>
@@ -368,7 +368,7 @@ export function CustomerProfilePage() {
 
         <Link
           to="/dashboard/account"
-          className="inline-block px-1 text-sm text-primary hover:underline"
+          className="inline-block px-1 text-sm text-td-link hover:underline"
         >
           Back to account settings
         </Link>

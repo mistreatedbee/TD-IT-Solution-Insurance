@@ -9,6 +9,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Badge, Button, Card, Input, SectionHeading } from '../components';
+import { TdBackdrop } from '../components/td';
 import { InlineAlert, DetailGrid } from '../dashboard/components/ui';
 import { mapUserFacingError } from '../lib/user-facing-errors';
 import { decodeJwtPayload } from '../lib/jwt';
@@ -165,12 +166,12 @@ export function InvitationAcceptPage() {
   const roleLabel = invitation ? ROLE_LABELS[invitation.userType] : null;
 
   return (
-    <div className="flex min-h-full items-center justify-center bg-surface-navy-deep p-4">
+    <TdBackdrop className="flex min-h-full items-center justify-center p-4 font-td-sans">
       <Card padding="lg" interactive={false} className="w-full max-w-md">
         {step === 'loading' && (
           <>
             <SectionHeading as="h1" title="Accept your invitation" size="md" className="mb-1" />
-            <p className="mt-4 text-sm text-text-secondary">Checking your invitation…</p>
+            <p className="mt-4 text-sm text-td-ink-muted">Checking your invitation…</p>
           </>
         )}
 
@@ -186,7 +187,7 @@ export function InvitationAcceptPage() {
               <InlineAlert tone="danger">{terminalError.message}</InlineAlert>
             </div>
             {terminalError.kind === 'invitation' ? (
-              <p className="mt-3 text-sm text-text-secondary">
+              <p className="mt-3 text-sm text-td-ink-muted">
                 If you were expecting this invitation, contact your administrator to have a new one sent.
               </p>
             ) : (
@@ -205,7 +206,7 @@ export function InvitationAcceptPage() {
         {step === 'landing' && invitation && roleLabel && (
           <>
             <SectionHeading as="h1" title="Accept your invitation" size="md" className="mb-1" />
-            <p className="mt-1 text-sm text-text-secondary">
+            <p className="mt-1 text-sm text-td-ink-muted">
               You've been invited to join TD IT Solutions Insurance as {roleLabel}.
             </p>
             <div className="mt-4">
@@ -225,7 +226,7 @@ export function InvitationAcceptPage() {
         {step === 'password' && invitation && roleLabel && (
           <>
             <SectionHeading as="h1" title="Step 2 of 3: Set your password" size="md" className="mb-1" />
-            <p className="mt-1 text-sm text-text-secondary">
+            <p className="mt-1 text-sm text-td-ink-muted">
               {invitation.email} · {roleLabel}
             </p>
             {formError && (
@@ -272,12 +273,12 @@ export function InvitationAcceptPage() {
         {step === 'success' && (
           <>
             <SectionHeading as="h1" title="You're all set" size="md" className="mb-1" />
-            <p className="mt-4 text-sm text-text-secondary">
+            <p className="mt-4 text-sm text-td-ink-muted">
               Two-factor authentication is enabled. Taking you to your dashboard…
             </p>
           </>
         )}
       </Card>
-    </div>
+    </TdBackdrop>
   );
 }

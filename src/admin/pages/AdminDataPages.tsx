@@ -64,7 +64,7 @@ function AssetUsageCell({
   const label = formatAssetUsage(assetCount, maxAssets);
   if (isApproachingAssetLimit(assetCount, maxAssets)) {
     return (
-      <span className="font-medium text-amber-700">
+      <span className="font-medium text-td-warning">
         {label}
         <span className="ml-1 text-xs">(≥80%)</span>
       </span>
@@ -90,10 +90,10 @@ function RoleBadge({ userType }: { userType: string }) {
   const tone = ROLE_BADGE_TONE[userType] ?? 'neutral';
   const toneClasses =
     tone === 'gold'
-      ? 'bg-amber-50 text-amber-800 ring-amber-200'
+      ? 'bg-td-warning-bg text-td-warning ring-td-warning'
       : tone === 'emerald'
-        ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
-        : 'bg-slate-100 text-slate-700 ring-slate-200';
+        ? 'bg-td-success-bg text-td-success ring-td-success'
+        : 'bg-td-bg-sunken text-td-ink-muted ring-td-border-subtle';
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium leading-4 ring-1 ring-inset ${toneClasses}`}
@@ -190,9 +190,9 @@ export function CustomersListPage() {
       {loading ? (
         <LoadingState />
       ) : rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-12 text-center">
-          <p className="text-sm font-medium text-text-primary">No customers found</p>
-          {submittedEmail ? <p className="text-sm text-text-secondary">No exact match for that email.</p> : null}
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-td-border-subtle py-12 text-center">
+          <p className="text-sm font-medium text-td-ink">No customers found</p>
+          {submittedEmail ? <p className="text-sm text-td-ink-muted">No exact match for that email.</p> : null}
         </div>
       ) : (
         <>
@@ -231,9 +231,9 @@ export function StaffListPage() {
       {loading ? (
         <LoadingState />
       ) : rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-12 text-center">
-          <p className="text-sm font-medium text-text-primary">No staff accounts yet</p>
-          <Link to="/admin/accounts/invite" className="text-sm font-medium text-primary hover:underline">
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-td-border-subtle py-12 text-center">
+          <p className="text-sm font-medium text-td-ink">No staff accounts yet</p>
+          <Link to="/admin/accounts/invite" className="text-sm font-medium text-td-link hover:underline">
             Invite your first staff member
           </Link>
         </div>
@@ -287,7 +287,7 @@ function AccountStateActions({
 
   if (!ADMIN_MUTABLE_USER_TYPES.has(account.userType)) {
     return (
-      <p className="text-sm text-text-secondary">
+      <p className="text-sm text-td-ink-muted">
         Account state for {account.userType.replace(/_/g, ' ')} accounts cannot be changed from this panel.
       </p>
     );
@@ -299,7 +299,7 @@ function AccountStateActions({
     account.accountState !== 'deactivated'
   ) {
     return (
-      <p className="text-sm text-text-secondary">
+      <p className="text-sm text-td-ink-muted">
         State changes are available only for active, suspended, or deactivated accounts.
       </p>
     );
@@ -526,7 +526,7 @@ export function AccountDetailPage({ accountId }: { accountId: string }) {
                 {
                   label: 'Verification',
                   value: verificationStatus ? (
-                    <Link to={`/admin/verification/${account.id}`} className="text-primary hover:underline">
+                    <Link to={`/admin/verification/${account.id}`} className="text-td-link hover:underline">
                       {verificationStatusLabel(verificationStatus as Parameters<typeof verificationStatusLabel>[0])}
                     </Link>
                   ) : (
@@ -544,14 +544,14 @@ export function AccountDetailPage({ accountId }: { accountId: string }) {
         ]}
       />
       <div className="mt-6 flex flex-wrap gap-6">
-        <Link className="text-sm text-primary hover:underline" to={`/admin/policies?accountId=${account.id}`}>
+        <Link className="text-sm text-td-link hover:underline" to={`/admin/policies?accountId=${account.id}`}>
           {policyCount === null ? 'View policies' : `${policyCount} ${policyCount === 1 ? 'policy' : 'policies'} →`}
         </Link>
-        <Link className="text-sm text-primary hover:underline" to={`/admin/assets?accountId=${account.id}`}>
+        <Link className="text-sm text-td-link hover:underline" to={`/admin/assets?accountId=${account.id}`}>
           {assetCount === null ? 'View assets' : `${assetCount} ${assetCount === 1 ? 'asset' : 'assets'} →`}
         </Link>
       </div>
-      <div className="mt-8 border-t border-border pt-6">
+      <div className="mt-8 border-t border-td-border-subtle pt-6">
         <SectionHeading as="h2" title="Account access" size="md" className="mb-3" />
         <AccountStateActions account={account} onUpdated={setAccount} />
       </div>
@@ -618,7 +618,7 @@ export function PoliciesListPage() {
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title="Policies" size="md" className="mb-4" />
-      {accountId ? <p className="mb-3 text-sm text-text-secondary">Filtered to account {accountId}</p> : null}
+      {accountId ? <p className="mb-3 text-sm text-td-ink-muted">Filtered to account {accountId}</p> : null}
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
       {loading ? (
         <LoadingState />
@@ -865,7 +865,7 @@ export function PolicyDetailPage({ policyId }: { policyId: string }) {
           { label: 'Effective', value: new Date(policy.effectiveDate).toLocaleString() },
         ]}
       />
-      <div className="mt-8 border-t border-border pt-6">
+      <div className="mt-8 border-t border-td-border-subtle pt-6">
         <SectionHeading as="h2" title="Policy actions" size="md" className="mb-3" />
         <PolicyActions policy={policy} onUpdated={setPolicy} />
       </div>
@@ -899,7 +899,7 @@ function AssetTypeCell({ assetType }: { assetType: string }) {
   const Icon = ASSET_TYPE_ICONS[assetType] ?? Package;
   return (
     <span className="inline-flex items-center gap-2">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-tint text-primary">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-td-info-bg text-td-link">
         <Icon className="h-4 w-4" aria-hidden="true" />
       </span>
       <span className="capitalize">{assetType.replace(/_/g, ' ')}</span>
@@ -975,7 +975,7 @@ export function AssetsListPage() {
             <select
               value={assetType}
               onChange={(e) => setAssetType(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
             >
               <option value="">All types</option>
               {ASSET_TYPE_FILTERS.map((t) => (
@@ -987,7 +987,7 @@ export function AssetsListPage() {
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as typeof status)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
             >
               <option value="">All statuses</option>
               <option value="active">Active</option>
@@ -996,15 +996,15 @@ export function AssetsListPage() {
             </select>
           </div>
         </div>
-        {accountId ? <p className="mb-3 text-sm text-text-secondary">Filtered to account {accountId}</p> : null}
+        {accountId ? <p className="mb-3 text-sm text-td-ink-muted">Filtered to account {accountId}</p> : null}
         {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
         {loading ? (
           <LoadingState />
         ) : rows.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-12 text-center">
-            <Package className="h-8 w-8 text-slate-300" aria-hidden="true" />
-            <p className="text-sm font-medium text-text-primary">No assets match these filters</p>
-            <p className="text-sm text-text-secondary">Try a different type or status.</p>
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-td-border-subtle py-12 text-center">
+            <Package className="h-8 w-8 text-td-border-control" aria-hidden="true" />
+            <p className="text-sm font-medium text-td-ink">No assets match these filters</p>
+            <p className="text-sm text-td-ink-muted">Try a different type or status.</p>
           </div>
         ) : (
           <>
@@ -1022,12 +1022,12 @@ export function AssetsListPage() {
                   header: 'GPS',
                   render: (row) =>
                     row.gpsDeviceId ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-700">
+                      <span className="inline-flex items-center gap-1 text-td-success">
                         <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
                         Paired
                       </span>
                     ) : (
-                      <span className="text-text-secondary">—</span>
+                      <span className="text-td-ink-muted">—</span>
                     ),
                 },
               ]}
@@ -1215,7 +1215,7 @@ export function AssetDetailPage({ assetId }: { assetId: string }) {
           { label: 'Registered', value: new Date(asset.registeredAt).toLocaleString() },
         ]}
       />
-      <div className="mt-8 border-t border-border pt-6">
+      <div className="mt-8 border-t border-td-border-subtle pt-6">
         <SectionHeading as="h2" title="Asset actions" size="md" className="mb-3" />
         <AssetActions asset={asset} onUpdated={setAsset} />
       </div>

@@ -42,8 +42,8 @@ export function LandingHeader() {
       spacing="none"
       className={`sticky top-0 z-50 transition-[box-shadow,background-color,border-color] duration-200 ${
         scrolled
-          ? 'border-b border-border bg-white/90 shadow-resting backdrop-blur-md'
-          : 'border-b border-transparent bg-white/70 backdrop-blur-sm'
+          ? 'border-b border-td-border-subtle bg-[color-mix(in_srgb,var(--td-bg-raised)_90%,transparent)] shadow-resting backdrop-blur-md'
+          : 'border-b border-transparent bg-[color-mix(in_srgb,var(--td-bg-raised)_70%,transparent)] backdrop-blur-sm'
       }`}
     >
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-6 py-4 lg:px-8">
@@ -57,7 +57,7 @@ export function LandingHeader() {
             <a
               key={link.href}
               href={link.href}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-primary-tint hover:text-text-primary"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-td-ink-muted transition-colors hover:bg-td-info-bg hover:text-td-ink"
             >
               {link.label}
             </a>
@@ -67,7 +67,7 @@ export function LandingHeader() {
         <div className="hidden items-center gap-3 md:flex">
           <a
             href={COMPANY_CONTACT.phones[0].href}
-            className="hidden rounded-lg px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-primary-tint hover:text-text-primary lg:inline-flex"
+            className="hidden rounded-lg px-3 py-2 text-sm font-medium text-td-ink-muted transition-colors hover:bg-td-info-bg hover:text-td-ink lg:inline-flex"
           >
             {COMPANY_CONTACT.phones[0].display}
           </a>
@@ -85,7 +85,7 @@ export function LandingHeader() {
 
         <button
           type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-white text-text-primary md:hidden"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-td-border-subtle bg-td-bg-raised text-td-ink md:hidden"
           aria-expanded={mobileOpen}
           aria-controls="landing-mobile-nav"
           aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
@@ -98,14 +98,14 @@ export function LandingHeader() {
       {mobileOpen ? (
         <div
           id="landing-mobile-nav"
-          className="border-t border-border bg-white md:hidden"
+          className="border-t border-td-border-subtle bg-td-bg-raised md:hidden"
         >
           <nav className="mx-auto flex max-w-7xl flex-col gap-1 px-6 py-4" aria-label="Primary mobile">
             {NAV_LINKS.map((link) => (
               <a
                 key={link.href}
                 href={link.href}
-                className="rounded-lg px-3 py-3 text-base font-medium text-text-primary hover:bg-primary-tint"
+                className="rounded-lg px-3 py-3 text-base font-medium text-td-ink hover:bg-td-info-bg"
                 onClick={closeMobile}
               >
                 {link.label}
@@ -113,13 +113,13 @@ export function LandingHeader() {
             ))}
             <a
               href={COMPANY_CONTACT.phones[0].href}
-              className="mt-2 inline-flex items-center gap-2 rounded-lg px-3 py-3 text-base font-medium text-text-primary hover:bg-primary-tint"
+              className="mt-2 inline-flex items-center gap-2 rounded-lg px-3 py-3 text-base font-medium text-td-ink hover:bg-td-info-bg"
               onClick={closeMobile}
             >
               <PhoneIcon className="h-4 w-4 text-accent-gold-deep" aria-hidden="true" />
               Call {COMPANY_CONTACT.phones[0].display}
             </a>
-            <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4">
+            <div className="mt-4 flex flex-col gap-2 border-t border-td-border-subtle pt-4">
               <Link to="/login" onClick={closeMobile}>
                 <Button variant="secondary" size="md" fullWidth>
                   Log in

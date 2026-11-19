@@ -43,7 +43,7 @@ export function Accordion({
 
   return (
     <AccordionContext.Provider value={{ openItems, toggle }}>
-      <div className={`divide-y divide-slate-200 border-y border-slate-200 ${className}`}>
+      <div className={`divide-y divide-td-border-subtle border-y border-td-border-subtle ${className}`}>
         {children}
       </div>
     </AccordionContext.Provider>);
@@ -93,7 +93,7 @@ export function AccordionItem({ value, title, children, disabled = false }: Acco
           aria-controls={panelId}
           disabled={disabled}
           onClick={() => toggle(value)}
-          className="flex w-full items-center justify-between gap-4 py-4 text-left text-base font-medium text-slate-900 transition-colors hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400">
+          className="flex w-full items-center justify-between gap-4 py-4 text-left text-base font-medium text-td-ink transition-colors hover:text-td-ink-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-td-focus-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-td-ink-muted">
           
           <span>{title}</span>
           <PlusMinusIcon open={isOpen} />
@@ -108,7 +108,7 @@ export function AccordionItem({ value, title, children, disabled = false }: Acco
         
         <div
           ref={contentRef}
-          className={`pb-4 pr-10 text-sm leading-relaxed text-slate-600 transition-opacity duration-200 ${
+          className={`pb-4 pr-10 text-sm leading-relaxed text-td-ink-muted transition-opacity duration-200 ${
           isOpen ? 'opacity-100' : 'opacity-0'}`
           }>
           

@@ -46,7 +46,7 @@ export function FeatureCard({
         <IconComponent className="h-6 w-6" strokeWidth={1.75} />
       </span>
 
-      <h3 className="mt-5 text-base font-semibold leading-6 text-gray-900">
+      <h3 className="mt-5 text-base font-semibold leading-6 text-td-ink">
         {title}
       </h3>
 
@@ -59,14 +59,14 @@ export function FeatureCard({
       )} />
     
 
-      <p className="mt-3 text-sm leading-6 text-gray-500">{description}</p>
+      <p className="mt-3 text-sm leading-6 text-td-ink-muted">{description}</p>
 
       {footer ? <div className="mt-5 text-sm">{footer}</div> : null}
     </>;
 
 
   const rootClassName = twMerge(
-    'group relative flex h-full flex-col rounded-2xl border border-gray-200 bg-white p-6 text-left transition-shadow duration-200',
+    'group relative flex h-full flex-col rounded-2xl border border-td-border-subtle bg-td-bg-raised p-6 text-left transition-shadow duration-200',
     isCentered && 'items-center text-center',
     isInteractive &&
     'hover:border-accent-gold/40 hover:shadow-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold-deep focus-visible:ring-offset-2',

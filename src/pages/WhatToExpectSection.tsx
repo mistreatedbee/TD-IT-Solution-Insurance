@@ -41,15 +41,15 @@ export function WhatToExpectSection() {
                 ) : null}
 
                 <span
-                  className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-accent-gold-deep bg-white text-sm font-semibold tabular-nums text-primary"
+                  className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-accent-gold-deep bg-td-bg-raised text-sm font-semibold tabular-nums text-td-link"
                   aria-hidden="true"
                 >
                   {index + 1}
                 </span>
 
                 <div className="min-w-0 flex-1 pt-1">
-                  <h3 className="text-lg font-semibold text-text-primary">{step.title}</h3>
-                  <p className="mt-2 text-base leading-relaxed text-text-secondary">{step.description}</p>
+                  <h3 className="text-lg font-semibold text-td-ink">{step.title}</h3>
+                  <p className="mt-2 text-base leading-relaxed text-td-ink-muted">{step.description}</p>
                 </div>
               </li>
             </Reveal>

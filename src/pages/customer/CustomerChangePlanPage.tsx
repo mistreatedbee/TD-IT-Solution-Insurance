@@ -94,7 +94,7 @@ export function CustomerChangePlanPage() {
       <div className="space-y-4">
         <InlineAlert tone="info">
           You do not have an active policy yet.{' '}
-          <Link to="/get-started" className="font-medium text-primary underline">
+          <Link to="/get-started" className="font-medium text-td-link underline">
             Complete setup
           </Link>{' '}
           to choose a plan first.
@@ -112,8 +112,8 @@ export function CustomerChangePlanPage() {
           size="md"
           subtitle="Compare Essential, Plus, Pro, and Business. Prices are for planning — payment is not configured yet."
         />
-        <p className="mt-2 text-sm text-text-secondary">
-          <Link to="/dashboard" className="text-primary hover:underline">Back to overview</Link>
+        <p className="mt-2 text-sm text-td-ink-muted">
+          <Link to="/dashboard" className="text-td-link hover:underline">Back to overview</Link>
         </p>
       </div>
 
@@ -121,29 +121,29 @@ export function CustomerChangePlanPage() {
       {successMessage ? <InlineAlert tone="info">{successMessage}</InlineAlert> : null}
 
       <Card padding="lg" interactive={false}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Current plan</p>
-        <p className="mt-2 text-xl font-bold text-text-primary">
+        <p className="text-xs font-semibold uppercase tracking-wide text-td-ink-muted">Current plan</p>
+        <p className="mt-2 text-xl font-bold text-td-ink">
           {planSummary?.planName ?? currentPlan?.name ?? activePolicy.planTier}
         </p>
         {planSummary?.monthlyAmountCents != null ? (
-          <p className="mt-1 text-sm text-text-secondary">
+          <p className="mt-1 text-sm text-td-ink-muted">
             R{(planSummary.monthlyAmountCents / 100).toFixed(0)}/month
           </p>
         ) : currentPlan ? (
-          <p className="mt-1 text-sm text-text-secondary">{formatPlanPrice(currentPlan)}</p>
+          <p className="mt-1 text-sm text-td-ink-muted">{formatPlanPrice(currentPlan)}</p>
         ) : null}
-        <p className="mt-3 text-sm text-text-secondary">
+        <p className="mt-3 text-sm text-td-ink-muted">
           Asset usage:{' '}
           {planSummary?.assetUsageLabel ??
             formatAssetUsage(planSummary?.activeAssetCount ?? 0, currentPlan?.maxAssets)}
         </p>
         {planSummary?.supportLevel ? (
-          <p className="mt-1 text-sm text-text-secondary">
+          <p className="mt-1 text-sm text-td-ink-muted">
             Support: {planSummary.supportLevel}
           </p>
         ) : null}
         {activePolicy.billing.billingStatus === 'not_configured' ? (
-          <p className="mt-2 text-xs text-text-secondary">
+          <p className="mt-2 text-xs text-td-ink-muted">
             Billing is not live yet — plan changes update your entitlement limits only.
           </p>
         ) : null}
@@ -160,7 +160,7 @@ export function CustomerChangePlanPage() {
               key={plan.id}
               className={`flex flex-col overflow-hidden p-0 ${
                 isCurrent ? 'ring-2 ring-primary' : ''
-              } ${isMostPopular && !isCurrent ? 'ring-2 ring-accent-gold-deep/50 lg:scale-[1.02]' : ''}`}
+              } ${isMostPopular && !isCurrent ? 'ring-2 ring-td-brand-orange lg:scale-[1.02]' : ''}`}
             >
               <div className="bg-primary px-4 py-3 text-white">
                 <div className="flex flex-wrap items-center gap-2">
@@ -178,23 +178,23 @@ export function CustomerChangePlanPage() {
                 <p className="text-sm text-white/80">{plan.positioning ?? plan.tagline}</p>
               </div>
               <div className="flex flex-1 flex-col p-4">
-                <p className="text-2xl font-bold text-text-primary">{formatPlanPrice(plan)}</p>
+                <p className="text-2xl font-bold text-td-ink">{formatPlanPrice(plan)}</p>
                 {plan.maxAssets != null ? (
-                  <p className="mt-1 text-xs text-text-secondary">Up to {plan.maxAssets} assets</p>
+                  <p className="mt-1 text-xs text-td-ink-muted">Up to {plan.maxAssets} assets</p>
                 ) : (
-                  <p className="mt-1 text-xs text-text-secondary">Custom asset limits</p>
+                  <p className="mt-1 text-xs text-td-ink-muted">Custom asset limits</p>
                 )}
                 {plan.supportLevel ? (
-                  <p className="mt-1 text-xs text-text-secondary">
+                  <p className="mt-1 text-xs text-td-ink-muted">
                     Support: {formatSupportLevel(plan.supportLevel)}
                   </p>
                 ) : null}
-                <ul className="mt-3 flex-1 space-y-1 text-sm text-text-secondary">
+                <ul className="mt-3 flex-1 space-y-1 text-sm text-td-ink-muted">
                   {plan.features.slice(0, 4).map((f) => (
                     <li key={f}>• {f}</li>
                   ))}
                   {plan.features.length > 4 ? (
-                    <li className="text-xs text-text-secondary">+ {plan.features.length - 4} more</li>
+                    <li className="text-xs text-td-ink-muted">+ {plan.features.length - 4} more</li>
                   ) : null}
                 </ul>
                 {plan.isCustomPricing ? (

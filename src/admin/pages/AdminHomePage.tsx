@@ -39,15 +39,15 @@ function KpiTile({
     return (
       <div className="flex flex-col items-start text-left">
         <div
-          className={`font-bold leading-none tracking-tight text-slate-300 ${
+          className={`font-bold leading-none tracking-tight text-td-border-control ${
             size === 'lg' ? 'text-5xl sm:text-6xl' : 'text-4xl sm:text-5xl'
           }`}
           aria-hidden="true"
         >
           {status === 'loading' ? '···' : '—'}
         </div>
-        <span className="mt-4 block h-1 w-10 rounded-full bg-slate-200" aria-hidden="true" />
-        <span className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-sm">
+        <span className="mt-4 block h-1 w-10 rounded-full bg-td-bg-sunken" aria-hidden="true" />
+        <span className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-td-ink-muted sm:text-sm">
           {status === 'loading' ? 'Loading…' : `${label} unavailable`}
         </span>
       </div>
@@ -74,7 +74,7 @@ function Sparkline({ series }: { series: AdminDauResponse['series'] }) {
 
   if (values.length === 0) {
     return (
-      <div className="flex h-14 w-full items-center justify-center text-xs text-text-secondary">
+      <div className="flex h-14 w-full items-center justify-center text-xs text-td-ink-muted">
         No data yet
       </div>
     );
@@ -204,9 +204,9 @@ export function AdminHomePage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <SectionHeading as="h2" title="Daily active users" size="md" className="mb-1" />
-            <p className="text-sm text-text-secondary">Last 14 days, session-start events.</p>
+            <p className="text-sm text-td-ink-muted">Last 14 days, session-start events.</p>
           </div>
-          <a href="/admin/analytics" className="text-sm font-medium text-primary hover:text-primary/80">
+          <a href="/admin/analytics" className="text-sm font-medium text-td-link hover:underline">
             View full analytics →
           </a>
         </div>
@@ -218,7 +218,7 @@ export function AdminHomePage() {
             {dauStatus === 'loaded' ? (
               <Sparkline series={dau?.series ?? []} />
             ) : (
-              <div className="flex h-14 w-full items-center text-xs text-text-secondary">
+              <div className="flex h-14 w-full items-center text-xs text-td-ink-muted">
                 {dauStatus === 'loading' ? 'Loading trend…' : 'Trend unavailable'}
               </div>
             )}

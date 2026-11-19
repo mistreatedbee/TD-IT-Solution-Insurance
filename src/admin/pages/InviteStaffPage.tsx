@@ -160,7 +160,7 @@ export function InviteStaffPage() {
   return (
     <Card padding="lg" className="max-w-xl">
       <SectionHeading as="h1" title="Invite staff" size="md" className="mb-1" />
-      <p className="mb-6 text-sm text-text-secondary">
+      <p className="mb-6 text-sm text-td-ink-muted">
         Send an email invitation to a new platform administrator, support agent, or security-company
         operator. They'll set their own password and enroll two-factor authentication when they accept.
       </p>
@@ -189,10 +189,10 @@ export function InviteStaffPage() {
         />
 
         <fieldset>
-          <legend className="mb-1.5 block text-sm font-medium text-slate-800">Account type</legend>
+          <legend className="mb-1.5 block text-sm font-medium text-td-ink">Account type</legend>
           <div className="space-y-2">
             {INVITABLE_USER_TYPES.map((type) => (
-              <label key={type} className="flex items-center gap-2 text-sm text-text-primary">
+              <label key={type} className="flex items-center gap-2 text-sm text-td-ink">
                 <input
                   type="radio"
                   name="userType"
@@ -208,7 +208,7 @@ export function InviteStaffPage() {
 
         {userType === 'security_company_operator' ? (
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-800" htmlFor="partnerOrganizationId">
+            <label className="mb-1.5 block text-sm font-medium text-td-ink" htmlFor="partnerOrganizationId">
               Partner organization
             </label>
             {partnerOrgsError ? (
@@ -217,7 +217,7 @@ export function InviteStaffPage() {
               <select
                 id="partnerOrganizationId"
                 name="partnerOrganizationId"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-td-border-control px-3 py-2 text-sm"
                 value={partnerOrganizationId}
                 onChange={(e) => setPartnerOrganizationId(e.target.value)}
               >

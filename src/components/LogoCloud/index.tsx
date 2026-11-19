@@ -51,7 +51,7 @@ function LogoMark({ logo }: {logo: LogoCloudItem;}) {
   }
 
   return (
-    <span className="flex select-none items-center gap-2 whitespace-nowrap text-lg font-semibold tracking-tight text-gray-400 transition-colors duration-200 hover:text-gray-900">
+    <span className="flex select-none items-center gap-2 whitespace-nowrap text-lg font-semibold tracking-tight text-td-ink-muted transition-colors duration-200 hover:text-td-ink">
       <span
         aria-hidden="true"
         className="h-6 w-6 shrink-0 rounded-md border-2 border-current" />
@@ -122,10 +122,10 @@ export function LogoCloud({
   return (
     <section
       aria-label={title ?? 'Trusted by leading teams'}
-      className={`w-full bg-white py-10 ${className}`.trim()}>
+      className={`w-full bg-td-bg-raised py-10 ${className}`.trim()}>
       
       {title ?
-      <p className="mb-8 px-6 text-center text-xs font-semibold uppercase tracking-widest text-gray-500">
+      <p className="mb-8 px-6 text-center text-xs font-semibold uppercase tracking-widest text-td-ink-muted">
           {title}
         </p> :
       null}

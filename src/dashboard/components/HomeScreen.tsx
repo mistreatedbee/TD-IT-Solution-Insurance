@@ -108,7 +108,7 @@ function QuickLinkCard({
     return (
       <Link
         to={card.to}
-        className={`group flex flex-col justify-center rounded-2xl border border-transparent px-1 py-2 text-text-secondary transition-colors hover:text-primary ${spanClassName ?? ''}`}
+        className={`group flex flex-col justify-center rounded-2xl border border-transparent px-1 py-2 text-td-ink-muted transition-colors hover:text-td-ink ${spanClassName ?? ''}`}
       >
         <span className="inline-flex items-center gap-1.5 text-sm font-medium">
           {card.ctaText}
@@ -117,7 +117,7 @@ function QuickLinkCard({
             className="h-4 w-4 shrink-0 transition-transform duration-200 ease-out group-hover:translate-x-1"
           />
         </span>
-        <span className="mt-1 text-xs text-text-secondary">{card.description}</span>
+        <span className="mt-1 text-xs text-td-ink-muted">{card.description}</span>
       </Link>
     );
   }
@@ -137,11 +137,11 @@ function QuickLinkCard({
       <Link to={card.to} className="block">
         <Card padding="lg" interactive as="div">
           <div className="flex items-start justify-between gap-3">
-            <h3 className="text-base font-semibold text-text-primary">{card.title}</h3>
+            <h3 className="text-base font-semibold text-td-ink">{card.title}</h3>
             {card.count ? <CountBadge count={card.count} /> : null}
           </div>
-          <p className="mt-2 text-sm text-text-secondary">{card.description}</p>
-          <p className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary">
+          <p className="mt-2 text-sm text-td-ink-muted">{card.description}</p>
+          <p className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-td-link">
             {card.ctaText}
             <ArrowRightIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
           </p>
@@ -151,7 +151,7 @@ function QuickLinkCard({
         <button
           type="button"
           onClick={() => retry()}
-          className="absolute right-8 top-8 text-xs font-medium text-primary underline-offset-2 hover:underline"
+          className="absolute right-8 top-8 text-xs font-medium text-td-link underline-offset-2 hover:underline"
         >
           Retry
         </button>
@@ -172,7 +172,7 @@ export function HomeScreen({
     <div className="space-y-8">
       <div>
         <SectionHeading as="h1" title="Welcome back" size="md" className="mb-1" />
-        <p className="text-sm text-text-secondary">
+        <p className="text-sm text-td-ink-muted">
           Signed in as {email} · {roleLabel}
         </p>
       </div>

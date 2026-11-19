@@ -12,13 +12,13 @@ export function DeleteAccountPage() {
       </Section>
       <Section width="narrow">
         <SectionHeading eyebrow="Legal" title="Delete account & data" as="h1" size="lg" />
-        <div className="prose mt-8 max-w-none space-y-6 text-base text-text-secondary">
+        <div className="prose mt-8 max-w-none space-y-6 text-base text-td-ink-muted">
           <p>
             You can request removal of your TD IT Solution Insurance account and associated personal
             data.
           </p>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">What this includes</h2>
+            <h2 className="text-lg font-semibold text-td-ink">What this includes</h2>
             <p>
               This request may cover your account profile, registered assets, alerts, security-related
               records, and other personal information connected to your service use, where legally
@@ -26,7 +26,7 @@ export function DeleteAccountPage() {
             </p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">How to request</h2>
+            <h2 className="text-lg font-semibold text-td-ink">How to request</h2>
             <p>
               Email us from the address used to create your account and include your name so we can
               identify and process the request.
@@ -34,14 +34,14 @@ export function DeleteAccountPage() {
             <p className="mt-3">
               <a
                 href={`mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent('Request account and associated data deletion')}`}
-                className="text-primary underline underline-offset-4 hover:text-primary/80"
+                className="text-td-link underline underline-offset-4 hover:underline"
               >
                 {COMPANY_CONTACT.email}
               </a>
             </p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">Important</h2>
+            <h2 className="text-lg font-semibold text-td-ink">Important</h2>
             <p>
               Some information may need to be retained where the law requires it, such as records for
               legal, regulatory, or fraud-prevention obligations.

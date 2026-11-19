@@ -87,16 +87,16 @@ export function CustomerVerificationCentrePage() {
     <div className="space-y-6">
       <div>
         <SectionHeading as="h1" title="Verification centre" size="md" className="mb-2" />
-        <p className="text-sm text-text-secondary">
+        <p className="text-sm text-td-ink-muted">
           Track everything still pending for your account — email, profile, identity review,
           protection plans, and asset registration — in one place.
         </p>
       </div>
 
       <Card padding="md">
-        <p className="text-xs text-text-secondary">Overall setup</p>
-        <p className="text-2xl font-bold text-text-primary">{profile.completionPercent}% complete</p>
-        <p className="mt-1 text-sm text-text-secondary">
+        <p className="text-xs text-td-ink-muted">Overall setup</p>
+        <p className="text-2xl font-bold text-td-ink">{profile.completionPercent}% complete</p>
+        <p className="mt-1 text-sm text-td-ink-muted">
           {pending.length === 0
             ? 'All setup steps are complete.'
             : `${pending.length} item${pending.length === 1 ? '' : 's'} still pending or in review.`}
@@ -119,15 +119,15 @@ export function CustomerVerificationCentrePage() {
             <Card key={item.id} padding="md">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase text-text-secondary">{item.category}</p>
-                  <p className="font-semibold text-text-primary">{item.title}</p>
+                  <p className="text-xs uppercase text-td-ink-muted">{item.category}</p>
+                  <p className="font-semibold text-td-ink">{item.title}</p>
                 </div>
                 <StatusBadge value={item.statusLabel} />
               </div>
-              <p className="mt-2 text-sm text-text-secondary">{item.description}</p>
-              {item.meta ? <p className="mt-1 text-xs text-text-secondary">{item.meta}</p> : null}
+              <p className="mt-2 text-sm text-td-ink-muted">{item.description}</p>
+              {item.meta ? <p className="mt-1 text-xs text-td-ink-muted">{item.meta}</p> : null}
               {item.href ? (
-                <Link to={item.href} className="mt-3 inline-block text-sm font-semibold text-primary hover:underline">
+                <Link to={item.href} className="mt-3 inline-block text-sm font-semibold text-td-link hover:underline">
                   View details
                 </Link>
               ) : null}
@@ -144,12 +144,12 @@ export function CustomerVerificationCentrePage() {
               <Card key={item.id} padding="md">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs uppercase text-text-secondary">{item.category}</p>
-                    <p className="font-semibold text-text-primary">{item.title}</p>
+                    <p className="text-xs uppercase text-td-ink-muted">{item.category}</p>
+                    <p className="font-semibold text-td-ink">{item.title}</p>
                   </div>
                   <StatusBadge value={item.statusLabel} />
                 </div>
-                <p className="mt-2 text-sm text-text-secondary">{item.description}</p>
+                <p className="mt-2 text-sm text-td-ink-muted">{item.description}</p>
               </Card>
             ))}
           </div>
@@ -159,11 +159,11 @@ export function CustomerVerificationCentrePage() {
       <SectionHeading as="h2" title="Identity submission" size="md" />
       <Card padding="md" className="space-y-4">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-sm text-text-secondary">Current status</span>
+          <span className="text-sm text-td-ink-muted">Current status</span>
           <StatusBadge value={verificationStatusLabel(profile.verificationStatus)} />
         </div>
         {profile.idNumberMasked ? (
-          <p className="text-sm text-text-primary">ID on file: {profile.idNumberMasked}</p>
+          <p className="text-sm text-td-ink">ID on file: {profile.idNumberMasked}</p>
         ) : null}
         {submitError ? <InlineAlert tone="danger">{submitError}</InlineAlert> : null}
         {profile.verificationStatus === 'verified' ? (

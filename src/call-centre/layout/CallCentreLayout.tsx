@@ -22,7 +22,7 @@ export function CallCentreAuthGate() {
       <div className="flex min-h-full items-center justify-center p-6">
         <Card padding="lg">
           <SectionHeading as="h1" title="Unauthorized" size="md" className="mb-2" />
-          <p className="text-sm text-text-secondary">
+          <p className="text-sm text-td-ink-muted">
             This area is restricted to call-centre support agents.
           </p>
         </Card>
@@ -52,7 +52,7 @@ export function CallCentreLayout() {
       ]}
       onSignOut={() => void signOut()}
     >
-      {account ? <p className="mb-4 text-xs text-text-secondary">Signed in as {account.email}</p> : null}
+      {account ? <p className="mb-4 text-xs text-td-ink-muted">Signed in as {account.email}</p> : null}
       <Outlet />
     </DashboardShell>
   );

@@ -82,7 +82,7 @@ export function SectionHeading({
           'font-semibold tracking-tight',
           eyebrow ? 'mt-3' : '',
           titleSizes[size],
-          isDark ? 'text-white' : 'text-slate-900'].
+          isDark ? 'text-white' : 'text-td-ink'].
 
           filter(Boolean).
           join(' ')}>
@@ -95,7 +95,7 @@ export function SectionHeading({
           className={[
           'mt-3 leading-relaxed',
           subtitleSizes[size],
-          isDark ? 'text-slate-300' : 'text-slate-600'].
+          isDark ? 'text-slate-300' : 'text-td-ink-muted'].
           join(' ')}>
           
             {subtitle}

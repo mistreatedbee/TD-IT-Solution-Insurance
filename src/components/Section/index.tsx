@@ -19,8 +19,8 @@ export interface SectionProps extends React.HTMLAttributes<HTMLElement> {
 }
 
 const backgroundClasses: Record<SectionBackground, string> = {
-  white: 'bg-white',
-  warm: 'bg-stone-50',
+  white: 'bg-td-bg-raised',
+  warm: 'bg-td-bg-sunken',
   // Dark inverse background (e.g. footers). Pair with `text-text-inverse` /
   // `text-text-inverse-muted` on child text — this variant only sets the
   // section's own background, it doesn't flip descendant text color.

@@ -51,7 +51,7 @@ export function PlansListPage() {
           <Button size="sm">Create plan</Button>
         </Link>
       </div>
-      <p className="mb-4 text-sm text-text-secondary">
+      <p className="mb-4 text-sm text-td-ink-muted">
         Configure pricing, asset limits, and visibility for customer onboarding plan cards.
       </p>
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
@@ -313,7 +313,7 @@ export function PlanEditPage({ planId }: { planId: string }) {
     return (
       <Card padding="lg">
         <InlineAlert tone="danger">{error ?? 'Plan not found.'}</InlineAlert>
-        <Link to="/admin/plans" className="mt-4 inline-block text-sm text-primary hover:underline">
+        <Link to="/admin/plans" className="mt-4 inline-block text-sm text-td-link hover:underline">
           Back to plans
         </Link>
       </Card>
@@ -323,7 +323,7 @@ export function PlanEditPage({ planId }: { planId: string }) {
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title={`Edit plan — ${plan.name}`} size="md" className="mb-4" />
-      <Link to="/admin/plans" className="mb-6 inline-block text-sm text-primary hover:underline">
+      <Link to="/admin/plans" className="mb-6 inline-block text-sm text-td-link hover:underline">
         ← Back to plans
       </Link>
 
@@ -348,7 +348,7 @@ export function PlanEditPage({ planId }: { planId: string }) {
         <Input label="Display name" value={name} onChange={(e) => setName(e.target.value)} required />
         <Input label="Tagline" value={tagline} onChange={(e) => setTagline(e.target.value)} required />
 
-        <label className="flex items-center gap-2 text-sm text-text-primary">
+        <label className="flex items-center gap-2 text-sm text-td-ink">
           <input type="checkbox" checked={isCustomPricing} onChange={(e) => setIsCustomPricing(e.target.checked)} />
           Custom pricing (Business-style — no fixed monthly price)
         </label>
@@ -371,16 +371,16 @@ export function PlanEditPage({ planId }: { planId: string }) {
 
         <Input label="Sort order" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
 
-        <label className="flex items-center gap-2 text-sm text-text-primary">
+        <label className="flex items-center gap-2 text-sm text-td-ink">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
           Active (visible to customers on onboarding)
         </label>
 
         <fieldset>
-          <legend className="mb-2 text-sm font-semibold text-text-primary">Account types</legend>
+          <legend className="mb-2 text-sm font-semibold text-td-ink">Account types</legend>
           <div className="flex flex-wrap gap-4">
             {ACCOUNT_TYPE_OPTIONS.map((type) => (
-              <label key={type} className="flex items-center gap-2 text-sm capitalize text-text-secondary">
+              <label key={type} className="flex items-center gap-2 text-sm capitalize text-td-ink-muted">
                 <input
                   type="checkbox"
                   checked={accountTypes.includes(type)}
@@ -393,7 +393,7 @@ export function PlanEditPage({ planId }: { planId: string }) {
         </fieldset>
 
         <fieldset>
-          <legend className="mb-2 text-sm font-semibold text-text-primary">Features (bullet list)</legend>
+          <legend className="mb-2 text-sm font-semibold text-td-ink">Features (bullet list)</legend>
           <div className="space-y-2">
             {features.map((feature, index) => (
               <div key={index} className="flex gap-2">
@@ -424,7 +424,7 @@ export function PlanEditPage({ planId }: { planId: string }) {
         </Link>
         <Button
           variant="secondary"
-          className="ml-auto text-red-700"
+          className="ml-auto text-td-danger"
           loading={deleting}
           disabled={saving}
           onClick={() => void handleDelete()}
@@ -587,7 +587,7 @@ export function PlanCreatePage() {
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title="Create plan" size="md" className="mb-4" />
-      <Link to="/admin/plans" className="mb-6 inline-block text-sm text-primary hover:underline">
+      <Link to="/admin/plans" className="mb-6 inline-block text-sm text-td-link hover:underline">
         ← Back to plans
       </Link>
 
@@ -625,7 +625,7 @@ export function PlanCreatePage() {
           required
         />
 
-        <label className="flex items-center gap-2 text-sm text-text-primary">
+        <label className="flex items-center gap-2 text-sm text-td-ink">
           <input type="checkbox" checked={isCustomPricing} onChange={(e) => setIsCustomPricing(e.target.checked)} />
           Custom pricing (Business-style — no fixed monthly price)
         </label>
@@ -648,12 +648,12 @@ export function PlanCreatePage() {
 
         <Input label="Sort order" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
 
-        <label className="flex flex-col gap-1 text-sm text-text-primary">
+        <label className="flex flex-col gap-1 text-sm text-td-ink">
           Support level
           <select
             value={supportLevel}
             onChange={(e) => setSupportLevel(e.target.value as (typeof CREATE_PLAN_SUPPORT_LEVELS)[number])}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className="rounded-md border border-td-border-control px-3 py-2 text-sm text-td-ink"
           >
             {CREATE_PLAN_SUPPORT_LEVELS.map((level) => (
               <option key={level} value={level}>
@@ -663,21 +663,21 @@ export function PlanCreatePage() {
           </select>
         </label>
 
-        <label className="flex items-center gap-2 text-sm text-text-primary">
+        <label className="flex items-center gap-2 text-sm text-td-ink">
           <input type="checkbox" checked={isMostPopular} onChange={(e) => setIsMostPopular(e.target.checked)} />
           Most popular (highlighted on customer onboarding)
         </label>
 
-        <label className="flex items-center gap-2 text-sm text-text-primary">
+        <label className="flex items-center gap-2 text-sm text-td-ink">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
           Active (visible to customers on onboarding)
         </label>
 
         <fieldset>
-          <legend className="mb-2 text-sm font-semibold text-text-primary">Account types</legend>
+          <legend className="mb-2 text-sm font-semibold text-td-ink">Account types</legend>
           <div className="flex flex-wrap gap-4">
             {ACCOUNT_TYPE_OPTIONS.map((type) => (
-              <label key={type} className="flex items-center gap-2 text-sm capitalize text-text-secondary">
+              <label key={type} className="flex items-center gap-2 text-sm capitalize text-td-ink-muted">
                 <input
                   type="checkbox"
                   checked={accountTypes.includes(type)}
@@ -690,7 +690,7 @@ export function PlanCreatePage() {
         </fieldset>
 
         <fieldset>
-          <legend className="mb-2 text-sm font-semibold text-text-primary">Features (bullet list)</legend>
+          <legend className="mb-2 text-sm font-semibold text-td-ink">Features (bullet list)</legend>
           <div className="space-y-2">
             {features.map((feature, index) => (
               <div key={index} className="flex gap-2">
@@ -742,7 +742,7 @@ function NavigateToPlans() {
   return (
     <Card padding="lg">
       <InlineAlert tone="danger">Missing plan id.</InlineAlert>
-      <Link to="/admin/plans" className="mt-4 inline-block text-sm text-primary hover:underline">
+      <Link to="/admin/plans" className="mt-4 inline-block text-sm text-td-link hover:underline">
         Back to plans
       </Link>
     </Card>

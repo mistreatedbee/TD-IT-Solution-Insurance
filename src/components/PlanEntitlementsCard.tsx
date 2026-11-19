@@ -47,7 +47,7 @@ export function PlanEntitlementsCard({
             <li key={item.key} className="flex gap-3 py-3 first:pt-0 last:pb-0">
               <span
                 className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                  included ? 'bg-emerald-100 text-emerald-700' : 'bg-background-alt text-text-secondary'
+                  included ? 'bg-td-success-bg text-td-success' : 'bg-background-alt text-text-secondary'
                 }`}
                 aria-hidden="true"
               >

@@ -135,8 +135,8 @@ export function ProfilePictureControl({
       <Avatar src={previewUrl ?? undefined} name={displayName} size="lg" />
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <div>
-          <p className="text-sm font-semibold text-text-primary">Profile picture</p>
-          <p className="mt-0.5 text-sm leading-relaxed text-text-secondary">
+          <p className="text-sm font-semibold text-td-ink">Profile picture</p>
+          <p className="mt-0.5 text-sm leading-relaxed text-td-ink-muted">
             Upload a square photo for your account. JPEG, PNG, or WebP up to 512 KB.
           </p>
         </div>

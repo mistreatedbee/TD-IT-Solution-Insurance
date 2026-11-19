@@ -134,7 +134,7 @@ export function MfaEnrollmentStep({
             </Button>
           </>
         ) : (
-          <p className="mt-4 text-sm text-text-secondary">Setting up…</p>
+          <p className="mt-4 text-sm text-td-ink-muted">Setting up…</p>
         )}
       </>
     );
@@ -143,20 +143,20 @@ export function MfaEnrollmentStep({
   return (
     <>
       <SectionHeading as="h1" title={heading} size="md" className="mb-1" />
-      <p className="mt-1 text-sm text-text-secondary">
+      <p className="mt-1 text-sm text-td-ink-muted">
         Install an authenticator app (Google Authenticator, Microsoft Authenticator, Authy, or similar) if you don't
         already have one, then add this account.
       </p>
 
-      <div className="mt-4 rounded-lg border border-border bg-background-alt p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-text-secondary">Setup key</p>
+      <div className="mt-4 rounded-lg border border-td-border-subtle bg-td-bg-raised p-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-td-ink-muted">Setup key</p>
         <div className="mt-1 flex items-center justify-between gap-2">
-          <code className="break-all text-sm font-mono text-text-primary">{enrollment.manualEntryKey}</code>
+          <code className="break-all text-sm font-mono text-td-ink">{enrollment.manualEntryKey}</code>
           <Button variant="tertiary" size="sm" onClick={copyManualKey} aria-live="polite">
             {copied ? 'Copied' : 'Copy'}
           </Button>
         </div>
-        <p className="mt-1 text-xs text-text-secondary">
+        <p className="mt-1 text-xs text-td-ink-muted">
           In your authenticator app, choose "enter a setup key manually" and paste this in.
         </p>
       </div>
@@ -176,10 +176,10 @@ export function MfaEnrollmentStep({
                   />
                 </div>
               ) : (
-                <p className="text-xs text-text-secondary">The QR code couldn't be displayed. Use the setup key above instead.</p>
+                <p className="text-xs text-td-ink-muted">The QR code couldn't be displayed. Use the setup key above instead.</p>
               );
             })()}
-            <p className="mt-2 text-xs text-text-secondary">
+            <p className="mt-2 text-xs text-td-ink-muted">
               If scanning this device's own screen isn't possible (e.g. you're completing this on your phone), use
               the setup key above instead.
             </p>

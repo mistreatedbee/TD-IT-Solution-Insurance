@@ -33,7 +33,7 @@ export function PrivacyPolicyPage() {
       </Section>
       <Section width="narrow">
         <SectionHeading eyebrow="Legal" title="Privacy Policy" as="h1" size="lg" />
-        <div className="prose mt-8 max-w-none space-y-6 text-base text-text-secondary">
+        <div className="prose mt-8 max-w-none space-y-6 text-base text-td-ink-muted">
           <p>
             This policy currently covers the waitlist sign-up form on our homepage, and — for
             customer account holders — what happens to a theft report you submit. It does not yet
@@ -41,15 +41,15 @@ export function PrivacyPolicyPage() {
             built.
           </p>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">What we collect</h2>
+            <h2 className="text-lg font-semibold text-td-ink">What we collect</h2>
             <p>Your email address, and your name if you choose to give it.</p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">Why we collect it</h2>
+            <h2 className="text-lg font-semibold text-td-ink">Why we collect it</h2>
             <p>So we can email you once, to let you know when TD IT Solution Insurance launches.</p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">What we don't do</h2>
+            <h2 className="text-lg font-semibold text-td-ink">What we don't do</h2>
             <p>
               We won't send you marketing, and we won't sell your details to anyone. Joining the
               waitlist is not an application for insurance and does not create any policy or
@@ -58,7 +58,7 @@ export function PrivacyPolicyPage() {
             </p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">Theft reports</h2>
+            <h2 className="text-lg font-semibold text-td-ink">Theft reports</h2>
             <p>
               If you have a customer account and submit a theft report, we share it to help
               recover your asset. A short summary of the report (without your name or contact
@@ -70,19 +70,19 @@ export function PrivacyPolicyPage() {
             </p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">How long we keep it</h2>
+            <h2 className="text-lg font-semibold text-td-ink">How long we keep it</h2>
             <p>
               We delete waitlist entries within 12 months of collection, or within 90 days of
               sending the launch notification email, whichever happens first.
             </p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">Your rights</h2>
+            <h2 className="text-lg font-semibold text-td-ink">Your rights</h2>
             <p>
               You can ask us to delete your details at any time by contacting{' '}
               <a
                 href={`mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent('Account and data deletion request')}`}
-                className="text-primary hover:underline"
+                className="text-td-link hover:underline"
               >
                 {COMPANY_CONTACT.email}
               </a>
@@ -92,14 +92,14 @@ export function PrivacyPolicyPage() {
             <p className="mt-3">
               <a
                 href={`mailto:${COMPANY_CONTACT.email}?subject=${encodeURIComponent('Request account and associated data deletion')}`}
-                className="inline-flex items-center text-primary underline underline-offset-4 hover:text-primary/80"
+                className="inline-flex items-center text-td-link underline underline-offset-4 hover:underline"
               >
                 Request account and data deletion
               </a>
             </p>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">This policy will grow</h2>
+            <h2 className="text-lg font-semibold text-td-ink">This policy will grow</h2>
             <p>
               As we build out account creation, policy administration, GPS-assisted recovery and
               payments, this policy will be expanded to cover that processing before those

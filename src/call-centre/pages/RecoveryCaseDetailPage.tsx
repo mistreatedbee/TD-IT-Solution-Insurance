@@ -102,7 +102,7 @@ export function RecoveryCaseDetailPage({ idOrReference }: { idOrReference?: stri
     <div className="space-y-6">
       <Card padding="lg">
         <SectionHeading as="h1" title="Recovery case detail" size="md" className="mb-2" />
-        <p className="mb-4 text-sm text-text-secondary">
+        <p className="mb-4 text-sm text-td-ink-muted">
           Look up a case by its internal ID or by its reference number (e.g.{' '}
           <code>RC-20261023-X7K2</code>). Every lookup is audit-logged. Location coordinates and police
           report details are never shown here.
@@ -149,12 +149,12 @@ export function RecoveryCaseDetailPage({ idOrReference }: { idOrReference?: stri
           />
 
           <div className="mt-6">
-            <h3 className="mb-3 text-sm font-semibold text-text-primary">Call-centre notes</h3>
+            <h3 className="mb-3 text-sm font-semibold text-td-ink">Call-centre notes</h3>
             {recoveryCase.callCentreNotes.length > 0 ? (
-              <ul className="mb-4 space-y-2 border-t border-border pt-3 text-sm text-text-secondary">
+              <ul className="mb-4 space-y-2 border-t border-td-border-subtle pt-3 text-sm text-td-ink-muted">
                 {recoveryCase.callCentreNotes.map((note) => (
                   <li key={`${note.createdAt}-${note.agentAccountId}`}>
-                    <span className="block text-xs text-text-secondary">
+                    <span className="block text-xs text-td-ink-muted">
                       {new Date(note.createdAt).toLocaleString()}
                     </span>
                     {note.text}
@@ -162,7 +162,7 @@ export function RecoveryCaseDetailPage({ idOrReference }: { idOrReference?: stri
                 ))}
               </ul>
             ) : (
-              <p className="mb-4 text-sm text-text-secondary">No call-centre notes yet.</p>
+              <p className="mb-4 text-sm text-td-ink-muted">No call-centre notes yet.</p>
             )}
 
             <form className="space-y-2" onSubmit={(e) => void onAddNote(e)}>

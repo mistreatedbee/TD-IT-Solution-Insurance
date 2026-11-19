@@ -41,7 +41,7 @@ function CallerVerifiedBadge({ verified }: { verified: boolean }) {
 }
 
 const selectClasses =
-  'block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors hover:border-slate-400 focus:border-primary focus:ring-2 focus:ring-accent-gold-deep/30';
+  'block w-full rounded-md border border-td-border-control bg-td-bg-raised px-3 py-2 text-sm text-td-ink outline-none transition-colors hover:border-td-border-control focus:border-primary focus:ring-2 focus:ring-accent-gold-deep/30';
 
 /**
  * FR-17 — My Cases list. `scope=mine` only; there is no control anywhere in this
@@ -110,13 +110,13 @@ export function SupportCasesListPage() {
           <Button size="sm">New case</Button>
         </Link>
       </div>
-      <p className="mb-6 text-sm text-text-secondary">
+      <p className="mb-6 text-sm text-td-ink-muted">
         Support cases you created. Only cases you personally created are shown here.
       </p>
 
       <div className="mb-4 flex flex-wrap gap-3">
         <div className="w-48">
-          <label htmlFor="status-filter" className="mb-1.5 block text-sm font-medium text-slate-800">
+          <label htmlFor="status-filter" className="mb-1.5 block text-sm font-medium text-td-ink">
             Status
           </label>
           <select
@@ -134,7 +134,7 @@ export function SupportCasesListPage() {
           </select>
         </div>
         <div className="w-56">
-          <label htmlFor="category-filter" className="mb-1.5 block text-sm font-medium text-slate-800">
+          <label htmlFor="category-filter" className="mb-1.5 block text-sm font-medium text-td-ink">
             Category
           </label>
           <select
@@ -165,7 +165,7 @@ export function SupportCasesListPage() {
                 key: 'referenceNumber',
                 header: 'Case',
                 render: (row) => (
-                  <Link className="text-primary hover:underline" to={`/call-centre/cases/${row.id}`}>
+                  <Link className="text-td-link hover:underline" to={`/call-centre/cases/${row.id}`}>
                     {String(row.referenceNumber)}
                   </Link>
                 ),
@@ -238,10 +238,10 @@ export function CreateSupportCasePage() {
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title="New support case" size="md" className="mb-2" />
-      <p className="mb-6 text-sm text-text-secondary">
+      <p className="mb-6 text-sm text-td-ink-muted">
         Open a case against a customer account you have already looked up. Look up the customer first if you
         don't have their account ID —{' '}
-        <Link className="text-primary hover:underline" to="/call-centre/lookup">
+        <Link className="text-td-link hover:underline" to="/call-centre/lookup">
           go to customer lookup
         </Link>
         .
@@ -259,9 +259,9 @@ export function CreateSupportCasePage() {
         />
 
         <div>
-          <label htmlFor="category" className="mb-1.5 block text-sm font-medium text-slate-800">
+          <label htmlFor="category" className="mb-1.5 block text-sm font-medium text-td-ink">
             Category
-            <span className="ml-0.5 text-red-600" aria-hidden="true">
+            <span className="ml-0.5 text-td-danger" aria-hidden="true">
               *
             </span>
           </label>
@@ -327,7 +327,7 @@ function StatusUpdateControl({
 
   if (availableTransitions.length === 0) {
     return (
-      <p className="text-sm text-text-secondary">
+      <p className="text-sm text-td-ink-muted">
         {supportCase.status === 'closed'
           ? 'This case is closed — no further status changes are available.'
           : supportCase.status === 'escalated'
@@ -367,7 +367,7 @@ function StatusUpdateControl({
   return (
     <form className="space-y-3" onSubmit={(e) => void onSubmit(e)}>
       <div className="w-56">
-        <label htmlFor="next-status" className="mb-1.5 block text-sm font-medium text-slate-800">
+        <label htmlFor="next-status" className="mb-1.5 block text-sm font-medium text-td-ink">
           Update status to
         </label>
         <select
@@ -499,15 +499,15 @@ export function SupportCaseDetailPage({ caseId }: { caseId: string }) {
           ]}
         />
         <div className="mt-4">
-          <h2 className="mb-1 text-sm font-semibold text-text-primary">Description</h2>
-          <p className="text-sm text-text-secondary">{supportCase.description}</p>
+          <h2 className="mb-1 text-sm font-semibold text-td-ink">Description</h2>
+          <p className="text-sm text-td-ink-muted">{supportCase.description}</p>
         </div>
       </Card>
 
       <Card padding="lg">
         <SectionHeading as="h2" title="Update status" size="md" className="mb-3" />
         <StatusUpdateControl supportCase={supportCase} onUpdated={setSupportCase} />
-        <p className="mt-4 text-xs text-text-secondary">
+        <p className="mt-4 text-xs text-td-ink-muted">
           Escalation to a recovery case is not yet available from this dashboard.
         </p>
       </Card>
@@ -515,16 +515,16 @@ export function SupportCaseDetailPage({ caseId }: { caseId: string }) {
       <Card padding="lg">
         <SectionHeading as="h2" title="Notes" size="md" className="mb-3" />
         {supportCase.notes.length > 0 ? (
-          <ul className="mb-4 space-y-3 text-sm text-text-secondary">
+          <ul className="mb-4 space-y-3 text-sm text-td-ink-muted">
             {supportCase.notes.map((note, idx) => (
-              <li key={`${note.createdAt}-${idx}`} className="rounded-lg border border-border bg-background p-3">
-                <span className="block text-xs text-text-secondary">{new Date(note.createdAt).toLocaleString()}</span>
+              <li key={`${note.createdAt}-${idx}`} className="rounded-lg border border-td-border-subtle bg-td-bg-page p-3">
+                <span className="block text-xs text-td-ink-muted">{new Date(note.createdAt).toLocaleString()}</span>
                 {note.text}
               </li>
             ))}
           </ul>
         ) : (
-          <p className="mb-4 text-sm text-text-secondary">No notes yet.</p>
+          <p className="mb-4 text-sm text-td-ink-muted">No notes yet.</p>
         )}
         <AddNoteForm
           caseId={supportCase.id}
