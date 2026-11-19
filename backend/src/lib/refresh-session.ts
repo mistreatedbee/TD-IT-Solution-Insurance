@@ -52,6 +52,8 @@ export interface SessionRecord {
   revokedReason: SessionRevokedReason | null;
   replacedBySessionId: string | null;
   mfaVerifiedAt: Date | null;
+  /** ADR-0020 section 9 A-1 (migrations/041). Written only by touchPasswordReauthAt. */
+  passwordReauthAt: Date | null;
 }
 
 export interface NewSessionInput {
@@ -77,6 +79,8 @@ export interface SessionRepo {
     expiresAt: Date;
     absoluteExpiresAt: Date;
     mfaVerifiedAt: Date | null;
+    /** Only a refresh rotation sets this (copy-forward, P-INV-2); new logins omit it. */
+    passwordReauthAt?: Date | null;
   }): Promise<SessionRecord>;
   findByRefreshTokenHash(hash: string): Promise<SessionRecord | null>;
   findById(id: string): Promise<SessionRecord | null>;
@@ -100,6 +104,13 @@ export interface SessionRepo {
    * the caller is expected to have already checked `revokedAt` itself.
    */
   touchMfaVerifiedAt(id: string, at: Date): Promise<void>;
+  /**
+   * Feature 021 stage (b) spec section 2.2 step 7 / P-INV-1, P-INV-4 - writes
+   * `password_reauth_at` on the CURRENT session row ONLY. The sole writer of that column
+   * apart from a refresh copy-forward. Never touches `mfa_verified_at`, `expires_at` or
+   * `absolute_expires_at`; no-ops on a revoked session.
+   */
+  touchPasswordReauthAt(id: string, at: Date): Promise<void>;
   /**
    * INC-003 A-10/A-23 — the account's revocation watermark: the latest of
    * (a) any `revoked_at` on this account's sessions whose reason is
@@ -257,6 +268,8 @@ export async function rotateRefreshToken(repo: SessionRepo, opts: RefreshOptions
     expiresAt: newExpiresAt,
     absoluteExpiresAt: session.absoluteExpiresAt, // carried forward verbatim, never extended
     mfaVerifiedAt: session.mfaVerifiedAt,
+    // P-INV-2: copied forward verbatim, never renewed by a refresh.
+    passwordReauthAt: session.passwordReauthAt ?? null,
   });
 
   await repo.revokeAndReplace(session.id, 'rotated', newSession.id);

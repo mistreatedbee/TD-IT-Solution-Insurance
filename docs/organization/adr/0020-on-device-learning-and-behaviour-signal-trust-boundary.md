@@ -126,3 +126,89 @@ The app usually cannot read whether quick settings are off, the passcode is long
 
 Same as §6: no flag, no ingestion, no code, no native module, no permission string, no Stage 8 or compliance conclusion. Next-of-kin sharing is a separate trust boundary and is in ADR-0021.
 
+---
+
+## 9. cybersecurity-architect review of D4 (2026-11-17)
+
+Appended by `cybersecurity-architect`. Sections 1–8 are unchanged. This covers **D4 only**. It is not a review of D1–D3 or D5–D10, not a Stage 8 sign-off, and not a compliance ruling. It authorizes no flag. `LOCATION_INGESTION_ENABLED` stays off and Release Gate A is not widened.
+
+### 9.1 Verdict: **concur with amendments**
+
+The core of D4 is right, and I concur with it: a protection change needs a credential the **server** checks, read live from the session row (ADR-0012 INV-3), and the on-device biometric is only a UX layer, because the server cannot verify it. Stage (b) engineering may start against [`03-stage-b-step-up-spec.md`](../../features/021-theft-protection-signals/03-stage-b-step-up-spec.md). **Nothing from stage (b) merges to `main` until `cto` ratifies this ADR with the amendments below and the stage passes its own Stage 8.**
+
+### 9.2 What I checked in code (2026-11-17, branch `feat/mobile-assets-redesign`)
+
+- `backend/src/lib/step-up.ts`: `requireStepUp` reads `ctx.sessions.findById` live, fails closed on a revoked or missing session, and checks only `mfaVerifiedAt`. `STEP_UP_ACTIONS` has five admin rows and no customer rows.
+- `backend/src/routes/step-up.ts`: the TOTP challenge/verify flow is generic. Nothing in it is admin-only, so customers who have enrolled MFA can reuse it as it stands. With no factor it returns `MFA_NOT_ENROLLED`. It does not fall back to a password.
+- `backend/src/lib/policy.ts:200`: `INVITATION_ISSUANCE_STEP_UP_WINDOW_SECONDS = 15 * 60` is the only window defined.
+- Customers authenticate with a password through Supabase (`ctx.supabase.verifyPassword`, `routes/auth.ts:729`). MFA is optional for them (`mfaRequired` is set only for privileged types). `supabase/config.toml` enables no external OAuth provider.
+- Routes D4 touches: `DELETE /v1/assets/:assetId` exists and has no step-up. Emergency contact is a field on `PATCH /v1/account/profile` and has no step-up. `DELETE /v1/assets/:assetId/location` is the **POPIA s18 consent-withdrawal and history-purge** route (INC-002 §9.6 C-5). **There is no tracker-unlink route** and no "protection off" toggle route.
+- `auth-notification-service.ts`: security emails respect `channels.account.email`, which the customer can switch off through `PATCH /v1/notifications/preferences`. That route has no step-up.
+
+### 9.3 Amendments (A-1 to A-3 block merge; A-4 to A-8 are conditions)
+
+**A-1 (blocking): D4 conflicts with ratified ADR-0012, so the password path is an explicit, scoped exception.** ADR-0012 §3 (Tier A-reserved note), §4.3 and §8.4 say password re-entry is not an acceptable step-up, and that applies to customer Tier A actions too. I wrote that rule for a different threat: remote session theft or credential compromise against privileged accounts. Here the main threat is a thief who has the unlocked phone and its live session but usually not the password, and against that threat a fresh password check adds real protection. I therefore accept password re-entry **only** for the D4 protection-change class, **only** for customer accounts with no verified TOTP factor, and only under all of these constraints:
+- (a) A password check **never writes `mfa_verified_at`**, because that would break ADR-0012 INV-1. It writes a separate session column, `password_reauth_at`. Neither ADR-0012 Tier A actions nor ADR-0012 Tier A-reserved actions may ever accept it.
+- (b) If the account has a verified TOTP factor, the password path is refused. This prevents a downgrade.
+- (c) Its window is short (A-4).
+- (d) It carries residual risk RR-D4-1 (§9.4).
+
+Upon ratification, `cto` must add a cross-reference section to ADR-0012 recording this exception, so the two ADRs do not contradict each other in the tree.
+
+**A-2 (blocking): stage (b) must not gate `DELETE /v1/assets/:assetId/location`.** That route is the customer's POPIA s18 withdrawal right, and INC-002 C-5 requires withdrawal to always succeed. Adding friction to it is a compliance decision, not mine. My proposal to `compliance-specialist`:
+- Stopping collection stays immediate and ungated, as it is today. Gating it would gain nothing anyway, because a thief can simply switch location off on the phone.
+- Only the **irreversible history purge** gets protection. It needs a fresh re-authentication, or else it is deferred and the customer is told, and it is held while an open recovery case references the asset (possible evidence-preservation ground).
+
+Until `compliance-specialist` rules, the route stays exactly as it is.
+
+**A-3 (blocking): protection-change notices cannot be suppressed.** Otherwise a thief switches off account email first and then makes changes unseen. The notice for each change goes by email through Resend regardless of `channels.account.email`, following the SDL-9 pattern. Production Resend delivery is still owner-pending. That is a launch dependency, not a reason to skip the notice.
+
+**A-4: window.** `PROTECTION_CHANGE_STEP_UP_WINDOW_SECONDS = 5 * 60`, for both the MFA and the password path, defined in `policy.ts`. 15 minutes is too long a ride-along budget for a snatch theft that happens while the app is open.
+
+**A-5: D3 correction.** Only a **"Yes, it was me"** reply needs step-up, because only "yes" lowers protection. "No", and silence, must never need step-up. Escalating should cost nothing, and a false "no" costs only a staff look.
+
+**A-6: structural guard.** Removing an asset, and any future tracker unlink, is refused while an open recovery case or claim references that asset, whatever the step-up state. A thief must not be able to make a reported-stolen asset disappear.
+
+**A-7: the biometric limits in spec §8 are binding.** No request field may carry a biometric result. The client may not store the password behind a biometric. Adding `expo-local-authentication` is `mobile-architect`'s decision, and this ADR does not authorize it (§6).
+
+**A-8: merge constraint (same as ADR-0012 §9.5).** Server-side enforcement ships together with the mobile and web `STEP_UP_REQUIRED` interstitials, because Render deploys `main` directly.
+
+### 9.4 Residual risks (for `cto` acceptance; none is accepted silently)
+
+| ID | Risk | Bounded by | Owner |
+|---|---|---|---|
+| RR-D4-1 | Thief knows the phone passcode and gets the password through password-manager autofill, or resets it from the mail app on the same phone | 5-min window, notices that cannot be suppressed, A-6, lockout that revokes the session (spec §7) | `cybersecurity-architect` |
+| RR-D4-2 | A TOTP authenticator on the same stolen phone gives the thief the "MFA" factor too | Same as RR-D4-1; MFA here proves possession of the phone, not a second device | `cybersecurity-architect` |
+| RR-D4-3 | The thief acts in the seconds before any protection reacts; the notice is after the fact | Audit plus notice; D4 records and limits this, it does not prevent it | `cybersecurity-architect` |
+| RR-D4-4 | No power-off blocker exists; switching the phone off defeats every phone-side layer | D5, D7 (hardware tracker), honest wording | `product-manager` (copy) |
+
+### 9.5 Revisit triggers
+
+Revisit if any of these happen:
+- an ATO incident shows the password path was defeated;
+- an email-change or password-change-while-signed-in route is added (each must be gated and must notify the old address);
+- passkeys or a device-bound key released by biometric are adopted, which would let the biometric become a real control under a new ADR;
+- a customer Tier A action from ADR-0012 ships.
+
+
+---
+
+## 10. `cto` ratification (2026-11-17) — conditional
+
+Appended by `cto`, acting under the owner's instruction to act as `cto` on this feature. Sections 1–9 are unchanged.
+
+**Ratified, as amended by §9:** D4 (server-checked step-up for protection changes, with the narrow password re-authentication exception for customers without a TOTP factor), D2 (a score advises a human and never acts), D3 (the "Was this you?" reply needs the same step-up; only a "yes" needs it), D5 (phone signals are best effort and never load-bearing; there is no power-off blocker), D9 (no covert camera or microphone), D10 (the theft-hardening score is self-attested). The four residual risks RR-D4-1 to RR-D4-4 in §9 are **accepted** by `cto`.
+
+**Ratified as direction only, not yet buildable:** D1 (known places learned on the phone), D6 (background sensing is not decided here), D7 (hardware tracker stays vendor-agnostic) and D8 (hashed network and charger signals). Each still needs the compliance rulings listed in the routing request and, for anything that touches location, closure of INC-001.
+
+**Conditions on this ratification (none reopens the decision):**
+1. **Not a Stage 8 sign-off, QA sign-off or compliance ruling.** Stage 8 and Stage 10 remain hard gates for every stage. `compliance-specialist`'s concurrence is still outstanding and is a condition on D1, D2 and D8, not discharged here.
+2. **Server and client ship together.** The server guard (backend PR) and the mobile re-authentication prompts must be deployed in the same release; Render deploys `main` directly, so the guard must not reach production alone.
+3. **Production Resend delivery must be live before release.** Protection-change notices are a launch dependency, and the sender is still an owner action.
+4. **Migration 041** (`password_reauth_at`, `protection_detail`, new audit event types) needs `database-architect` review before it is applied anywhere.
+5. **`authentication-engineer`** must confirm that the GoTrue session created by the password check is handled as at login, and that exhausting the lockout revokes only the current session.
+6. **`cybersecurity-architect`** to confirm the amendments recorded in §9 (A-1 to A-4) are implemented as written, at Stage 8.
+7. The consent-withdrawal route (`DELETE /assets/:id/location`) stays ungated until `compliance-specialist` rules on the s18 point in §9.
+8. Ratification does not widen Release Gate A, enable `LOCATION_INGESTION_ENABLED`, or authorise any flag change.
+
+The owner remains free to overrule any part of this ratification.

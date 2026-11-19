@@ -18,6 +18,9 @@ import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { resolveMfaStatusCached } from '../lib/mfa-enrollment.js';
 import { syncAccountAlerts } from '../lib/sync-account-alerts.js';
+import { assertProtectionStepUp } from '../lib/step-up.js';
+import { recordProtectionChange } from '../lib/protection-change.js';
+import { maskPhoneLast3 } from '../lib/domain-email-templates.js';
 
 async function loadProfileExtras(ctx: AppContext, accountId: string, mfaEnrolled: boolean) {
   const status = await ctx.accounts.getAccountStatus(accountId);
@@ -94,6 +97,20 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
         const body = req.body as ReturnType<typeof updateCustomerProfileBodySchema.parse>;
         const patch: Parameters<typeof ctx.customerProfiles.updateForAccount>[1] = {};
 
+        // Feature 021 stage (b) G-2: step-up applies ONLY when the emergency contact actually
+        // changes, and is checked BEFORE any write in this handler (including updatePhone).
+        let protectionMethod: 'mfa' | 'password' | null = null;
+        if (body.emergencyContact !== undefined) {
+          const stored = (await ctx.customerProfiles.getOrCreateForAccount(accountId)).emergencyContact;
+          const next_ = body.emergencyContact;
+          const changed =
+            !stored ||
+            stored.name !== next_.name ||
+            stored.relationship !== next_.relationship ||
+            stored.phone !== next_.phone;
+          if (changed) protectionMethod = await assertProtectionStepUp(ctx, req);
+        }
+
         if (body.firstName !== undefined) patch.firstName = body.firstName;
         if (body.middleName !== undefined) patch.middleName = body.middleName;
         if (body.lastName !== undefined) patch.lastName = body.lastName;
@@ -132,6 +149,13 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
             return;
           }
           throw err;
+        }
+        if (protectionMethod && body.emergencyContact) {
+          await recordProtectionChange(ctx, req, {
+            action: 'emergency_contact_changed',
+            method: protectionMethod,
+            contactPhoneMasked: maskPhoneLast3(body.emergencyContact.phone),
+          });
         }
         const refreshedAccount = await ctx.accounts.findById(accountId);
         if (!refreshedAccount) {

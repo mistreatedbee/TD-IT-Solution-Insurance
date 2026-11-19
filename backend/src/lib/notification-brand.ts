@@ -21,7 +21,8 @@ export type PushNotificationCategory =
   | 'account'
   | 'claims'
   | 'general'
-  | 'marketing';
+  | 'marketing'
+  | 'safety_alerts';
 
 export type PushTemplateId =
   | 'recovery.case.created'
@@ -45,7 +46,8 @@ export type PushTemplateId =
   | 'general.welcome'
   | 'onboarding.incomplete'
   | 'policy.activated'
-  | 'policy.renewal.upcoming';
+  | 'policy.renewal.upcoming'
+  | 'safety.alert';
 
 export interface PushTemplateVariables {
   assetName?: string;
@@ -501,6 +503,24 @@ export function buildBrandedPushMessage(
           logoUrl: NOTIFICATION_BRAND.logoUrl,
           ...(variables.planName ? { planName: variables.planName } : {}),
           ...(variables.policyId ? { policyId: variables.policyId, deepLink: deepLink(`policy/${variables.policyId}`) } : {}),
+        },
+      };
+    case 'safety.alert':
+      // Feature 021 stage (c): title/body are built by safety-alert-copy.ts (fixed wording, no
+      // location, no verdict). Passed through `statusLabel` / `message`.
+      return {
+        eventId: templateId,
+        title: variables.statusLabel ?? 'Safety alert',
+        body: variables.message ?? 'Open the app for details.',
+        subtitle,
+        category: 'safety_alerts',
+        deepLink: variables.assetId ? deepLink(`asset/${variables.assetId}`) : deepLink('alerts'),
+        priority: 'high',
+        data: {
+          event: templateId,
+          brand: NOTIFICATION_BRAND.name,
+          logoUrl: NOTIFICATION_BRAND.logoUrl,
+          ...(variables.assetId ? { assetId: variables.assetId } : {}),
         },
       };
     default: {

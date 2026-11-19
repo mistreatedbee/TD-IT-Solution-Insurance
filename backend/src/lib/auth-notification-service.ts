@@ -11,6 +11,8 @@ import {
   buildMfaEnabledEmail,
   buildNewDeviceLoginEmail,
   buildPasswordChangedEmail,
+  buildProtectionChangedEmail,
+  type ProtectionChangeNoticeAction,
   buildPushTokenReregisteredAlertEmail,
   buildSignupAccountExistsEmail,
 } from './domain-email-templates.js';
@@ -34,6 +36,19 @@ export interface AuthNotificationService {
    * quarantined (`isNewTakeoverClaim` on `RegisterPushTokenResult`), never
    * on every subsequent re-registration during the cooldown. */
   notifyPushTokenReregisteredElsewhere(params: { accountId: string }): Promise<void>;
+  /** Feature 021 stage (b) spec section 5 / ADR-0020 A-3. A security notice: sent via Resend
+   * REGARDLESS of `channels.account.email` (it cannot be suppressed). Rejects if the email
+   * could not be sent (including Resend not configured) so the caller can audit
+   * `protection_change_notice_failed` - never a silent skip. Content never contains
+   * coordinates, an address, a contact name or more than the last 3 phone digits. */
+  notifyProtectionChanged(params: {
+    accountId: string;
+    action: ProtectionChangeNoticeAction;
+    assetDisplayName?: string | null;
+    contactPhoneMasked?: string | null;
+    deviceName: string | null;
+    at: Date;
+  }): Promise<void>;
 }
 
 function isEmailEnabled(
@@ -160,6 +175,21 @@ export function createAuthNotificationService(deps: {
 
       const email = buildPushTokenReregisteredAlertEmail();
       await sendResendEmail(deps.env, { to: account.email, subject: email.subject, html: email.html });
+    },
+
+    async notifyProtectionChanged({ accountId, action, assetDisplayName, contactPhoneMasked, deviceName, at }) {
+      const account = await deps.accounts.findById(accountId);
+      if (!account) throw new Error('[notifyProtectionChanged] account not found');
+      if (!isResendConfigured(deps.env)) throw new Error('[notifyProtectionChanged] email delivery not configured');
+      const email = buildProtectionChangedEmail({
+        action,
+        assetDisplayName,
+        contactPhoneMasked,
+        deviceName: deviceName ?? 'Unknown device',
+        at,
+      });
+      const sent = await sendResendEmail(deps.env, { to: account.email, subject: email.subject, html: email.html });
+      if (!sent) throw new Error('[notifyProtectionChanged] email not sent');
     },
 
     async notifyEmailAlreadyVerified({ accountId, email }) {

@@ -665,3 +665,77 @@ export function buildRecoveryCaseClosedEmail(params: {
     }),
   };
 }
+
+/** Feature 021 stage (b) spec section 5 / ADR-0020 A-3: out-of-band notice on a protection
+ * change. A security notice - sent regardless of the customer's email preference. Content is
+ * deliberately minimal: what changed, when, which device. NEVER coordinates, an address, the
+ * contact's name, or more than the last 3 digits of the contact's phone. */
+export type ProtectionChangeNoticeAction = 'asset_removed' | 'emergency_contact_changed' | 'reauth_exhausted';
+
+export function maskPhoneLast3(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  return digits.length <= 3 ? '***' : `***${digits.slice(-3)}`;
+}
+
+export function buildProtectionChangedEmail(params: {
+  action: ProtectionChangeNoticeAction;
+  assetDisplayName?: string | null;
+  contactPhoneMasked?: string | null;
+  deviceName: string;
+  at: Date;
+}): { subject: string; html: string; preheader: string } {
+  const when = params.at.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
+  const device = escapeHtml(params.deviceName);
+  let what: string;
+  let title: string;
+  switch (params.action) {
+    case 'asset_removed':
+      title = 'Asset removed from your protection';
+      what = `<strong>${escapeHtml(params.assetDisplayName ?? 'An asset')}</strong> was removed from your protection plan.`;
+      break;
+    case 'emergency_contact_changed':
+      title = 'Emergency contact changed';
+      what = `Your emergency contact was changed${
+        params.contactPhoneMasked ? ` (new number ending ${escapeHtml(params.contactPhoneMasked)})` : ''
+      }.`;
+      break;
+    default:
+      title = 'Too many incorrect password attempts';
+      what =
+        'Someone entered an incorrect password too many times while confirming a protection change. We signed that device out.';
+  }
+  const preheader = title;
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">${what}</p>
+  <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#6B6156;">When: ${escapeHtml(when)}<br/>Device: ${device}</p>
+  <p style="margin:0;font-size:16px;line-height:1.6;color:#1C1917;">Not you? Reset your password and contact support.</p>`;
+  return {
+    preheader,
+    subject: `${title} - ${NOTIFICATION_BRAND.name}`,
+    html: wrapBrandedEmail({ preheader, title, bodyHtml, ctaLabel: 'Contact support', ctaUrl: `${NOTIFICATION_BRAND.siteUrl}` }),
+  };
+}
+
+/** Feature 021 stage (c) - safety alert email. Wording comes from safety-alert-copy.ts (no location, no verdict). */
+export function buildSafetyAlertEmail(params: {
+  title: string;
+  paragraphs: string[];
+}): { subject: string; html: string; preheader: string } {
+  const preheader = params.paragraphs[0] ?? params.title;
+  const bodyHtml = params.paragraphs
+    .map(
+      (p) =>
+        `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#1C1917;">${escapeHtml(p)}</p>`,
+    )
+    .join('');
+  return {
+    preheader,
+    subject: `${params.title} — ${NOTIFICATION_BRAND.name}`,
+    html: wrapBrandedEmail({
+      preheader,
+      title: params.title,
+      bodyHtml,
+      ctaLabel: 'Open the app',
+      ctaUrl: `${NOTIFICATION_BRAND.siteUrl}`,
+    }),
+  };
+}

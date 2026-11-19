@@ -131,6 +131,8 @@ function mapApiErrorByCode(
       return 'Complete this action on the device you used to sign in.';
     case 'STEP_UP_REQUIRED':
       return 'Please verify your identity again before continuing.';
+    case 'MFA_STEP_UP_REQUIRED':
+      return 'Please confirm with your authenticator code instead.';
     default:
       if (looksUserFacing(message)) return message;
       if (status === 404) return CONTEXT_FALLBACK[context];

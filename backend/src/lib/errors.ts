@@ -98,6 +98,13 @@ export const ERROR_CATALOG = {
   // account that has no verified TOTP factor on file; there is no session to
   // step up from a factor that was never enrolled.
   MFA_NOT_ENROLLED: { statusCode: 409, message: 'Multi-factor authentication is not enrolled on this account.' },
+  // Feature 021 stage (b) spec §4 — the password re-authentication route refuses an
+  // account that has a verified TOTP factor (anti-downgrade): the client must use the
+  // TOTP step-up flow instead.
+  MFA_STEP_UP_REQUIRED: {
+    statusCode: 409,
+    message: 'Please confirm with your authenticator code instead.',
+  },
   UPSTREAM_UNAVAILABLE: {
     statusCode: 503,
     message: 'The service is temporarily unavailable. Please try again shortly.',

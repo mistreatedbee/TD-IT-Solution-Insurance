@@ -544,3 +544,9 @@ follow-up can be considered closed:
 - **C-4** (detection rule on `mfa_step_up_failed` bursts) and **C-5** (compliance-specialist
   confirmation of audit event types) remain open from §8.3 and are unaffected by this SU-FU-1 change —
   they were never scoped to it and still need their own owners to close them.
+
+---
+
+## Addendum (2026-11-17, `cto`): customer protection-change exception — cross-reference only
+
+Appended by `cto`. Nothing above is changed. ADR-0012 §3, §4.3 and §8.4 treat password re-entry as **not** an acceptable step-up. [ADR-0020](0020-on-device-learning-and-behaviour-signal-trust-boundary.md) §9 (A-1) and §10 record a **narrow exception** for one case only: customer accounts with **no verified TOTP factor**, for the protection-change actions listed there. It uses a separate session timestamp (`password_reauth_at`), never writes `mfa_verified_at`, is never accepted by the admin `requireStepUp`, and is refused when TOTP is enrolled. Privileged accounts and every action governed by this ADR are unaffected. ADR-0012's invariants INV-1 to INV-3 still hold for `mfa_verified_at`.

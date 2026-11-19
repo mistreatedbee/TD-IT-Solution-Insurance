@@ -770,6 +770,21 @@ export function createRecoveryCasesRepo(db: Db) {
       return rows.map(toCase);
     },
 
+    /**
+     * Feature 021 stage (b) spec G-1 / ADR-0020 s9 A-6 - any NON-terminal recovery case
+     * (anything but 'recovered'/'closed') the account has on this asset. Used to refuse
+     * removing an asset (and, later, unlinking its tracker) while a case is open. Scoped by
+     * accountId AND assetId; callers must not reveal which kind of record blocked the action.
+     */
+    async findOpenByAssetForAccount(accountId: string, assetId: string): Promise<RecoveryCaseDocument | null> {
+      const row = await collection().findOne({
+        accountId,
+        assetId,
+        status: { $nin: ['recovered', 'closed'] },
+      });
+      return row ? toCase(row) : null;
+    },
+
     async findByIdForAccount(accountId: string, caseId: string): Promise<RecoveryCaseDocument | null> {
       if (!ObjectId.isValid(caseId)) return null;
       const row = await collection().findOne({ _id: new ObjectId(caseId), accountId });

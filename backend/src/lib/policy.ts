@@ -207,6 +207,35 @@ export const MFA_CHALLENGE_TOKEN_TTL_SECONDS = 5 * 60;
  * POST /v1/invitations requires mfa_verified_at within this window. */
 export const INVITATION_ISSUANCE_STEP_UP_WINDOW_SECONDS = 15 * 60;
 
+/** ADR-0020 D4 / §9 A-4: customer protection-change step-up freshness.
+ * Applies to both mfa_verified_at and password_reauth_at. Shorter than the
+ * 15-min admin window: the main threat is a snatch theft with the app open. */
+export const PROTECTION_CHANGE_STEP_UP_WINDOW_SECONDS = 5 * 60;
+
+/** Feature 021 stage (b) spec §7: password re-authentication attempts for a
+ * protection change. Counted per account AND per session, SEPARATELY from
+ * LOGIN_LOCKOUT so a thief hammering the sheet cannot lock the owner out of
+ * logging in elsewhere. Exhaustion revokes the CURRENT session only. The
+ * per-IP ceiling reuses LOGIN_LOCKOUT.perIp*. Loosening needs
+ * cybersecurity-architect counter-signature. */
+export const PROTECTION_REAUTH_LIMIT = {
+  attempts: 5,
+  windowSeconds: 15 * 60,
+} as const;
+
+/**
+ * Feature 021 stage (c) - safety-alert channel dispatch and went-dark rules (TP-14, TP-03).
+ * Starting values for product/compliance review; tunable without a code-path change.
+ */
+export const SAFETY_ALERT_DEDUPE_WINDOW_SECONDS = 6 * 60 * 60; // one alert per account+type+device per 6h
+export const SAFETY_ALERT_ACCOUNT_RATE_LIMIT = { attempts: 6, windowSeconds: 24 * 60 * 60 } as const; // per account+type per day
+
+export const WENT_DARK_DEFAULT_EXPECTED_INTERVAL_SECONDS = 15 * 60; // when the tracker reports none
+export const WENT_DARK_GRACE_SECONDS = 10 * 60; // tolerance on top of the expected interval
+// Silent beyond interval + grace -> 'quiet'. Silent beyond N intervals + grace -> 'lost_contact'.
+export const WENT_DARK_LOST_CONTACT_AFTER_INTERVALS = 12;
+export const WENT_DARK_MOVING_ESCALATION_FACTOR = 0.5; // last state 'moving': lost-contact threshold halved, priority high
+
 export const PRIVILEGED_USER_TYPES = ['admin', 'security_company_operator', 'support_agent'] as const;
 export type PrivilegedUserType = (typeof PRIVILEGED_USER_TYPES)[number];
 
