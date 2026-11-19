@@ -16,3 +16,11 @@ export function nativeMapsAvailable(): boolean {
   }
   return true;
 }
+
+/**
+ * Whether to draw real OpenStreetMap tiles in a WebView (LeafletMapView) instead of the native map:
+ * Android builds without a Google Maps key. iOS keeps Apple Maps; web keeps the drawn map.
+ */
+export function webMapFallbackActive(): boolean {
+  return Platform.OS === 'android' && !nativeMapsAvailable();
+}

@@ -14,7 +14,8 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { nativeMapsAvailable } from '../../../lib/nativeMaps';
+import { LeafletMapView } from '../../../components/LeafletMapView';
+import { nativeMapsAvailable, webMapFallbackActive } from '../../../lib/nativeMaps';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -35,6 +36,9 @@ type Pt = { x: number; y: number };
 /** Real map tiles (Johannesburg, city scale) behind the animation. */
 const MAP_CENTER = { latitude: -26.2041, longitude: 28.0473 };
 const MAP_LAT_DELTA = 0.07;
+/** Roughly the same city scale for the OpenStreetMap background (Android without a Google key). */
+const WEB_MAP_ZOOM = 13;
+const USE_WEB_MAP = webMapFallbackActive();
 
 /** Car route in map-relative units (0..1), left to right, driven back and forth. */
 const ROUTE: Pt[] = [
@@ -396,6 +400,18 @@ export function ProtectionMapHero({
               userInterfaceStyle={isDark ? 'dark' : 'light'}
             />
           </MapBoundary>
+        ) : USE_WEB_MAP ? (
+          // Static, non-interactive background: the animated markers are drawn on top in RN
+          // (in map-relative units, not geo-positioned). Shows the drawn map until tiles load or if they cannot.
+          <LeafletMapView
+            style={StyleSheet.absoluteFill}
+            interactive={false}
+            fitToPins={false}
+            center={MAP_CENTER}
+            zoom={WEB_MAP_ZOOM}
+            fallback={drawnBackdrop}
+            testID="hero-leaflet-map"
+          />
         ) : (
           drawnBackdrop
         )}

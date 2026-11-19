@@ -1,6 +1,7 @@
 import React, { Component, useEffect, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import { nativeMapsAvailable } from '../../lib/nativeMaps';
+import { LeafletMapView, type LeafletPin } from '../../components/LeafletMapView';
+import { nativeMapsAvailable, webMapFallbackActive } from '../../lib/nativeMaps';
 import { useTheme } from '../../theme/ThemeProvider';
 import { colors, radius } from '../../theme/tokens';
 import { MapPlaceholder } from '../recovery/MapPlaceholder';
@@ -199,6 +200,50 @@ function NativeProtectionMap({
   );
 }
 
+/**
+ * Android without a Google Maps key: real OpenStreetMap tiles via Leaflet in a WebView.
+ * Falls back to the drawn map if the page or tiles cannot load. OSM has no satellite layer,
+ * so mapType is ignored here (the screen hides that toggle).
+ */
+function WebProtectionMap({
+  pins,
+  selectedId,
+  onSelectPin,
+  onMapPress,
+  height,
+  fullScreen,
+  trailCoordinates,
+  mapEdgePadding,
+  fallback,
+}: ProtectionMapViewProps & { fallback: React.ReactNode }) {
+  const leafletPins = useMemo<LeafletPin[]>(
+    () =>
+      pins.map((pin) => ({
+        id: pin.id,
+        latitude: pin.latitude,
+        longitude: pin.longitude,
+        label: pin.title,
+      })),
+    [pins],
+  );
+  const edgePadding = useMemo(
+    () => mapEdgePadding ?? { top: 120, right: 48, bottom: 220, left: 48 },
+    [mapEdgePadding],
+  );
+  return (
+    <LeafletMapView
+      pins={leafletPins}
+      selectedId={selectedId ?? null}
+      onSelectPin={onSelectPin}
+      onMapPress={onMapPress}
+      trail={trailCoordinates}
+      edgePadding={edgePadding}
+      fallback={fallback}
+      style={[styles.wrap, fullScreen ? styles.wrapFull : null, height != null ? { height } : null]}
+    />
+  );
+}
+
 export function ProtectionMapView(props: ProtectionMapViewProps) {
   const {
     pins,
@@ -221,6 +266,19 @@ export function ProtectionMapView(props: ProtectionMapViewProps) {
 
   if (pins.length === 0 && !fullScreen && !showMapWhenEmpty) {
     return placeholder;
+  }
+
+  if (webMapFallbackActive()) {
+    return (
+      <MapRenderBoundary fallback={placeholder}>
+        <WebProtectionMap
+          {...props}
+          height={fullScreen ? undefined : height}
+          fullScreen={fullScreen}
+          fallback={placeholder}
+        />
+      </MapRenderBoundary>
+    );
   }
 
   return (
