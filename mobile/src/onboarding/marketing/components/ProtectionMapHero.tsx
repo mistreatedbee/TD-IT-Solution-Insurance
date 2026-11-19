@@ -14,6 +14,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { nativeMapsAvailable } from '../../../lib/nativeMaps';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -96,7 +97,7 @@ export interface ProtectionMapHeroProps {
 }
 
 function loadMapView(): React.ComponentType<Record<string, unknown>> | null {
-  if (Platform.OS === 'web') return null;
+  if (!nativeMapsAvailable()) return null;
   try {
     return (
       require('react-native-maps') as {

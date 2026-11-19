@@ -1,5 +1,6 @@
 import React, { Component, useEffect, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { nativeMapsAvailable } from '../../lib/nativeMaps';
 import { useTheme } from '../../theme/ThemeProvider';
 import { colors, radius } from '../../theme/tokens';
 import { MapPlaceholder } from '../recovery/MapPlaceholder';
@@ -62,7 +63,7 @@ const DEFAULT_REGION: MapRegion = {
 };
 
 function loadMapsModule(): MapsModule | null {
-  if (Platform.OS === 'web') return null;
+  if (!nativeMapsAvailable()) return null;
   try {
     return require('react-native-maps') as MapsModule;
   } catch {
