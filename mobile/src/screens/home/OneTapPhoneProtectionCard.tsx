@@ -103,7 +103,7 @@ export function OneTapPhoneProtectionCard() {
           text: "We couldn't confirm this reached the server. Check your connection — if protection doesn't start, open the phone's asset screen and try again.",
         });
       } else {
-        setMessage({ tone: 'danger', text: mapUserFacingError(err, { context: 'location' }) });
+        setMessage({ tone: 'danger', text: mapUserFacingError(err, { context: 'location-report' }) });
       }
     } finally {
       setLoading(false);

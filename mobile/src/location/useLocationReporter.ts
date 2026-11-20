@@ -31,6 +31,7 @@ import {
   getForegroundLocationFix,
   getForegroundPermissionState,
 } from './requestForegroundLocation';
+import { recordLocationReportFailure, recordLocationReportSuccess } from './reportStatus';
 
 /** Periodic foreground report interval (owner-test only). */
 export const PERIODIC_REPORT_INTERVAL_MS = 2 * 60 * 1000;
@@ -69,6 +70,7 @@ let inFlight = false;
 
 export function markLocationSent(at: number = Date.now()): void {
   lastSentAtMs = at;
+  recordLocationReportSuccess(at);
 }
 
 export function getLastLocationSentAt(): number | null {
@@ -102,14 +104,20 @@ async function maybeReportForegroundLocation(triggeredBy: LocationTrigger): Prom
     const gate = await canReportLocation();
     if (!gate.ok) return gate.reason;
 
-    const fix = await getForegroundLocationFix();
-    await reportAssetLocation(gate.assetId, {
-      latitude: fix.latitude,
-      longitude: fix.longitude,
-      accuracyMeters: fix.accuracyMeters,
-      capturedAt: fix.capturedAt,
-      triggeredBy,
-    });
+    try {
+      const fix = await getForegroundLocationFix();
+      await reportAssetLocation(gate.assetId, {
+        latitude: fix.latitude,
+        longitude: fix.longitude,
+        accuracyMeters: fix.accuracyMeters,
+        capturedAt: fix.capturedAt,
+        triggeredBy,
+      });
+    } catch (err) {
+      // Surfaced to the user as a small status line (LocationReportStatusLine), not only logged.
+      recordLocationReportFailure(err);
+      throw err;
+    }
     markLocationSent();
     return 'sent';
   } finally {
