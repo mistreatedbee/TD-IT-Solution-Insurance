@@ -7,6 +7,7 @@ import { Button, Card, Input, SectionHeading } from '../../components';
 import { TdBackdrop } from '../../components/td';
 import { useDashboardAuth } from '../auth/DashboardAuthProvider';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { useOtpAutoSubmit } from '../../lib/useOtpAutoSubmit';
 import { InlineAlert } from './ui';
 import { MfaEnrollmentStep } from '../../invitations/MfaEnrollmentStep';
 
@@ -142,19 +143,30 @@ export function PrivilegedLoginPage({
     }
   }
 
-  async function onSubmitMfa(e: FormEvent) {
-    e.preventDefault();
+  async function verifyMfaCode(code: string) {
     if (!mfaToken) return;
     setError(null);
     setLoading(true);
     try {
-      await auth.completeMfa(mfaToken, mfaCode.trim());
+      await auth.completeMfa(mfaToken, code.trim());
       navigate(redirect, { replace: true });
     } catch (err) {
+      setMfaCode('');
       setError(mapUserFacingError(err, { context: 'mfa' }));
     } finally {
       setLoading(false);
     }
+  }
+
+  const { onCodeChange: onMfaCodeChange, submitCode: submitMfaCode } = useOtpAutoSubmit({
+    value: mfaCode,
+    setValue: setMfaCode,
+    submit: verifyMfaCode,
+  });
+
+  function onSubmitMfa(e: FormEvent) {
+    e.preventDefault();
+    void submitMfaCode(mfaCode);
   }
 
   return (
@@ -183,10 +195,9 @@ export function PrivilegedLoginPage({
               label="Authentication code"
               name="mfa-code"
               value={mfaCode}
-              onChange={(e) => setMfaCode(e.target.value)}
+              onChange={(e) => onMfaCodeChange(e.target.value)}
               inputMode="numeric"
               autoComplete="one-time-code"
-              maxLength={6}
             />
             <Button type="submit" fullWidth loading={loading}>
               Verify

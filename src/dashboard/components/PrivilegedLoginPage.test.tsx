@@ -102,7 +102,7 @@ describe('PrivilegedLoginPage — MFA enrollment recovery (Feature 017 P0 fix)',
     expect(screen.getByRole('heading', { name: 'Set up two-factor authentication' })).toBeInTheDocument();
 
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and finish' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(sessionStorage.getItem('td-admin-refresh-token')).toBe('refresh-1'));
     await waitFor(() => expect(screen.getByText('Admin home')).toBeInTheDocument());

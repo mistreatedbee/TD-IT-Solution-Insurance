@@ -23,6 +23,7 @@ import { Button, Card, Input, SectionHeading } from '../../components';
 import { InlineAlert } from '../../dashboard/components/ui';
 import { ApiError } from '../../dashboard/api/errors';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { useOtpAutoSubmit } from '../../lib/useOtpAutoSubmit';
 import {
   requestStepUpChallenge as defaultRequestStepUpChallenge,
   verifyStepUp as defaultVerifyStepUp,
@@ -84,13 +85,12 @@ export function StepUpDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function onSubmitCode(e: FormEvent) {
-    e.preventDefault();
+  async function verifyCode(value: string) {
     if (!challengeToken) return;
     setError(null);
     setPhase('verifying');
     try {
-      const result = await verify(challengeToken, code.trim());
+      const result = await verify(challengeToken, value.trim());
       onVerified(result);
     } catch (err) {
       setCode('');
@@ -110,6 +110,17 @@ export function StepUpDialog({
       setError(mapUserFacingError(err, { context: 'mfa' }));
       setPhase('awaiting-code');
     }
+  }
+
+  const { onCodeChange, submitCode } = useOtpAutoSubmit({
+    value: code,
+    setValue: setCode,
+    submit: verifyCode,
+  });
+
+  function onSubmitCode(e: FormEvent) {
+    e.preventDefault();
+    void submitCode(code);
   }
 
   return (
@@ -147,10 +158,9 @@ export function StepUpDialog({
               name="code"
               inputMode="numeric"
               autoComplete="one-time-code"
-              maxLength={6}
               required
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              onChange={(e) => onCodeChange(e.target.value)}
               disabled={phase === 'verifying'}
             />
             <Button type="submit" fullWidth loading={phase === 'verifying'}>

@@ -174,7 +174,7 @@ describe('CustomerResetPasswordPage (INC-003 F-3/F-4/F-6/F-7)', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: "Verify it's you" })).toBeInTheDocument());
 
     await user.type(codeInput(), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and finish' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText('Login page')).toBeInTheDocument());
     expect(signOutMock).not.toHaveBeenCalled();
@@ -206,7 +206,7 @@ describe('CustomerResetPasswordPage (INC-003 F-3/F-4/F-6/F-7)', () => {
 
     await waitFor(() => screen.getByRole('heading', { name: "Verify it's you" }));
     await user.type(codeInput(), '000000');
-    await user.click(screen.getByRole('button', { name: 'Verify and finish' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText(/Too many attempts/)).toBeInTheDocument());
     expect(screen.getByText(/15 minute/)).toBeInTheDocument();

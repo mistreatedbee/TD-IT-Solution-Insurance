@@ -43,4 +43,15 @@ describe('OtpInput', () => {
 
     expect(onComplete).not.toHaveBeenCalled();
   });
+
+  it('does not re-fire onComplete when the value is already complete', async () => {
+    const onComplete = jest.fn();
+    await render(
+      <OtpInput label="Code" value="123456" onChange={jest.fn()} onComplete={onComplete} />,
+    );
+
+    fireEvent.changeText(screen.getByLabelText('Code'), '123456');
+
+    expect(onComplete).not.toHaveBeenCalled();
+  });
 });
