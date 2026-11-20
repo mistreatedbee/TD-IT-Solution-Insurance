@@ -296,3 +296,30 @@ This aligns with the chair's **SIGN-OFF GRANTED WITH REQUIRED CHANGES** verdict.
 | `compliance-specialist` | **Concurrence required and not yet given** | — |
 
 **Signed:** `security-engineer`, 2026-08-12.
+
+
+---
+
+## Stage 8 review — admin asset counts (2026-11-20, cybersecurity-architect): PASS for owner-test
+
+_Filed by backend-engineer on cybersecurity-architect's behalf, copied verbatim from the reviewer's PR #41 notes. Scope: `GET /v1/admin/assets/counts` (PR #41). Owner-test phase only (no real users or data); this is not a launch review._
+
+- **Method:** I read the worktree source in `scratchpad/wt-counts`. I did not run `gh pr diff`, because this session had no shell. That means I reviewed the changed backend files as they stand at the branch head, not the diff hunks. I did not run any tests.
+- **Concurrence:** security-engineer and compliance-specialist must still sign off before Stage 8 is complete.
+
+### PR #41: GET /v1/admin/assets/counts. Verdict: PASS (owner-test)
+
+Sound:
+- **AuthZ:** `authenticate` then `requireUserType('admin')` (`backend/src/routes/admin-assets.ts:155-158`).
+- **Rate limits:** two limits, one per actor and one per IP (`:159-168`). Both use the list's limits.
+- **Input:** `accountId` is checked as a UUID by Zod (`:35-37`). The repository only ever builds `{accountId: <string>}` (`backend/src/repositories/assets.ts:189-190`), so there is no NoSQL operator injection.
+- **Response:** numbers only. It carries no IDs, names or asset fields.
+- **Audit:**
+  - The audit row is written before the response. If the audit write fails, the request returns 500 and no data is sent (fail-closed).
+  - A filtered call names the filtered account as the disclosed subject, and an unfiltered call names no subject (`:178-188`). This matches the `/admin/assets/count` precedent.
+
+Nits (no fix needed for owner-test):
+- **N41-1 Info:** `row._id in byAssetType` (`assets.ts:211`, and `:215` for status) also matches inherited keys such as `constructor`. Stored values are enum-validated when written, so this cannot be exploited. Use `Object.hasOwn`.
+- **N41-2 Info:** a filtered call works as a per-customer holdings lookup. It is audited and rate-limited, so the residual risk is accepted, the same as for the list route.
+
+**Remediation note (backend-engineer, 2026-11-20):** N41-1 fixed in PR #41 (`Object.hasOwn` replaces the `in` checks in `countsForAdmin`). N41-2 accepted as stated.

@@ -93,6 +93,7 @@ function createHarness(opts: {
   const bulkCalls: AdminAccessBulkDisclosureInput[] = [];
   const detailCalls: AdminAccessDetailInput[] = [];
   const stateChangeCalls: AdminAccessStateChangeInput[] = [];
+  const countsFilterCalls: Array<{ accountId?: string }> = [];
   const stored = new Map<string, AssetDocument>();
   for (const a of opts.assets ?? []) {
     stored.set(a.id, a);
@@ -151,6 +152,23 @@ function createHarness(opts: {
       async countActiveGlobal() {
         return [...stored.values()].filter((a) => a.status !== 'removed').length;
       },
+      async countsForAdmin(filters: { accountId?: string }) {
+        countsFilterCalls.push(filters);
+        const rows = [...stored.values()].filter((a) => !filters.accountId || a.accountId === filters.accountId);
+        const byAssetType: Record<string, number> = {};
+        const byStatus: Record<string, number> = { active: 0, inactive: 0, removed: 0 };
+        for (const r of rows) {
+          byAssetType[r.assetType] = (byAssetType[r.assetType] ?? 0) + 1;
+          byStatus[r.status] += 1;
+        }
+        return {
+          total: rows.length,
+          byAssetType,
+          byStatus,
+          legalHold: rows.filter((r) => r.legalHold).length,
+          gpsPaired: rows.filter((r) => r.gpsDeviceId).length,
+        };
+      },
       async markRemovedForAdmin(assetId: string) {
         const existing = stored.get(assetId);
         if (!existing || existing.status === 'removed') return null;
@@ -194,6 +212,7 @@ function createHarness(opts: {
     bulkCalls,
     detailCalls,
     stateChangeCalls,
+    countsFilterCalls,
     stored,
     token: adminToken(env, adminId, sessionId),
     async start() {
@@ -278,6 +297,98 @@ describe('routes/admin-assets', () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe('GET /admin/assets/counts (Assets page tiles)', () => {
+    const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+    const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+    function seed() {
+      return [
+        { ...sampleAsset(ACCOUNT_A, '507f1f77bcf86cd799439041'), assetType: 'laptop' as const },
+        { ...sampleAsset(ACCOUNT_A, '507f1f77bcf86cd799439042'), assetType: 'desktop' as const, legalHold: true },
+        { ...sampleAsset(ACCOUNT_B, '507f1f77bcf86cd799439043'), assetType: 'vehicle' as const, gpsDeviceId: 'dev-1', status: 'removed' as const },
+      ];
+    }
+
+    it('returns true counts with no PII and records a zero-resultCount disclosure naming no subject', async () => {
+      harness = createHarness({ assets: seed() });
+      await harness.start();
+      const res = await fetch(harness.url('/admin/assets/counts'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: Record<string, unknown> };
+      expect(body.data).toEqual({
+        total: 3,
+        byAssetType: { laptop: 1, desktop: 1, vehicle: 1 },
+        byStatus: { active: 2, inactive: 0, removed: 1 },
+        legalHold: 1,
+        gpsPaired: 1,
+      });
+      const raw = JSON.stringify(body);
+      expect(raw).not.toContain(ACCOUNT_A);
+      expect(raw).not.toContain('Work laptop');
+      expect(raw).not.toContain('SN123');
+
+      expect(harness.bulkCalls).toHaveLength(1);
+      expect(harness.bulkCalls[0]).toMatchObject({
+        disclosedAccountIds: [],
+        resultCount: 0,
+        resourceType: 'asset',
+        endpoint: 'GET /v1/admin/assets/counts',
+        actorAccountId: harness.adminId,
+      });
+    });
+
+    it('honours the accountId filter and audits that account as the disclosed subject', async () => {
+      harness = createHarness({ assets: seed() });
+      await harness.start();
+      const res = await fetch(harness.url(`/admin/assets/counts?accountId=${ACCOUNT_A}`), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { total: number; gpsPaired: number } };
+      expect(body.data.total).toBe(2);
+      expect(body.data.gpsPaired).toBe(0);
+      expect(harness.countsFilterCalls).toEqual([{ accountId: ACCOUNT_A }]);
+      expect(harness.bulkCalls[0]).toMatchObject({ disclosedAccountIds: [ACCOUNT_A], resultCount: 0 });
+    });
+
+    it('rejects a malformed accountId with 400 and does not query or audit', async () => {
+      harness = createHarness({ assets: seed() });
+      await harness.start();
+      const res = await fetch(harness.url('/admin/assets/counts?accountId=not-a-uuid'), {
+        headers: { authorization: `Bearer ${harness.token}` },
+      });
+      expect(res.status).toBe(400);
+      expect(harness.countsFilterCalls).toHaveLength(0);
+      expect(harness.bulkCalls).toHaveLength(0);
+    });
+
+    it('returns 403 for a non-admin caller and 401 without a token', async () => {
+      const env = fakeEnv();
+      const token = signAccessToken(
+        {
+          sub: randomUUID(),
+          user_type: 'customer',
+          mfa_required: false,
+          account_state: 'active',
+          partner_organization_id: null,
+          session_id: randomUUID(),
+        },
+        env.jwtSigningKeys,
+        env.jwtActiveKid,
+      ).token;
+      harness = createHarness({ assets: seed() });
+      await harness.start();
+      const forbidden = await fetch(harness.url('/admin/assets/counts'), {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(forbidden.status).toBe(403);
+      const anon = await fetch(harness.url('/admin/assets/counts'));
+      expect(anon.status).toBe(401);
+      expect(harness.countsFilterCalls).toHaveLength(0);
     });
   });
 

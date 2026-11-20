@@ -21,6 +21,7 @@ import { requireStepUp, STEP_UP_WINDOW_SECONDS } from '../lib/step-up.js';
 import { validateBody } from '../lib/validation.js';
 
 const ENDPOINT_LIST = 'GET /v1/admin/assets';
+const ENDPOINT_COUNTS = 'GET /v1/admin/assets/counts';
 const ENDPOINT_DETAIL = 'GET /v1/admin/assets/{assetId}';
 const ENDPOINT_STATUS = 'PATCH /v1/admin/assets/{assetId}';
 const ENDPOINT_LEGAL_HOLD = 'PATCH /v1/admin/assets/{assetId}/legal-hold';
@@ -29,6 +30,10 @@ const listFiltersSchema = z.object({
   accountId: z.string().uuid().optional(),
   status: z.enum(['active', 'inactive', 'removed']).optional(),
   assetType: z.enum(ASSET_TYPES).optional(),
+});
+
+const countsFiltersSchema = z.object({
+  accountId: z.string().uuid().optional(),
 });
 
 const assetIdParamsSchema = z.object({
@@ -135,6 +140,54 @@ export function createAdminAssetsRouter(ctx: AppContext): Router {
         });
 
         res.status(200).json({ data: { count } });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Admin Assets page tiles — true counts by assetType/status plus legal-hold and
+  // GPS-paired totals, one aggregation. Honours the list's optional accountId filter.
+  // The response is numbers only (no account IDs, names or asset fields), but an
+  // accountId-filtered call still reveals facts about that customer's holdings, so it
+  // is audited like /admin/assets/count (Trail B, resultCount 0) and names the filtered
+  // account as the disclosed subject; the unfiltered call discloses no subject.
+  router.get(
+    '/admin/assets/counts',
+    authenticate,
+    requireUserType('admin'),
+    createRateLimiter(
+      ctx.kv,
+      { attempts: ADMIN_REGISTRY_LIST_LIMIT.attempts, windowSeconds: ADMIN_REGISTRY_LIST_LIMIT.windowSeconds },
+      (req) => `admin-assets-counts:${req.auth!.accountId}`,
+    ),
+    createRateLimiter(
+      ctx.kv,
+      { attempts: ADMIN_REGISTRY_LIST_IP_LIMIT.attempts, windowSeconds: ADMIN_REGISTRY_LIST_IP_LIMIT.windowSeconds },
+      (req) => `admin-assets-counts:ip:${clientIp(req)}`,
+    ),
+    async (req, res, next) => {
+      try {
+        const parsed = countsFiltersSchema.safeParse(req.query);
+        if (!parsed.success) {
+          next(apiError('VALIDATION_ERROR', { details: parsed.error.issues.map((i) => i.message) }));
+          return;
+        }
+        const counts = await ctx.assets.countsForAdmin(parsed.data);
+
+        await ctx.adminAccessLog.recordBulkDisclosure({
+          disclosedAccountIds: parsed.data.accountId ? [parsed.data.accountId] : [],
+          actorAccountId: req.auth!.accountId,
+          actorSessionId: req.auth!.sessionId,
+          auditRequestId: req.auditRequestId ?? null,
+          resourceType: 'asset',
+          endpoint: ENDPOINT_COUNTS,
+          resultCount: 0,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+        });
+
+        res.status(200).json({ data: counts });
       } catch (err) {
         next(err);
       }

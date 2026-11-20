@@ -296,6 +296,18 @@
       }
     },
     {
+      "id": "backend-admin-assets-counts",
+      "kind": "backend_route",
+      "pattern": "/admin/assets/counts",
+      "feature": "004",
+      "stage8": {
+        "doc": "docs/features/004-policy-asset-management/security-review-admin-surface.md",
+        "verdict": "pass-owner-test-only-concurrence-pending",
+        "note": "2026-11-20 Stage 8 review by cybersecurity-architect filed as the appended section 'Stage 8 review — admin asset counts (2026-11-20, cybersecurity-architect): PASS for owner-test'. Distinct entry, NOT absorbed into the backend-admin group (SR-012-5 precedent). GET /v1/admin/assets/counts (backend/src/routes/admin-assets.ts): aggregate numbers only from one $facet aggregation (assets.countsForAdmin), optional accountId filter, requireUserType('admin'), per-account and per-IP rate limits identical to GET /admin/assets, audited fail-closed via recordBulkDisclosure (resultCount 0; filtered calls name the account). N41-1 (Object.hasOwn) fixed; N41-2 (per-customer holdings lookup) accepted. PASS covers the owner-test phase only; this is NOT a launch review: security-engineer and compliance-specialist concurrence is still owed before real users.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
       "id": "backend-admin-verification-requests-count",
       "kind": "backend_route",
       "pattern": "/admin/verification-requests/count",
