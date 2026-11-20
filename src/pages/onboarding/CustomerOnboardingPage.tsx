@@ -19,6 +19,7 @@ import { formatPlanPrice, listPlans, type PlanCatalogItem } from '../../customer
 import { useCustomerAuth } from '../../customer/auth/CustomerAuthProvider';
 import { resendVerificationEmail, signup } from '../../customer/api/auth';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
+import { useOtpAutoSubmit } from '../../lib/useOtpAutoSubmit';
 import { COMPANY_CONTACT } from '../../lib/companyContact';
 import {
   ASSET_CATEGORY_OPTIONS,
@@ -291,13 +292,12 @@ export function CustomerOnboardingPage() {
   // raised, then resumes that form's own follow-up — the verify step
   // advances to 'plan' once the account is active, the signup step's
   // "Already registered?" form resolves the usual initial step.
-  async function handleMfaSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function verifyMfaCode(code: string) {
     if (!mfaChallengeToken) return;
     setError(null);
     setLoading(true);
     try {
-      await auth.completeMfa(mfaChallengeToken, mfaCode.trim());
+      await auth.completeMfa(mfaChallengeToken, code.trim());
       setMfaChallengeToken(null);
       setMfaCode('');
       setLoginPassword('');
@@ -313,10 +313,22 @@ export function CustomerOnboardingPage() {
         setStep(resolveInitialStep('signed-in', me?.accountState, Boolean(policy)));
       }
     } catch (err) {
+      setMfaCode('');
       setError(mapUserFacingError(err, { context: 'mfa' }));
     } finally {
       setLoading(false);
     }
+  }
+
+  const { onCodeChange: onMfaCodeChange, submitCode: submitMfaCode } = useOtpAutoSubmit({
+    value: mfaCode,
+    setValue: setMfaCode,
+    submit: verifyMfaCode,
+  });
+
+  function handleMfaSubmit(e: FormEvent) {
+    e.preventDefault();
+    void submitMfaCode(mfaCode);
   }
 
   function cancelMfa() {
@@ -509,10 +521,9 @@ export function CustomerOnboardingPage() {
                 <TdTextField
                   label="Authentication code"
                   value={mfaCode}
-                  onChange={(e) => setMfaCode(e.target.value)}
+                  onChange={(e) => onMfaCodeChange(e.target.value)}
                   inputMode="numeric"
                   autoComplete="one-time-code"
-                  maxLength={6}
                   required
                 />
                 <TdButton type="submit" variant="secondary" className="w-full" loading={loading}>
@@ -576,10 +587,9 @@ export function CustomerOnboardingPage() {
               <TdTextField
                 label="Authentication code"
                 value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value)}
+                onChange={(e) => onMfaCodeChange(e.target.value)}
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                maxLength={6}
                 required
               />
               <TdButton type="submit" className="w-full" loading={loading}>

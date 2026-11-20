@@ -98,7 +98,7 @@ describe('CustomerLoginPage — MFA enrollment recovery', () => {
     expect(screen.getByRole('heading', { name: 'Set up two-factor authentication' })).toBeInTheDocument();
 
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and finish' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText('Customer home')).toBeInTheDocument());
   });

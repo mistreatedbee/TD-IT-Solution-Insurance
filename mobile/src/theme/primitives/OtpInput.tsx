@@ -14,6 +14,7 @@
 import React, { useRef } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -55,7 +56,9 @@ export function OtpInput({
   function handleChangeText(raw: string) {
     const digitsOnly = raw.replace(/[^0-9]/g, '').slice(0, length);
     onChange(digitsOnly);
-    if (digitsOnly.length === length) {
+    // Fire only on the transition to a full code, so an unchanged or
+    // re-rendered full value never re-submits the same code.
+    if (digitsOnly.length === length && value.length < length) {
       onComplete?.(digitsOnly);
     }
   }
@@ -94,8 +97,9 @@ export function OtpInput({
           onChangeText={handleChangeText}
           keyboardType="number-pad"
           textContentType="oneTimeCode"
-          autoComplete="sms-otp"
-          maxLength={length}
+          autoComplete={Platform.OS === 'ios' ? 'one-time-code' : 'sms-otp'}
+          // No native maxLength: it would truncate a pasted "123 456" before
+          // we strip the space. handleChangeText caps the length instead.
           editable={!isBusy}
           autoFocus={autoFocus}
           accessibilityLabel={label}

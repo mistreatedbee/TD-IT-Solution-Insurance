@@ -112,7 +112,7 @@ describe('InviteStaffPage (Feature 017 D-2)', () => {
     await waitFor(() => expect(requestStepUpChallenge).toHaveBeenCalledTimes(1));
 
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and send' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText(/Invitation sent to support@example\.com/)).toBeInTheDocument());
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -142,7 +142,7 @@ describe('InviteStaffPage (Feature 017 D-2)', () => {
 
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '000000');
-    await user.click(screen.getByRole('button', { name: 'Verify and send' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText(/2 attempts remaining/)).toBeInTheDocument());
     // Still inside the dialog — no automatic retry happened.
