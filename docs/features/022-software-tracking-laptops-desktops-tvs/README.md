@@ -306,3 +306,17 @@ Reuse `mobile/src/design` and `src/components/*`. Any new component needs `desig
 It does not authorize code beyond Phase 0. It does not relax ADR-0009 SDL-2. It does not choose a
 GPS hardware vendor, a payment gateway or an IP-data vendor. It does not change the owner-test
 exception, which stays limited to the `owner-test` EAS profile.
+
+## 12. CTO review (2026-11-20, `cto`)
+
+- Approved to merge as **Proposed**. Not ratified. Ratification waits for `cybersecurity-architect`
+  and `compliance-specialist` sign-off (Phase 1).
+- Correction to §5.1 / OD-6: `tablet` already exists as an asset type
+  (`backend/src/lib/asset-validation.ts`). It is not hypothetical. Phase 0 copy should cover
+  `tablet` as well as `laptop`, `desktop` and `tv`.
+- Phase 0 may ship as a copy-only change with no new `providerId`. The additive
+  `softwareTrackingPlanned` field is optional. Stage 8 light review and Stage 10 QA still apply.
+- Positions on open decisions: OD-2 Tauri, with Electron fallback if the Phase 1 spike fails.
+  OD-3 `mobile-architect` owns all device agents. OD-5 remote lock/wipe out of MVP. OD-6 tablets
+  on the mobile-app path. OD-7 stays with `integration-architect`, needs a scorecard first, no
+  vendor until then. OD-1 and OD-8 need the owner's decision.
