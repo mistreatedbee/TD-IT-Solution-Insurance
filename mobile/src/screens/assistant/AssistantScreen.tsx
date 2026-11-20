@@ -11,6 +11,7 @@ import React, { useMemo, useState } from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
 import { DesignPage } from '../../components/DesignPage';
 import { FEATURE_THEFT_REPORTING_ENABLED } from '../../config/features';
+import { hasAnySupportContact, SUPPORT_CONTACTS } from '../../config/support';
 import { Button, GlassCard } from '../../design';
 import { SubpageHeader } from '../../navigation/SubpageHeader';
 import { useDesignTokens } from '../../theme/designTheme';
@@ -72,8 +73,10 @@ export function AssistantScreen() {
             The assistant is coming soon
           </Text>
           <Text style={styles.body}>
-            You will be able to ask questions about your policy, assets and claims here. Until
-            then, our support team can help.
+            You will be able to ask questions about your policy, assets and claims here.
+            {hasAnySupportContact(SUPPORT_CONTACTS)
+              ? ' Until then, tap Talk to support to reach our team.'
+              : ' Support contact details are being set up.'}
           </Text>
         </GlassCard>
       </View>
