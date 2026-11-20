@@ -40,6 +40,7 @@ describe('LocationConsentModal', () => {
     expect(screen.getByText(/Who can see it/)).toBeTruthy();
     expect(screen.getByText(/Your rights/)).toBeTruthy();
     expect(screen.getByText(/Other assets/)).toBeTruthy();
+    expect(screen.getByText(/We do not track laptops, computers, TVs or tablets today/)).toBeTruthy();
     expect(onDecline).not.toHaveBeenCalled();
 
     // Does not render the two blocked lines (CS-INC002-N1/N2).
