@@ -307,6 +307,30 @@
       }
     },
     {
+      "id": "backend-admin-verification-history",
+      "kind": "backend_route",
+      "pattern": "/admin/accounts/:id/profile/verification-history",
+      "feature": "023",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-20 Feature 023 Phase A (owner-test build only), recorded by backend-engineer. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Admin-only (requireUserType admin), rate-limited, behind KYC_API_ENABLED (fail-closed). Returns past customer_verification_decision audit rows (decision, reviewer email, time) and internal admin notes; writes a privileged_data_access row before serialising. Notes are never returned on any customer route (AC-A8, static test routes/verification-notes-isolation.test.ts).",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "backend-admin-verification-notes",
+      "kind": "backend_route",
+      "pattern": "/admin/accounts/:id/profile/verification-notes",
+      "feature": "023",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-20 Feature 023 Phase A (owner-test build only), recorded by backend-engineer. NO Stage 8 review has been performed for this surface; this entry is an explicit waiver, not a sign-off, and does not clear it for public launch. Admin-only, 30 per 15 minutes per admin, behind KYC_API_ENABLED. Stores free-text internal notes (max 2000 chars) in Mongo customer_verification_notes; privileged_data_access audit row written before the insert; note text is never written to the audit log. Staff free text: copy warns against recording ID numbers.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
       "id": "backend-claims-customer",
       "kind": "backend_route_group",
       "pattern": "/claims*",

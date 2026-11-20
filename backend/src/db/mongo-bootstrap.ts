@@ -10,6 +10,7 @@ import { bootstrapFeature004Collections } from './feature004-collections.js';
 import { bootstrapRecoveryCollections } from './recovery-collections.js';
 import { bootstrapNotificationCollections } from './notification-collections.js';
 import { bootstrapCustomerProfileCollections } from './customer-profile-collections.js';
+import { bootstrapCustomerVerificationNoteCollections } from './customer-verification-note-collections.js';
 import { bootstrapTrackingDeviceCollections } from './tracking-device-collections.js';
 import { bootstrapLocationEventsCollections } from './location-events-collections.js';
 import { bootstrapAlertsCollections } from './alerts-collections.js';
@@ -38,6 +39,14 @@ export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
   } catch (err) {
     console.error(
       '[startup] Customer profile collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+    await bootstrapCustomerVerificationNoteCollections(db);
+  } catch (err) {
+    console.error(
+      '[startup] Customer verification note collection bootstrap failed:',
       err instanceof Error ? err.message : err,
     );
   }

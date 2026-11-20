@@ -24,6 +24,7 @@ import {
   partitionVerificationItems,
   type VerificationCentreItem,
 } from './deriveVerificationCentreItems';
+import { deriveApprovalChecklist } from './deriveApprovalChecklist';
 import { DesignPage } from '../../components/DesignPage';
 import { Button, GlassCard } from '../../design';
 import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
@@ -210,6 +211,21 @@ export function VerificationCentreScreen() {
         </>
       ) : null}
 
+      <Text style={styles.sectionHeading}>What we need to approve you</Text>
+      <GlassCard variant="solid" style={styles.card} testID="approval-checklist">
+        {deriveApprovalChecklist(profile).map((item) => (
+          <View key={item.id} style={styles.checklistRow}>
+            <Text
+              style={[styles.checklistMark, item.done ? styles.checklistDone : styles.checklistTodo]}
+              accessibilityLabel={item.done ? 'Done' : 'Still needed'}
+            >
+              {item.done ? '\u2713' : '\u25CB'}
+            </Text>
+            <Text style={item.done ? styles.checklistLabelDone : styles.value}>{item.label}</Text>
+          </View>
+        ))}
+      </GlassCard>
+
       <Text style={styles.sectionHeading}>Identity submission</Text>
       <GlassCard variant="solid" style={styles.card}>
         <View style={styles.identityRow}>
@@ -327,6 +343,16 @@ function buildStyles(t: DesignTokens) {
     label: { ...t.type.labelSm, color: t.colors.inkMuted },
     value: { ...t.type.bodySm, color: t.colors.ink },
     button: { marginTop: t.spacing.s4, marginBottom: t.spacing.s3 },
+    checklistRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: t.spacing.s2,
+      paddingVertical: t.spacing.s1,
+    },
+    checklistMark: { ...t.type.label, width: 20, textAlign: 'center' },
+    checklistDone: { color: t.colors.success },
+    checklistTodo: { color: t.colors.inkMuted },
+    checklistLabelDone: { ...t.type.bodySm, color: t.colors.inkMuted },
     stretch: { alignSelf: 'stretch' },
   });
 }

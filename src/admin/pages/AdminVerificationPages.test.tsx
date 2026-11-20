@@ -15,13 +15,20 @@ vi.mock('../api/admin-verification', () => ({
   listVerificationRequests: vi.fn(),
   getAdminCustomerProfile: vi.fn(),
   reviewCustomerVerification: vi.fn(),
+  getVerificationHistory: vi.fn(),
+  addVerificationNote: vi.fn(),
 }));
 vi.mock('../api/step-up', () => ({
   requestStepUpChallenge: vi.fn(),
   verifyStepUp: vi.fn(),
 }));
 
-import { getAdminCustomerProfile, reviewCustomerVerification } from '../api/admin-verification';
+import {
+  addVerificationNote,
+  getAdminCustomerProfile,
+  getVerificationHistory,
+  reviewCustomerVerification,
+} from '../api/admin-verification';
 import { requestStepUpChallenge, verifyStepUp } from '../api/step-up';
 
 function byName(name: string): HTMLInputElement {
@@ -66,6 +73,9 @@ function mfaInvalidError(attemptsRemaining: number) {
 
 async function renderReview() {
   vi.mocked(getAdminCustomerProfile).mockResolvedValue(profileResponse());
+  if (!vi.mocked(getVerificationHistory).getMockImplementation()) {
+    vi.mocked(getVerificationHistory).mockResolvedValue({ decisions: [], notes: [] });
+  }
   render(
     <MemoryRouter initialEntries={['/admin/verification/acct-1']}>
       <Routes>
@@ -159,5 +169,58 @@ describe('VerificationReviewPage step-up (ADR-0012 SU-FU-1)', () => {
 
     await waitFor(() => expect(reviewCustomerVerification).toHaveBeenCalledTimes(2));
     expect(screen.getByRole('heading', { name: 'Verification review' })).toBeInTheDocument();
+  });
+});
+
+describe('VerificationReviewPage history and internal notes (Feature 023 Phase A)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('shows past decisions with reviewer and existing notes', async () => {
+    vi.mocked(getVerificationHistory).mockResolvedValue({
+      decisions: [
+        {
+          id: 'd1',
+          decision: 'action_required',
+          decidedAt: '2026-11-01T10:00:00.000Z',
+          reviewer: { accountId: 'admin-1', email: 'reviewer@example.com' },
+        },
+      ],
+      notes: [
+        {
+          id: 'n1',
+          text: 'Called customer about surname.',
+          createdAt: '2026-11-01T11:00:00.000Z',
+          author: { accountId: 'admin-1', email: 'reviewer@example.com' },
+        },
+      ],
+    });
+    await renderReview();
+    expect(await screen.findByText('Action required')).toBeInTheDocument();
+    expect(screen.getAllByText(/reviewer@example.com/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('Called customer about surname.')).toBeInTheDocument();
+    expect(screen.getByText(/The customer never sees these notes/)).toBeInTheDocument();
+  });
+
+  it('adds an internal note and shows it at the top of the list', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getVerificationHistory).mockResolvedValue({ decisions: [], notes: [] });
+    vi.mocked(addVerificationNote).mockResolvedValue({
+      id: 'n2',
+      text: 'Spoke to customer.',
+      createdAt: '2026-11-02T09:00:00.000Z',
+      author: { accountId: 'admin-1', email: 'reviewer@example.com' },
+    });
+    await renderReview();
+    await screen.findByText('No internal notes yet.');
+    expect(screen.getByRole('button', { name: 'Add note' })).toBeDisabled();
+
+    await user.type(byName('internalNote'), '  Spoke to customer.  ');
+    await user.click(screen.getByRole('button', { name: 'Add note' }));
+
+    await waitFor(() => expect(addVerificationNote).toHaveBeenCalledWith('acct-1', 'Spoke to customer.'));
+    expect(await screen.findByText('Spoke to customer.')).toBeInTheDocument();
+    expect(byName('internalNote').value).toBe('');
   });
 });

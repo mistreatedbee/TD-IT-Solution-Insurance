@@ -41,14 +41,15 @@ function fakeEnv(): Env {
     emailVerificationRedirectUrl: 'tditinsurance://verify-email',
     passwordResetRedirectUrl: 'tditinsurance://reset-password',
     invitationAcceptRedirectUrl: 'tditinsurance://invitations/accept',
+    kycApiEnabled: true,
   };
 }
 
-function authToken(env: Env, accountId: string, sessionId: string): string {
+function authToken(env: Env, accountId: string, sessionId: string, userType = 'customer'): string {
   return signAccessToken(
     {
       sub: accountId,
-      user_type: 'customer',
+      user_type: userType as 'customer',
       mfa_required: false,
       account_state: 'active',
       partner_organization_id: null,
@@ -191,8 +192,8 @@ function createInMemoryProfilePicturesRepo(): CustomerProfilePicturesRepo {
   };
 }
 
-function createHarness(opts?: { accountState?: AccountStatus['accountState'] }) {
-  const env = fakeEnv();
+function createHarness(opts?: { accountState?: AccountStatus['accountState']; envOverrides?: Partial<Env> }) {
+  const env = { ...fakeEnv(), ...opts?.envOverrides };
   const kv = new InMemoryKeyValueStore();
   const accountId = randomUUID();
   const sessionId = randomUUID();
@@ -313,9 +314,9 @@ function createHarness(opts?: { accountState?: AccountStatus['accountState'] }) 
         server?.close((err) => (err ? reject(err) : resolve()));
       });
     },
-    authHeaders(extra?: Record<string, string>) {
+    authHeaders(extra?: Record<string, string>, userType = 'customer') {
       return {
-        Authorization: `Bearer ${authToken(env, accountId, sessionId)}`,
+        Authorization: `Bearer ${authToken(env, accountId, sessionId, userType)}`,
         'Content-Type': 'application/json',
         ...extra,
       };
@@ -514,3 +515,47 @@ describe('customer profile routes', () => {
     expect(deleteBody.profilePictureUrl).toBeNull();
   });
 });
+
+describe('Stage 8 KYC-2 — customer-only profile routes and KYC_API_ENABLED', () => {
+  let harness: ReturnType<typeof createHarness>;
+
+  afterEach(async () => {
+    if (harness) await harness.stop();
+  });
+
+  it.each([
+    ['GET', '/account/profile'],
+    ['PATCH', '/account/profile'],
+    ['POST', '/account/profile/verification/submit'],
+    ['GET', '/account/profile/picture'],
+    ['DELETE', '/account/profile/picture'],
+  ])('%s %s returns 403 for a staff (admin) account and creates no profile', async (method, path) => {
+    harness = createHarness();
+    await harness.start();
+    const res = await fetch(harness.url(path), {
+      method,
+      headers: harness.authHeaders(undefined, 'admin'),
+      ...(method === 'PATCH' ? { body: JSON.stringify({ firstName: 'Staff' }) } : {}),
+    });
+    expect(res.status).toBe(403);
+    expect(await harness.customerProfiles.findByAccountId(harness.accountId)).toBeNull();
+  });
+
+  it.each([undefined, false])('verification submit 404s when KYC_API_ENABLED is %s (fail-closed)', async (flag) => {
+    harness = createHarness({ envOverrides: { kycApiEnabled: flag } });
+    await harness.start();
+    const res = await fetch(harness.url('/account/profile/verification/submit'), {
+      method: 'POST',
+      headers: harness.authHeaders(),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('profile read stays available when KYC_API_ENABLED is off (not a KYC-only route)', async () => {
+    harness = createHarness({ envOverrides: { kycApiEnabled: false } });
+    await harness.start();
+    const res = await fetch(harness.url('/account/profile'), { headers: harness.authHeaders() });
+    expect(res.status).toBe(200);
+  });
+});
+

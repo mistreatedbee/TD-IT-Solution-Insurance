@@ -289,6 +289,33 @@ export function createAuditLogRepo(db: Queryable) {
     },
 
     /**
+     * Feature 023 Phase A item 4 / AC-A9 — the decision history for one customer, read
+     * from the existing `customer_verification_decision` rows (no parallel store). Newest
+     * first, bounded; served by the `account_id_created_at` index.
+     */
+    async listVerificationDecisions(accountId: string, limit: number): Promise<VerificationDecisionEntry[]> {
+      const result = await db.query<{
+        id: string;
+        decision: 'verified' | 'rejected' | 'action_required';
+        actor_account_id: string | null;
+        created_at: Date;
+      }>(
+        `select id, decision, actor_account_id, created_at
+         from app.account_audit_log
+         where account_id = $1 and event_type = 'customer_verification_decision'
+         order by created_at desc, id desc
+         limit $2`,
+        [accountId, limit],
+      );
+      return result.rows.map((row) => ({
+        id: row.id,
+        decision: row.decision,
+        actorAccountId: row.actor_account_id,
+        createdAt: new Date(row.created_at),
+      }));
+    },
+
+    /**
      * GET /v1/admin/audit-log (business-owner gap report item 6). Cursor-paginated
      * per `lib/pagination.ts`'s platform convention (`(created_at desc, id desc)`,
      * `limit + 1` over-fetch). Filterable by subject `accountId`, `eventType`, and an
@@ -376,6 +403,13 @@ export interface AdminAuditLogEntry {
   eventType: AuditEventType;
   attemptedIdentifier: string | null;
   ipAddress: string | null;
+  createdAt: Date;
+}
+
+export interface VerificationDecisionEntry {
+  id: string;
+  decision: 'verified' | 'rejected' | 'action_required';
+  actorAccountId: string | null;
   createdAt: Date;
 }
 

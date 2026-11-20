@@ -109,6 +109,11 @@ export const ERROR_CATALOG = {
     statusCode: 503,
     message: 'The service is temporarily unavailable. Please try again shortly.',
   },
+  // Feature 023 Phase A BR-2 / AC-A6 — behind KYC_CLAIM_GATE_ENABLED. Customer-safe copy.
+  VERIFICATION_REQUIRED: {
+    statusCode: 403,
+    message: 'Finish verification to file a claim.',
+  },
   // Feature 018 (claims filing and adjudication) — business-requirements.md §1/§5/§7.
   POLICY_NOT_ACTIVE: {
     statusCode: 422,

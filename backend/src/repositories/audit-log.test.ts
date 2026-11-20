@@ -428,3 +428,26 @@ describe('repositories/audit-log', () => {
     });
   });
 });
+
+describe('listVerificationDecisions (Feature 023 AC-A9)', () => {
+  it('reads only customer_verification_decision rows for the subject, newest first, bounded', async () => {
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const db = {
+      async query(sql: string, params: unknown[]) {
+        calls.push({ sql, params });
+        return {
+          rows: [{ id: 'r1', decision: 'verified', actor_account_id: 'admin-1', created_at: '2026-11-02T08:00:00.000Z' }],
+        };
+      },
+    } as unknown as Queryable;
+    const subject = randomUUID();
+    const rows = await createAuditLogRepo(db).listVerificationDecisions(subject, 50);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.sql).toContain("event_type = 'customer_verification_decision'");
+    expect(calls[0]!.sql).toMatch(/order by created_at desc, id desc\s+limit \$2/);
+    expect(calls[0]!.params).toEqual([subject, 50]);
+    expect(rows).toEqual([
+      { id: 'r1', decision: 'verified', actorAccountId: 'admin-1', createdAt: new Date('2026-11-02T08:00:00.000Z') },
+    ]);
+  });
+});
