@@ -98,7 +98,9 @@ function TabButton({
     badgeCount > 0 ? `${label}, ${badgeCount} open alert${badgeCount === 1 ? '' : 's'}` : label;
 
   const iconColor = focused
-    ? designColorsDay.brandOrange
+    ? isDark
+      ? designColorsNight.accentText
+      : designColorsDay.accentText
     : isDark
       ? designColorsNight.ink
       : colors.textSecondary;
@@ -197,8 +199,9 @@ function createTabBarStyles(
         fontWeight: '600',
         color: isDark ? designColorsNight.ink : colors.textSecondary,
       },
-      // glassAccentDeep is only ~3.9:1 on white — fine for the icon, too low for a 10px label (WCAG AA).
-      // The active tab is still signalled by the teal icon; the label uses the text-grade colour.
+      // The active tab is signalled by the icon in the per-theme accentText token (day #8F5200 / night #F5A022,
+      // both above 3:1 on bgRaised for WCAG 1.4.11; raw brandOrange was ~2.1:1 on white). The label keeps the
+      // text-grade colour.
       tabLabelActive: {
         color: isDark ? designColorsNight.ink : colors.glassTextPrimary,
       },
