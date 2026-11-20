@@ -1,10 +1,10 @@
 import { useRouter, type Href } from 'expo-router';
-import { BellIcon, MessageCircleQuestionIcon } from 'lucide-react-native';
+import { BellIcon } from 'lucide-react-native';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
 import { FEATURE_ALERTS_ENABLED, FEATURE_ASSISTANT_ENTRY_ENABLED } from '../../config/features';
-import { GlassCard } from '../../design';
+import { GlassCard, TDAssistantIcon } from '../../design';
 import { useDesignTokens } from '../../theme/designTheme';
 
 export interface HomeHeaderProps {
@@ -113,7 +113,7 @@ export function HomeHeader({
             testID="home-assistant-button"
             onPress={() => router.push('/(app)/assistant' as Href)}
           >
-            <MessageCircleQuestionIcon size={24} color={t.colors.ink} strokeWidth={1.75} />
+            <TDAssistantIcon size={24} color={t.colors.ink} strokeWidth={1.75} testID="home-assistant-icon" />
           </Pressable>
         ) : FEATURE_ALERTS_ENABLED ? (
           <Pressable

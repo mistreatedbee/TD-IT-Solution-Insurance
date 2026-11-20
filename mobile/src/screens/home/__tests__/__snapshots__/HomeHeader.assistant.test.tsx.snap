@@ -1,0 +1,416 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`HomeHeader assistant entry shows the TD chat-bubble icon on the assistant button (snapshot) 1`] = `
+<RNCSafeAreaProvider
+  onInsetsChange={[Function]}
+  style={
+    [
+      {
+        "flex": 1,
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    style={
+      [
+        {
+          "backgroundColor": "transparent",
+          "borderRadius": 24,
+        },
+        {
+          "elevation": 8,
+          "shadowColor": "#2C3E52",
+          "shadowOffset": {
+            "height": 8,
+            "width": 0,
+          },
+          "shadowOpacity": 0.14,
+          "shadowRadius": 16,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        {
+          "backgroundColor": undefined,
+          "borderColor": "rgba(255, 255, 255, 0.902)",
+          "borderRadius": 24,
+          "borderWidth": 1,
+          "overflow": "hidden",
+        }
+      }
+    >
+      <View
+        style={
+          {
+            "bottom": 0,
+            "left": 0,
+            "position": "absolute",
+            "right": 0,
+            "top": 0,
+          }
+        }
+      />
+      <View
+        pointerEvents="none"
+        style={
+          [
+            {
+              "bottom": 0,
+              "left": 0,
+              "position": "absolute",
+              "right": 0,
+              "top": 0,
+            },
+            {
+              "backgroundColor": "rgba(255, 255, 255, 0.722)",
+            },
+          ]
+        }
+      />
+      <View
+        style={
+          {
+            "padding": 16,
+          }
+        }
+      >
+        <View
+          style={
+            {
+              "alignItems": "center",
+              "flexDirection": "row",
+              "gap": 12,
+              "justifyContent": "space-between",
+            }
+          }
+        >
+          <View
+            accessibilityRole="button"
+            accessibilityState={
+              {
+                "busy": undefined,
+                "checked": undefined,
+                "disabled": undefined,
+                "expanded": undefined,
+                "selected": undefined,
+              }
+            }
+            accessibilityValue={
+              {
+                "max": undefined,
+                "min": undefined,
+                "now": undefined,
+                "text": undefined,
+              }
+            }
+            accessible={true}
+            collapsable={false}
+            focusable={true}
+            onBlur={[Function]}
+            onClick={[Function]}
+            onFocus={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "gap": 12,
+                "minHeight": 48,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "backgroundColor": "#2C3E52",
+                    "justifyContent": "center",
+                    "overflow": "hidden",
+                    "position": "relative",
+                  },
+                  {
+                    "borderRadius": 26,
+                    "height": 52,
+                    "width": 52,
+                  },
+                ]
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "color": "#FFFFFF",
+                      "fontSize": 16,
+                      "fontWeight": "700",
+                    },
+                    null,
+                  ]
+                }
+              >
+                S
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "flex": 1,
+                }
+              }
+            >
+              <Text
+                accessibilityRole="header"
+                style={
+                  {
+                    "color": "#14202D",
+                    "fontFamily": "ZillaSlab-600",
+                    "fontSize": 28,
+                    "fontWeight": 600,
+                    "letterSpacing": 0,
+                    "lineHeight": 34,
+                  }
+                }
+              >
+                Good morning
+                , 
+                Sam
+              </Text>
+            </View>
+          </View>
+          <View
+            accessibilityHint="Ask a question or talk to support"
+            accessibilityLabel="TD IT Solutions Insurance assistant"
+            accessibilityRole="button"
+            accessibilityState={
+              {
+                "busy": undefined,
+                "checked": undefined,
+                "disabled": undefined,
+                "expanded": undefined,
+                "selected": undefined,
+              }
+            }
+            accessibilityValue={
+              {
+                "max": undefined,
+                "min": undefined,
+                "now": undefined,
+                "text": undefined,
+              }
+            }
+            accessible={true}
+            collapsable={false}
+            focusable={true}
+            onBlur={[Function]}
+            onClick={[Function]}
+            onFocus={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              {
+                "alignItems": "center",
+                "backgroundColor": "#E3EBF3",
+                "borderColor": "#6B7C8F",
+                "borderRadius": 999,
+                "borderWidth": 1,
+                "height": 48,
+                "justifyContent": "center",
+                "width": 48,
+              }
+            }
+            testID="home-assistant-button"
+          >
+            <RNSVGSvgView
+              align="xMidYMid"
+              bbHeight={24}
+              bbWidth={24}
+              fill="none"
+              focusable={false}
+              height={24}
+              meetOrSlice={0}
+              minX={0}
+              minY={0}
+              style={
+                [
+                  {
+                    "backgroundColor": "transparent",
+                    "borderWidth": 0,
+                  },
+                  {
+                    "flex": 0,
+                    "height": 24,
+                    "width": 24,
+                  },
+                ]
+              }
+              testID="home-assistant-icon"
+              vbHeight={24}
+              vbWidth={24}
+              width={24}
+            >
+              <RNSVGGroup
+                fill={null}
+                propList={
+                  [
+                    "fill",
+                  ]
+                }
+              >
+                <RNSVGPath
+                  d="M7 2.75h10a4.75 4.75 0 0 1 4.75 4.75v6a4.75 4.75 0 0 1-4.75 4.75H10.5L6.25 21.5v-3.25H7a4.75 4.75 0 0 1-4.75-4.75v-6A4.75 4.75 0 0 1 7 2.75z"
+                  fill={
+                    {
+                      "payload": 4278190080,
+                      "type": 0,
+                    }
+                  }
+                  propList={
+                    [
+                      "stroke",
+                      "strokeWidth",
+                      "strokeLinecap",
+                      "strokeLinejoin",
+                    ]
+                  }
+                  stroke={
+                    {
+                      "payload": 4279509037,
+                      "type": 0,
+                    }
+                  }
+                  strokeLinecap={1}
+                  strokeLinejoin={1}
+                  strokeWidth={1.75}
+                />
+                <RNSVGGroup
+                  fill={
+                    {
+                      "payload": 4278190080,
+                      "type": 0,
+                    }
+                  }
+                  matrix={
+                    [
+                      0.01871544023819651,
+                      0,
+                      0,
+                      0.01871544023819651,
+                      -0.7920034028073157,
+                      2.281582305401957,
+                    ]
+                  }
+                >
+                  <RNSVGGroup
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    matrix={
+                      [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        127,
+                      ]
+                    }
+                  >
+                    <RNSVGPath
+                      d="M683.5 26.2 936.5 279.2 901.0 279.2 683.5 61.8 466.0 279.2 430.5 279.2z"
+                      fill={
+                        {
+                          "payload": 4294287394,
+                          "type": 0,
+                        }
+                      }
+                      propList={
+                        [
+                          "fill",
+                          "stroke",
+                          "strokeWidth",
+                          "strokeLinejoin",
+                        ]
+                      }
+                      stroke={
+                        {
+                          "payload": 4294287394,
+                          "type": 0,
+                        }
+                      }
+                      strokeLinejoin={1}
+                      strokeWidth={40}
+                    />
+                  </RNSVGGroup>
+                  <RNSVGGroup
+                    fill={
+                      {
+                        "payload": 4278190080,
+                        "type": 0,
+                      }
+                    }
+                    matrix={
+                      [
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        -127,
+                      ]
+                    }
+                  >
+                    <RNSVGPath
+                      d="M683.5 852.0 936.5 599.0 901.0 599.0 683.5 816.5 466.0 599.0 430.5 599.0z"
+                      fill={
+                        {
+                          "payload": 4280778936,
+                          "type": 0,
+                        }
+                      }
+                      propList={
+                        [
+                          "fill",
+                          "stroke",
+                          "strokeWidth",
+                          "strokeLinejoin",
+                        ]
+                      }
+                      stroke={
+                        {
+                          "payload": 4280778936,
+                          "type": 0,
+                        }
+                      }
+                      strokeLinejoin={1}
+                      strokeWidth={40}
+                    />
+                  </RNSVGGroup>
+                </RNSVGGroup>
+              </RNSVGGroup>
+            </RNSVGSvgView>
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+</RNCSafeAreaProvider>
+`;
