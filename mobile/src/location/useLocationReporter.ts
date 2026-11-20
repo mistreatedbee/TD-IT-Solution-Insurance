@@ -32,6 +32,7 @@ import {
   getForegroundPermissionState,
 } from './requestForegroundLocation';
 import { recordLocationReportFailure, recordLocationReportSuccess } from './reportStatus';
+import { isConsentRequiredError, notifyServerConsentRequired } from './serverConsentSignal';
 
 /** Periodic foreground report interval (owner-test only). */
 export const PERIODIC_REPORT_INTERVAL_MS = 2 * 60 * 1000;
@@ -114,6 +115,10 @@ async function maybeReportForegroundLocation(triggeredBy: LocationTrigger): Prom
         triggeredBy,
       });
     } catch (err) {
+      // INC-001 A-7: the server holds no active consent for this phone (enabled before scoped
+      // server consent existed, turned off elsewhere, or granted on another device). Ask again
+      // via the consent screen rather than retrying; the reporter keeps no local override.
+      if (isConsentRequiredError(err)) notifyServerConsentRequired(gate.assetId);
       // Surfaced to the user as a small status line (LocationReportStatusLine), not only logged.
       recordLocationReportFailure(err);
       throw err;
@@ -179,9 +184,10 @@ export function useLocationReporter(): void {
         },
         (err: unknown) => {
           logFailure('periodic', err);
-          // Quiet, non-fatal: the server does not accept this trigger yet. No retry storm —
-          // stop the timer for this foreground session; the next resume tries once more.
-          if (isValidationRejection(err)) stopTimer();
+          // Quiet, non-fatal: the server does not accept this trigger yet (or, INC-001 A-7, has no
+          // consent for it). No retry storm: stop the timer for this foreground session; the next
+          // resume tries once more.
+          if (isValidationRejection(err) || isConsentRequiredError(err)) stopTimer();
         },
       );
     };

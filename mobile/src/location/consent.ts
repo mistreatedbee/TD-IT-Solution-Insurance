@@ -3,9 +3,26 @@
  * Stored in SecureStore per architecture.md §2.3 (sensitive preference state).
  */
 import * as SecureStore from 'expo-secure-store';
+import { FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED } from '../config/features';
 
 const CONSENT_KEY = 'td_insurance.location_tracking_consent';
 const LINKED_ASSET_KEY = 'td_insurance.linked_smartphone_asset_id';
+const BACKGROUND_CONSENT_KEY = 'td_insurance.background_location_consent';
+
+/**
+ * INC-001 A-7: the consent-copy versions sent with the server-side grant
+ * (`POST /assets/:id/location-consent`). Bump when the shown copy changes.
+ * Foreground = `LocationConsentModal` (INC-002 §12.3 copy); background = `BackgroundLocationOffer`.
+ */
+export const LOCATION_CONSENT_TEXT_VERSION = 'inc002-12.3-2026-11-20';
+export const BACKGROUND_CONSENT_TEXT_VERSION = 'bg-offer-2026-11-20';
+
+export type LocationConsentScope = 'foreground' | 'periodic' | 'background';
+
+/** Scopes the foreground consent screen grants: periodic only where this build runs the timer. */
+export function foregroundConsentScopes(): LocationConsentScope[] {
+  return FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED === true ? ['foreground', 'periodic'] : ['foreground'];
+}
 
 export type LocationTrackingConsent = 'granted' | 'denied';
 
@@ -70,7 +87,29 @@ export async function hasActiveLocationTracking(): Promise<boolean> {
   return consent === 'granted' && Boolean(linkedAssetId);
 }
 
+/**
+ * True once the background scope was granted SERVER-SIDE from this device (INC-001 A-7). The OS
+ * "all the time" permission alone never counts: background updates only run when this is set.
+ */
+export async function hasBackgroundLocationConsent(): Promise<boolean> {
+  return (await SecureStore.getItemAsync(BACKGROUND_CONSENT_KEY)) === 'granted';
+}
+
+export async function setBackgroundLocationConsent(): Promise<void> {
+  await SecureStore.setItemAsync(BACKGROUND_CONSENT_KEY, 'granted');
+  notifyConsentChange();
+}
+
+export async function clearBackgroundLocationConsent(): Promise<void> {
+  await SecureStore.deleteItemAsync(BACKGROUND_CONSENT_KEY);
+  notifyConsentChange();
+}
+
 /** Clears device-local consent and linked asset (logout / account switching). Never throws. */
 export async function clearLocalLocationState(): Promise<void> {
-  await Promise.allSettled([clearLocationTrackingConsent(), clearLinkedSmartphoneAssetId()]);
+  await Promise.allSettled([
+    clearLocationTrackingConsent(),
+    clearLinkedSmartphoneAssetId(),
+    clearBackgroundLocationConsent(),
+  ]);
 }

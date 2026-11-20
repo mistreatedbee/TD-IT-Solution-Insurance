@@ -24,6 +24,8 @@ import {
   setLinkedSmartphoneAssetId,
   setLocationTrackingConsent,
 } from '../../location';
+import { clearBackgroundLocationConsent } from '../../location/consent';
+import { clearPendingReconsent } from '../../location/serverConsentSignal';
 
 export type EnableTrackingResult =
   | { kind: 'enabled' }
@@ -62,17 +64,20 @@ export async function enableLocationTrackingForAsset({
   onLocalStateChange?.(assetId);
 
   // INC-002 §12/§13 SR-INC002-W1 — server-side consent-grant artefact, still before the OS prompt.
+  // INC-001 A-7: the grant carries scopes + consent-copy version and is bound to this device; it
+  // supersedes any earlier grant (so a background scope must be granted again separately).
   try {
     await grantServerConsent(assetId);
   } catch (grantErr) {
     // security-engineer finding (2026-10-06): the local writes above are optimistic — if the
     // server-side consent record fails, the device must not be left believing it has consent it
-    // doesn't. No server-side consent-gate backstop exists on the location-report endpoint today
-    // (INC-001 A-7), so this client-side reversion is the only thing preventing a false
-    // "tracking enabled" state.
+    // doesn't. Since INC-001 A-7 the server also refuses reports without a consent record
+    // (LOCATION_CONSENT_ENFORCED), but this reversion still keeps the UI honest.
     await revertLocal();
     throw grantErr;
   }
+  clearPendingReconsent();
+  await clearBackgroundLocationConsent().catch(() => undefined);
 
   let fix;
   try {

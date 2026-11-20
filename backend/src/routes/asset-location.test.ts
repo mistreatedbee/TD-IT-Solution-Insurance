@@ -170,6 +170,15 @@ function createHarness(opts: {
     replacedBySessionId: null,
     mfaVerifiedAt: null,
   });
+  /** Test helper: move the bound session to another device (SDL-10 device change). */
+  const setSessionDevice = (deviceId: string) => {
+    const row = sessions.get(sessionId)!;
+    sessions.set(sessionId, { ...row, deviceId });
+  };
+  const setSessionMfaVerifiedAt = (at: Date | null) => {
+    const row = sessions.get(sessionId)!;
+    sessions.set(sessionId, { ...row, mfaVerifiedAt: at });
+  };
 
   const storedEvents: LocationEventDocument[] = [];
   const storedConsentWithdrawals: Array<{
@@ -191,8 +200,22 @@ function createHarness(opts: {
     actorSessionId: string | null;
     ipAddress: string | null;
     userAgent: string | null;
+    deviceId: string | null;
+    consentTextVersion: string | null;
+    scopes: string[];
     createdAt: Date;
   }> = [];
+  // INC-001 A-7: every consent event in write order (append-only), newest last.
+  const consentTimeline: Array<{
+    accountId: string;
+    assetId: string;
+    eventType: 'granted' | 'withdrawn';
+    deviceId: string | null;
+    scopes: string[];
+    createdAt: Date;
+  }> = [];
+  const pushSent: Array<{ templateId: string; variables: Record<string, string> }> = [];
+  const noticesSent: Array<{ action: string; assetDisplayName?: string | null }> = [];
 
   const ctx = {
     env,
@@ -314,13 +337,35 @@ function createHarness(opts: {
         return before - storedEvents.length;
       },
     },
+    pushNotifications: {
+      async sendToAccount(input: { templateId: string; variables: Record<string, string> }) {
+        pushSent.push({ templateId: input.templateId, variables: input.variables });
+      },
+    },
+    authNotifications: {
+      async notifyProtectionChanged(input: { action: string; assetDisplayName?: string | null }) {
+        noticesSent.push({ action: input.action, assetDisplayName: input.assetDisplayName });
+      },
+    },
+    auditLog: {
+      async record() {
+        return undefined;
+      },
+    },
     locationConsentLog: {
+      async findLatestByAsset(acctId: string, assetId: string) {
+        const rows = consentTimeline.filter((e) => e.accountId === acctId && e.assetId === assetId);
+        return rows.length ? { ...rows[rows.length - 1]! } : null;
+      },
       async recordGrant(input: {
         accountId: string;
         assetId: string;
         actorSessionId?: string | null;
         ipAddress?: string | null;
         userAgent?: string | null;
+        deviceId?: string | null;
+        consentTextVersion?: string | null;
+        scopes?: string[];
       }) {
         const record = {
           id: `consent-grant-${storedConsentGrants.length + 1}`,
@@ -330,9 +375,13 @@ function createHarness(opts: {
           actorSessionId: input.actorSessionId ?? null,
           ipAddress: input.ipAddress ?? null,
           userAgent: input.userAgent ?? null,
+          deviceId: input.deviceId ?? null,
+          consentTextVersion: input.consentTextVersion ?? null,
+          scopes: input.scopes ?? [],
           createdAt: new Date(),
         };
         storedConsentGrants.push(record);
+        consentTimeline.push(record);
         return record;
       },
       async recordWithdrawal(input: {
@@ -355,6 +404,7 @@ function createHarness(opts: {
           createdAt: new Date(),
         };
         storedConsentWithdrawals.push(record);
+        consentTimeline.push({ ...record, deviceId: null, scopes: [] });
         return record;
       },
     },
@@ -398,7 +448,20 @@ function createHarness(opts: {
   app.use(createAssetsRouter(ctx));
   app.use(errorHandler);
 
-  return { app, accountId, sessionId, env, storedAssets, storedEvents, storedConsentWithdrawals, storedConsentGrants };
+  return {
+    app,
+    accountId,
+    sessionId,
+    env,
+    storedAssets,
+    storedEvents,
+    storedConsentWithdrawals,
+    storedConsentGrants,
+    pushSent,
+    noticesSent,
+    setSessionDevice,
+    setSessionMfaVerifiedAt,
+  };
 }
 
 async function listen(app: Express): Promise<{ server: Server; baseUrl: string }> {
@@ -958,5 +1021,148 @@ describe('GET /assets/:assetId/location-history', () => {
     expect(body.data[0]?.latitude).toBe(-25.7479);
     expect(body.data[0]?.source).toBe('self_device');
     expect(body.pagination.hasMore).toBe(false);
+  });
+});
+
+describe('INC-001 A-7: server-side location consent (LOCATION_CONSENT_ENFORCED)', () => {
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    if (server) {
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+      server = undefined;
+    }
+  });
+
+  async function setup(envOverrides: Partial<Env> = {}) {
+    const accountId = randomUUID();
+    const phone = sampleSmartphone(accountId);
+    const h = createHarness({
+      accountId,
+      assets: [phone],
+      envOverrides: { locationConsentEnforced: true, locationExtendedTriggersEnabled: true, ...envOverrides },
+    });
+    const listened = await listen(h.app);
+    server = listened.server;
+    const auth = { authorization: `Bearer ${customerToken(h.env, accountId, h.sessionId)}` };
+    const grant = (body?: unknown) =>
+      fetch(`${listened.baseUrl}/assets/${phone.id}/location-consent`, {
+        method: 'POST',
+        headers: body === undefined ? auth : { ...auth, 'content-type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    const report = (triggeredBy?: string) =>
+      fetch(`${listened.baseUrl}/assets/${phone.id}/location-report`, {
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/json' },
+        body: JSON.stringify({ latitude: -25.7, longitude: 28.2, ...(triggeredBy ? { triggeredBy } : {}) }),
+      });
+    const withdraw = () =>
+      fetch(`${listened.baseUrl}/assets/${phone.id}/location`, { method: 'DELETE', headers: auth });
+    return { ...h, phone, grant, report, withdraw };
+  }
+
+  async function code(res: Response): Promise<string> {
+    return ((await res.json()) as { error: { code: string } }).error.code;
+  }
+
+  it('refuses a report with 403 CONSENT_REQUIRED when no consent record exists, and stores nothing', async () => {
+    const { report, storedEvents, storedAssets, phone } = await setup();
+    const res = await report();
+    expect(res.status).toBe(403);
+    expect(await code(res)).toBe('CONSENT_REQUIRED');
+    expect(storedEvents).toHaveLength(0);
+    expect(storedAssets.get(phone.id)?.lastLocation).toBeNull();
+  });
+
+  it('accepts a report after a grant from the same device, and records device/scopes/version', async () => {
+    const { grant, report, storedConsentGrants } = await setup();
+    const g = await grant({ scopes: ['foreground', 'periodic'], consentTextVersion: 'inc002-12.3-v1' });
+    expect(g.status).toBe(200);
+    expect(storedConsentGrants[0]).toMatchObject({
+      deviceId: 'device-bound-1',
+      scopes: ['foreground', 'periodic'],
+      consentTextVersion: 'inc002-12.3-v1',
+    });
+    expect((await report('foreground_open')).status).toBe(200);
+    expect((await report('periodic_foreground')).status).toBe(200);
+  });
+
+  it('a body-less grant (pre-A-7 client) covers foreground only', async () => {
+    const { grant, report, storedConsentGrants } = await setup();
+    expect((await grant()).status).toBe(200);
+    expect(storedConsentGrants[0]?.scopes).toEqual(['foreground']);
+    expect(storedConsentGrants[0]?.consentTextVersion).toBeNull();
+    expect((await report('manual_refresh')).status).toBe(200);
+    const periodic = await report('periodic_foreground');
+    expect(periodic.status).toBe(403);
+    expect(await code(periodic)).toBe('CONSENT_REQUIRED');
+  });
+
+  it('refuses the background trigger unless background scope was separately granted', async () => {
+    const { grant, report } = await setup();
+    await grant({ scopes: ['foreground', 'periodic'] });
+    const refused = await report('background');
+    expect(refused.status).toBe(403);
+    expect(await code(refused)).toBe('CONSENT_REQUIRED');
+    await grant({ scopes: ['foreground', 'periodic', 'background'] });
+    expect((await report('background')).status).toBe(200);
+  });
+
+  it('opt-out takes effect immediately: the next report after DELETE /location is refused', async () => {
+    const { grant, report, withdraw } = await setup();
+    await grant({ scopes: ['foreground'] });
+    expect((await report()).status).toBe(200);
+    expect((await withdraw()).status).toBe(200);
+    const after = await report();
+    expect(after.status).toBe(403);
+    expect(await code(after)).toBe('CONSENT_REQUIRED');
+  });
+
+  it('a grant bound to another device does not authorise this device (SDL-10)', async () => {
+    const { grant, report, setSessionDevice } = await setup();
+    setSessionDevice('device-other');
+    await grant({ scopes: ['foreground'] });
+    setSessionDevice('device-bound-1');
+    const res = await report();
+    expect(res.status).toBe(403);
+    expect(await code(res)).toBe('CONSENT_REQUIRED');
+  });
+
+  it('rejects an invalid grant body (unknown scope, missing foreground, extra field)', async () => {
+    const { grant } = await setup();
+    expect((await grant({ scopes: ['everything'] })).status).toBe(400);
+    expect((await grant({ scopes: ['background'] })).status).toBe(400);
+    expect((await grant({ scopes: ['foreground'], extra: 1 })).status).toBe(400);
+  });
+
+  it('sends an out-of-band notice (security email + push) on grant and on withdrawal, without coordinates', async () => {
+    const { grant, withdraw, pushSent, noticesSent } = await setup();
+    await grant({ scopes: ['foreground'] });
+    await withdraw();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(noticesSent.map((n) => n.action)).toEqual(['location_tracking_enabled', 'location_tracking_disabled']);
+    expect(noticesSent[0]?.assetDisplayName).toBe('My iPhone');
+    expect(pushSent.map((p) => p.templateId)).toEqual(['location.tracking.enabled', 'location.tracking.disabled']);
+    expect(JSON.stringify(pushSent)).not.toMatch(/-25\.7|28\.2/);
+  });
+
+  it('when the switch is off, reports are accepted without a consent record (owner-test migration safety)', async () => {
+    const { report } = await setup({ locationConsentEnforced: false });
+    expect((await report()).status).toBe(200);
+  });
+
+  it('LOCATION_CONSENT_STEP_UP_ENFORCED: opt-in needs a fresh step-up; withdrawal never does', async () => {
+    const { grant, withdraw, setSessionMfaVerifiedAt, storedConsentGrants } = await setup({
+      locationConsentStepUpEnforced: true,
+    });
+    const refused = await grant({ scopes: ['foreground'] });
+    expect(refused.status).toBe(401);
+    expect(await code(refused)).toBe('STEP_UP_REQUIRED');
+    expect(storedConsentGrants).toHaveLength(0);
+    setSessionMfaVerifiedAt(new Date());
+    expect((await grant({ scopes: ['foreground'] })).status).toBe(200);
+    setSessionMfaVerifiedAt(null);
+    expect((await withdraw()).status).toBe(200);
   });
 });

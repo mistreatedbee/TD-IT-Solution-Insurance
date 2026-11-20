@@ -34,13 +34,34 @@ import {
 } from '../lib/asset-location-validation.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { requireIdempotencyKey } from '../middleware/idempotency.js';
-import { requireProtectionStepUp } from '../lib/step-up.js';
+import { assertProtectionStepUp, requireProtectionStepUp } from '../lib/step-up.js';
+import { isReportConsented, notifyLocationConsentChange, scopeForTrigger } from '../lib/location-consent.js';
+import { LOCATION_CONSENT_SCOPES } from '../repositories/location-consent-log.js';
 import { recordProtectionChange } from '../lib/protection-change.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 
 const assetIdParamsSchema = z.object({
   assetId: z.string().regex(/^[0-9a-f]{24}$/i),
 });
+
+/**
+ * INC-001 A-7: optional opt-in body. Omitted (pre-A-7 clients) = `['foreground']`, unversioned.
+ * `foreground` must always be present; `background` is only ever granted when listed.
+ */
+const locationConsentBodySchema = z
+  .object({
+    scopes: z
+      .array(z.enum(LOCATION_CONSENT_SCOPES))
+      .min(1)
+      .max(LOCATION_CONSENT_SCOPES.length)
+      .refine((s) => s.includes('foreground'), { message: "scopes must include 'foreground'" })
+      .optional(),
+    consentTextVersion: z
+      .string()
+      .regex(/^[A-Za-z0-9._-]{1,64}$/)
+      .optional(),
+  })
+  .strict();
 
 const assetListFiltersSchema = z.object({
   status: z.enum(['active', 'inactive', 'removed']).optional(),
@@ -160,6 +181,18 @@ export function createAssetsRouter(ctx: AppContext): Router {
           return;
         }
 
+        // INC-001 A-7 / ADR-0009 SDL-4: the server is the source of truth for consent. The
+        // newest consent event for this account + asset must be a grant from THIS device that
+        // covers this report's scope; a withdrawal refuses the next report immediately.
+        if (ctx.env.locationConsentEnforced === true) {
+          const latest = await ctx.locationConsentLog.findLatestByAsset(accountId, parsed.data.assetId);
+          const scope = scopeForTrigger((req.body as LocationReportBody).triggeredBy);
+          if (!isReportConsented(latest, session.deviceId, scope)) {
+            next(apiError('CONSENT_REQUIRED'));
+            return;
+          }
+        }
+
         const body = req.body as LocationReportBody;
         let recordedAt: Date;
         try {
@@ -230,12 +263,32 @@ export function createAssetsRouter(ctx: AppContext): Router {
           return;
         }
 
+        const bodyParsed = locationConsentBodySchema.safeParse(req.body ?? {});
+        if (!bodyParsed.success) {
+          next(apiError('VALIDATION_ERROR', { details: bodyParsed.error.issues.map((i) => i.message) }));
+          return;
+        }
+
         const accountId = req.auth!.accountId;
         const assetId = parsed.data.assetId;
 
         const existing = await ctx.assets.findByIdForAccount(accountId, assetId);
         if (!existing || existing.status === 'removed') {
           next(apiError('NOT_FOUND'));
+          return;
+        }
+
+        // ADR-0009 SDL-9: opt-in is a sensitive account action - a fresh step-up (MFA or
+        // password re-auth), behind LOCATION_CONSENT_STEP_UP_ENFORCED until the mobile enable
+        // flow can perform one. Withdrawal is never stepped up (POPIA s11(2)(b)).
+        if (ctx.env.locationConsentStepUpEnforced === true) {
+          await assertProtectionStepUp(ctx, req);
+        }
+
+        // SDL-10: the consent is bound to this session's device. No device, no consent.
+        const session = await ctx.sessions.findById(req.auth!.sessionId);
+        if (!session?.deviceId) {
+          next(apiError('DEVICE_MISMATCH'));
           return;
         }
 
@@ -249,11 +302,23 @@ export function createAssetsRouter(ctx: AppContext): Router {
           actorSessionId: req.auth!.sessionId,
           ipAddress: clientIp(req),
           userAgent: req.header('user-agent') ?? null,
+          deviceId: session.deviceId,
+          consentTextVersion: bodyParsed.data.consentTextVersion ?? null,
+          scopes: bodyParsed.data.scopes ?? ['foreground'],
+        });
+
+        notifyLocationConsentChange(ctx, req, {
+          enabled: true,
+          assetId,
+          assetName: existing.displayName ?? null,
+          deviceName: session.deviceName ?? null,
         });
 
         res.status(200).json({
           assetId,
           eventType: record.eventType,
+          scopes: record.scopes,
+          consentTextVersion: record.consentTextVersion,
           createdAt: record.createdAt.toISOString(),
         });
       } catch (err) {
@@ -306,6 +371,7 @@ export function createAssetsRouter(ctx: AppContext): Router {
 
         const purgedEventCount = await ctx.locationEvents.deleteByAsset(accountId, assetId);
 
+        const withdrawSession = await ctx.sessions.findById(req.auth!.sessionId).catch(() => null);
         await ctx.locationConsentLog.recordWithdrawal({
           accountId,
           assetId,
@@ -313,6 +379,16 @@ export function createAssetsRouter(ctx: AppContext): Router {
           actorSessionId: req.auth!.sessionId,
           ipAddress: clientIp(req),
           userAgent: req.header('user-agent') ?? null,
+          deviceId: withdrawSession?.deviceId ?? null,
+        });
+
+        // SDL-9: opt-out notice. The withdrawal record above is what makes the next report
+        // refused (LOCATION_CONSENT_ENFORCED); this only tells the account holder.
+        notifyLocationConsentChange(ctx, req, {
+          enabled: false,
+          assetId,
+          assetName: existing.displayName ?? null,
+          deviceName: withdrawSession?.deviceName ?? null,
         });
 
         res.status(200).json({

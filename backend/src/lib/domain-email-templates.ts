@@ -670,7 +670,13 @@ export function buildRecoveryCaseClosedEmail(params: {
  * change. A security notice - sent regardless of the customer's email preference. Content is
  * deliberately minimal: what changed, when, which device. NEVER coordinates, an address, the
  * contact's name, or more than the last 3 digits of the contact's phone. */
-export type ProtectionChangeNoticeAction = 'asset_removed' | 'emergency_contact_changed' | 'reauth_exhausted';
+export type ProtectionChangeNoticeAction =
+  | 'asset_removed'
+  | 'emergency_contact_changed'
+  | 'reauth_exhausted'
+  // INC-001 A-7 / ADR-0009 SDL-9: out-of-band notice on location opt-in / opt-out.
+  | 'location_tracking_enabled'
+  | 'location_tracking_disabled';
 
 export function maskPhoneLast3(phone: string): string {
   const digits = phone.replace(/\D/g, '');
@@ -698,6 +704,14 @@ export function buildProtectionChangedEmail(params: {
       what = `Your emergency contact was changed${
         params.contactPhoneMasked ? ` (new number ending ${escapeHtml(params.contactPhoneMasked)})` : ''
       }.`;
+      break;
+    case 'location_tracking_enabled':
+      title = 'Location tracking turned on';
+      what = `Location tracking was turned on for <strong>${escapeHtml(params.assetDisplayName ?? 'an asset')}</strong> on ${device}. That phone can now send its location to TD Insurance.`;
+      break;
+    case 'location_tracking_disabled':
+      title = 'Location tracking turned off';
+      what = `Location tracking was turned off for <strong>${escapeHtml(params.assetDisplayName ?? 'an asset')}</strong>. No further location reports are accepted for it.`;
       break;
     default:
       title = 'Too many incorrect password attempts';
