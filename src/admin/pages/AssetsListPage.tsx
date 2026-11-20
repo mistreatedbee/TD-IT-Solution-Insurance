@@ -5,11 +5,8 @@ import {
   Briefcase,
   Car,
   CheckCircle,
-  Clock,
   Laptop,
   Lock,
-  MapPin,
-  MapPinOff,
   MonitorSmartphone,
   Package,
   PauseCircle,
@@ -28,6 +25,8 @@ import {
   type AdminAssetCounts,
   type AdminAssetSummary,
 } from '../api/admin-data';
+import { trackingMethodFor, type TrackingMethod } from '../lib/tracking-method';
+import { TrackingMethodBadge as TrackingCell } from '../components/TrackingMethodBadge';
 import { AdminNavLink } from '../layout/AdminLayout';
 
 /* ------------------------------------------------------------------ */
@@ -97,27 +96,6 @@ type StatusFilter = 'active' | 'inactive' | 'removed' | '';
 const STATUS_VALUES: StatusFilter[] = ['active', 'inactive', 'removed'];
 const STATUS_FILTER_LABELS: Record<string, string> = { active: 'Active', inactive: 'Inactive', removed: 'Archived' };
 
-type TrackingMethod = 'gps_paired' | 'app' | 'software' | 'gps_unpaired' | 'none';
-
-/** Tracking method that *applies* to an asset — not whether it is reporting now. */
-function trackingMethodFor(asset: Pick<AdminAssetSummary, 'assetType' | 'gpsDeviceId'>): TrackingMethod {
-  if (asset.gpsDeviceId) return 'gps_paired';
-  switch (asset.assetType) {
-    case 'smartphone':
-      return 'app';
-    case 'laptop':
-    case 'desktop':
-    case 'tv':
-    case 'tablet':
-      return 'software';
-    case 'vehicle':
-    case 'business_equipment':
-      return 'gps_unpaired';
-    default:
-      return 'none';
-  }
-}
-
 const TRACKING_FILTERS: Array<{ value: Exclude<TrackingMethod, 'none'>; label: string }> = [
   { value: 'app', label: 'Our app' },
   { value: 'software', label: 'Our software (coming soon)' },
@@ -186,37 +164,6 @@ function AssetStatusCell({ status, legalHold }: { status: string; legalHold: boo
       ) : null}
     </span>
   );
-}
-
-function TrackingCell({ method }: { method: TrackingMethod }) {
-  switch (method) {
-    case 'gps_paired':
-      return (
-        <Badge tone="emerald" icon={<MapPin className={ICON} />}>
-          GPS tracker (paired)
-        </Badge>
-      );
-    case 'app':
-      return (
-        <Badge tone="neutral" icon={<Smartphone className={ICON} />}>
-          Our app on the phone
-        </Badge>
-      );
-    case 'software':
-      return (
-        <Badge tone="neutral" icon={<Clock className={ICON} />}>
-          Our software (coming soon)
-        </Badge>
-      );
-    case 'gps_unpaired':
-      return (
-        <Badge tone="gold" icon={<MapPinOff className={ICON} />}>
-          GPS tracker (not paired)
-        </Badge>
-      );
-    default:
-      return <Badge tone="neutral">Not tracked</Badge>;
-  }
 }
 
 /* ------------------------------ page ------------------------------ */

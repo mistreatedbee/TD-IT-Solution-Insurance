@@ -83,6 +83,8 @@ function sampleAsset(accountId: string, id = '507f1f77bcf86cd799439021'): AssetD
 
 function createHarness(opts: {
   assets?: AssetDocument[];
+  openClaims?: Array<{ id: string; accountId: string; assetId: string; status: string }>;
+  openCases?: Array<{ id: string; accountId: string; assetId: string; status: string; referenceNumber: string }>;
   mfaVerifiedAt?: Date | null;
   sessionRevokedAt?: Date | null;
 }) {
@@ -140,6 +142,16 @@ function createHarness(opts: {
           partnerOrganizationId: null,
           updatedAt: new Date(),
         };
+      },
+    },
+    claims: {
+      async findNonTerminalByAssetForAccount(accountId: string, assetId: string) {
+        return (opts.openClaims ?? []).find((c) => c.accountId === accountId && c.assetId === assetId) ?? null;
+      },
+    },
+    recoveryCases: {
+      async findOpenByAssetForAccount(accountId: string, assetId: string) {
+        return (opts.openCases ?? []).find((c) => c.accountId === accountId && c.assetId === assetId) ?? null;
       },
     },
     assets: {
@@ -480,6 +492,29 @@ describe('routes/admin-assets', () => {
     expect(harness.detailCalls[0]?.resourceId).toBe(asset.id);
     expect(harness.detailCalls[0]?.resourceType).toBe('asset');
     expect(harness.detailCalls[0]?.endpoint).toBe('GET /v1/admin/assets/{assetId}');
+  });
+
+  it('detail links the open claim and open recovery case for this asset (ids and status only)', async () => {
+    const subjectId = randomUUID();
+    const asset = sampleAsset(subjectId);
+    harness = createHarness({
+      assets: [asset],
+      openClaims: [{ id: 'c'.repeat(24), accountId: subjectId, assetId: asset.id, status: 'under_review' }],
+      openCases: [{ id: 'd'.repeat(24), accountId: subjectId, assetId: asset.id, status: 'reported', referenceNumber: 'RC-1' }],
+    });
+    await harness.start();
+    const res = await fetch(harness.url(`/admin/assets/${asset.id}`), { headers: { authorization: `Bearer ${harness.token}` } });
+    const body = (await res.json()) as { related: unknown };
+    expect(body.related).toEqual({
+      openClaim: { id: 'c'.repeat(24), status: 'under_review' },
+      openRecoveryCase: { id: 'd'.repeat(24), referenceNumber: 'RC-1', status: 'reported' },
+    });
+
+    await harness.stop();
+    harness = createHarness({ assets: [asset] });
+    await harness.start();
+    const empty = (await (await fetch(harness.url(`/admin/assets/${asset.id}`), { headers: { authorization: `Bearer ${harness.token}` } })).json()) as { related: unknown };
+    expect(empty.related).toEqual({ openClaim: null, openRecoveryCase: null });
   });
 
   it('list returns summary projection without details or estimatedValue (SR-004-admin-6)', async () => {

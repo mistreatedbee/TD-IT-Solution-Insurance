@@ -308,6 +308,18 @@
       }
     },
     {
+      "id": "backend-admin-asset-location",
+      "kind": "backend_route",
+      "pattern": "/admin/assets/:assetId/location",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-20 recorded by backend-engineer under the owner test-only exception (docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md). NO Stage 8 review has been performed; this is an explicit waiver, not a sign-off, and a security review is owed. GET /v1/admin/assets/{assetId}/location (backend/src/routes/admin-locations.ts): one asset's last known position, accuracy, source, linked tracker and at most 20 recent location_events points; read-only, requireUserType('admin'), per-account and per-IP rate limits identical to GET /admin/locations, every access audited via recordDetail with the asset owner as subject (no coordinates in the audit row), returns trackingOff with no position or history when the newest location consent event is a withdrawal, and mounted only when ADMIN_LOCATIONS_ENABLED=true (off by default). Known deviation from ADR-0009 SDL-5 and the 2026-10-05 cybersecurity-architect ruling on admin asset detail: a precise customer position with no recovery-case reference (the asset detail route itself still withholds coordinates). Before public launch: switch off, or rebuild case-scoped and put through a full Stage 8 review.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
       "id": "backend-admin-verification-requests-count",
       "kind": "backend_route",
       "pattern": "/admin/verification-requests/count",
