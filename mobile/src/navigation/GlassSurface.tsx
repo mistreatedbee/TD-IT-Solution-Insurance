@@ -10,6 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import type { GlassColorScheme } from 'expo-glass-effect';
+import { designColorsDay, designColorsNight } from '../theme/designTokens.generated';
 
 export type GlassEffectStyle = 'regular' | 'clear';
 
@@ -23,6 +24,31 @@ export interface GlassSurfaceProps {
   glassEffectStyle?: GlassEffectStyle;
   /** Blur strength for the `BlurView` fallback (default 72 iOS / 56 Android). */
   blurIntensity?: number;
+  /**
+   * Opaque fill used wherever blur is off (all Android, reduced transparency). Defaults to the `bgRaised`
+   * design token for the colour scheme.
+   */
+  solidFill?: string;
+}
+
+/**
+ * Android never gets blur. The experimental Android `BlurView` can render as a flat white/grey layer and an
+ * elevation shadow behind a translucent view paints as an opaque panel; on the tab bar and stack headers that
+ * showed as a mismatched white/grey block (owner report, 2026-11-20 — same root cause as the GlassCard fix of
+ * 2026-11-19). Android chrome is a solid token fill instead.
+ */
+export function glassSurfaceUsesSolidFill(reduceTransparency: boolean): boolean {
+  return Platform.OS === 'android' || reduceTransparency;
+}
+
+/** Solid chrome fill for the given scheme (design tokens, day + night). */
+export function liquidGlassSolidFill(isDark: boolean): string {
+  return isDark ? designColorsNight.bgRaised : designColorsDay.bgRaised;
+}
+
+/** Solid chrome hairline for the given scheme (design tokens, day + night). */
+export function liquidGlassSolidBorder(isDark: boolean): string {
+  return isDark ? designColorsNight.borderSubtle : designColorsDay.borderSubtle;
 }
 
 /** Shared frosted tint for floating chrome (tab bar, map cards). */
@@ -37,18 +63,6 @@ export function liquidGlassBorder(isDark: boolean): string {
 
 function shouldUseNativeGlass(): boolean {
   return Platform.OS === 'ios' && isGlassEffectAPIAvailable();
-}
-
-/**
- * OB-17 low-end-Android no-blur rung (tokens doc §5.2). Trigger: Android
- * API level below 29 (Android 10) — the simpler of the two recommended
- * heuristics (vs. an `expo-device` memory check), per the tokens doc's own
- * "whichever is simpler to wire in" guidance. No new dependency added.
- */
-function isLowEndAndroid(): boolean {
-  if (Platform.OS !== 'android') return false;
-  const version = typeof Platform.Version === 'number' ? Platform.Version : Number(Platform.Version);
-  return Number.isFinite(version) && version < 29;
 }
 
 /**
@@ -102,24 +116,22 @@ export function GlassSurface({
   tintColor,
   glassEffectStyle = 'regular',
   blurIntensity,
+  solidFill,
 }: GlassSurfaceProps) {
   const flatStyle = StyleSheet.flatten(style) ?? {};
   const borderRadius = typeof flatStyle.borderRadius === 'number' ? flatStyle.borderRadius : 0;
   const resolvedBlurIntensity =
     blurIntensity ?? (Platform.OS === 'ios' ? (glassEffectStyle === 'clear' ? 92 : 72) : 56);
   const reduceTransparency = useReduceTransparencyEnabled();
-  const useOpaqueFallback = reduceTransparency || isLowEndAndroid();
+  // Covers the OB-17 low-end-Android rung too: every Android version now takes the solid path.
+  const useOpaqueFallback = glassSurfaceUsesSolidFill(reduceTransparency);
 
   if (useOpaqueFallback) {
-    const isDark = colorScheme === 'dark';
-    const opaqueFill = isDark ? '#151923' : '#FFFFFF';
+    const opaqueFill = solidFill ?? liquidGlassSolidFill(colorScheme === 'dark');
     return (
       <View
-        style={[
-          style,
-          styles.fallbackShell,
-          { backgroundColor: tintColor ?? opaqueFill, borderRadius },
-        ]}
+        testID="glass-surface-solid"
+        style={[style, styles.fallbackShell, { backgroundColor: opaqueFill, borderRadius }]}
       >
         {children}
       </View>
