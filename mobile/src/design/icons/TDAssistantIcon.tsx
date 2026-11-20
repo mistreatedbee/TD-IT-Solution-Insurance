@@ -29,8 +29,8 @@ const MARK_SCALE = MARK_H / TD_MARK_VIEWBOX.height;
 const MARK_W = TD_MARK_VIEWBOX.width * MARK_SCALE;
 const MARK_CY = 10.5;
 const MARK_TRANSFORM = `translate(${12 - MARK_W / 2} ${MARK_CY - MARK_H / 2}) scale(${MARK_SCALE}) translate(${-TD_MARK_VIEWBOX.x} ${-TD_MARK_VIEWBOX.y})`;
-/** Extra thickness for the simplified mark, in mark units (about 0.75px each side at 24px). */
-const SIMPLE_STROKE = 40;
+/** Extra thickness for the simplified mark, in mark units (chevrons about 1.75px at 24px, matching lucide). */
+const SIMPLE_STROKE = 65;
 
 export function TDAssistantIcon({ size = 24, color, strokeWidth = 1.75, testID }: TDAssistantIconProps) {
   const t = useDesignTokens();

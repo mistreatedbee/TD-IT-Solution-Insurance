@@ -357,7 +357,7 @@ exports[`HomeHeader assistant entry shows the TD chat-bubble icon on the assista
                         }
                       }
                       strokeLinejoin={1}
-                      strokeWidth={40}
+                      strokeWidth={65}
                     />
                   </RNSVGGroup>
                   <RNSVGGroup
@@ -401,7 +401,7 @@ exports[`HomeHeader assistant entry shows the TD chat-bubble icon on the assista
                         }
                       }
                       strokeLinejoin={1}
-                      strokeWidth={40}
+                      strokeWidth={65}
                     />
                   </RNSVGGroup>
                 </RNSVGGroup>
