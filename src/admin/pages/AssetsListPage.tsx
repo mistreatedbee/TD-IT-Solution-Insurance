@@ -22,12 +22,17 @@ import { DataTable, InlineAlert, LoadingState } from '../../dashboard/components
 import { getActiveAssetCount } from '../api/admin-home-stats';
 import { useHomeCount } from '../../dashboard/hooks/useHomeCount';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
-import { listAdminAssets, type AdminAssetSummary } from '../api/admin-data';
+import {
+  getAdminAssetCounts,
+  listAdminAssets,
+  type AdminAssetCounts,
+  type AdminAssetSummary,
+} from '../api/admin-data';
 import { AdminNavLink } from '../layout/AdminLayout';
 
 /* ------------------------------------------------------------------ */
 /* Categories — all derived in the browser from the minimal admin list  */
-/* fields (SR-004-admin-6). Server-side grouping/counts need backend.   */
+/* fields (SR-004-admin-6). Tile totals come from /admin/assets/counts. */
 /* ------------------------------------------------------------------ */
 
 const ASSET_TYPE_ICONS: Record<string, typeof Car> = {
@@ -246,6 +251,27 @@ export function AssetsListPage() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const totalCount = useHomeCount(getActiveAssetCount);
+  /** True totals for the tiles; on failure the tiles fall back to loaded rows, labelled. */
+  const [counts, setCounts] = useState<{ status: 'loading' | 'loaded' | 'error'; data: AdminAssetCounts | null }>({
+    status: 'loading',
+    data: null,
+  });
+
+  useEffect(() => {
+    // Tiles render only on the unfiltered page, so only fetch there. Once per mount.
+    if (accountId) return;
+    let cancelled = false;
+    getAdminAssetCounts()
+      .then((data) => {
+        if (!cancelled) setCounts({ status: 'loaded', data });
+      })
+      .catch(() => {
+        if (!cancelled) setCounts({ status: 'error', data: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
 
   function fetchPage(type: string, cursor?: string) {
     return listAdminAssets({
@@ -344,10 +370,18 @@ export function AssetsListPage() {
   const filtersActive = Boolean(group || status || tracking || needle);
   const browserFiltersActive = Boolean(tracking || needle);
 
-  const gpsPaired = rows.filter((r) => r.gpsDeviceId).length;
-  const onHold = rows.filter((r) => r.legalHold).length;
+  const trueCounts = counts.status === 'loaded' ? counts.data : null;
+  const tilesPending = trueCounts ? false : counts.status === 'loading' || loading;
+  const loadedSuffix = trueCounts ? '' : ' (loaded)';
+  const gpsPaired = trueCounts ? trueCounts.gpsPaired : rows.filter((r) => r.gpsDeviceId).length;
+  const onHold = trueCounts ? trueCounts.legalHold : rows.filter((r) => r.legalHold).length;
   const groupCounts = Object.fromEntries(
-    ASSET_GROUPS.map((g) => [g.key, rows.filter((r) => g.types.includes(r.assetType)).length]),
+    ASSET_GROUPS.map((g) => [
+      g.key,
+      trueCounts
+        ? g.types.reduce((sum, t) => sum + (trueCounts.byAssetType[t] ?? 0), 0)
+        : rows.filter((r) => g.types.includes(r.assetType)).length,
+    ]),
   );
 
   const resultParts = [
@@ -369,27 +403,27 @@ export function AssetsListPage() {
               <StatBlock size="md" value={0} label={totalCount.status === 'loading' ? 'Loading…' : 'Unavailable'} animate={false} />
             )}
             <StatBlock size="md" value={rows.length} label="Showing" animate={false} />
-            <StatBlock size="md" value={gpsPaired} label="GPS paired (loaded)" animate={false} />
-            <StatBlock size="md" value={onHold} label="On legal hold (loaded)" animate={false} />
+            <StatBlock size="md" value={gpsPaired} label={`GPS paired${loadedSuffix}`} animate={false} />
+            <StatBlock size="md" value={onHold} label={`On legal hold${loadedSuffix}`} animate={false} />
           </div>
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {ASSET_GROUPS.map((g) => {
               const Icon = g.icon;
               const selected = group?.key === g.key;
-              const label = `${g.label} (loaded)`;
+              const label = `${g.label}${loadedSuffix}`;
               return (
                 <button
                   key={g.key}
                   type="button"
                   aria-pressed={selected}
-                  aria-label={loading ? label : `${label}: ${groupCounts[g.key]}`}
+                  aria-label={tilesPending ? label : `${label}: ${groupCounts[g.key]}`}
                   onClick={() => selectGroup(selected ? null : g.key)}
                   className={`min-h-11 rounded-td-lg border border-td-border-subtle bg-td-bg-raised p-4 text-left transition-colors hover:bg-td-bg-sunken focus:outline-none focus-visible:ring-2 focus-visible:ring-td-link ${
                     selected ? 'ring-2 ring-td-link' : ''
                   }`}
                 >
                   <Icon className="mb-2 h-5 w-5 text-td-link" aria-hidden="true" />
-                  {loading ? (
+                  {tilesPending ? (
                     <span className="block">
                       <span className="block text-4xl font-semibold text-td-ink">…</span>
                       <span className="mt-2 block text-xs uppercase tracking-wide text-td-ink-muted">{label}</span>
@@ -402,8 +436,10 @@ export function AssetsListPage() {
             })}
           </div>
           <p className="mt-4 text-xs text-td-ink-muted">
-            Counts marked (loaded) only include assets loaded on this page. Tracking shows the method that applies to
-            the asset, not whether it is reporting right now.
+            {trueCounts
+              ? 'Category, GPS and legal-hold counts cover every asset in every status, including archived.'
+              : 'Totals are unavailable, so counts marked (loaded) only include assets loaded on this page.'}{' '}
+            Tracking shows the method that applies to the asset, not whether it is reporting right now.
           </p>
         </Card>
       ) : null}
