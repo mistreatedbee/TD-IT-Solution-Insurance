@@ -24,10 +24,11 @@ import Svg, {
   Stop,
 } from 'react-native-svg';
 import { Backdrop } from '../design/Backdrop';
+import { TD_MARK_BOTTOM, TD_MARK_TOP, TD_MARK_VIEWBOX, TD_MARK_VIEWBOX_STRING } from '../design/icons/tdMark';
 import { useDesignTokens } from '../theme/designTheme';
 
 const MARK_W = 120;
-const MARK_H = (MARK_W * 587.75) / 522;
+const MARK_H = (MARK_W * TD_MARK_VIEWBOX.height) / TD_MARK_VIEWBOX.width;
 const BAR_W = 140;
 const SLIDE = 50;
 const GLOW = 260;
@@ -291,16 +292,16 @@ export function LoadingScreen({ testID }: { testID?: string }) {
             <Svg
               width={MARK_W}
               height={MARK_H}
-              viewBox="422.5 145.25 522 587.75"
+              viewBox={TD_MARK_VIEWBOX_STRING}
             >
-              <G transform="translate(0 127)">
+              <G transform={`translate(0 ${TD_MARK_TOP.offsetY})`}>
                 <Polygon
                   fill={orange}
-                  points="683.5,26.2 936.5,279.2 901.0,279.2 683.5,61.8 466.0,279.2 430.5,279.2"
+                  points={TD_MARK_TOP.outer}
                 />
                 <Polygon
                   fill={blue}
-                  points="683.5,138.0 826.5,281.0 806.5,281.0 683.5,158.0 560.5,281.0 540.5,281.0"
+                  points={TD_MARK_TOP.inner}
                 />
               </G>
             </Svg>
@@ -311,16 +312,16 @@ export function LoadingScreen({ testID }: { testID?: string }) {
             <Svg
               width={MARK_W}
               height={MARK_H}
-              viewBox="422.5 145.25 522 587.75"
+              viewBox={TD_MARK_VIEWBOX_STRING}
             >
-              <G transform="translate(0 -127)">
+              <G transform={`translate(0 ${TD_MARK_BOTTOM.offsetY})`}>
                 <Polygon
                   fill={blue}
-                  points="683.5,852.0 936.5,599.0 901.0,599.0 683.5,816.5 466.0,599.0 430.5,599.0"
+                  points={TD_MARK_BOTTOM.outer}
                 />
                 <Polygon
                   fill={blue}
-                  points="683.5,740.2 826.5,597.2 806.5,597.2 683.5,720.2 560.5,597.2 540.5,597.2"
+                  points={TD_MARK_BOTTOM.inner}
                 />
               </G>
             </Svg>

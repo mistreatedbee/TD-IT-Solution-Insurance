@@ -37,6 +37,12 @@ describe('HomeHeader assistant entry', () => {
     expect(mockPush).toHaveBeenCalledWith('/(app)/assistant');
   });
 
+  it('shows the TD chat-bubble icon on the assistant button (snapshot)', async () => {
+    const view = await renderHeader();
+    expect(screen.getByTestId('home-assistant-icon')).toBeTruthy();
+    expect(view.toJSON()).toMatchSnapshot();
+  });
+
   it('keeps the alerts bell and badge when the flag is off', async () => {
     mockFlags.assistant = false;
     await renderHeader();
