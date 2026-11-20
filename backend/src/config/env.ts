@@ -260,6 +260,26 @@ export interface Env {
   claimsApiEnabled?: boolean;
 
   /**
+   * Feature 023 Phase A, BR-2 (CTO review §13 item 2/4) — when on, a customer whose
+   * identity verification is not `verified` cannot FILE a claim (`POST /v1/claims`
+   * returns 403 `VERIFICATION_REQUIRED`). Theft/recovery reports are never gated
+   * (BR-3). The owner has not confirmed BR-2 yet, so this defaults OFF. Fail-closed,
+   * same convention as `claimsApiEnabled`: only the exact string `"true"` enables it.
+   */
+  kycClaimGateEnabled?: boolean;
+
+  /**
+   * Stage 8 KYC-2 (security-engineer review of the KYC surface) — server-side kill switch
+   * for the identity-verification flow: `POST /v1/account/profile/verification/submit` and
+   * the admin verification queue/count/decision/history/notes routes. Before this, the
+   * mobile `FEATURE_KYC_ENABLED` flag was the only gate (a rendering decision, not a trust
+   * boundary). Fail-closed: only the exact string `"true"` enables it; off -> 404 before
+   * authentication. Profile read/edit/picture routes are NOT gated (non-KYC features such
+   * as the emergency contact depend on them).
+   */
+  kycApiEnabled?: boolean;
+
+  /**
    * OB-03 (docs/features/009-customer-experience-redesign/
    * api-design-ob03-dispatch-location-grants.md §0, CS-7) — fail-closed kill switch for
    * the (not yet built) admin dispatch router / `security-cases.ts` accept-decline
@@ -584,6 +604,30 @@ export function loadEnv(): Env {
     );
   }
 
+  // Feature 023 Phase A BR-2 — claim filing verification gate. Only "true" enables it.
+  const kycClaimGateEnabledRaw = process.env.KYC_CLAIM_GATE_ENABLED;
+  const kycClaimGateEnabled = kycClaimGateEnabledRaw === 'true';
+  if (kycClaimGateEnabledRaw !== undefined && !kycClaimGateEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] KYC_CLAIM_GATE_ENABLED is set to an unrecognized value ` +
+        `("${kycClaimGateEnabledRaw}"). Treating as disabled (fail-closed). ` +
+        'Set it to exactly "true" to enable, or unset it to disable.',
+    );
+  }
+
+  // Stage 8 KYC-2 — identity-verification API kill switch. Only "true" enables it.
+  const kycApiEnabledRaw = process.env.KYC_API_ENABLED;
+  const kycApiEnabled = kycApiEnabledRaw === 'true';
+  if (kycApiEnabledRaw !== undefined && !kycApiEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] KYC_API_ENABLED is set to an unrecognized value ` +
+        `("${kycApiEnabledRaw}"). Treating as disabled (fail-closed, Stage 8 KYC-2). ` +
+        'Set it to exactly "true" to enable, or unset it to disable.',
+    );
+  }
+
   // security-review.md §12.3 — placeholder config for the claim
   // decision-notice template. `envOrPlaceholder` yields the clearly-marked
   // placeholder when the var is unset, but an explicitly-blank value (set to
@@ -726,6 +770,8 @@ export function loadEnv(): Env {
     signupExistingAccountEmailEnabled,
     claimsNotice,
     claimsApiEnabled,
+    kycClaimGateEnabled,
+    kycApiEnabled,
     directedDispatchEnabled,
     partnerLocationSharingEnabled,
     recoveryCaseEventsEnabled,

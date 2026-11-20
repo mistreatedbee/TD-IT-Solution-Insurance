@@ -49,7 +49,10 @@ export type PushTemplateId =
   | 'onboarding.incomplete'
   | 'policy.activated'
   | 'policy.renewal.upcoming'
-  | 'safety.alert';
+  | 'safety.alert'
+  | 'account.verification.verified'
+  | 'account.verification.action_required'
+  | 'account.verification.rejected';
 
 export interface PushTemplateVariables {
   assetName?: string;
@@ -548,6 +551,41 @@ export function buildBrandedPushMessage(
           ...(variables.assetId ? { assetId: variables.assetId } : {}),
         },
       };
+    // Feature 023 Phase A — identity verification decision. Lock-screen safe: the push never
+    // carries the reason text, only that a decision was made (reason is in-app and email).
+    case 'account.verification.verified':
+    case 'account.verification.action_required':
+    case 'account.verification.rejected': {
+      const copy = {
+        'account.verification.verified': {
+          title: 'Identity verified',
+          body: 'Your identity has been verified. You now have full protection and recovery support.',
+        },
+        'account.verification.action_required': {
+          title: 'Verification needs attention',
+          body: 'Please update your details and submit your verification again. Open the app for details.',
+        },
+        'account.verification.rejected': {
+          title: 'Verification update',
+          body: 'We could not verify your identity. Open the app for details.',
+        },
+      }[templateId];
+      return {
+        eventId: templateId,
+        title: copy.title,
+        body: copy.body,
+        subtitle,
+        category: 'account',
+        deepLink: deepLink('account/verification'),
+        priority: 'default',
+        data: {
+          event: templateId,
+          brand: NOTIFICATION_BRAND.name,
+          logoUrl: NOTIFICATION_BRAND.logoUrl,
+          deepLink: deepLink('account/verification'),
+        },
+      };
+    }
     default: {
       const _exhaustive: never = templateId;
       throw new Error(`Unknown push template: ${_exhaustive}`);

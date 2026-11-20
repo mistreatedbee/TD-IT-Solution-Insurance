@@ -109,6 +109,18 @@ export function createClaimsRouter(ctx: AppContext): Router {
         const accountId = req.auth!.accountId;
         await requireActiveAccount(ctx.accounts, accountId);
 
+        // Feature 023 Phase A BR-2 / AC-A6 — only an identity-verified customer may
+        // FILE a claim, behind the fail-closed KYC_CLAIM_GATE_ENABLED switch (off by
+        // default; owner has not confirmed BR-2). Theft/recovery reports live in
+        // routes/recovery.ts and are never gated (BR-3 / AC-A7).
+        if (ctx.env.kycClaimGateEnabled === true) {
+          const profile = await ctx.customerProfiles.findByAccountId(accountId);
+          if (profile?.verificationStatus !== 'verified') {
+            next(apiError('VERIFICATION_REQUIRED'));
+            return;
+          }
+        }
+
         const incidentDate = parseIncidentDate(body.incidentDate);
         if (Number.isNaN(incidentDate.getTime()) || incidentDate.getTime() > Date.now()) {
           next(apiError('VALIDATION_ERROR', { details: ['incidentDate must be a valid date not in the future'] }));

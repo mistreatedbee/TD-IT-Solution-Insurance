@@ -193,6 +193,8 @@ function createHarness(opts: {
   policy?: PolicyDocument | null;
   claims?: ClaimDocument[];
   envOverrides?: Partial<Env>;
+  /** Feature 023 BR-2 — `null` means no profile document exists. */
+  verificationStatus?: string | null;
 }) {
   const env = fakeEnv(opts.envOverrides);
   const kv = new InMemoryKeyValueStore();
@@ -242,6 +244,12 @@ function createHarness(opts: {
     recoveryCases: {
       async findByIdForAccount() {
         return null;
+      },
+    },
+    customerProfiles: {
+      async findByAccountId(acctId: string) {
+        if (acctId !== accountId || opts.verificationStatus === null) return null;
+        return { accountId, verificationStatus: opts.verificationStatus ?? 'not_started' };
       },
     },
     claims: {
@@ -894,5 +902,61 @@ describe('SR-018-2: claims API kill switch (CLAIMS_API_ENABLED)', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('Feature 023 BR-2 — KYC_CLAIM_GATE_ENABLED claim filing gate', () => {
+  async function fileClaim(opts: { gate: boolean | undefined; verificationStatus: string | null }) {
+    const acctId = randomUUID();
+    const harness = createHarness({
+      accountId: acctId,
+      asset: sampleAsset(acctId),
+      policy: samplePolicy(acctId),
+      verificationStatus: opts.verificationStatus,
+      envOverrides: opts.gate === undefined ? {} : { kycClaimGateEnabled: opts.gate },
+    });
+    const listened = await listen(harness.app);
+    activeServer = listened.server;
+    const token = customerToken(harness.env, acctId, harness.sessionId);
+    const res = await fetch(`${listened.baseUrl}/claims`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'idempotency-key': randomUUID() },
+      body: JSON.stringify({
+        policyId: POLICY_ID,
+        assetId: ASSET_ID,
+        incidentDescription: 'Laptop was stolen from my car overnight.',
+        incidentDate: '2026-09-15',
+        claimedAmount: 1000,
+      }),
+    });
+    return { res, harness };
+  }
+
+  it.each(['not_started', 'in_progress', 'pending_review', 'rejected', 'action_required'])(
+    'AC-A6: gate on + %s customer gets 403 VERIFICATION_REQUIRED and no claim is created',
+    async (status) => {
+      const { res, harness } = await fileClaim({ gate: true, verificationStatus: status });
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error.code).toBe('VERIFICATION_REQUIRED');
+      expect(body.error.message).toBe('Finish verification to file a claim.');
+      expect(harness.claims).toHaveLength(0);
+    },
+  );
+
+  it('AC-A6: gate on + no profile document is treated as unverified (fail-closed)', async () => {
+    const { res, harness } = await fileClaim({ gate: true, verificationStatus: null });
+    expect(res.status).toBe(403);
+    expect(harness.claims).toHaveLength(0);
+  });
+
+  it('gate on + verified customer can file', async () => {
+    const { res } = await fileClaim({ gate: true, verificationStatus: 'verified' });
+    expect(res.status).toBe(201);
+  });
+
+  it.each([false, undefined])('gate off (%s) — unverified customer can still file (default behaviour)', async (gate) => {
+    const { res } = await fileClaim({ gate, verificationStatus: 'not_started' });
+    expect(res.status).toBe(201);
   });
 });

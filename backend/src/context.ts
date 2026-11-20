@@ -7,6 +7,14 @@
  * equivalent context against fakes instead.
  */
 import type { Pool } from 'pg';
+import {
+  createCustomerVerificationNotesRepo,
+  type CustomerVerificationNotesRepo,
+} from './repositories/customer-verification-notes.js';
+import {
+  createVerificationNotificationService,
+  type VerificationNotificationService,
+} from './lib/verification-notification-service.js';
 import type { Env } from './config/env.js';
 import { getPgPool } from './db/pg.js';
 import { getKeyValueStore, type KeyValueStore } from './db/redis.js';
@@ -140,6 +148,8 @@ export interface AppContext {
   policyActivation: PolicyActivationService;
   recoveryNotifications: RecoveryNotificationService;
   customerProfiles: CustomerProfilesRepo;
+  customerVerificationNotes: CustomerVerificationNotesRepo;
+  verificationNotifications: VerificationNotificationService;
   customerProfilePictures: CustomerProfilePicturesRepo;
   trackingDevices: TrackingDevicesRepo;
   locationEvents: LocationEventsRepo;
@@ -238,6 +248,13 @@ export function buildAppContext(env: Env): AppContext {
     policyActivation,
     recoveryNotifications,
     customerProfiles: createCustomerProfilesRepo(getDb(), auditLog),
+    customerVerificationNotes: createCustomerVerificationNotesRepo(getDb()),
+    verificationNotifications: createVerificationNotificationService({
+      env,
+      accounts,
+      notificationPreferences,
+      pushNotifications,
+    }),
     customerProfilePictures: createCustomerProfilePicturesRepo(getDb()),
     trackingDevices: createTrackingDevicesRepo(getDb()),
     locationEvents: createLocationEventsRepo(getDb()),

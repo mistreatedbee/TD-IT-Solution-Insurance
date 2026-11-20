@@ -21,6 +21,7 @@ import { openMongoDatabase } from '../src/db/mongo-connection.js';
 import { bootstrapFeature004Collections } from '../src/db/feature004-collections.js';
 import { bootstrapRecoveryCollections } from '../src/db/recovery-collections.js';
 import { bootstrapCustomerProfileCollections } from '../src/db/customer-profile-collections.js';
+import { bootstrapCustomerVerificationNoteCollections } from '../src/db/customer-verification-note-collections.js';
 import { bootstrapTrackingDeviceCollections } from '../src/db/tracking-device-collections.js';
 import { bootstrapLocationEventsCollections } from '../src/db/location-events-collections.js';
 import { bootstrapAlertsCollections } from '../src/db/alerts-collections.js';
@@ -97,6 +98,10 @@ async function main(): Promise<void> {
     console.log(
       `[bootstrap-mongo] customer_profiles: ${profilesCreated ? 'created' : 'already existed'}, indexes ensured`,
     );
+
+    await bootstrapCustomerVerificationNoteCollections(db);
+    // eslint-disable-next-line no-console
+    console.log('[bootstrap-mongo] customer_verification_notes: ensured, indexes ensured');
 
     const trackingCreated =
       (await db.listCollections({ name: 'tracking_devices' }).toArray()).length === 0;

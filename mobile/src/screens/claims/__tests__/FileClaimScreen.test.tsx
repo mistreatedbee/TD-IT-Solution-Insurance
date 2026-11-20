@@ -139,4 +139,27 @@ describe('FileClaimScreen', () => {
 
     await waitFor(() => expect(screen.getByText(/Eligible from/)).toBeTruthy());
   });
+
+  it('Feature 023 BR-2: shows "Finish verification to file a claim" and links to Verification on 403 VERIFICATION_REQUIRED', async () => {
+    mockCreateClaimMutateAsync.mockRejectedValue(
+      new ApiError(403, {
+        error: {
+          code: 'VERIFICATION_REQUIRED',
+          message: 'Finish verification to file a claim.',
+          requestId: 'req-1',
+        },
+      }),
+    );
+    await renderWithProviders(<FileClaimScreen />);
+    await fillValidForm();
+    await act(async () => {
+      fireEvent.press(screen.getByText('Submit claim'));
+    });
+
+    expect(await screen.findByText('Finish verification to file a claim.')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(screen.getByText('Go to verification'));
+    });
+    expect(mockPush).toHaveBeenCalledWith('/account/verification');
+  });
 });
