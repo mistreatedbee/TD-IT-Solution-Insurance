@@ -19,6 +19,7 @@ import { Button, GlassCard } from '../../design';
 import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
 import { Alert } from '../../theme/primitives';
 import { PolicyStatusPill } from '../policy/PolicyStatusPill';
+import { trackingMethodFor, trackingMethodShortLabel } from '../../tracking/trackingMethod';
 
 function AssetPickRow({
   asset,
@@ -37,9 +38,11 @@ function AssetPickRow({
           {formatAssetType(asset.assetType ?? 'other_electronics')}
         </PolicyStatusPill>
         <Text style={styles.gpsHint}>
-          {asset.gpsDeviceId
-            ? 'GPS device paired'
-            : 'No GPS device — recovery may be limited'}
+          {trackingMethodFor(asset.assetType) !== 'gps_hardware'
+            ? trackingMethodShortLabel(asset.assetType)
+            : asset.gpsDeviceId
+              ? 'GPS tracker linked'
+              : 'No GPS tracker — recovery may be limited'}
         </Text>
       </GlassCard>
     </Pressable>
@@ -67,11 +70,11 @@ export function ReportTheftSelectScreen() {
       <Text style={styles.title}>Report a stolen asset</Text>
       <Text style={styles.subtitle}>
         Choose the asset you need to recover. We&apos;ll alert our security
-        partners and start tracking if GPS hardware is paired.
+        partners and use any location your phone or GPS tracker has shared.
       </Text>
 
       <Alert tone="info">
-        Recovery is best-effort — it depends on GPS signal, device power, and
+        Recovery is best-effort — it depends on location signal, device power, and
         partner availability. This does not guarantee your asset will be
         recovered.
       </Alert>

@@ -1,5 +1,5 @@
 import { CameraIcon, ImageIcon } from 'lucide-react-native';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { resolveProfilePictureUrl } from '../api/customer-profile';
 import { useSessionStore } from '../auth/session-store';
@@ -33,13 +33,26 @@ export function ProfileAvatar({
   const accessToken = useSessionStore((state) => state.accessToken);
   const imageUri = resolveProfilePictureUrl(profilePictureUrl);
 
+  // Android: React Native's <Image> only forwards `headers` to the native view when `source` is
+  // an ARRAY (Image.android.js); for a single `{ uri, headers }` object the native ReactImageView
+  // reads only `uri`/`cache`, so the Bearer header was dropped, the authenticated
+  // GET /account/profile/picture answered 401 and the avatar rendered as an empty circle.
+  // iOS reads per-source headers, which is why it only broke on the Android APK.
   const imageSource = useMemo(() => {
     if (!imageUri || !accessToken) return null;
-    return {
-      uri: imageUri,
-      headers: { Authorization: `Bearer ${accessToken}` },
-    };
+    return [
+      {
+        uri: imageUri,
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    ];
   }, [accessToken, imageUri]);
+
+  // If the picture still can't load (expired token, offline), show initials, not a blank circle.
+  // Keyed to the uri + token, so a new picture or a refreshed token tries again.
+  const loadKey = `${imageUri ?? ''}|${accessToken ?? ''}`;
+  const [failedKey, setFailedKey] = useState<string | null>(null);
+  const loadFailed = failedKey === loadKey;
 
   const content = (
     <View
@@ -50,8 +63,14 @@ export function ProfileAvatar({
     >
       {loading ? (
         <ActivityIndicator color={colors.textInverse} />
-      ) : imageSource ? (
-        <Image source={imageSource} style={styles.image} accessibilityIgnoresInvertColors />
+      ) : imageSource && !loadFailed ? (
+        <Image
+          testID="profile-avatar-image"
+          source={imageSource}
+          style={styles.image}
+          accessibilityIgnoresInvertColors
+          onError={() => setFailedKey(loadKey)}
+        />
       ) : (
         <Text style={[styles.initials, size === 'lg' ? styles.initialsLg : null]}>{initials}</Text>
       )}

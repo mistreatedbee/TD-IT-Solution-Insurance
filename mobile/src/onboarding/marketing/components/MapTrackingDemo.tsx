@@ -55,8 +55,8 @@ export function MapTrackingDemo() {
         </View>
       </View>
       <Text style={styles.disclaimer}>
-        Track compatible insured assets with an assigned tracking device. Location depends on device
-        connectivity and GPS or network availability.
+        Track your phone with this app, and other insured assets with a GPS tracker. Location depends
+        on device connectivity and GPS or network availability.
       </Text>
     </View>
   );

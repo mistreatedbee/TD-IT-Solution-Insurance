@@ -38,6 +38,14 @@ export interface TrackingProfileView {
   installationGuide: typeof INSTALLATION_GUIDE;
 }
 
+/** Asset types tracked by TD Insurance software on the device (not a GPS tracker). */
+const SOFTWARE_TRACKED_NOUN: Partial<Record<string, string>> = {
+  laptop: 'laptop',
+  desktop: 'computer',
+  tv: 'TV',
+  tablet: 'tablet',
+};
+
 export function resolveTrackingProfile(
   asset: AssetDocument,
   device: TrackingDeviceDocument | null,
@@ -81,6 +89,23 @@ export function resolveTrackingProfile(
         status: device.status,
         activatedAt: device.activatedAt?.toISOString() ?? null,
       },
+      telemetry: null,
+      installationGuide: INSTALLATION_GUIDE,
+    };
+  }
+
+  // Owner direction 2026-11-20: laptops, desktops, TVs and tablets are tracked by our own
+  // software on the device, not a GPS tracker. That software is not built yet (Feature 022),
+  // so this stays honest: no capabilities, and copy says it is coming soon.
+  const softwareNoun = SOFTWARE_TRACKED_NOUN[asset.assetType];
+  if (softwareNoun) {
+    return {
+      assetId: asset.id,
+      providerId: 'hardware_pending',
+      providerLabel: 'TD Insurance app (coming soon)',
+      statusMessage: `Tracked with the TD Insurance app on the device. The ${softwareNoun} app is coming soon.`,
+      capabilities: PENDING_HARDWARE_CAPABILITIES,
+      device: null,
       telemetry: null,
       installationGuide: INSTALLATION_GUIDE,
     };

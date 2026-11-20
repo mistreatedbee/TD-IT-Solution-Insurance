@@ -3,6 +3,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { formatDate } from '../../lib/asset-labels';
 import { useDesignTokens } from '../../theme/designTheme';
+import { trackingMethodDescription, trackingMethodFor } from '../../tracking/trackingMethod';
 
 export interface TimelineEvent {
   id: string;
@@ -56,11 +57,23 @@ export function ActivityTimeline({ events }: ActivityTimelineProps) {
   );
 }
 
+function pendingLocationSubtitle(assetType: string | null | undefined): string {
+  switch (trackingMethodFor(assetType)) {
+    case 'this_app':
+      return 'Turn on location sharing on this phone';
+    case 'our_software':
+      return trackingMethodDescription(assetType);
+    default:
+      return 'Connect a GPS tracker when available';
+  }
+}
+
 export function buildAssetTimeline(input: {
   registeredAt?: string | null;
   trackingLabel?: string;
   locationLabel?: string | null;
   hasLocation?: boolean;
+  assetType?: string | null;
 }): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -91,7 +104,7 @@ export function buildAssetTimeline(input: {
     events.push({
       id: 'location-pending',
       title: 'Location tracking pending',
-      subtitle: 'Enable tracking or connect a GPS device when available',
+      subtitle: pendingLocationSubtitle(input.assetType),
       tone: 'muted',
     });
   }

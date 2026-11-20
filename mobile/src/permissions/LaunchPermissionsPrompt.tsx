@@ -2,21 +2,28 @@
  * First-launch permissions explainer (owner-test only, `FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED`).
  *
  * Full-screen, built only from `src/design` components (Backdrop, GlassCard, Button) and the
- * day/night design tokens. Two steps, location first then camera; each step is skipped when the
- * permission is already granted or was offered in the last 7 days.
+ * day/night design tokens. Three steps — location, camera, notifications; each step is skipped
+ * when the permission is already granted or was offered in the last 7 days.
  *
  * What "Allow" does — and does not do:
  *  - location: asks the OS for foreground ("when in use") permission. It does NOT record
  *    tracking consent, link an asset, read a position or send anything to the server.
  *  - camera: asks the OS for camera permission. It does NOT open the camera or upload anything.
+ *  - notifications: asks the OS for notification permission. On a grant, and only if a user is
+ *    signed in, registers the push token through the existing Feature 007 path; otherwise the
+ *    signed-in shell registers it after sign-in (`app/(app)/_layout.tsx`). Which alerts arrive is
+ *    the server-side notification preferences (theft / device / claims push on by default),
+ *    changed in Settings → Notification preferences.
  * When a permission is permanently denied the OS prompt is never shown; "Open Settings" is.
  *
  * Mounted once in the root layout, so it can appear before or after sign-in.
  */
-import { CameraIcon, MapPinIcon } from 'lucide-react-native';
+import { BellIcon, CameraIcon, MapPinIcon } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Modal, StyleSheet, Text, View } from 'react-native';
 import { Backdrop, Button, GlassCard } from '../design';
+import { sessionStore } from '../auth/session-store';
+import { registerPushTokenIfPermitted } from '../notifications/push';
 import { useDesignTokens } from '../theme/designTheme';
 import {
   recordOffered,
@@ -51,7 +58,18 @@ export const LAUNCH_PROMPT_COPY: Record<LaunchPermissionKind, StepCopy> = {
     ],
     blockedLine: 'The camera is turned off for this app. You can turn it on in Settings.',
   },
+  notifications: {
+    title: 'Allow notifications?',
+    lines: [
+      'We send notifications for theft alerts and updates on your cases and claims.',
+      'Alerts also appear in the Alerts tab in the app.',
+      'Choose which alerts you get in Settings → Notification preferences.',
+    ],
+    blockedLine: 'Notifications are turned off for this app. You can turn them on in Settings.',
+  },
 };
+
+const STEP_ICONS = { location: MapPinIcon, camera: CameraIcon, notifications: BellIcon } as const;
 
 export function LaunchPermissionsPrompt() {
   const t = useDesignTokens();
@@ -99,7 +117,15 @@ export function LaunchPermissionsPrompt() {
         // Permanently denied: never show the OS prompt again — only Settings can change it.
         await Linking.openSettings().catch(() => undefined);
       } else {
-        await requestLaunchPermission(step.kind).catch(() => undefined);
+        const result = await requestLaunchPermission(step.kind).catch(() => undefined);
+        if (
+          step.kind === 'notifications' &&
+          result === 'granted' &&
+          sessionStore.getState().status === 'signed-in'
+        ) {
+          // Not signed in yet: the signed-in shell registers the token after sign-in.
+          await registerPushTokenIfPermitted().catch(() => undefined);
+        }
       }
     } finally {
       setBusy(false);
@@ -137,7 +163,7 @@ export function LaunchPermissionsPrompt() {
   if (!step || !steps) return null;
 
   const copy = LAUNCH_PROMPT_COPY[step.kind];
-  const Icon = step.kind === 'location' ? MapPinIcon : CameraIcon;
+  const Icon = STEP_ICONS[step.kind];
   const blocked = step.status === 'blocked';
 
   return (

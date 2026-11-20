@@ -8,6 +8,7 @@
  */
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import React from 'react';
 import { Linking } from 'react-native';
@@ -16,8 +17,14 @@ import { apiFetch } from '../../api/client';
 import { renderWithProviders } from '../../test/renderWithProviders';
 import { LaunchPermissionsPrompt } from '../LaunchPermissionsPrompt';
 import { REOFFER_INTERVAL_MS } from '../launchPermissions';
+import { registerPushTokenIfPermitted } from '../../notifications/push';
+import { sessionStore } from '../../auth/session-store';
 
 jest.mock('../../api/client', () => ({ apiFetch: jest.fn(async () => ({})) }));
+
+jest.mock('../../notifications/push', () => ({
+  registerPushTokenIfPermitted: jest.fn(async () => true),
+}));
 
 jest.mock('../../config/features', () => ({
   FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED: true,
@@ -26,6 +33,7 @@ jest.mock('../../config/features', () => ({
 
 const LOCATION_KEY = 'td_insurance.launch_prompt.location_offered_at';
 const CAMERA_KEY = 'td_insurance.launch_prompt.camera_offered_at';
+const NOTIFICATIONS_KEY = 'td_insurance.launch_prompt.notifications_offered_at';
 const CONSENT_KEY = 'td_insurance.location_tracking_consent';
 const LINKED_KEY = 'td_insurance.linked_smartphone_asset_id';
 
@@ -62,12 +70,16 @@ describe('LaunchPermissionsPrompt', () => {
     jest.clearAllMocks();
     await SecureStore.deleteItemAsync(LOCATION_KEY);
     await SecureStore.deleteItemAsync(CAMERA_KEY);
+    await SecureStore.deleteItemAsync(NOTIFICATIONS_KEY);
     await SecureStore.deleteItemAsync(CONSENT_KEY);
     await SecureStore.deleteItemAsync(LINKED_KEY);
     (Location.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue(askable);
     (Location.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue(granted);
     (ImagePicker.getCameraPermissionsAsync as jest.Mock).mockResolvedValue(askable);
     (ImagePicker.requestCameraPermissionsAsync as jest.Mock).mockResolvedValue(granted);
+    // Notifications already granted unless a test says otherwise, so older cases see two steps.
+    (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue(granted);
+    (Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue(granted);
     openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
     jest.clearAllMocks();
   });
@@ -177,5 +189,75 @@ describe('LaunchPermissionsPrompt', () => {
     expect(ImagePicker.requestCameraPermissionsAsync).not.toHaveBeenCalled();
     expect(openSettings).not.toHaveBeenCalled();
     expect(await SecureStore.getItemAsync(CAMERA_KEY)).not.toBeNull();
+  });
+
+  describe('notifications step', () => {
+    beforeEach(() => {
+      (Location.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue(granted);
+      (ImagePicker.getCameraPermissionsAsync as jest.Mock).mockResolvedValue(granted);
+      (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue(askable);
+    });
+
+    afterEach(() => {
+      sessionStore.setState({ status: 'signed-out', accessToken: null, sessionId: null });
+    });
+
+    it('comes after location and camera, with honest copy', async () => {
+      (Location.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue(askable);
+      (ImagePicker.getCameraPermissionsAsync as jest.Mock).mockResolvedValue(askable);
+      await renderPrompt();
+      await press('Not now'); // location
+      await press('Not now'); // camera
+      expect(await screen.findByTestId('launch-permission-notifications')).toBeTruthy();
+      expect(screen.getByText('Step 3 of 3')).toBeTruthy();
+      expect(
+        screen.getByText('We send notifications for theft alerts and updates on your cases and claims.'),
+      ).toBeTruthy();
+    });
+
+    it("'Allow' while signed in: requests permission, then registers the push token", async () => {
+      sessionStore.setState({ status: 'signed-in', accessToken: 'tok', sessionId: 's' });
+      await renderPrompt();
+      await press('Allow');
+      expect(Notifications.requestPermissionsAsync).toHaveBeenCalledTimes(1);
+      expect(registerPushTokenIfPermitted).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('launch-permission-notifications')).toBeNull();
+    });
+
+    it("'Allow' while signed out: requests permission but leaves token registration to sign-in", async () => {
+      await renderPrompt();
+      await press('Allow');
+      expect(Notifications.requestPermissionsAsync).toHaveBeenCalledTimes(1);
+      expect(registerPushTokenIfPermitted).not.toHaveBeenCalled();
+    });
+
+    it('denied in the OS dialog: no token registration; re-offered only after 7 days', async () => {
+      sessionStore.setState({ status: 'signed-in', accessToken: 'tok', sessionId: 's' });
+      (Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue(askable);
+      const t0 = 1_800_000_000_000;
+      nowSpy = jest.spyOn(Date, 'now').mockReturnValue(t0);
+      const first = await renderPrompt();
+      await press('Allow');
+      expect(registerPushTokenIfPermitted).not.toHaveBeenCalled();
+      await first.unmount();
+
+      (nowSpy as jest.SpyInstance).mockReturnValue(t0 + REOFFER_INTERVAL_MS - 1);
+      const second = await renderPrompt();
+      expect(screen.queryByTestId('launch-permission-notifications')).toBeNull();
+      await second.unmount();
+
+      (nowSpy as jest.SpyInstance).mockReturnValue(t0 + REOFFER_INTERVAL_MS);
+      await renderPrompt();
+      expect(await screen.findByTestId('launch-permission-notifications')).toBeTruthy();
+    });
+
+    it('permanently denied: never shows the OS prompt, offers Open Settings', async () => {
+      (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue(blocked);
+      await renderPrompt();
+      await press('Open Settings');
+      expect(openSettings).toHaveBeenCalledTimes(1);
+      expect(Notifications.requestPermissionsAsync).not.toHaveBeenCalled();
+      expect(registerPushTokenIfPermitted).not.toHaveBeenCalled();
+    });
   });
 });

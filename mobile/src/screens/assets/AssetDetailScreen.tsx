@@ -47,11 +47,17 @@ import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
 import { Alert } from '../../theme/primitives';
 import { resolveTrackingUiCapabilities } from '../../tracking/TrackingCapabilityService';
 import { AssetHeroImage } from '../home/assetVisuals';
+import { LocationReportStatusLine } from '../../location/LocationReportStatusLine';
 import { ProtectionMapView } from '../home/ProtectionMapView';
 import { ActivityTimeline, buildAssetTimeline } from './ActivityTimeline';
 import { AssetPhotoSlots } from './AssetPhotoSlots';
 import { assetStatusBadge } from '../home/assetStatus';
 import { AssetPage } from './AssetPage';
+import {
+  trackingMethodDescription,
+  trackingMethodFor,
+  trackingMethodShortLabel,
+} from '../../tracking/trackingMethod';
 
 function formatDetailValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
@@ -86,6 +92,8 @@ export function AssetDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: asset, isLoading, isError, error } = useAssetQuery(id);
   const isSmartphone = asset?.assetType === 'smartphone';
+  const trackingMethod = trackingMethodFor(asset?.assetType);
+  const usesGpsHardware = trackingMethod === 'gps_hardware';
   const trackingProfileQuery = useAssetTrackingProfileQuery(isSmartphone ? undefined : id);
   const locationSummary = useAssetLocationSummaryQuery();
   const trackingUi = resolveTrackingUiCapabilities(trackingProfileQuery.data);
@@ -190,7 +198,7 @@ export function AssetDetailScreen() {
           "We couldn't confirm this reached the server. Check your connection — if tracking doesn't start, turn it off and on again.",
         );
       } else {
-        setActionError(mapUserFacingError(err, { context: 'location' }));
+        setActionError(mapUserFacingError(err, { context: 'location-report' }));
       }
     } finally {
       setActionLoading(false);
@@ -302,7 +310,7 @@ export function AssetDetailScreen() {
       } else if (err instanceof NetworkUnavailableError) {
         setActionError("We couldn't confirm the location update was received. Check your connection and try again.");
       } else {
-        setActionError(mapUserFacingError(err, { context: 'location' }));
+        setActionError(mapUserFacingError(err, { context: 'location-report' }));
       }
     } finally {
       setActionLoading(false);
@@ -367,6 +375,7 @@ export function AssetDetailScreen() {
     trackingLabel,
     locationLabel,
     hasLocation: mapCoords != null,
+    assetType: asset.assetType,
   });
 
   const mapPins =
@@ -432,13 +441,20 @@ export function AssetDetailScreen() {
               emptyMessage={
                 isSmartphone
                   ? 'No location recorded yet — enable tracking on this phone.'
-                  : `${formatAssetType(asset.assetType ?? 'other_electronics')} needs a GPS tracker for live location.`
+                  : usesGpsHardware
+                    ? `${formatAssetType(asset.assetType ?? 'other_electronics')} needs a GPS tracker for live location.`
+                    : trackingMethodDescription(asset.assetType)
               }
             />
           </View>
         )}
         {mapCoords?.recordedAt ? (
           <Text style={styles.lastSeen}>Last seen {formatRelativeTime(mapCoords.recordedAt)}</Text>
+        ) : null}
+        {isThisPhoneLinked && FEATURE_LOCATION_TRACKING_ENABLED ? (
+          <View style={styles.reportStatus}>
+            <LocationReportStatusLine />
+          </View>
         ) : null}
         {actionError ? (
           <Alert tone="danger" style={styles.actionAlert}>
@@ -498,12 +514,16 @@ export function AssetDetailScreen() {
           )
         ) : (
           <>
-            {trackingProfileQuery.data ? (
+            {!usesGpsHardware && !linkedDevice ? (
+              <Alert tone="info" style={styles.trackerStatus}>
+                {trackingMethodDescription(asset.assetType)}
+              </Alert>
+            ) : trackingProfileQuery.data ? (
               <Alert tone="info" style={styles.trackerStatus}>
                 {trackingProfileQuery.data.statusMessage}
               </Alert>
             ) : null}
-            {FEATURE_HARDWARE_TRACKING_ENABLED && trackingUi.showDeviceActivation ? (
+            {FEATURE_HARDWARE_TRACKING_ENABLED && usesGpsHardware && trackingUi.showDeviceActivation ? (
               <Button label="Connect GPS tracker"
                 style={[styles.stretch, styles.trackerAction]}
                 onPress={() => router.push(`/assets/${id}/activate-tracker` as Href)}
@@ -521,7 +541,7 @@ export function AssetDetailScreen() {
         )}
       </GlassCard>
 
-      {FEATURE_HARDWARE_TRACKING_ENABLED && !isSmartphone && trackingUi.showInstallationGuide ? (
+      {FEATURE_HARDWARE_TRACKING_ENABLED && usesGpsHardware && trackingUi.showInstallationGuide ? (
         <GlassCard variant="solid" style={styles.section}>
           <Text style={styles.sectionTitle}>GPS tracker</Text>
           <Text style={styles.trackerCopy}>
@@ -558,7 +578,7 @@ export function AssetDetailScreen() {
       <GlassCard variant="solid" style={styles.section}>
         <DetailRow label="Registered" value={formatDate(asset.registeredAt)} />
         <DetailRow
-          label="GPS device"
+          label={usesGpsHardware ? 'GPS device' : 'Tracking'}
           value={
             isSmartphone
               ? trackingActive
@@ -568,7 +588,9 @@ export function AssetDetailScreen() {
                 ? `Linked (${linkedDevice.serialOrImei})`
                 : asset.gpsDeviceId
                   ? 'Paired'
-                  : 'Hardware tracker required'
+                  : usesGpsHardware
+                    ? 'GPS tracker required'
+                    : trackingMethodShortLabel(asset.assetType)
           }
         />
         {asset.estimatedValue ? (
@@ -653,6 +675,7 @@ function buildStyles(t: DesignTokens) {
     permissionBlock: { gap: t.spacing.s2, marginBottom: t.spacing.s3 },
     permissionText: { ...t.type.bodySm, color: t.colors.inkMuted },
     lastSeen: { ...t.type.bodySm, color: t.colors.inkMuted, marginBottom: t.spacing.s3 },
+    reportStatus: { marginBottom: t.spacing.s3 },
     locationSpinner: { marginVertical: t.spacing.s3 },
     actionAlert: { marginBottom: t.spacing.s3 },
     trackingActiveActions: { gap: t.spacing.s2 },

@@ -7,7 +7,9 @@ import {
   isBackgroundLocationSupported,
   startBackgroundLocationUpdates,
 } from '../../src/location/backgroundLocation';
+import { FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED } from '../../src/config/features';
 import { useLocationReporter } from '../../src/location/useLocationReporter';
+import { registerPushTokenIfPermitted } from '../../src/notifications/push';
 import { useAppStackScreenOptions } from '../../src/navigation/useAppStackScreenOptions';
 
 export default function AppLayout() {
@@ -18,6 +20,11 @@ export default function AppLayout() {
   // granted and every gate passes. Never shows a permission dialog.
   useEffect(() => {
     if (isBackgroundLocationSupported()) void startBackgroundLocationUpdates();
+  }, []);
+  // Owner-test only (launch explainer flag): if notifications were already allowed — e.g. on the
+  // launch explainer before sign-in — register the push token now. Never shows a dialog.
+  useEffect(() => {
+    if (FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED) void registerPushTokenIfPermitted().catch(() => undefined);
   }, []);
 
   return (
