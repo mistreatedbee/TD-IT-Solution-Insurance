@@ -226,3 +226,12 @@ requires a region or ZDR; or monthly spend goes past the cap.
 - DPA: https://privacy.claude.com/en/articles/7996862-how-do-i-view-and-sign-your-data-processing-addendum-dpa
 - Processor or controller: https://privacy.claude.com/en/articles/9267385-does-anthropic-act-as-a-data-processor-or-controller
 - Legal Center: https://www.anthropic.com/legal
+
+## CTO review (2026-11-20, `cto`)
+
+**Ruling: the content is sound. Merge it as Proposed. Do not ratify yet.**
+
+1. **What must happen before ratification:** Open Items 2 and 3 must be closed by the owner. That means the Anthropic organisation is opened in the business's name, the Commercial Terms and DPA are accepted with a dated copy and version on file, the USD 50 limit is set, and the dedicated key is in Render. We do not ratify a processor that has no contract in place. When those are done, `cto` changes the status to Accepted, scoped to owner-test.
+2. **The compliance ruling (Open Item 1) does not block ratification.** It does block any real customer, any profile other than owner-test, and the 90-day retention becoming final. That condition carries into the Accepted status.
+3. **Decision 7, the owner-test flag:** this is confirmed under Feature 024 §11 item 1. It needs the exception-record addendum and a Stage 8 waiver entry. No other profile is covered.
+4. **Who builds first:** `backend-engineer` builds the assistant module, the redaction step and its tests, and the kill switch and counters. `ai-solutions-architect` owns the prompt, the tool allow-lists and the §7 evaluation set. `backend-architect` reviews. Code may be written now, but it merges only after ratification. Its first run in owner-test can happen before the compliance ruling. The Stage 8 review of the redaction step and the injection controls comes before any profile other than owner-test.
