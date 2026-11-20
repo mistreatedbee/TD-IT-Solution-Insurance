@@ -9,6 +9,7 @@
 import type { AssetCardType, StatusBadgeStatus } from '../../design';
 import { formatAssetType } from '../../lib/asset-labels';
 import type { AssetTrackingView } from '../../tracking/types';
+import { trackingMethodShortLabel } from '../../tracking/trackingMethod';
 
 type StatusSource = Pick<AssetTrackingView, 'trackingStatus'>;
 type FooterSource = Pick<
@@ -52,7 +53,7 @@ export function assetCardType(assetType: string): AssetCardType {
  */
 export function assetFooterLine(item: FooterSource): string {
   if (item.trackingStatus === 'tracking_unavailable') {
-    return ['Hardware tracker required', item.locationLabel].filter(Boolean).join(' · ');
+    return [trackingMethodShortLabel(item.assetType), item.locationLabel].filter(Boolean).join(' · ');
   }
   const detail = item.lastLocation ? formatAssetType(item.assetType) : 'No location yet';
   const lead = assetStatusBadge(item) ? null : item.trackingLabel;

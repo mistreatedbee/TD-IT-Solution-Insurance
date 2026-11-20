@@ -57,10 +57,13 @@ describe('assetCardType', () => {
 });
 
 describe('assetFooterLine', () => {
-  it('keeps the existing hardware-required and no-location copy', () => {
+  it('uses tracking-method copy and keeps the no-location copy', () => {
     expect(
       assetFooterLine(view({ assetType: 'laptop', trackingStatus: 'tracking_unavailable', trackingLabel: 'Unavailable' })),
-    ).toBe('Hardware tracker required');
+    ).toBe('TD Insurance app coming soon');
+    expect(
+      assetFooterLine(view({ assetType: 'vehicle', trackingStatus: 'tracking_unavailable', trackingLabel: 'Unavailable' })),
+    ).toBe('GPS tracker required');
     expect(assetFooterLine(view({ trackingStatus: 'tracking_disabled', trackingLabel: 'Tracking off' }))).toBe(
       'Tracking off · No location yet',
     );

@@ -5,6 +5,8 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import React, { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useAssetTrackingProfileQuery } from '../../api/hooks/useAssetTrackingProfile';
+import { useAssetQuery } from '../../api/hooks/useAssets';
+import { trackingMethodDescription, trackingMethodFor } from '../../tracking/trackingMethod';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { resolveTrackingUiCapabilities } from '../../tracking/TrackingCapabilityService';
 import { Button, GlassCard } from '../../design';
@@ -49,6 +51,9 @@ export function DeviceHealthScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const profileQuery = useAssetTrackingProfileQuery(id);
+  const assetQuery = useAssetQuery(id);
+  const assetType = assetQuery.data?.assetType;
+  const usesGpsHardware = trackingMethodFor(assetType) === 'gps_hardware';
 
   if (profileQuery.isLoading) {
     return (
@@ -73,6 +78,18 @@ export function DeviceHealthScreen() {
   const profile = profileQuery.data;
   const ui = resolveTrackingUiCapabilities(profile);
   const device = profile.device;
+
+  if (!device && assetType && !usesGpsHardware) {
+    return (
+      <AssetPage>
+        <Alert tone="info">
+          {trackingMethodFor(assetType) === 'this_app'
+            ? 'This phone is tracked with this app. No GPS tracker is needed.'
+            : trackingMethodDescription(assetType)}
+        </Alert>
+      </AssetPage>
+    );
+  }
 
   if (!device) {
     return (
@@ -164,12 +181,14 @@ export function DeviceHealthScreen() {
         )}
       </GlassCard>
 
-      <Button
-        label="Installation guide"
-        variant="secondary"
-        onPress={() => router.push(`/assets/${id}/installation-guide` as Href)}
-        style={styles.stretch}
-      />
+      {usesGpsHardware ? (
+        <Button
+          label="Installation guide"
+          variant="secondary"
+          onPress={() => router.push(`/assets/${id}/installation-guide` as Href)}
+          style={styles.stretch}
+        />
+      ) : null}
     </AssetPage>
   );
 }

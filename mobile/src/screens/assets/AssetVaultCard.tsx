@@ -8,6 +8,7 @@ import { useSurfaceStyles } from '../../theme/useSurfaceStyles';
 import { radius, spacing, typography } from '../../theme/tokens';
 import { AssetTypeImage } from '../home/assetVisuals';
 import { TrackingStatusChip } from './TrackingStatusChip';
+import { trackingMethodShortLabel } from '../../tracking/trackingMethod';
 
 export interface AssetVaultCardProps {
   item: AssetTrackingView;
@@ -78,7 +79,7 @@ export function AssetVaultCard({
     item.locationLabel != null
       ? `Updated ${item.locationLabel}`
       : item.trackingStatus === 'tracking_unavailable'
-        ? 'Hardware tracker required'
+        ? trackingMethodShortLabel(item.assetType)
         : item.assetType === 'smartphone'
           ? 'Enable tracking on this phone'
           : 'No location yet';

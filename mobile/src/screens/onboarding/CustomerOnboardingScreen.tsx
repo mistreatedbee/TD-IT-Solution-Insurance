@@ -706,11 +706,12 @@ export function CustomerOnboardingScreen({
         <>
           <Text style={ts.title}>Connect your protection</Text>
           <Text style={ts.subtitle}>
-            Some assets can be paired with a compatible tracking device for additional protection.
+            Phones are tracked with this app. Laptops, computers and TVs will use the TD Insurance app
+            (coming soon). Vehicles and other items can be paired with a GPS tracker.
           </Text>
           <TrackingConnectionDiagram />
           <Text style={ts.hint}>
-            Tracking depends on compatible hardware, device assignment and connectivity. Not every insured asset
+            Tracking depends on location sharing, device setup and connectivity. Not every insured asset
             includes tracking.
           </Text>
           <View style={styles.rowActions}>
