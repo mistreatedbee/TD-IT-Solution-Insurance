@@ -47,6 +47,7 @@ import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
 import { Alert } from '../../theme/primitives';
 import { resolveTrackingUiCapabilities } from '../../tracking/TrackingCapabilityService';
 import { AssetHeroImage } from '../home/assetVisuals';
+import { LocationReportStatusLine } from '../../location/LocationReportStatusLine';
 import { ProtectionMapView } from '../home/ProtectionMapView';
 import { ActivityTimeline, buildAssetTimeline } from './ActivityTimeline';
 import { AssetPhotoSlots } from './AssetPhotoSlots';
@@ -197,7 +198,7 @@ export function AssetDetailScreen() {
           "We couldn't confirm this reached the server. Check your connection — if tracking doesn't start, turn it off and on again.",
         );
       } else {
-        setActionError(mapUserFacingError(err, { context: 'location' }));
+        setActionError(mapUserFacingError(err, { context: 'location-report' }));
       }
     } finally {
       setActionLoading(false);
@@ -309,7 +310,7 @@ export function AssetDetailScreen() {
       } else if (err instanceof NetworkUnavailableError) {
         setActionError("We couldn't confirm the location update was received. Check your connection and try again.");
       } else {
-        setActionError(mapUserFacingError(err, { context: 'location' }));
+        setActionError(mapUserFacingError(err, { context: 'location-report' }));
       }
     } finally {
       setActionLoading(false);
@@ -449,6 +450,11 @@ export function AssetDetailScreen() {
         )}
         {mapCoords?.recordedAt ? (
           <Text style={styles.lastSeen}>Last seen {formatRelativeTime(mapCoords.recordedAt)}</Text>
+        ) : null}
+        {isThisPhoneLinked && FEATURE_LOCATION_TRACKING_ENABLED ? (
+          <View style={styles.reportStatus}>
+            <LocationReportStatusLine />
+          </View>
         ) : null}
         {actionError ? (
           <Alert tone="danger" style={styles.actionAlert}>
@@ -669,6 +675,7 @@ function buildStyles(t: DesignTokens) {
     permissionBlock: { gap: t.spacing.s2, marginBottom: t.spacing.s3 },
     permissionText: { ...t.type.bodySm, color: t.colors.inkMuted },
     lastSeen: { ...t.type.bodySm, color: t.colors.inkMuted, marginBottom: t.spacing.s3 },
+    reportStatus: { marginBottom: t.spacing.s3 },
     locationSpinner: { marginVertical: t.spacing.s3 },
     actionAlert: { marginBottom: t.spacing.s3 },
     trackingActiveActions: { gap: t.spacing.s2 },

@@ -38,6 +38,7 @@ import { HomeHeader } from './HomeHeader';
 import { HomeHeroActions } from './HomeHeroActions';
 import { HomeMapPreview } from './HomeMapPreview';
 import { OneTapPhoneProtectionCard } from './OneTapPhoneProtectionCard';
+import { LocationReportStatusLine } from '../../location/LocationReportStatusLine';
 import { ProtectionHealthCard } from './ProtectionHealthCard';
 import { checklistActionHref, isChecklistActionAvailable } from './checklistActions';
 import { ProfileCompletionCard } from './ProfileCompletionCard';
@@ -314,6 +315,8 @@ export function ProtectionHomeScreen() {
         profilePercent={data.profilePercent}
         operational={operational}
       />
+
+      {FEATURE_LOCATION_TRACKING_ENABLED ? <LocationReportStatusLine testID="home-location-report-status" /> : null}
 
       {FEATURE_PROTECTION_CHECKLIST_ENABLED ? <ProtectionChecklistSection /> : null}
 

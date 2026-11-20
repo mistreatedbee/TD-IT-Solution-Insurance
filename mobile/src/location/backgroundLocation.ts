@@ -40,6 +40,7 @@ import {
 } from '../config/features';
 import { hasActiveLocationTracking, subscribeLocationConsentChange } from './consent';
 import { canReportLocation, markLocationSent, wasLocationSentRecently } from './useLocationReporter';
+import { recordLocationReportFailure } from './reportStatus';
 
 export const BACKGROUND_LOCATION_TASK = 'td-insurance-background-location';
 
@@ -226,6 +227,7 @@ export async function runBackgroundLocationTask({
     markLocationSent();
     return 'sent';
   } catch (err) {
+    recordLocationReportFailure(err);
     if (err instanceof SessionTerminatedError) return stopWith('stopped_no_session');
     if (isPermanentRejection(err)) return stopWith('stopped_server_rejected');
     logEvent(`send failed: ${err instanceof ApiError ? err.code : err instanceof Error ? err.name : 'UnknownError'}`);

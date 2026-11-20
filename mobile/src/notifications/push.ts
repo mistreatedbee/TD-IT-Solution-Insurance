@@ -86,6 +86,31 @@ export async function syncPushTokenWithBackend(): Promise<void> {
   });
 }
 
+/**
+ * Registers this device's push token (Feature 007, PUT /devices/push-token) only when the OS
+ * permission is ALREADY granted. Never shows a permission dialog — the launch explainer
+ * (`LaunchPermissionsPrompt`) owns asking. Returns true when a token was registered.
+ * Caller must only use this for a signed-in user (the endpoint is authenticated).
+ */
+export async function registerPushTokenIfPermitted(): Promise<boolean> {
+  if (!Device.isDevice) return false;
+  const current = await Notifications.getPermissionsAsync();
+  if (!current.granted) return false;
+  await configureBrandedNotificationChannels();
+
+  const expoPushToken = await getExpoPushToken();
+  if (!expoPushToken) return false;
+
+  const deviceId = await getOrCreateDeviceId();
+  await registerPushToken({
+    deviceId,
+    expoPushToken,
+    platform: resolvePlatform(),
+    appVersion: Constants.expoConfig?.version ?? null,
+  });
+  return true;
+}
+
 export async function revokePushTokenFromBackend(): Promise<void> {
   const deviceId = await getOrCreateDeviceId();
   await revokePushToken(deviceId);

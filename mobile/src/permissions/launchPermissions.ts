@@ -8,6 +8,10 @@
  *    Turning on protection for an asset is a separate, explicit step (LocationConsentModal).
  *  - camera: reads / requests camera permission only. It never opens the camera and never
  *    uploads anything.
+ *  - notifications: reads / requests notification permission (Android 13+ POST_NOTIFICATIONS,
+ *    iOS alert/badge/sound). Registering the push token (Feature 007 PUT /devices/push-token)
+ *    happens only after a grant and only for a signed-in user — see LaunchPermissionsPrompt and
+ *    `registerPushTokenIfPermitted()`.
  *  - "Not now" (or any outcome other than a grant) is re-offered at most once per 7 days.
  *  - permanently denied (`canAskAgain === false`): the OS prompt is never shown again; the
  *    explainer offers "Open Settings" instead.
@@ -17,13 +21,14 @@
  */
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import {
   FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED,
   FEATURE_LOCATION_TRACKING_ENABLED,
 } from '../config/features';
 
-export type LaunchPermissionKind = 'location' | 'camera';
+export type LaunchPermissionKind = 'location' | 'camera' | 'notifications';
 
 /** 'askable' = OS prompt may be shown; 'blocked' = permanently denied, only Settings can change it. */
 export type LaunchPermissionStatus = 'granted' | 'askable' | 'blocked';
@@ -33,10 +38,11 @@ export const REOFFER_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 const OFFERED_AT_KEYS: Record<LaunchPermissionKind, string> = {
   location: 'td_insurance.launch_prompt.location_offered_at',
   camera: 'td_insurance.launch_prompt.camera_offered_at',
+  notifications: 'td_insurance.launch_prompt.notifications_offered_at',
 };
 
-/** Step order is fixed: location first, then camera. */
-export const LAUNCH_PERMISSION_ORDER: readonly LaunchPermissionKind[] = ['location', 'camera'];
+/** Step order is fixed: location, then camera, then notifications. */
+export const LAUNCH_PERMISSION_ORDER: readonly LaunchPermissionKind[] = ['location', 'camera', 'notifications'];
 
 export function isLaunchPermissionEnabled(kind: LaunchPermissionKind): boolean {
   if (!FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED) return false;
@@ -56,19 +62,25 @@ export async function readLaunchPermissionStatus(kind: LaunchPermissionKind): Pr
   const perm =
     kind === 'location'
       ? await Location.getForegroundPermissionsAsync()
-      : await ImagePicker.getCameraPermissionsAsync();
+      : kind === 'camera'
+        ? await ImagePicker.getCameraPermissionsAsync()
+        : await Notifications.getPermissionsAsync();
   return toStatus(perm);
 }
 
 /**
- * Shows the OS dialog for this permission — foreground location or camera, nothing else.
+ * Shows the OS dialog for this permission — foreground location, camera or notifications.
  * Callers must not call this for a 'blocked' permission.
  */
 export async function requestLaunchPermission(kind: LaunchPermissionKind): Promise<LaunchPermissionStatus> {
   const perm =
     kind === 'location'
       ? await Location.requestForegroundPermissionsAsync()
-      : await ImagePicker.requestCameraPermissionsAsync();
+      : kind === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await Notifications.requestPermissionsAsync({
+            ios: { allowAlert: true, allowBadge: true, allowSound: true },
+          });
   return toStatus(perm);
 }
 
