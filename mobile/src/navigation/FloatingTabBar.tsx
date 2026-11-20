@@ -128,6 +128,7 @@ function createTabBarStyles(
   colors: ReturnType<typeof useTheme>['colors'],
   isDark: boolean,
   glassBorder: string,
+  solid: boolean,
 ) {
   return {
     styles: StyleSheet.create({
@@ -149,11 +150,15 @@ function createTabBarStyles(
         paddingVertical: spacing.sm,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: glassBorder,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: isDark ? 0.18 : 0.05,
-        shadowRadius: 16,
-        elevation: 6,
+        // Android: no elevation. It drew an opaque grey panel behind the bar (same fault as GlassCard).
+        ...(solid
+          ? null
+          : {
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: isDark ? 0.18 : 0.05,
+              shadowRadius: 16,
+            }),
       },
       tab: {
         flex: 1,
@@ -206,8 +211,8 @@ export function FloatingTabBar({ state, navigation, variant = 'customer' }: Floa
   const { colors, isDark } = useTheme();
   const glass = useLiquidGlassChrome();
   const { styles } = useMemo(
-    () => createTabBarStyles(colors, isDark, glass.border),
-    [colors, glass.border, isDark],
+    () => createTabBarStyles(colors, isDark, glass.border, glass.solid),
+    [colors, glass.border, glass.solid, isDark],
   );
   const hidden = useTabBarHidden((v) => v.hidden);
   const activeRouteName = state.routes[state.index]?.name;
@@ -246,6 +251,7 @@ export function FloatingTabBar({ state, navigation, variant = 'customer' }: Floa
         tintColor={glass.tint}
         glassEffectStyle={glass.glassEffectStyle}
         blurIntensity={glass.blurIntensity}
+        solidFill={glass.solidFill}
       >
         {visibleRoutes.map((route) => {
           const config = tabConfig[route.name];

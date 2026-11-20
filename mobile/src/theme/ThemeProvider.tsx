@@ -1,3 +1,4 @@
+import { NavigationBar } from 'expo-navigation-bar';
 import { StatusBar } from 'expo-status-bar';
 import React, {
   createContext,
@@ -116,6 +117,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return (
     <ThemeContext.Provider value={value}>
       <StatusBar style={value.isDark ? 'light' : 'dark'} />
+      {/* Android system nav bar is transparent edge-to-edge (contrast scrim off in app.json), so the app
+        background shows through; its buttons follow the in-app appearance, not the OS setting. No-op on iOS. */}
+      <NavigationBar style={value.isDark ? 'dark' : 'light'} />
       {children}
     </ThemeContext.Provider>
   );
@@ -131,6 +135,7 @@ export function LightThemeScope({ children }: { children: React.ReactNode }) {
   return (
     <ThemeContext.Provider value={value}>
       <StatusBar style="dark" />
+      <NavigationBar style="light" />
       {children}
     </ThemeContext.Provider>
   );
