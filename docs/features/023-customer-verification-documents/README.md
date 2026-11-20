@@ -241,3 +241,17 @@ C-013-7 closes.
 ## 12. Not in scope
 
 Payments, payouts, FICA determination (C-013-4, counsel), full ID number storage.
+
+---
+
+## 13. CTO review (2026-11-20)
+
+**Ruling: merge as a Stage 1 plan.** It is not a build approval, and it does not change any Feature 013 compliance condition.
+
+Corrections and rulings:
+
+1. **No shortcut for ID documents (§9 row 2).** Do not store ID or ownership documents as bytes in MongoDB, not even in the owner-test build. Phase B waits for the MP-5 storage choice. Supabase Storage is a candidate to look at first, because Supabase is already a vendor (its DPA is still pending). It is only a candidate until `integration-architect` delivers a scorecard. Storing documents must be recorded as an ADR.
+2. **BR-1 depends on payments.** Payments are not built, so "active policy" has no billing meaning yet. In Phase A, build the BR-2 claim gate and the BR-3 theft exemption first. Build BR-1 once a policy status that payments can change exists.
+3. **Owner-test scope.** Phase A items 2 to 5 can be built and run in the owner-test build, where `FEATURE_KYC_ENABLED` is already on. No new flag is needed. Real users still need Stage 8, Stage 10 and C-013-6 (Phase A item 7).
+4. **First build step:** `backend-engineer` builds the BR-2/BR-3 gates and AC-A6/A7, with tests. `cybersecurity-architect` starts the Stage 8 review it already owes for the current surface (F009-1) at the same time.
+5. **D-2 recommendation:** ID or passport only. Leave out the selfie and proof of address. Proof of ownership is per asset and needed for claims only (this also answers D-5).

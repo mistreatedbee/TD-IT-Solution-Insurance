@@ -299,3 +299,17 @@ alerts tool in any non-owner-test build until that review exists.
 5. **Chat retention.** Approve 90 days (subject to `compliance-specialist`).
 6. **Name.** What the assistant is called in the app.
 7. **Header change.** Confirm the bell leaves the header and the badge moves to the Alerts tab.
+
+---
+
+## 11. CTO review (2026-11-20)
+
+**Ruling: merge as a Phase 0 plan.** It is not a build approval.
+
+Corrections and rulings:
+
+1. **§5.7 flag count is wrong.** `mobile/src/config/features.ts` already has 10 flags, so this would be the eleventh, not the ninth. The new flag stays inside the owner-test exception under the same rules as the earlier flags: "true" only in `owner-test`, the allow-list is not widened, and a short addendum plus a Stage 8 waiver entry are added to the exception record. Setting the Render `ASSISTANT_ENABLED` switch on for this test system is covered by the same addendum.
+2. **Anthropic is a new data processor.** It needs a short ADR from `ai-solutions-architect`, ratified by `cto`, before Phase 1b code merges. The ADR covers the vendor, the model in config, the cost caps and the exit plan. The prices in §5.3 are not verified here. Re-check them before the ADR.
+3. **Phase 1a gate.** The header swap, the support sheet (option A) and the emergency banner may be built and shown in owner-test now. Stage 8 and Stage 10 apply before any other profile gets them, not before the owner-test build.
+4. **Phase 1b in owner-test.** The assistant may run against the owner's own test account only once the ADR is ratified, the key is in Render and the spend cap is set. The compliance ruling (s72, Anthropic terms) and the §7 review are needed before any real customer uses it, not before the owner tests it. Leave the alerts tool out until `GET /v1/alerts` has a Stage 8 record.
+5. **First build step:** `mobile-engineer` builds Phase 1a, with `design-system-manager` signing off the header change and the new screen.
