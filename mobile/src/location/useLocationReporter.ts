@@ -32,6 +32,7 @@ import {
   getForegroundPermissionState,
 } from './requestForegroundLocation';
 import { recordLocationReportFailure, recordLocationReportSuccess } from './reportStatus';
+import { isConsentRequiredError, notifyServerConsentRequired } from './serverConsentSignal';
 
 /** Periodic foreground report interval (owner-test only). */
 export const PERIODIC_REPORT_INTERVAL_MS = 2 * 60 * 1000;
@@ -44,12 +45,37 @@ export type ReportGateResult =
  * The single gate every sender must pass: feature flag, consent, linked smartphone asset and an
  * already-granted OS permission with location services on. Never shows an OS dialog.
  */
+// Stage 8 PR #44 F-1: turning tracking off stops reporting on this phone BEFORE the turn-off
+// request is sent (not after it returns). Stays suspended until protection is turned on again.
+let reportingSuspended = false;
+const suspendHandlers = new Set<() => void>();
+
+export function suspendLocationReporting(): void {
+  reportingSuspended = true;
+  for (const handler of [...suspendHandlers]) {
+    try {
+      handler();
+    } catch {
+      // never break the turn-off path
+    }
+  }
+}
+
+export function resumeLocationReporting(): void {
+  reportingSuspended = false;
+}
+
+export function isLocationReportingSuspended(): boolean {
+  return reportingSuspended;
+}
+
 export async function canReportLocation(): Promise<ReportGateResult> {
   // INC-001: never call expo-location or reach the (kill-switched)
   // location-report endpoint when the client feature flag is off — there
   // is no product surface for the result if this build has location
   // tracking disabled. See `src/config/features.ts`.
   if (!FEATURE_LOCATION_TRACKING_ENABLED) return { ok: false, reason: 'flag_off' };
+  if (reportingSuspended) return { ok: false, reason: 'no_consent' };
 
   const consent = await getLocationTrackingConsent();
   if (consent !== 'granted') return { ok: false, reason: 'no_consent' };
@@ -89,6 +115,7 @@ export function wasLocationSentRecently(
 export function __resetLocationReporterStateForTests(): void {
   lastSentAtMs = null;
   inFlight = false;
+  reportingSuspended = false;
 }
 
 export type ReportOutcome =
@@ -114,6 +141,10 @@ async function maybeReportForegroundLocation(triggeredBy: LocationTrigger): Prom
         triggeredBy,
       });
     } catch (err) {
+      // INC-001 A-7: the server holds no active consent for this phone (enabled before scoped
+      // server consent existed, turned off elsewhere, or granted on another device). Ask again
+      // via the consent screen rather than retrying; the reporter keeps no local override.
+      if (isConsentRequiredError(err)) notifyServerConsentRequired(gate.assetId);
       // Surfaced to the user as a small status line (LocationReportStatusLine), not only logged.
       recordLocationReportFailure(err);
       throw err;
@@ -179,9 +210,10 @@ export function useLocationReporter(): void {
         },
         (err: unknown) => {
           logFailure('periodic', err);
-          // Quiet, non-fatal: the server does not accept this trigger yet. No retry storm —
-          // stop the timer for this foreground session; the next resume tries once more.
-          if (isValidationRejection(err)) stopTimer();
+          // Quiet, non-fatal: the server does not accept this trigger yet (or, INC-001 A-7, has no
+          // consent for it). No retry storm: stop the timer for this foreground session; the next
+          // resume tries once more.
+          if (isValidationRejection(err) || isConsentRequiredError(err)) stopTimer();
         },
       );
     };
@@ -192,6 +224,7 @@ export function useLocationReporter(): void {
       timer = setInterval(tick, PERIODIC_REPORT_INTERVAL_MS);
     };
 
+    suspendHandlers.add(stopTimer);
     runReport();
     if (appState.current === 'active') startTimer();
 
@@ -225,6 +258,7 @@ export function useLocationReporter(): void {
 
     return () => {
       disposed = true;
+      suspendHandlers.delete(stopTimer);
       stopTimer();
       unsubscribeConsent();
       subscription.remove();

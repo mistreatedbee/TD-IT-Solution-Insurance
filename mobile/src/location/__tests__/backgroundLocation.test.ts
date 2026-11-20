@@ -17,6 +17,9 @@ import {
   clearLocationTrackingConsent,
   setLinkedSmartphoneAssetId,
   setLocationTrackingConsent,
+  setBackgroundLocationConsent,
+  clearBackgroundLocationConsent,
+  hasBackgroundLocationConsent,
 } from '../consent';
 import {
   __resetLocationReporterStateForTests,
@@ -88,6 +91,7 @@ describe('background location task', () => {
     useSessionStore.setState({ status: 'signed-in', accessToken: 'access-token-secret', sessionId: 's' });
     await setLocationTrackingConsent('granted');
     await setLinkedSmartphoneAssetId('asset-1');
+    await setBackgroundLocationConsent();
     await flush();
     stop.mockClear();
     warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -207,6 +211,21 @@ describe('background location task', () => {
     );
     await expect(runBackgroundLocationTask({ data: batch(), error: null })).resolves.toBe('stopped_server_rejected');
     expect(stop).toHaveBeenCalled();
+  });
+
+  it('INC-001 A-7: server CONSENT_REQUIRED stops updates and forgets the local background consent', async () => {
+    report.mockRejectedValue(
+      new ApiError(403, { error: { code: 'CONSENT_REQUIRED', message: 'consent', requestId: 'r' } }),
+    );
+    expect(await runBackgroundLocationTask({ data: batch(), error: null })).toBe('stopped_no_consent');
+    expect(stop).toHaveBeenCalled();
+    expect(await hasBackgroundLocationConsent()).toBe(false);
+  });
+
+  it('INC-001 A-7: no server-side background consent recorded on this phone: stops without sending', async () => {
+    await clearBackgroundLocationConsent();
+    expect(await runBackgroundLocationTask({ data: batch(), error: null })).toBe('stopped_no_consent');
+    expect(report).not.toHaveBeenCalled();
   });
 
   it('a transient failure (429/503/network) does not stop updates', async () => {

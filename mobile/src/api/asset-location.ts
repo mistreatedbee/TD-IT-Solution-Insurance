@@ -97,7 +97,16 @@ export function withdrawAssetLocation(assetId: string) {
 export interface GrantAssetLocationConsentResponse {
   assetId: string;
   eventType: 'granted';
+  /** INC-001 A-7 - absent from pre-A-7 servers. */
+  scopes?: Array<'foreground' | 'periodic' | 'background'>;
+  consentTextVersion?: string | null;
   createdAt: string;
+}
+
+/** INC-001 A-7 body: what this consent covers and which consent copy was shown. */
+export interface GrantAssetLocationConsentRequest {
+  scopes: Array<'foreground' | 'periodic' | 'background'>;
+  consentTextVersion: string;
 }
 
 /**
@@ -108,10 +117,10 @@ export interface GrantAssetLocationConsentResponse {
  * `setLinkedSmartphoneAssetId`) themselves — this endpoint alone does not
  * make the device believe it has consent.
  */
-export function grantAssetLocationConsent(assetId: string) {
+export function grantAssetLocationConsent(assetId: string, body?: GrantAssetLocationConsentRequest) {
   return apiFetch<GrantAssetLocationConsentResponse>(
     `/assets/${encodeURIComponent(assetId)}/location-consent`,
-    { method: 'POST' },
+    body ? { method: 'POST', body } : { method: 'POST' },
   );
 }
 

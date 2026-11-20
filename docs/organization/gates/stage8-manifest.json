@@ -1412,6 +1412,18 @@
         "reason": "2026-11-20 recorded by mobile-engineer under the owner test-only exception (docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md, addendum 2026-11-20 'Feature 024 Phase 1a') per cto ruling in docs/features/024-in-app-assistant-and-support/README.md section 11 (ruling 3: Phase 1a may be built and shown in owner-test now; Stage 8 and Stage 10 apply before any other profile). Owner-test only, gated via EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY (\"false\" in every other profile). Covers (mobile/app/(app)/assistant.tsx, mobile/src/screens/assistant/, mobile/src/config/support.ts, assistant button in mobile/src/screens/home/HomeHeader.tsx): the Home header assistant button (replaces the Alerts bell; unread badge stays on the Alerts tab; Alerts reachable from the tab and the Needs attention card); the assistant screen shell with an honest 'The assistant is coming soon' state and NO AI or network calls (no backend, no ratified AI-vendor ADR); the emergency banner (Report theft when theft reporting is on, tel:10111); the Talk to support sheet (option A: tel:, mailto:, wa.me links only, values from EXPO_PUBLIC_SUPPORT_PHONE / _EMAIL / _WHATSAPP, unset by default, unconfigured options hidden, 'Support contact details are being set up' when none). No customer data leaves the app. NO Stage 8 review performed; before any other profile: a real review by cybersecurity-architect, Stage 10 QA, design-system-manager sign-off on the header change and the new screen, and the owner's real support channels.",
         "owner": "cybersecurity-architect"
       }
+    },
+    {
+      "id": "backend-mobile-location-consent-server-record-inc001-a7",
+      "kind": "backend_route_group",
+      "pattern": "POST /assets/:assetId/location-consent (scoped body), POST /assets/:assetId/location-report consent check, DELETE /assets/:assetId/location opt-out notice; mobile/src/location/LocationReconsentPrompt.tsx, mobile/src/location/serverConsentSignal.ts",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-20 recorded by backend-engineer (INC-001 A-7 phone path, ADR-0009 SDL-4/SDL-9). Behaviour changes to already-listed routes plus a re-consent prompt; no new route paths. location_consent_events grants now carry deviceId, scopes (foreground/periodic/background) and consentTextVersion; the newest event per account+asset is the consent state (append-only). Report refusal (403 CONSENT_REQUIRED) is behind LOCATION_CONSENT_ENFORCED (\"true\" only, default off); opt-in step-up behind LOCATION_CONSENT_STEP_UP_ENFORCED (default off, so SDL-9 step-up is NOT met while off: the mobile enable flow has no step-up UI yet). Opt-in/opt-out send the Feature 021 security email + a push. Consent-state events are NOT yet on Trail A (app.account_audit_log needs an enum migration). NO Stage 8 review performed; a chaired Stage 8 with security-engineer and compliance-specialist is still required before INC-001 can close. 2026-11-20 UPDATE (appended; the sentence above stands as written at the time): Stage 8 review by cybersecurity-architect (FIX FIRST, then PASS for owner-test) is now recorded at docs/features/008-self-device-gps-tracking/security-review.md; F-1 (withdrawal written last) fixed in PR #44. A-7 partially closed, owner-test only (step-up SDL-9 off; Trail A audit pending). The chaired Stage 8 with security-engineer and compliance-specialist is still required before INC-001 can close or any non-owner use.",
+        "owner": "cybersecurity-architect"
+      }
     }
   ]
 }
