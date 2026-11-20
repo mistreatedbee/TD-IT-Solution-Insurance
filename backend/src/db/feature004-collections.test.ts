@@ -3,13 +3,14 @@
  * admin_access_log validator/index shape per database-addendum-001.md §1–§2
  * (Amendment A1 / ADR-0006 R-1).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { ObjectId } from 'mongodb';
 
 import {
   FEATURE004_COLLECTIONS,
   FEATURE004_INDEXES,
   adminAccessLogJsonSchemaValidator,
+  bootstrapFeature004Collections,
 } from './feature004-collections.js';
 
 describe('db/feature004-collections — admin_access_log bootstrap specs', () => {
@@ -310,5 +311,23 @@ describe('db/feature004-collections — admin_access_log bootstrap specs', () =>
       };
       expect(validatesAgainstMongoValidator(row)).toBe(false);
     });
+  });
+});
+
+describe('bootstrapFeature004Collections — admin_access_log validator rolls out on a plain deploy', () => {
+  it('re-applies the widened validator (incl. asset_location) via collMod on startup when the collection exists', async () => {
+    const command = vi.fn().mockResolvedValue({ ok: 1 });
+    const db = {
+      listCollections: () => ({ toArray: async () => [{ name: 'x' }] }),
+      createCollection: vi.fn(),
+      command,
+      collection: () => ({ createIndex: vi.fn().mockResolvedValue('ok') }),
+    } as unknown as Parameters<typeof bootstrapFeature004Collections>[0];
+    await bootstrapFeature004Collections(db);
+    const call = command.mock.calls.find((c) => c[0].collMod === FEATURE004_COLLECTIONS.adminAccessLog);
+    expect(call).toBeDefined();
+    const v = call![0].validator as { $and: Array<{ $jsonSchema?: { properties: { resourceType: { enum: string[] } } } }> };
+    const schema = v.$and.find((b) => b.$jsonSchema)!.$jsonSchema!;
+    expect(schema.properties.resourceType.enum).toContain('asset_location');
   });
 });
