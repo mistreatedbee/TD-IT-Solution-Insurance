@@ -296,6 +296,18 @@
       }
     },
     {
+      "id": "backend-admin-assets-counts",
+      "kind": "backend_route",
+      "pattern": "/admin/assets/counts",
+      "feature": "004",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-20 recorded by backend-engineer (B2, admin Assets page true counts). Distinct entry, NOT absorbed into the backend-admin group (SR-012-5 precedent): the Feature 004 admin-surface review predates this route. GET /v1/admin/assets/counts (backend/src/routes/admin-assets.ts) returns aggregate numbers only (total, byAssetType, byStatus, legalHold, gpsPaired; no account IDs, names or asset fields) from one $facet aggregation (assets.countsForAdmin), honouring the list route's optional accountId filter. requireUserType('admin'), per-account and per-IP rate limits identical to GET /admin/assets, no step-up MFA (read-only aggregate, /admin/assets/count precedent). Audited via recordBulkDisclosure: one privileged_bulk_access row with resultCount 0; an accountId-filtered call also writes privileged_data_access for that account, since per-customer counts are facts about that customer. NO Stage 8 review performed; a security note by cybersecurity-architect is owed (confirm the audit posture and that counts per accountId are acceptable to disclose to any admin).",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
       "id": "backend-admin-verification-requests-count",
       "kind": "backend_route",
       "pattern": "/admin/verification-requests/count",

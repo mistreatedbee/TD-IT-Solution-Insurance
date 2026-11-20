@@ -3,12 +3,21 @@
  */
 import { ObjectId, type Db, type Collection } from 'mongodb';
 import type { AssetType, CreateAssetBody } from '../lib/asset-validation.js';
-import { parseAssetDetails } from '../lib/asset-validation.js';
+import { ASSET_TYPES, parseAssetDetails } from '../lib/asset-validation.js';
 import { mongoCursorFilter, type MongoDecodedCursor } from '../lib/mongo-pagination.js';
 
 export type AssetStatus = 'active' | 'inactive' | 'removed';
 
 export type AssetLocationSource = 'self_device';
+
+/** GET /v1/admin/assets/counts — aggregate numbers only, no per-asset or per-person fields. */
+export interface AdminAssetCounts {
+  total: number;
+  byAssetType: Record<AssetType, number>;
+  byStatus: Record<AssetStatus, number>;
+  legalHold: number;
+  gpsPaired: number;
+}
 
 export interface AssetLastLocation {
   latitude: number;
@@ -168,6 +177,50 @@ export function createAssetsRepo(db: Db) {
     /** Platform-wide count, for the Admin Home KPI row. Not scoped to an account. */
     async countActiveGlobal(): Promise<number> {
       return collection().countDocuments({ status: { $ne: 'removed' } });
+    },
+
+    /**
+     * Admin Assets page tiles — true counts in one aggregation ($facet), honouring the
+     * same optional accountId filter as listForAdmin. Every count covers all statuses;
+     * byStatus lets callers split them. Returns numbers only, never document fields.
+     * Audited callers only (same posture as listForAdmin).
+     */
+    async countsForAdmin(filters: { accountId?: string }): Promise<AdminAssetCounts> {
+      const match: Record<string, unknown> = {};
+      if (filters.accountId) match.accountId = filters.accountId;
+      const [facets] = await collection()
+        .aggregate<{
+          byAssetType: Array<{ _id: string; n: number }>;
+          byStatus: Array<{ _id: string; n: number }>;
+          legalHold: Array<{ n: number }>;
+          gpsPaired: Array<{ n: number }>;
+        }>([
+          { $match: match },
+          {
+            $facet: {
+              byAssetType: [{ $group: { _id: '$assetType', n: { $sum: 1 } } }],
+              byStatus: [{ $group: { _id: '$status', n: { $sum: 1 } } }],
+              legalHold: [{ $match: { legalHold: true } }, { $count: 'n' }],
+              gpsPaired: [{ $match: { gpsDeviceId: { $type: 'string' } } }, { $count: 'n' }],
+            },
+          },
+        ])
+        .toArray();
+      const byAssetType = Object.fromEntries(ASSET_TYPES.map((t) => [t, 0])) as Record<AssetType, number>;
+      for (const row of facets?.byAssetType ?? []) {
+        if (row._id in byAssetType) byAssetType[row._id as AssetType] = row.n;
+      }
+      const byStatus: Record<AssetStatus, number> = { active: 0, inactive: 0, removed: 0 };
+      for (const row of facets?.byStatus ?? []) {
+        if (row._id in byStatus) byStatus[row._id as AssetStatus] = row.n;
+      }
+      return {
+        total: byStatus.active + byStatus.inactive + byStatus.removed,
+        byAssetType,
+        byStatus,
+        legalHold: facets?.legalHold[0]?.n ?? 0,
+        gpsPaired: facets?.gpsPaired[0]?.n ?? 0,
+      };
     },
 
     async listForAdmin(

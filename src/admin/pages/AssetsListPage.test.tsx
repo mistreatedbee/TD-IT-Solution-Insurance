@@ -7,12 +7,13 @@ import type { AdminAssetSummary } from '../api/admin-data';
 
 vi.mock('../api/admin-data', () => ({
   listAdminAssets: vi.fn(),
+  getAdminAssetCounts: vi.fn(),
 }));
 vi.mock('../api/admin-home-stats', () => ({
   getActiveAssetCount: vi.fn(),
 }));
 
-import { listAdminAssets } from '../api/admin-data';
+import { getAdminAssetCounts, listAdminAssets } from '../api/admin-data';
 import { getActiveAssetCount } from '../api/admin-home-stats';
 
 function asset(overrides: Partial<AdminAssetSummary> = {}): AdminAssetSummary {
@@ -49,6 +50,49 @@ beforeEach(() => {
   vi.mocked(listAdminAssets).mockReset();
   vi.mocked(getActiveAssetCount).mockReset();
   vi.mocked(getActiveAssetCount).mockResolvedValue(0);
+  vi.mocked(getAdminAssetCounts).mockReset();
+  // Default: counts endpoint fails, so tiles use the labelled loaded-rows fallback.
+  vi.mocked(getAdminAssetCounts).mockRejectedValue(new Error('counts unavailable'));
+});
+
+describe('AssetsListPage (true counts)', () => {
+  it('shows true per-category, GPS and legal-hold totals without the (loaded) label', async () => {
+    vi.mocked(getAdminAssetCounts).mockResolvedValue({
+      total: 47,
+      byAssetType: { laptop: 30, desktop: 10, vehicle: 4, smartphone: 3 },
+      byStatus: { active: 40, inactive: 5, removed: 2 },
+      legalHold: 2,
+      gpsPaired: 6,
+    });
+    vi.mocked(listAdminAssets).mockResolvedValue(page([asset({ displayName: 'Only loaded row' })]));
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'Computers: 40' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Vehicles: 4' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Phones & tablets: 3' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'TVs: 0' })).toBeInTheDocument();
+    expect(screen.getByText('6')).toBeInTheDocument(); // GPS paired (true total)
+    expect(screen.getByText('On legal hold')).toBeInTheDocument();
+    expect(screen.queryByText(/\(loaded\)/)).not.toBeInTheDocument();
+    expect(getAdminAssetCounts).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to loaded-row counts, labelled (loaded), when the counts call fails', async () => {
+    vi.mocked(listAdminAssets).mockResolvedValue(
+      page([asset({ id: '1', assetType: 'laptop' }), asset({ id: '2', assetType: 'laptop', legalHold: true })]),
+    );
+    renderPage();
+    expect(await screen.findByRole('button', { name: 'Computers (loaded): 2' })).toBeInTheDocument();
+    expect(screen.getByText('On legal hold (loaded)')).toBeInTheDocument();
+    expect(screen.getByText(/Totals are unavailable/)).toBeInTheDocument();
+  });
+
+  it('does not fetch counts on an account-filtered view (tiles are hidden)', async () => {
+    vi.mocked(listAdminAssets).mockResolvedValue(page([]));
+    renderPage('/admin/assets?accountId=acc-1');
+    await waitFor(() => expect(listAdminAssets).toHaveBeenCalled());
+    expect(getAdminAssetCounts).not.toHaveBeenCalled();
+  });
 });
 
 describe('AssetsListPage (categories)', () => {
