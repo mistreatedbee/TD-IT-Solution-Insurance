@@ -1471,3 +1471,17 @@ flag evaluated **ON** in any release bundle regardless of `eas.json`. Consequenc
   extended to internal APK links.
 
 This section does not discharge or alter any earlier section; it supersedes none of them.
+
+## Addendum 2026-11-20 — consent 'Other assets' text superseded (PR #35)
+
+The DETAIL_OTHER_ASSETS text quoted at line 991 of this record ("carried over, still true") is
+superseded by PR #35 on 2026-11-20. The new in-app text, verbatim:
+
+> Other assets. We do not track laptops, computers, TVs or tablets today. A TD Insurance app for
+> those devices is coming soon, and it will ask for its own permission. Vehicles and other items
+> need a separate GPS tracker, which we do not offer yet. This setting only affects this phone.
+> You can still see any last-known locations we already hold for your other assets.
+
+Collection scope is unchanged by this PR: this phone only, and no new data is collected. The old
+quoted text stays in place above for audit and is to be read as superseded. Reviewed by
+`compliance-specialist`.

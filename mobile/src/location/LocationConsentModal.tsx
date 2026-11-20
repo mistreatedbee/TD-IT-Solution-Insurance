@@ -119,9 +119,11 @@ export function LocationConsentModal({
 
               <Text style={styles.body}>
                 <Text style={styles.bodyBold}>Other assets. </Text>
-                Laptops, vehicles and other items need separate GPS hardware, which we do not
-                offer yet. This setting only affects this phone. You can still see any
-                last-known locations we already hold for your other assets.
+                We do not track laptops, computers, TVs or tablets today. A TD Insurance app for those
+                devices is coming soon, and it will ask for its own permission. Vehicles and other
+                items need a separate GPS tracker, which we do not offer yet. This setting only
+                affects this phone. You can still see any last-known locations we already hold for
+                your other assets.
               </Text>
 
               <Text style={styles.note}>

@@ -112,7 +112,8 @@ describe('AssetListScreen', () => {
       );
       // the card keeps the asset's picture and type label; its footer line gives the tracking state
       expect(screen.getByText('Laptop')).toBeTruthy();
-      expect(screen.getByText('Hardware tracker required')).toBeTruthy();
+      expect(screen.getByText('TD Insurance app coming soon')).toBeTruthy();
+      expect(screen.queryByText(/GPS tracker|Hardware tracker/)).toBeNull();
       expect(screen.getByTestId('asset-preview-507f1f77bcf86cd799439011')).toBeTruthy();
     },
     15000,
