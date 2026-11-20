@@ -102,3 +102,15 @@ export const FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED = featureEnabled(
 export const FEATURE_BACKGROUND_LOCATION_ENABLED = featureEnabled(
   process.env.EXPO_PUBLIC_FEATURE_BACKGROUND_LOCATION,
 );
+
+/**
+ * OWNER EXCEPTION 2026-11-17 (test-only build), addendum 2026-11-20 (Feature 024 Phase 1a):
+ * the Home header assistant button (replaces the Alerts bell; the unread badge lives on the
+ * Alerts tab), the `/(app)/assistant` screen shell (honest "coming soon" state, no AI calls),
+ * the emergency banner and the Talk to support sheet. "true" in the owner-test profile only,
+ * "false" in every distributed profile. No Stage 8 review has been performed — see the waiver
+ * in docs/organization/gates/stage8-manifest.json.
+ */
+export const FEATURE_ASSISTANT_ENTRY_ENABLED = featureEnabled(
+  process.env.EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY,
+);
