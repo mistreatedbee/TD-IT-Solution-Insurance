@@ -4,7 +4,7 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { OSM_ATTRIBUTION, OSM_TILE_URL } from './tile-source';
+import { OSM_TILE_LAYER_OPTIONS, OSM_TILE_URL } from './tile-source';
 
 export interface ProtectionMapPin {
   id: string;
@@ -40,10 +40,7 @@ export function ProtectionMapCanvas({
       attributionControl: true,
     }).setView(DEFAULT_CENTER, 11);
 
-    L.tileLayer(OSM_TILE_URL, {
-      maxZoom: 19,
-      attribution: OSM_ATTRIBUTION,
-    }).addTo(map);
+    L.tileLayer(OSM_TILE_URL, OSM_TILE_LAYER_OPTIONS).addTo(map);
 
     mapRef.current = map;
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { OSM_TILE_ORIGIN, OSM_TILE_URL } from '../customer/map/tile-source';
+import { OSM_TILE_LAYER_OPTIONS, OSM_TILE_ORIGIN, OSM_TILE_URL } from '../customer/map/tile-source';
 
 /**
  * ADR-0011 SR-12(a) / INC-003 §19.4 condition 1 (A-15).
@@ -111,6 +111,11 @@ describe('vercel.json security headers (ADR-0011 / INC-003 A-15)', () => {
       expect(imgSrc).toContain(OSM_TILE_ORIGIN);
       // Nothing broader than the one tile host.
       expect(imgSrc.filter((s) => s.startsWith('https:') || s === '*')).toEqual([OSM_TILE_ORIGIN]);
+    });
+
+    it('sends only the site origin (never the path) as Referer on tile requests, overriding no-referrer for tiles alone', () => {
+      expect(OSM_TILE_LAYER_OPTIONS.referrerPolicy).toBe('strict-origin');
+      expect(findHeaderValue(config, '/(.*)', 'Referrer-Policy')).toBe('no-referrer');
     });
 
     it('constrains base-uri and form-action to same-origin', () => {
