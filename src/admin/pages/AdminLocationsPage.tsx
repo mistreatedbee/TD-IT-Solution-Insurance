@@ -12,15 +12,7 @@ import { ApiError } from '../../dashboard/api/errors';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { listAdminLocations, type AdminLocation, type LocationSource } from '../api/admin-locations';
 import { AdminNavLink } from '../layout/AdminLayout';
-
-function formatAgo(iso: string | null, now: number = Date.now()): string {
-  if (!iso) return 'Never';
-  const mins = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins} min ago`;
-  const hrs = Math.round(mins / 60);
-  return hrs < 48 ? `${hrs} h ago` : `${Math.round(hrs / 24)} days ago`;
-}
+import { formatAgo } from '../lib/format';
 
 const SOURCE_LABEL: Record<LocationSource, string> = {
   phone: 'Phone (reported by the app)',
