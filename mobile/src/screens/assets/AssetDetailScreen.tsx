@@ -38,6 +38,7 @@ import {
   setLocationTrackingConsent,
 } from '../../location';
 import { BackgroundLocationOffer } from '../../location/BackgroundLocationOffer';
+import { stopLocationReportingNow } from '../../location/stopLocationReporting';
 import { enableLocationTrackingForAsset } from '../location/enableTrackingForAsset';
 import { mergeAssetsWithLocations } from '../../tracking/buildAssetTrackingView';
 import { useAssetLocationSummaryQuery } from '../../api/hooks/useAssetLocation';
@@ -225,6 +226,10 @@ export function AssetDetailScreen() {
       // SR-INC002-M1: both halves of withdrawal — server record cleared AND
       // device-local consent/linked-asset state cleared. Doing only one
       // leaves the other side believing consent is still active.
+      // Stage 8 PR #44 F-1: stop the 2-minute timer and the background task BEFORE the turn-off
+      // request goes out, so no report can be sent while it is in flight. If the request fails,
+      // reporting stays stopped on this phone until protection is turned on again.
+      await stopLocationReportingNow();
       const result = await withdrawMutation.mutateAsync(id);
       await clearLocationTrackingConsent();
       await clearLinkedSmartphoneAssetId();

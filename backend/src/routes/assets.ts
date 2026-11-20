@@ -234,6 +234,20 @@ export function createAssetsRouter(ctx: AppContext): Router {
           deviceId: session.deviceId,
         });
 
+        // Stage 8 PR #44 F-1 (check-then-write race): if consent was withdrawn while this report
+        // was in flight (after the check above, before the withdrawal's purge finished), undo
+        // what this report wrote and refuse it - a report must never survive a withdrawal.
+        if (ctx.env.locationConsentEnforced === true) {
+          const latestAfter = await ctx.locationConsentLog.findLatestByAsset(accountId, parsed.data.assetId);
+          const scopeAfter = scopeForTrigger(body.triggeredBy);
+          if (!isReportConsented(latestAfter, session.deviceId, scopeAfter)) {
+            await ctx.assets.clearLocationForAccount(accountId, parsed.data.assetId);
+            await ctx.locationEvents.deleteByAsset(accountId, parsed.data.assetId);
+            next(apiError('CONSENT_REQUIRED'));
+            return;
+          }
+        }
+
         res.status(200).json(serializeAssetLocation(result.asset));
       } catch (err) {
         next(err);
@@ -271,6 +285,8 @@ export function createAssetsRouter(ctx: AppContext): Router {
 
         const accountId = req.auth!.accountId;
         const assetId = parsed.data.assetId;
+        // Stage 8 PR #44 NB-3: same account gate as the report route.
+        await requireActiveAccount(ctx.accounts, accountId);
 
         const existing = await ctx.assets.findByIdForAccount(accountId, assetId);
         if (!existing || existing.status === 'removed') {
@@ -358,11 +374,29 @@ export function createAssetsRouter(ctx: AppContext): Router {
           return;
         }
 
-        // Idempotent: proceed identically whether or not there is anything
-        // left to clear/purge. clearLocationForAccount()/deleteByAsset() are
-        // themselves no-ops on already-cleared state, and a repeat call
-        // still writes a fresh withdrawal record (§9.6 C-5 — the *request*
-        // to withdraw is the s18 artefact, not just the first one).
+        // INC-001 A-7 / Stage 8 PR #44 F-1: record the withdrawal FIRST. From the moment this
+        // row exists the consent check refuses every report, so nothing can be written after the
+        // purge below. If this write fails we stop here (error returned, nothing purged): the
+        // customer is told turning off did not complete, rather than the grant silently staying
+        // active behind a "tracking is off" answer. The recorded `purgedEventCount` is the number
+        // of events present when the withdrawal was recorded; the response carries the number
+        // actually deleted.
+        //
+        // Idempotent: a repeat call still writes a fresh withdrawal record (§9.6 C-5 — the
+        // *request* to withdraw is the s18 artefact, not just the first one), and
+        // clearLocationForAccount()/deleteByAsset() are no-ops on already-cleared state.
+        const withdrawSession = await ctx.sessions.findById(req.auth!.sessionId).catch(() => null);
+        const eventCountAtWithdrawal = await ctx.locationEvents.countByAsset(accountId, assetId);
+        await ctx.locationConsentLog.recordWithdrawal({
+          accountId,
+          assetId,
+          purgedEventCount: eventCountAtWithdrawal,
+          actorSessionId: req.auth!.sessionId,
+          ipAddress: clientIp(req),
+          userAgent: req.header('user-agent') ?? null,
+          deviceId: withdrawSession?.deviceId ?? null,
+        });
+
         const updated = await ctx.assets.clearLocationForAccount(accountId, assetId);
         if (!updated) {
           next(apiError('NOT_FOUND'));
@@ -370,17 +404,6 @@ export function createAssetsRouter(ctx: AppContext): Router {
         }
 
         const purgedEventCount = await ctx.locationEvents.deleteByAsset(accountId, assetId);
-
-        const withdrawSession = await ctx.sessions.findById(req.auth!.sessionId).catch(() => null);
-        await ctx.locationConsentLog.recordWithdrawal({
-          accountId,
-          assetId,
-          purgedEventCount,
-          actorSessionId: req.auth!.sessionId,
-          ipAddress: clientIp(req),
-          userAgent: req.header('user-agent') ?? null,
-          deviceId: withdrawSession?.deviceId ?? null,
-        });
 
         // SDL-9: opt-out notice. The withdrawal record above is what makes the next report
         // refused (LOCATION_CONSENT_ENFORCED); this only tells the account holder.

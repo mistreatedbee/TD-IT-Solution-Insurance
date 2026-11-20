@@ -45,12 +45,37 @@ export type ReportGateResult =
  * The single gate every sender must pass: feature flag, consent, linked smartphone asset and an
  * already-granted OS permission with location services on. Never shows an OS dialog.
  */
+// Stage 8 PR #44 F-1: turning tracking off stops reporting on this phone BEFORE the turn-off
+// request is sent (not after it returns). Stays suspended until protection is turned on again.
+let reportingSuspended = false;
+const suspendHandlers = new Set<() => void>();
+
+export function suspendLocationReporting(): void {
+  reportingSuspended = true;
+  for (const handler of [...suspendHandlers]) {
+    try {
+      handler();
+    } catch {
+      // never break the turn-off path
+    }
+  }
+}
+
+export function resumeLocationReporting(): void {
+  reportingSuspended = false;
+}
+
+export function isLocationReportingSuspended(): boolean {
+  return reportingSuspended;
+}
+
 export async function canReportLocation(): Promise<ReportGateResult> {
   // INC-001: never call expo-location or reach the (kill-switched)
   // location-report endpoint when the client feature flag is off — there
   // is no product surface for the result if this build has location
   // tracking disabled. See `src/config/features.ts`.
   if (!FEATURE_LOCATION_TRACKING_ENABLED) return { ok: false, reason: 'flag_off' };
+  if (reportingSuspended) return { ok: false, reason: 'no_consent' };
 
   const consent = await getLocationTrackingConsent();
   if (consent !== 'granted') return { ok: false, reason: 'no_consent' };
@@ -90,6 +115,7 @@ export function wasLocationSentRecently(
 export function __resetLocationReporterStateForTests(): void {
   lastSentAtMs = null;
   inFlight = false;
+  reportingSuspended = false;
 }
 
 export type ReportOutcome =
@@ -198,6 +224,7 @@ export function useLocationReporter(): void {
       timer = setInterval(tick, PERIODIC_REPORT_INTERVAL_MS);
     };
 
+    suspendHandlers.add(stopTimer);
     runReport();
     if (appState.current === 'active') startTimer();
 
@@ -231,6 +258,7 @@ export function useLocationReporter(): void {
 
     return () => {
       disposed = true;
+      suspendHandlers.delete(stopTimer);
       stopTimer();
       unsubscribeConsent();
       subscription.remove();

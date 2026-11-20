@@ -243,3 +243,14 @@ read that Expo does not inline, so the gated surfaces shipped ON in release bund
 `eas.json`. Details, exposure window and actions are in `INC-004-mobile-feature-flags-not-inlined.md`.
 The server-side kill switch (`LOCATION_INGESTION_ENABLED`, §10) is a separate control and is not
 affected by this finding. This pointer changes no earlier section.
+
+---
+
+## 2026-11-20: A-7 status note (backend-engineer, appended)
+
+A-7 is **partially closed, owner-test only (step-up SDL-9 off; Trail A audit pending)**. Built in
+PR #44: a server-side consent record (device, scopes, consent-copy version) checked on every report
+behind `LOCATION_CONSENT_ENFORCED`, immediate opt-out (withdrawal recorded before the purge, Stage 8
+F-1), and an out-of-band email and push on opt-in and opt-out. Stage 8 record:
+`docs/features/008-self-device-gps-tracking/security-review.md` (2026-11-20). INC-001 stays open
+per §8. This note changes no earlier section.

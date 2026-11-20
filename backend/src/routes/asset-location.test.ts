@@ -144,6 +144,12 @@ function createHarness(opts: {
   assets?: AssetDocument[];
   sessionDeviceId?: string | null;
   envOverrides?: Partial<Env>;
+  /** F-1 tests: make the withdrawal record write fail. */
+  failWithdrawal?: boolean;
+  /** NB-1: make the consent lookup fail. */
+  failConsentLookup?: boolean;
+  /** F-1 tests: runs inside the report's asset write (simulates a concurrent withdrawal). */
+  onReportWrite?: () => Promise<void>;
 }) {
   const env = fakeEnv(opts.envOverrides);
   const kv = new InMemoryKeyValueStore();
@@ -272,6 +278,7 @@ function createHarness(opts: {
         if (existing.reportingDeviceId && existing.reportingDeviceId !== sessionDeviceId) {
           return { ok: false as const, reason: 'device_mismatch' as const };
         }
+        if (opts.onReportWrite) await opts.onReportWrite();
 
         const updated: AssetDocument = {
           ...existing,
@@ -328,6 +335,9 @@ function createHarness(opts: {
         }
         return rows.slice(0, limit);
       },
+      async countByAsset(acctId: string, assetId: string) {
+        return storedEvents.filter((e) => e.accountId === acctId && e.assetId === assetId).length;
+      },
       async deleteByAsset(acctId: string, assetId: string) {
         const before = storedEvents.length;
         for (let i = storedEvents.length - 1; i >= 0; i -= 1) {
@@ -354,6 +364,7 @@ function createHarness(opts: {
     },
     locationConsentLog: {
       async findLatestByAsset(acctId: string, assetId: string) {
+        if (opts.failConsentLookup) throw new Error('mongo read failed');
         const rows = consentTimeline.filter((e) => e.accountId === acctId && e.assetId === assetId);
         return rows.length ? { ...rows[rows.length - 1]! } : null;
       },
@@ -392,6 +403,7 @@ function createHarness(opts: {
         ipAddress?: string | null;
         userAgent?: string | null;
       }) {
+        if (opts.failWithdrawal) throw new Error('mongo write failed');
         const record = {
           id: `consent-${storedConsentWithdrawals.length + 1}`,
           accountId: input.accountId,
@@ -1164,5 +1176,98 @@ describe('INC-001 A-7: server-side location consent (LOCATION_CONSENT_ENFORCED)'
     expect((await grant({ scopes: ['foreground'] })).status).toBe(200);
     setSessionMfaVerifiedAt(null);
     expect((await withdraw()).status).toBe(200);
+  });
+
+  describe('Stage 8 PR #44 F-1: withdrawal is recorded before the purge, fail-closed', () => {
+    async function setupF1(extra: { failWithdrawal?: boolean } = {}) {
+      const accountId = randomUUID();
+      const phone = sampleSmartphone(accountId);
+      let hook: (() => Promise<void>) | null = null;
+      const h = createHarness({
+        accountId,
+        assets: [phone],
+        envOverrides: { locationConsentEnforced: true },
+        failWithdrawal: extra.failWithdrawal,
+        onReportWrite: async () => {
+          if (hook) {
+            const run = hook;
+            hook = null;
+            await run();
+          }
+        },
+      });
+      const listened = await listen(h.app);
+      server = listened.server;
+      const auth = { authorization: `Bearer ${customerToken(h.env, accountId, h.sessionId)}` };
+      const call = (path: string, method: string, body?: unknown) =>
+        fetch(`${listened.baseUrl}/assets/${phone.id}${path}`, {
+          method,
+          headers: body === undefined ? auth : { ...auth, 'content-type': 'application/json' },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+      return { ...h, phone, call, setHook: (fn: () => Promise<void>) => (hook = fn) };
+    }
+
+    it('(a) a report in flight when tracking is turned off is refused and leaves nothing stored', async () => {
+      const { call, setHook, storedEvents, storedAssets, phone } = await setupF1();
+      await call('/location-consent', 'POST', { scopes: ['foreground'] });
+      expect((await call('/location-report', 'POST', { latitude: -25.7, longitude: 28.2 })).status).toBe(200);
+      // The withdrawal lands after this report passed its consent check but before it returns.
+      setHook(async () => {
+        expect((await call('/location', 'DELETE')).status).toBe(200);
+      });
+      const raced = await call('/location-report', 'POST', { latitude: -25.8, longitude: 28.3 });
+      expect(raced.status).toBe(403);
+      expect(((await raced.json()) as { error: { code: string } }).error.code).toBe('CONSENT_REQUIRED');
+      expect(storedEvents).toHaveLength(0);
+      expect(storedAssets.get(phone.id)?.lastLocation).toBeNull();
+    });
+
+    it('(b) a failed withdrawal write returns an error and purges nothing; the grant is not reported as off', async () => {
+      const { call, storedEvents, storedAssets, phone, storedConsentWithdrawals } = await setupF1({
+        failWithdrawal: true,
+      });
+      await call('/location-consent', 'POST', { scopes: ['foreground'] });
+      expect((await call('/location-report', 'POST', { latitude: -25.7, longitude: 28.2 })).status).toBe(200);
+      const res = await call('/location', 'DELETE');
+      expect(res.status).toBe(500);
+      expect(storedConsentWithdrawals).toHaveLength(0);
+      expect(storedEvents).toHaveLength(1);
+      expect(storedAssets.get(phone.id)?.lastLocation).not.toBeNull();
+    });
+
+    it('NB-1: a failing consent lookup with enforcement on returns 500 and stores nothing', async () => {
+      const accountId = randomUUID();
+      const phone = sampleSmartphone(accountId);
+      const h = createHarness({
+        accountId,
+        assets: [phone],
+        envOverrides: { locationConsentEnforced: true },
+        failConsentLookup: true,
+      });
+      const listened = await listen(h.app);
+      server = listened.server;
+      const res = await fetch(`${listened.baseUrl}/assets/${phone.id}/location-report`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${customerToken(h.env, accountId, h.sessionId)}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ latitude: -25.7, longitude: 28.2 }),
+      });
+      expect(res.status).toBe(500);
+      expect(h.storedEvents).toHaveLength(0);
+      expect(h.storedAssets.get(phone.id)?.lastLocation).toBeNull();
+    });
+
+    it('records the withdrawal before clearing the location (order)', async () => {
+      const { call, storedConsentWithdrawals } = await setupF1();
+      await call('/location-consent', 'POST', { scopes: ['foreground'] });
+      await call('/location-report', 'POST', { latitude: -25.7, longitude: 28.2 });
+      const res = await call('/location', 'DELETE');
+      expect(res.status).toBe(200);
+      expect(storedConsentWithdrawals[0]?.purgedEventCount).toBe(1);
+      expect(((await res.json()) as { purgedEventCount: number }).purgedEventCount).toBe(1);
+    });
   });
 });

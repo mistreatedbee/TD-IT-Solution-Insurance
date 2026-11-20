@@ -26,6 +26,7 @@ import {
 } from '../../location';
 import { clearBackgroundLocationConsent } from '../../location/consent';
 import { clearPendingReconsent } from '../../location/serverConsentSignal';
+import { resumeLocationReporting } from '../../location/useLocationReporter';
 
 export type EnableTrackingResult =
   | { kind: 'enabled' }
@@ -77,6 +78,7 @@ export async function enableLocationTrackingForAsset({
     throw grantErr;
   }
   clearPendingReconsent();
+  resumeLocationReporting();
   await clearBackgroundLocationConsent().catch(() => undefined);
 
   let fix;

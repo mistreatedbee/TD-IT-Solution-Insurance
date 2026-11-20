@@ -108,6 +108,11 @@ jest.mock('../../../network/NetworkProvider', () => ({
   useIsOnline: () => mockIsOnline(),
 }));
 
+const mockStopReporting = jest.fn(async () => undefined);
+jest.mock('../../../location/stopLocationReporting', () => ({
+  stopLocationReportingNow: () => mockStopReporting(),
+}));
+
 describe('AssetDetailScreen — location withdrawal (INC-002 M1/M2)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -137,6 +142,11 @@ describe('AssetDetailScreen — location withdrawal (INC-002 M1/M2)', () => {
     });
     expect(mockClearLocationTrackingConsent).toHaveBeenCalled();
     expect(mockClearLinkedSmartphoneAssetId).toHaveBeenCalled();
+    // Stage 8 PR #44 F-1: the timer + background task are stopped BEFORE the turn-off request.
+    expect(mockStopReporting).toHaveBeenCalledTimes(1);
+    expect(mockStopReporting.mock.invocationCallOrder[0]).toBeLessThan(
+      mockMutateAsyncWithdraw.mock.invocationCallOrder[0]!,
+    );
 
     alertSpy.mockRestore();
   });

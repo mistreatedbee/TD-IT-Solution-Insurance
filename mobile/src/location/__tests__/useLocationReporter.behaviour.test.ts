@@ -3,7 +3,13 @@ import * as Location from 'expo-location';
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { reportAssetLocation } from '../../api/asset-location';
 import { getLocationTrackingConsent } from '../consent';
-import { useLocationReporter } from '../useLocationReporter';
+import {
+  __resetLocationReporterStateForTests,
+  canReportLocation,
+  resumeLocationReporting,
+  suspendLocationReporting,
+  useLocationReporter,
+} from '../useLocationReporter';
 import { ApiError } from '../../api/errors';
 import { clearPendingReconsent, getPendingReconsentAssetId, subscribeServerConsentRequired } from '../serverConsentSignal';
 
@@ -75,5 +81,13 @@ describe('useLocationReporter behaviour', () => {
     await waitFor(() => expect(warn).toHaveBeenCalled());
     expect(getPendingReconsentAssetId()).toBeNull();
     warn.mockRestore();
+  });
+
+  it('Stage 8 PR #44 F-1: suspended reporting refuses the gate until resumed', async () => {
+    __resetLocationReporterStateForTests();
+    suspendLocationReporting();
+    expect(await canReportLocation()).toEqual({ ok: false, reason: 'no_consent' });
+    resumeLocationReporting();
+    expect((await canReportLocation()).ok).toBe(true);
   });
 });
