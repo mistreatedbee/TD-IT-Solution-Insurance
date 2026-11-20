@@ -427,3 +427,9 @@ Facts checked in the code on 2026-11-17, so the plan does not promise what the p
 
 Supporting decision for the stage plan: TP-21 and TP-24 ride on the hardware-tracker path (TP-10). TP-22 rides on stage (c) went-dark detection (TP-03), where low battery is a signal. TP-23 stands alone and needs an owner decision.
 \n
+
+## Owner decisions log — 2026-11-20 (recorded by product-manager)
+
+- **Feature 023:** owner accepted all seven `cto` recommendations (claim gate, ID/passport only, per-asset ownership proof for claims, view-only admin, one resubmission, 3-year re-verify, OTP later). Open: re-verify claim threshold amount. Details: `docs/features/023-customer-verification-documents/README.md`.
+- **Feature 024:** owner accepted Anthropic account with ~USD 50/month cap, Haiku with Sonnet fallback, 90-day chat retention (subject to compliance), bell moved to Alerts tab. Open: account opening, assistant name and support contact values. Details: `docs/features/024-in-app-assistant-and-support/README.md`.
+- **Feature 022:** owner decided OD-1 (Windows, macOS, then Android/Google TV; other TV platforms not tracked) and approved the OD-8 signing budget (~USD 220–700/yr). Details: `docs/features/022-software-tracking-laptops-desktops-tvs/README.md`.

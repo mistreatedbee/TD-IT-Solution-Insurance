@@ -313,3 +313,17 @@ Corrections and rulings:
 3. **Phase 1a gate.** The header swap, the support sheet (option A) and the emergency banner may be built and shown in owner-test now. Stage 8 and Stage 10 apply before any other profile gets them, not before the owner-test build.
 4. **Phase 1b in owner-test.** The assistant may run against the owner's own test account only once the ADR is ratified, the key is in Render and the spend cap is set. The compliance ruling (s72, Anthropic terms) and the §7 review are needed before any real customer uses it, not before the owner tests it. Leave the alerts tool out until `GET /v1/alerts` has a Stage 8 record.
 5. **First build step:** `mobile-engineer` builds Phase 1a, with `design-system-manager` signing off the header change and the new screen.
+
+---
+
+## Owner decisions — 2026-11-20 (recorded by product-manager)
+
+The owner answered "Yes to all" to the `cto` recommendations below. Recording a decision here does not approve a build and does not replace the ADR, compliance ruling or Stage 8/10 gates in §11.
+
+| # | Decision | Accepts | Unlocks | Still blocks |
+|---|----------|---------|---------|--------------|
+| 8 | The owner opens and pays for the Anthropic account, with a monthly spend cap (about USD 50 to start). | §11 item 4 (key in Render, spend cap set) | Phase 1b owner-test run, once the rest of §11 item 4 is met | **Owner action pending:** account not yet opened, key not in Render, cap not set. ADR from `ai-solutions-architect` still needed (§11 item 2) |
+| 9 | Model: Haiku, with Sonnet as fallback. | `cto` recommendation | Model choice for the ADR (set in config, not hardcoded) | ADR ratification; prices still to be re-checked (§11 item 2) |
+| 10 | Keep chats for 90 days, subject to compliance. | `cto` recommendation | Retention value for the ADR and §7 review | `compliance-specialist` ruling; real customers wait for it |
+| 11 | The bell leaves the header; the alert count shows on the Alerts tab. | §10 item 7 | Already built (PR #39) | Stage 8 and Stage 10 before any profile other than owner-test (§11 item 3) |
+| 12 | The owner supplies the assistant name, support phone, email and WhatsApp, and support hours. | §10 item 6 | "Yes" accepted | **Open: the owner has not yet supplied these values** |

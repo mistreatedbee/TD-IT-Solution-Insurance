@@ -255,3 +255,19 @@ Corrections and rulings:
 3. **Owner-test scope.** Phase A items 2 to 5 can be built and run in the owner-test build, where `FEATURE_KYC_ENABLED` is already on. No new flag is needed. Real users still need Stage 8, Stage 10 and C-013-6 (Phase A item 7).
 4. **First build step:** `backend-engineer` builds the BR-2/BR-3 gates and AC-A6/A7, with tests. `cybersecurity-architect` starts the Stage 8 review it already owes for the current surface (F009-1) at the same time.
 5. **D-2 recommendation:** ID or passport only. Leave out the selfie and proof of address. Proof of ownership is per asset and needed for claims only (this also answers D-5).
+
+---
+
+## Owner decisions — 2026-11-20 (recorded by product-manager)
+
+The owner answered "Yes to all" to the `cto` recommendations below. Recording a decision here does not approve a build and does not satisfy any Stage 8, Stage 10 or Feature 013 compliance condition.
+
+| # | Decision | Accepts | Unlocks | Still blocks |
+|---|----------|---------|---------|--------------|
+| 1 | Customers who are not approved cannot file claims. Theft reports are never blocked. Blocking the policy itself comes later, with payments. | §13 item 2 (BR-2 claim gate and BR-3 theft exemption first; BR-1 after payments) | `KYC_CLAIM_GATE_ENABLED` can be turned on in the owner-test build once PR #42 merges | Real users: the KYC-3 ruling in `pre-launch-blockers.md`, Stage 8, Stage 10, C-013-6. BR-1 waits for payments (not built) |
+| 2 | Documents required: ID or passport only. No selfie, no proof of address. | §13 item 5 (D-2) | Phase B document list is fixed | Phase B storage waits for the MP-5 storage choice and its ADR (§13 item 1) |
+| 3 | Proof of ownership is per asset and needed for claims only. | §13 item 5 (D-5) | Claim-time ownership check can be specified | Same MP-5 storage dependency |
+| 4 | Admins can view ID documents but cannot download them. | `cto` recommendation | View-only admin access rule for the Stage 8 review | Storage choice (MP-5); Stage 8 review of the admin view |
+| 5 | A declined customer may resubmit once; after that, only through support. | `cto` recommendation | Resubmission rule for acceptance criteria | Support channel details are still open (Feature 024 decision 12) |
+| 6 | Re-verify every 3 years, or when a claim is above a value threshold. | `cto` recommendation | Re-verification rule can be specified | **Open: the owner has not given the threshold amount** |
+| 7 | Phone number check by OTP: yes, later. | `cto` recommendation | Placed as later work | Not scheduled; needs its own scope and SMS vendor decision |
