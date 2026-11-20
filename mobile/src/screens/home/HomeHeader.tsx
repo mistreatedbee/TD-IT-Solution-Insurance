@@ -55,7 +55,7 @@ export function HomeHeader({
           color: t.colors.inkMuted,
           marginTop: t.spacing.s1,
         },
-        bell: {
+        headerAction: {
           width: 48,
           height: 48,
           borderRadius: t.radius.pill,
@@ -106,7 +106,7 @@ export function HomeHeader({
           // Feature 024 Phase 1a: the assistant takes the top-right slot. Alerts stay reachable
           // from the Alerts tab (which carries the unread badge) and the Needs attention card.
           <Pressable
-            style={styles.bell}
+            style={styles.headerAction}
             accessibilityRole="button"
             accessibilityLabel="TD IT Solutions Insurance assistant"
             accessibilityHint="Ask a question or talk to support"
@@ -117,7 +117,7 @@ export function HomeHeader({
           </Pressable>
         ) : FEATURE_ALERTS_ENABLED ? (
           <Pressable
-            style={styles.bell}
+            style={styles.headerAction}
             accessibilityRole="button"
             accessibilityLabel={`Alerts${alertCount > 0 ? `, ${alertCount} open` : ''}`}
             onPress={() => router.push('/alerts' as Href)}

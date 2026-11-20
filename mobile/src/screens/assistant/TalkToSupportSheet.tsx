@@ -36,7 +36,7 @@ export function TalkToSupportSheet({
         backdrop: {
           flex: 1,
           justifyContent: 'flex-end',
-          backgroundColor: 'rgba(0,0,0,0.45)',
+          backgroundColor: t.colors.scrim,
           padding: t.spacing.s4,
         },
         title: { ...t.type.displayMd, color: t.colors.ink, marginBottom: t.spacing.s2 },
