@@ -26,7 +26,7 @@ vi.mock('../api/admin-data', () => ({
 }));
 vi.mock('../api/admin-locations', () => ({
   getAdminAssetLocation: vi.fn().mockResolvedValue({
-    assetId: 'asset-1', accountId: 'acct-1', trackingOff: false, source: null, freshness: 'never',
+    assetId: 'asset-1', accountId: 'acct-1', trackingOff: false, trackingOffReason: null, source: null, freshness: 'never',
     lastLocation: null, history: [], trackingDevice: null,
   }),
 }));

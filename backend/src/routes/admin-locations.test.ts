@@ -380,6 +380,7 @@ describe('routes/admin-locations GET /admin/assets/:assetId/location', () => {
       assets: [car],
       devices: [device({ id: '507f1f77bcf86cd799439100', accountId: owner, assetId: ASSET })],
       events: [event(owner, 1, { source: 'hardware' }), event(owner, 2, { source: 'hardware' }), event(randomUUID(), 3)],
+      consent: [consentEvent(owner, 'granted')],
     });
     await harness.start();
     const res = await getOne(harness);
@@ -399,7 +400,7 @@ describe('routes/admin-locations GET /admin/assets/:assetId/location', () => {
     expect(harness.historyCalls[0]).toEqual({ accountId: owner, assetId: ASSET, limit: 20 });
     expect(harness.detailCalls).toHaveLength(1);
     expect(harness.detailCalls[0]).toMatchObject({
-      resourceType: 'asset',
+      resourceType: 'asset_location', // distinct from an ordinary asset view (DSAR/POPIA reporting)
       resourceId: ASSET,
       targetAccountId: owner,
       actorAccountId: harness.adminId,
@@ -420,7 +421,7 @@ describe('routes/admin-locations GET /admin/assets/:assetId/location', () => {
     const res = await getOne(harness);
     expect(res.status).toBe(200);
     const { data } = (await res.json()) as { data: Record<string, unknown> };
-    expect(data).toMatchObject({ trackingOff: true, lastLocation: null, history: [], source: null, freshness: 'never' });
+    expect(data).toMatchObject({ trackingOff: true, trackingOffReason: 'withdrawn', lastLocation: null, history: [], source: null, freshness: 'never' });
     expect(harness.historyCalls).toHaveLength(0);
     expect(harness.detailCalls).toHaveLength(1);
   });
@@ -436,12 +437,39 @@ describe('routes/admin-locations GET /admin/assets/:assetId/location', () => {
     expect(data).toMatchObject({ trackingOff: false, source: 'phone' });
   });
 
-  it('empty state: no position yet, still audited', async () => {
+  it('fails closed: no consent record at all means tracking off, even with a stored position', async () => {
     const owner = randomUUID();
-    harness = createHarness({ assets: [{ ...sampleAsset(owner, ASSET), lastLocation: null }] });
+    harness = createHarness({
+      assets: [loc({ assetType: 'vehicle', gpsDeviceId: '507f1f77bcf86cd799439100' }, owner, ASSET)],
+      events: [event(owner, 1, { source: 'hardware' })],
+    });
     await harness.start();
     const { data } = (await (await getOne(harness)).json()) as { data: Record<string, unknown> };
-    expect(data).toMatchObject({ trackingOff: false, lastLocation: null, history: [], trackingDevice: null, freshness: 'never' });
+    expect(data).toMatchObject({ trackingOff: true, trackingOffReason: 'no_consent', lastLocation: null, history: [] });
+    expect(harness.historyCalls).toHaveLength(0);
+    expect(harness.detailCalls).toHaveLength(1);
+  });
+
+  it('an archived (removed) asset never returns a location, even with a grant on record', async () => {
+    const owner = randomUUID();
+    harness = createHarness({
+      assets: [loc({ assetType: 'smartphone', locationSource: 'self_device', status: 'removed' }, owner, ASSET)],
+      events: [event(owner, 1)],
+      consent: [consentEvent(owner, 'granted')],
+    });
+    await harness.start();
+    const { data } = (await (await getOne(harness)).json()) as { data: Record<string, unknown> };
+    expect(data).toMatchObject({ trackingOff: true, trackingOffReason: 'archived', lastLocation: null, history: [] });
+    expect(harness.historyCalls).toHaveLength(0);
+    expect(harness.detailCalls[0]).toMatchObject({ resourceType: 'asset_location' });
+  });
+
+  it('empty state: consent granted but no position yet, still audited', async () => {
+    const owner = randomUUID();
+    harness = createHarness({ assets: [{ ...sampleAsset(owner, ASSET), lastLocation: null }], consent: [consentEvent(owner, 'granted')] });
+    await harness.start();
+    const { data } = (await (await getOne(harness)).json()) as { data: Record<string, unknown> };
+    expect(data).toMatchObject({ trackingOff: false, trackingOffReason: null, lastLocation: null, history: [], trackingDevice: null, freshness: 'never' });
     expect(harness.detailCalls).toHaveLength(1);
   });
 

@@ -78,7 +78,8 @@ describe('db/feature004-collections — admin_access_log bootstrap specs', () =>
     // ADR-0006 §18.7 item 5 — widened to add 'recovery_case' alongside 'policy'/'asset'.
     // Widened again (business-owner gap report item 5) to add 'plan' for admin
     // plan-catalog create/delete. Widened again (SR-018-1, Feature 018) to add 'claim'.
-    expect(schema.properties.resourceType?.enum).toEqual(['policy', 'asset', 'recovery_case', 'plan', 'claim']);
+    // Widened again (Stage 8 2026-11-20) to add 'asset_location' for admin asset location views.
+    expect(schema.properties.resourceType?.enum).toEqual(['policy', 'asset', 'recovery_case', 'plan', 'claim', 'asset_location']);
   });
 
   it('encodes R-1 conditional invariants via $expr (MongoDB lacks if/then in $jsonSchema)', () => {

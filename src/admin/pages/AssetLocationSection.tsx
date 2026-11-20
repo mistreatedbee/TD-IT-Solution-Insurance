@@ -13,6 +13,12 @@ const SOURCE_LABEL: Record<string, string> = {
   unknown: 'Unknown source',
 };
 
+const TRACKING_OFF_REASON: Record<string, string> = {
+  withdrawn: 'The owner withdrew location consent, so earlier positions were deleted.',
+  no_consent: 'There is no location consent on record for this asset.',
+  archived: 'This asset is archived, so its location is not shown.',
+};
+
 const coords = (lat: number, lng: number) => `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 const accuracy = (m: number | null) => (m == null ? 'Not reported' : `± ${Math.round(m)} m`);
 
@@ -49,9 +55,7 @@ export function AssetLocationSection({ assetId, assetName }: { assetId: string; 
     body = <LoadingState label="Loading location…" />;
   } else if (loc.trackingOff) {
     body = (
-      <p className="text-sm text-td-ink-muted">
-        No location — tracking is off. The owner withdrew location consent, so earlier positions were deleted.
-      </p>
+      <p className="text-sm text-td-ink-muted">No location — tracking is off. {TRACKING_OFF_REASON[loc.trackingOffReason ?? 'no_consent']}</p>
     );
   } else if (!loc.lastLocation) {
     body = <p className="text-sm text-td-ink-muted">No location yet — this asset has not reported a position.</p>;

@@ -51,6 +51,7 @@ const location = (over: Partial<AdminAssetLocation> = {}): AdminAssetLocation =>
   assetId: 'asset-1',
   accountId: 'acct-1',
   trackingOff: false,
+  trackingOffReason: null,
   source: 'phone',
   freshness: 'online',
   lastLocation: { latitude: -26.20412, longitude: 28.04731, accuracyMeters: 12, recordedAt: new Date(Date.now() - 120_000).toISOString() },
@@ -120,9 +121,20 @@ describe('AssetDetailPage (full detail)', () => {
 
   it('says tracking is off after consent withdrawal, with no map', async () => {
     vi.mocked(getAdminAsset).mockResolvedValue(asset());
-    vi.mocked(getAdminAssetLocation).mockResolvedValue(location({ trackingOff: true, source: null, lastLocation: null, history: [] }));
+    vi.mocked(getAdminAssetLocation).mockResolvedValue(location({ trackingOff: true, trackingOffReason: 'withdrawn', source: null, lastLocation: null, history: [] }));
     renderPage();
-    expect(await screen.findByText(/No location — tracking is off/)).toBeInTheDocument();
+    expect(await screen.findByText(/No location — tracking is off.*withdrew location consent/)).toBeInTheDocument();
+    expect(screen.queryByTestId('map')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['no_consent', /no location consent on record/],
+    ['archived', /asset is archived/],
+  ] as const)('says tracking is off (%s), with no map', async (reason, text) => {
+    vi.mocked(getAdminAsset).mockResolvedValue(asset());
+    vi.mocked(getAdminAssetLocation).mockResolvedValue(location({ trackingOff: true, trackingOffReason: reason, source: null, lastLocation: null, history: [] }));
+    renderPage();
+    expect(await screen.findByText(text)).toBeInTheDocument();
     expect(screen.queryByTestId('map')).not.toBeInTheDocument();
   });
 

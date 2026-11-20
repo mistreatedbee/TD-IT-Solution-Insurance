@@ -86,3 +86,16 @@ Not covered by this addendum: Phase 1b (the AI assistant itself, the Render `ASS
 Before any other profile gets this: a real Stage 8 review by `cybersecurity-architect`, Stage 10 QA, `design-system-manager` sign-off on the header change and the new screen, and the owner's real support channels.
 
 Reversal, added to the list above: set `EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY` to "false" (or delete it with the `owner-test` profile). The Home header then shows the Alerts bell again.
+
+## Addendum 2026-11-20: admin asset detail location (cybersecurity-architect PASS for owner-test only)
+Recorded by `backend-engineer`. `GET /v1/admin/assets/{assetId}/location` and the Location section of the admin asset detail page are added under this exception. Like `/admin/locations`, the route is mounted only when `ADMIN_LOCATIONS_ENABLED=true`. Review: "Stage 8 review — feat/admin-asset-detail-full (owner-test phase)" in `docs/features/004-policy-asset-management/security-review-admin-surface.md`. Its three cheap fixes are already in: fail closed with no consent record, no location for archived assets, and the `asset_location` audit type.
+
+**Must change before real users (none of this is done):**
+- R1: serve exact location only with an open recovery case. Otherwise require a reason code, free-text justification and step-up MFA (no more than 5 minutes old), with the reason stored in the audit row.
+- R2: with no open case, show coarse location only (rounded coordinates, no history).
+- R3: a per-admin daily cap on distinct owners viewed, with an alert when it is crossed.
+- R4: an ADR-0009 amendment, a compliance-specialist POPIA sign-off and a privacy-notice disclosure.
+- R5: reverse this owner exception and remove the `ADMIN_LOCATIONS_ENABLED` dependency, so the gating is structural.
+- R6: a real (non-waiver) Stage 8 manifest entry covering this endpoint and `/admin/locations`.
+
+Reversal, added to the list above: set `ADMIN_LOCATIONS_ENABLED` off. This route then returns 404, and the page says the location view is not switched on.

@@ -32,8 +32,10 @@ export function listAdminLocations(params?: { cursor?: string; source?: 'phone' 
 export interface AdminAssetLocation {
   assetId: string;
   accountId: string;
-  /** The owner withdrew location consent: no position or history is returned. */
+  /** No position or history is returned (fails closed). */
   trackingOff: boolean;
+  /** Why tracking is off: consent withdrawn, no consent on record, or the asset is archived. */
+  trackingOffReason: 'withdrawn' | 'no_consent' | 'archived' | null;
   source: LocationSource | null;
   freshness: DeviceConnection;
   lastLocation: { latitude: number; longitude: number; accuracyMeters: number | null; recordedAt: string } | null;

@@ -64,27 +64,32 @@ export function serializeAdminLocation(asset: AssetDocument, device: TrackingDev
   };
 }
 
+/** Why no position is returned: consent withdrawn, no consent ever recorded, or the asset is archived. */
+export type TrackingOffReason = 'withdrawn' | 'no_consent' | 'archived';
+
 function sourceOf(asset: AssetDocument): LocationSource {
   return asset.locationSource === 'self_device' ? 'phone' : asset.gpsDeviceId ? 'hardware' : 'unknown';
 }
 
 /**
- * One asset's location picture for the admin asset page. `trackingOff` means the owner withdrew location
- * consent: the withdrawal purged the history and cleared the last position, and nothing is returned here even if
- * a stray value survived (purged data is never resurrected).
+ * One asset's location picture for the admin asset page. `trackingOff` (with `trackingOffReason`) means no
+ * position or history is returned: consent was withdrawn (the withdrawal purged the history; purged data is never
+ * resurrected even if a stray value survived), no consent was ever recorded, or the asset is archived.
  */
 export function serializeAdminAssetLocation(
   asset: AssetDocument,
   device: TrackingDeviceDocument | null,
   history: LocationEventDocument[],
-  trackingOff: boolean,
+  trackingOffReason: TrackingOffReason | null,
   now: Date,
 ) {
+  const trackingOff = trackingOffReason !== null;
   const loc = trackingOff ? null : asset.lastLocation;
   return {
     assetId: asset.id,
     accountId: asset.accountId,
     trackingOff,
+    trackingOffReason,
     source: loc ? sourceOf(asset) : null,
     freshness: deriveFreshness(loc ? loc.recordedAt : null, now),
     lastLocation: loc
@@ -207,8 +212,17 @@ export function createAdminLocationsRouter(ctx: AppContext): Router {
           return;
         }
 
-        const latestConsent = await ctx.locationConsentLog.findLatestByAsset(asset.accountId, asset.id);
-        const trackingOff = latestConsent?.eventType === 'withdrawn';
+        // Fail closed (Stage 8, 2026-11-20): an archived asset never returns a position, and neither does an
+        // asset with no location consent on record at all; only a current grant turns tracking on.
+        let trackingOffReason: TrackingOffReason | null = null;
+        if (asset.status === 'removed') {
+          trackingOffReason = 'archived';
+        } else {
+          const latestConsent = await ctx.locationConsentLog.findLatestByAsset(asset.accountId, asset.id);
+          if (!latestConsent) trackingOffReason = 'no_consent';
+          else if (latestConsent.eventType !== 'granted') trackingOffReason = 'withdrawn';
+        }
+        const trackingOff = trackingOffReason !== null;
         const [history, devices] = await Promise.all([
           trackingOff
             ? Promise.resolve([] as LocationEventDocument[])
@@ -222,7 +236,7 @@ export function createAdminLocationsRouter(ctx: AppContext): Router {
           actorSessionId: req.auth!.sessionId,
           auditRequestId: req.auditRequestId ?? null,
           targetAccountId: asset.accountId,
-          resourceType: 'asset',
+          resourceType: 'asset_location',
           resourceId: asset.id,
           endpoint: ENDPOINT_ASSET_LOCATION,
           ipAddress: clientIp(req),
@@ -230,7 +244,7 @@ export function createAdminLocationsRouter(ctx: AppContext): Router {
         });
 
         res.status(200).json({
-          data: serializeAdminAssetLocation(asset, devices[0] ?? null, history, trackingOff, new Date()),
+          data: serializeAdminAssetLocation(asset, devices[0] ?? null, history, trackingOffReason, new Date()),
         });
       } catch (err) {
         next(err);
