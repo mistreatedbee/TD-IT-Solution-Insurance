@@ -44,6 +44,7 @@ export default function AppLayout() {
       <Stack.Screen name="claims" options={{ headerShown: false }} />
       <Stack.Screen name="live-tracking" options={{ headerShown: false }} />
       <Stack.Screen name="device-locations" options={{ headerShown: false }} />
+      <Stack.Screen name="assistant" options={{ headerShown: false }} />
     </Stack>
   );
 }

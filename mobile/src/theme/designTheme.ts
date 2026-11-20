@@ -13,10 +13,19 @@ import {
 } from './designTokens.generated';
 import { useTheme, type DesignMode } from './ThemeProvider';
 
+/** Modal backdrop scrim per mode (mobile-only; not in design-system/tokens.json). */
+export const DESIGN_SCRIM = {
+  day: 'rgba(20, 32, 45, 0.45)',
+  night: 'rgba(0, 0, 0, 0.6)',
+} as const;
+
 export interface DesignTokens {
   mode: DesignMode;
-  /** Colours plus `iconMuted`: secondary icons, which read as near-white in the night theme. */
-  colors: DesignColors & { iconMuted: string };
+  /**
+   * Colours plus `iconMuted` (secondary icons, which read as near-white in the night theme) and
+   * `scrim` (the dimmed layer behind modal sheets; darker at night so the sheet still separates).
+   */
+  colors: DesignColors & { iconMuted: string; scrim: string };
   shadows: (typeof designShadows)['day'];
   spacing: typeof designSpacing;
   radius: typeof designRadius;
@@ -33,8 +42,8 @@ export function useDesignTokens(): DesignTokens {
       mode,
       colors:
         mode === 'night'
-          ? { ...designColorsNight, iconMuted: designColorsNight.ink }
-          : { ...designColorsDay, iconMuted: designColorsDay.inkMuted },
+          ? { ...designColorsNight, iconMuted: designColorsNight.ink, scrim: DESIGN_SCRIM.night }
+          : { ...designColorsDay, iconMuted: designColorsDay.inkMuted, scrim: DESIGN_SCRIM.day },
       shadows: designShadows[mode],
       spacing: designSpacing,
       radius: designRadius,

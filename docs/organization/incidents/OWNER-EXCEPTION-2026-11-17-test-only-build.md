@@ -75,3 +75,14 @@ Conditions (all binding, all implemented and covered by tests):
 **Before any public build (none of this is done):** the Google Play background-location permission declaration (and its video) must be filed; `cybersecurity-architect` and `compliance-specialist` must do a real Stage 8 review, including a POPIA assessment of background collection, the explainer wording and how long background points are kept; INC-001 A-7 must be closed; ADR-0009 §19 must be decided by `cto`.
 
 Reversal, added to the list above: set `EXPO_PUBLIC_FEATURE_BACKGROUND_LOCATION` to "false" (or delete it with the `owner-test` profile), and remove the owner-test branch in `mobile/app.config.ts` (`applyAndroidBackgroundLocation`). Background updates already running on the owner's phone stop on the next task run once the flag is off, on sign-out, or when protection is turned off.
+
+## Addendum 2026-11-20: Feature 024 Phase 1a, assistant entry and Talk to support (cto ruling)
+Recorded by `mobile-engineer` under `cto`'s ruling in `docs/features/024-in-app-assistant-and-support/README.md` §11 (rulings 1 and 3). Added under this exception, **owner-test build only**, behind the new 11th flag `EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY` ("true" in `owner-test` only; "false" in `development`, `preview`, `playInternal`, `preview-simulator` and `production`). The owner-test allow-list in `verify-eas-feature-flags.mjs` is not widened; the three flag scripts now expect 11 flags. Stage 8 waiver `mobile-assistant-entry-and-support-sheet`, no review performed.
+
+What was added: the Home header assistant button in place of the Alerts bell (the unread count stays on the Alerts tab; Alerts remain reachable from the tab and the Needs attention card); the `(app)/assistant` screen with an honest "The assistant is coming soon" state and **no AI or network calls**; the emergency banner (Report theft when theft reporting is on, and Call 10111); and the Talk to support sheet (call / email / WhatsApp links only, from `EXPO_PUBLIC_SUPPORT_PHONE` / `_EMAIL` / `_WHATSAPP`, unset by default; unconfigured options are hidden and the sheet says "Support contact details are being set up" when none are set). No contact details were invented.
+
+Not covered by this addendum: Phase 1b (the AI assistant itself, the Render `ASSISTANT_ENABLED` switch) still needs the AI-vendor ADR ratified by `cto`, the key in Render and the spend cap first (§11 ruling 2 and 4).
+
+Before any other profile gets this: a real Stage 8 review by `cybersecurity-architect`, Stage 10 QA, `design-system-manager` sign-off on the header change and the new screen, and the owner's real support channels.
+
+Reversal, added to the list above: set `EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY` to "false" (or delete it with the `owner-test` profile). The Home header then shows the Alerts bell again.
