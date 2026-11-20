@@ -208,11 +208,11 @@ export function createAssetsRepo(db: Db) {
         .toArray();
       const byAssetType = Object.fromEntries(ASSET_TYPES.map((t) => [t, 0])) as Record<AssetType, number>;
       for (const row of facets?.byAssetType ?? []) {
-        if (row._id in byAssetType) byAssetType[row._id as AssetType] = row.n;
+        if (Object.hasOwn(byAssetType, row._id)) byAssetType[row._id as AssetType] = row.n;
       }
       const byStatus: Record<AssetStatus, number> = { active: 0, inactive: 0, removed: 0 };
       for (const row of facets?.byStatus ?? []) {
-        if (row._id in byStatus) byStatus[row._id as AssetStatus] = row.n;
+        if (Object.hasOwn(byStatus, row._id)) byStatus[row._id as AssetStatus] = row.n;
       }
       return {
         total: byStatus.active + byStatus.inactive + byStatus.removed,

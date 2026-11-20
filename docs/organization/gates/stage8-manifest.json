@@ -301,9 +301,9 @@
       "pattern": "/admin/assets/counts",
       "feature": "004",
       "stage8": {
-        "waived": true,
-        "verdict": "waived-no-security-review-performed",
-        "reason": "2026-11-20 recorded by backend-engineer (B2, admin Assets page true counts). Distinct entry, NOT absorbed into the backend-admin group (SR-012-5 precedent): the Feature 004 admin-surface review predates this route. GET /v1/admin/assets/counts (backend/src/routes/admin-assets.ts) returns aggregate numbers only (total, byAssetType, byStatus, legalHold, gpsPaired; no account IDs, names or asset fields) from one $facet aggregation (assets.countsForAdmin), honouring the list route's optional accountId filter. requireUserType('admin'), per-account and per-IP rate limits identical to GET /admin/assets, no step-up MFA (read-only aggregate, /admin/assets/count precedent). Audited via recordBulkDisclosure: one privileged_bulk_access row with resultCount 0; an accountId-filtered call also writes privileged_data_access for that account, since per-customer counts are facts about that customer. NO Stage 8 review performed; a security note by cybersecurity-architect is owed (confirm the audit posture and that counts per accountId are acceptable to disclose to any admin).",
+        "doc": "docs/features/004-policy-asset-management/security-review-admin-surface.md",
+        "verdict": "pass-owner-test-only-concurrence-pending",
+        "note": "2026-11-20 Stage 8 review by cybersecurity-architect filed as the appended section 'Stage 8 review — admin asset counts (2026-11-20, cybersecurity-architect): PASS for owner-test'. Distinct entry, NOT absorbed into the backend-admin group (SR-012-5 precedent). GET /v1/admin/assets/counts (backend/src/routes/admin-assets.ts): aggregate numbers only from one $facet aggregation (assets.countsForAdmin), optional accountId filter, requireUserType('admin'), per-account and per-IP rate limits identical to GET /admin/assets, audited fail-closed via recordBulkDisclosure (resultCount 0; filtered calls name the account). N41-1 (Object.hasOwn) fixed; N41-2 (per-customer holdings lookup) accepted. PASS covers the owner-test phase only; this is NOT a launch review: security-engineer and compliance-specialist concurrence is still owed before real users.",
         "owner": "cybersecurity-architect"
       }
     },
