@@ -162,7 +162,7 @@ export function CustomerChangePlanPage() {
                 isCurrent ? 'ring-2 ring-primary' : ''
               } ${isMostPopular && !isCurrent ? 'ring-2 ring-td-brand-orange lg:scale-[1.02]' : ''}`}
             >
-              <div className="bg-primary px-4 py-3 text-white">
+              <div className="bg-td-brand-navy px-4 py-3 text-td-on-navy">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-bold">{plan.name}</p>
                   {isMostPopular ? (

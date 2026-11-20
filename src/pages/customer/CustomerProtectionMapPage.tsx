@@ -146,11 +146,12 @@ export function CustomerProtectionMapPage() {
             <button
               key={value}
               type="button"
+              aria-pressed={filter === value}
               onClick={() => setFilter(value)}
               className={`rounded-full border px-3 py-1 text-xs font-semibold ${
                 filter === value
-                  ? 'border-primary bg-slate-100 text-primary'
-                  : 'border-border bg-background text-text-secondary'
+                  ? 'border-td-link bg-td-bg-sunken text-td-ink'
+                  : 'border-td-border-subtle bg-td-bg-raised text-td-ink-muted'
               }`}
             >
               {value === 'all' ? `All (${merged.length})` : `On map (${pins.length})`}
@@ -158,6 +159,13 @@ export function CustomerProtectionMapPage() {
           ))}
         </div>
       </div>
+
+      {!error && !locationsFailed && merged.length === 0 ? (
+        <InlineAlert tone="info">
+          You have no registered assets yet. Add an asset from your dashboard and it will appear here once it reports a
+          position.
+        </InlineAlert>
+      ) : null}
 
       {!locationsFailed && merged.length > 0 && merged.every((a) => a.lastLocation == null) ? (
         <InlineAlert tone="info">
@@ -207,7 +215,7 @@ export function CustomerProtectionMapPage() {
               </Badge>
             </div>
           </div>
-          <Link to={`/dashboard`} className="mt-4 inline-block text-sm font-semibold text-primary hover:underline">
+          <Link to={`/dashboard`} className="mt-4 inline-block text-sm font-semibold text-td-link hover:underline">
             Manage assets in dashboard
           </Link>
         </Card>

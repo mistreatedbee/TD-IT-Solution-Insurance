@@ -127,7 +127,7 @@ export function AdminLocationsPage() {
       <Card padding="lg">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <SectionHeading as="h1" title="Locations" size="md" className="mb-0" />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" size="sm" onClick={refresh} disabled={loading}>
             Refresh
           </Button>
@@ -135,7 +135,7 @@ export function AdminLocationsPage() {
             aria-label="Filter by source"
             value={source}
             onChange={(e) => setSource(e.target.value as 'phone' | 'hardware' | '')}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className="rounded-md border border-td-border-control bg-td-bg-raised px-3 py-2 text-sm text-td-ink"
           >
             <option value="">All sources</option>
             <option value="phone">Phones</option>
@@ -153,10 +153,10 @@ export function AdminLocationsPage() {
           <LoadingState />
         ) : (
           <div className="space-y-6">
-            <div className="overflow-hidden rounded-xl border border-border">
+            <div className="overflow-hidden rounded-td-lg border border-td-border-subtle">
               <ProtectionMapCanvas pins={pins} selectedId={selectedId} onSelectPin={setSelectedId} height={420} />
-              {pins.length === 0 ? (
-                <p className="border-t border-border px-4 py-3 text-sm text-text-secondary">
+              {pins.length === 0 && !error ? (
+                <p className="border-t border-td-border-subtle px-4 py-3 text-sm text-td-ink-muted">
                   No phone or device has reported a position yet.
                 </p>
               ) : null}
