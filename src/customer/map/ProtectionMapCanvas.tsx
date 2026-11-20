@@ -101,7 +101,7 @@ export function ProtectionMapCanvas({
     <div
       ref={containerRef}
       style={{ height }}
-      className="w-full bg-slate-100"
+      className="w-full bg-td-bg-sunken"
       role="application"
       aria-label="Protection map showing last known asset locations"
     />
