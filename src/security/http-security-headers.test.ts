@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { OSM_TILE_ORIGIN, OSM_TILE_URL } from '../customer/map/tile-source';
 
 /**
  * ADR-0011 SR-12(a) / INC-003 §19.4 condition 1 (A-15).
@@ -102,6 +103,14 @@ describe('vercel.json security headers (ADR-0011 / INC-003 A-15)', () => {
       // directly (ADR-0014 Phase 1 not yet deployed). Narrow this allowance
       // to 'self' once that migration ships.
       expect(connectSrc).toContain('supabase.co');
+    });
+
+    it('allow-lists exactly the map tile host the web maps load (src/customer/map/tile-source.ts)', () => {
+      const imgSrc = (directives.get('img-src') ?? '').split(/\s+/);
+      expect(new URL(OSM_TILE_URL.replace(/\{[a-z]\}/g, '0')).origin).toBe(OSM_TILE_ORIGIN);
+      expect(imgSrc).toContain(OSM_TILE_ORIGIN);
+      // Nothing broader than the one tile host.
+      expect(imgSrc.filter((s) => s.startsWith('https:') || s === '*')).toEqual([OSM_TILE_ORIGIN]);
     });
 
     it('constrains base-uri and form-action to same-origin', () => {
