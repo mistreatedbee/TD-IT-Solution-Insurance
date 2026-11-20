@@ -3,8 +3,8 @@ import { BellIcon } from 'lucide-react-native';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
-import { FEATURE_ALERTS_ENABLED } from '../../config/features';
-import { GlassCard } from '../../design';
+import { FEATURE_ALERTS_ENABLED, FEATURE_ASSISTANT_ENTRY_ENABLED } from '../../config/features';
+import { GlassCard, TDAssistantIcon } from '../../design';
 import { useDesignTokens } from '../../theme/designTheme';
 
 export interface HomeHeaderProps {
@@ -55,7 +55,7 @@ export function HomeHeader({
           color: t.colors.inkMuted,
           marginTop: t.spacing.s1,
         },
-        bell: {
+        headerAction: {
           width: 48,
           height: 48,
           borderRadius: t.radius.pill,
@@ -102,9 +102,22 @@ export function HomeHeader({
           </View>
         </Pressable>
 
-        {FEATURE_ALERTS_ENABLED ? (
+        {FEATURE_ASSISTANT_ENTRY_ENABLED ? (
+          // Feature 024 Phase 1a: the assistant takes the top-right slot. Alerts stay reachable
+          // from the Alerts tab (which carries the unread badge) and the Needs attention card.
           <Pressable
-            style={styles.bell}
+            style={styles.headerAction}
+            accessibilityRole="button"
+            accessibilityLabel="TD IT Solutions Insurance assistant"
+            accessibilityHint="Ask a question or talk to support"
+            testID="home-assistant-button"
+            onPress={() => router.push('/(app)/assistant' as Href)}
+          >
+            <TDAssistantIcon size={24} color={t.colors.ink} strokeWidth={1.75} testID="home-assistant-icon" />
+          </Pressable>
+        ) : FEATURE_ALERTS_ENABLED ? (
+          <Pressable
+            style={styles.headerAction}
             accessibilityRole="button"
             accessibilityLabel={`Alerts${alertCount > 0 ? `, ${alertCount} open` : ''}`}
             onPress={() => router.push('/alerts' as Href)}

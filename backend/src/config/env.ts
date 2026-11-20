@@ -184,6 +184,25 @@ export interface Env {
   locationExtendedTriggersEnabled?: boolean;
 
   /**
+   * INC-001 A-7 / ADR-0009 SDL-4: when on, `POST /v1/assets/:assetId/location-report` refuses a
+   * report (403 CONSENT_REQUIRED) unless the latest `location_consent_events` row for the
+   * account + asset is an active grant from the reporting session's device covering the
+   * report's scope (foreground / periodic / background). Fail-closed: only the exact string
+   * `"true"` turns it on. Off = today's behaviour (no server consent check), kept off until the
+   * owner has installed an APK whose enable flow records the scoped consent.
+   */
+  locationConsentEnforced?: boolean;
+
+  /**
+   * ADR-0009 SDL-9: when on, `POST /v1/assets/:assetId/location-consent` (opt-in) requires a
+   * fresh protection step-up (MFA or password re-auth, `assertProtectionStepUp`). Fail-closed
+   * convention (`"true"` only). Separate switch because the mobile app has no step-up UI on the
+   * enable flow yet: turning this on before that ships makes opt-in impossible. While off,
+   * SDL-9's step-up requirement is NOT met.
+   */
+  locationConsentStepUpEnforced?: boolean;
+
+  /**
    * Sign-up for an already-registered address emails the existing owner ("you already have an account").
    * The on-screen response stays the identical uniform 202 either way (FR-5/AC-2); only an email is added.
    * Fail-closed, same convention as `locationIngestionEnabled`: only the exact string "true" enables it.
@@ -555,6 +574,19 @@ export function loadEnv(): Env {
     );
   }
 
+  // INC-001 A-7: server-side consent enforcement + opt-in step-up. Same "true"-only convention.
+  const locationConsentEnforced = process.env.LOCATION_CONSENT_ENFORCED === 'true';
+  const locationConsentStepUpEnforced = process.env.LOCATION_CONSENT_STEP_UP_ENFORCED === 'true';
+  for (const [name, on] of [
+    ['LOCATION_CONSENT_ENFORCED', locationConsentEnforced],
+    ['LOCATION_CONSENT_STEP_UP_ENFORCED', locationConsentStepUpEnforced],
+  ] as const) {
+    if (process.env[name] !== undefined && !on) {
+      // eslint-disable-next-line no-console
+      console.warn(`[config/env] ${name} is not exactly "true". Treating as off.`);
+    }
+  }
+
   // Fail-closed: only the exact string "true" turns on the existing-owner sign-up email.
   const signupExistingAccountEmailEnabled = process.env.SIGNUP_EXISTING_ACCOUNT_EMAIL_ENABLED === 'true';
 
@@ -733,6 +765,8 @@ export function loadEnv(): Env {
     expoAccessToken,
     locationIngestionEnabled,
     locationExtendedTriggersEnabled,
+    locationConsentEnforced,
+    locationConsentStepUpEnforced,
     signupExistingAccountEmailEnabled,
     claimsNotice,
     claimsApiEnabled,

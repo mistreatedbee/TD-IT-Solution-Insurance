@@ -23,6 +23,7 @@ import { Button, GlassCard } from '../../design';
 import { minTouchTarget } from '../../theme/tokens';
 import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
 import { Alert, Input } from '../../theme/primitives';
+import { trackingMethodDescription, trackingMethodFor } from '../../tracking/trackingMethod';
 
 /**
  * Offline-retry policy (docs/organization/05-development-standards.md,
@@ -153,10 +154,16 @@ export function ReportTheftConfirmScreen() {
           <Text style={styles.meta}>
             {formatAssetType(asset.assetType ?? 'other_electronics')}
           </Text>
-          {!asset.gpsDeviceId ? (
+          {trackingMethodFor(asset.assetType) === 'our_software' ? (
+            <Alert tone="info">
+              {trackingMethodDescription(asset.assetType)} Live tracking is not
+              available for it yet.
+            </Alert>
+          ) : trackingMethodFor(asset.assetType) === 'gps_hardware' &&
+            !asset.gpsDeviceId ? (
             <Alert tone="warning">
-              This asset has no GPS device paired. Live tracking will not be
-              available until hardware is installed (Phase 2 pairing flow).
+              This asset has no GPS tracker linked. Live tracking will not be
+              available until a tracker is installed.
             </Alert>
           ) : null}
         </GlassCard>

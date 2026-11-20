@@ -24,12 +24,14 @@ import { Button, GlassCard } from '../../design';
 import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
 import { Alert } from '../../theme/primitives';
 import { PolicyStatusPill } from '../policy/PolicyStatusPill';
+import { trackingMethodDescription, trackingMethodFor } from '../../tracking/trackingMethod';
 
 function isSelfReportable(type: string): boolean {
   return type === 'smartphone';
 }
 
 function hardwareTrackingMessage(type: string): string {
+  if (trackingMethodFor(type) === 'our_software') return trackingMethodDescription(type);
   return `${formatAssetType(type as AssetLocationSummaryItem['assetType'])} tracking requires a GPS tracker, and hardware trackers can't be connected in the app yet.`;
 }
 
@@ -92,8 +94,9 @@ export function DeviceLocationsScreen() {
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />}
     >
       <Text style={styles.subtitle}>
-        All devices with a last-known location appear on the map. Smartphones
-        report from this app; other asset types need a GPS tracker.
+        All devices with a last-known location appear on the map. Phones
+        report from this app. Laptops, computers, TVs and tablets will use the
+        TD Insurance app (coming soon). Vehicles and other items need a GPS tracker.
       </Text>
 
       {items.length === 0 ? (
@@ -186,7 +189,9 @@ function DeviceLocationRow({
               ? 'Located'
               : selfReportable
                 ? 'No fix yet'
-                : 'No tracker'}
+                : trackingMethodFor(item.assetType) === 'our_software'
+                  ? 'App coming soon'
+                  : 'No tracker'}
           </PolicyStatusPill>
         </View>
         <Text style={styles.rowMeta}>{formatAssetType(item.assetType)}</Text>

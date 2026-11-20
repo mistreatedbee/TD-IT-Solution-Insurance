@@ -38,8 +38,15 @@ import {
   FEATURE_BACKGROUND_LOCATION_ENABLED,
   FEATURE_LOCATION_TRACKING_ENABLED,
 } from '../config/features';
-import { hasActiveLocationTracking, subscribeLocationConsentChange } from './consent';
+import {
+  clearBackgroundLocationConsent,
+  hasActiveLocationTracking,
+  hasBackgroundLocationConsent,
+  subscribeLocationConsentChange,
+} from './consent';
+import { isConsentRequiredError } from './serverConsentSignal';
 import { canReportLocation, markLocationSent, wasLocationSentRecently } from './useLocationReporter';
+import { recordLocationReportFailure } from './reportStatus';
 
 export const BACKGROUND_LOCATION_TASK = 'td-insurance-background-location';
 
@@ -118,6 +125,8 @@ export async function startBackgroundLocationUpdates(): Promise<boolean> {
   if (!isBackgroundLocationSupported()) return false;
   const gate = await canReportLocation();
   if (!gate.ok) return false;
+  // INC-001 A-7: the background scope must have been granted server-side from this device.
+  if (!(await hasBackgroundLocationConsent())) return false;
   if (!(await isBackgroundPermissionGranted())) return false;
   try {
     if (await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)) return true;
@@ -202,6 +211,9 @@ export async function runBackgroundLocationTask({
     }
   }
 
+  // INC-001 A-7: no server-side background grant recorded from this device - stop.
+  if (!(await hasBackgroundLocationConsent())) return stopWith('stopped_no_consent');
+
   if (!(await ensureSession())) return stopWith('stopped_no_session');
 
   if (error) {
@@ -226,7 +238,14 @@ export async function runBackgroundLocationTask({
     markLocationSent();
     return 'sent';
   } catch (err) {
+    recordLocationReportFailure(err);
     if (err instanceof SessionTerminatedError) return stopWith('stopped_no_session');
+    if (isConsentRequiredError(err)) {
+      // The server holds no background consent for this phone: forget the local marker so the
+      // "all the time" offer is shown again in the app, and stop.
+      await clearBackgroundLocationConsent().catch(() => undefined);
+      return stopWith('stopped_no_consent');
+    }
     if (isPermanentRejection(err)) return stopWith('stopped_server_rejected');
     logEvent(`send failed: ${err instanceof ApiError ? err.code : err instanceof Error ? err.name : 'UnknownError'}`);
     return 'skipped_transient_error';
@@ -262,7 +281,16 @@ export function installBackgroundLocationStopTriggers(): void {
   subscribeLocationConsentChange(() => {
     void hasActiveLocationTracking().then(
       (active) => {
-        if (!active) void stopBackgroundLocationUpdates();
+        if (!active) {
+          void stopBackgroundLocationUpdates();
+          return;
+        }
+        void hasBackgroundLocationConsent().then(
+          (bg) => {
+            if (!bg) void stopBackgroundLocationUpdates();
+          },
+          () => void stopBackgroundLocationUpdates(),
+        );
       },
       () => void stopBackgroundLocationUpdates(),
     );

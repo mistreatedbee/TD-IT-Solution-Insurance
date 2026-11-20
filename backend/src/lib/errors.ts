@@ -93,6 +93,12 @@ export const ERROR_CATALOG = {
     statusCode: 403,
     message: 'This action must be performed from the device associated with your current session.',
   },
+  // INC-001 A-7 / ADR-0009 SDL-4: no active server-side location consent for this
+  // account + asset + device + scope. The client should show the consent screen again.
+  CONSENT_REQUIRED: {
+    statusCode: 403,
+    message: 'Location tracking consent is required for this phone before its location can be sent.',
+  },
   STEP_UP_REQUIRED: { statusCode: 401, message: 'Please re-verify your identity to continue.' },
   // ADR-0012 §2.2.3 — no password fallback and no bypass for a privileged
   // account that has no verified TOTP factor on file; there is no session to

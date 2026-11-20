@@ -20,7 +20,15 @@ import {
   requestBackgroundLocationPermission,
   startBackgroundLocationUpdates,
 } from './backgroundLocation';
-import { hasActiveLocationTracking } from './consent';
+import { grantAssetLocationConsent } from '../api/asset-location';
+import {
+  BACKGROUND_CONSENT_TEXT_VERSION,
+  foregroundConsentScopes,
+  getLinkedSmartphoneAssetId,
+  hasActiveLocationTracking,
+  hasBackgroundLocationConsent,
+  setBackgroundLocationConsent,
+} from './consent';
 
 /** "Not now" holds for the rest of this app session; the offer returns on the next launch. */
 let dismissedThisSession = false;
@@ -48,7 +56,9 @@ export function BackgroundLocationOffer() {
         if (!cancelled) setState('hidden');
         return;
       }
-      if (await isBackgroundPermissionGranted()) {
+      // INC-001 A-7: the OS permission alone is not consent. Skip the offer only when the
+      // background scope was also granted server-side from this phone.
+      if ((await hasBackgroundLocationConsent()) && (await isBackgroundPermissionGranted())) {
         // Already allowed earlier: make sure updates run, no prompt.
         await startBackgroundLocationUpdates();
         if (!cancelled) setState('hidden');
@@ -66,6 +76,24 @@ export function BackgroundLocationOffer() {
   const onAllow = useCallback(async () => {
     setLoading(true);
     try {
+      // INC-001 A-7: record the background scope server-side BEFORE the OS prompt (the tap on
+      // "Allow all the time" is the consent; the OS grant is only the mechanism). If the server
+      // refuses, nothing starts.
+      const assetId = await getLinkedSmartphoneAssetId();
+      if (!assetId) {
+        setState('hidden');
+        return;
+      }
+      try {
+        await grantAssetLocationConsent(assetId, {
+          scopes: [...foregroundConsentScopes(), 'background'],
+          consentTextVersion: BACKGROUND_CONSENT_TEXT_VERSION,
+        });
+      } catch {
+        setState('declined');
+        return;
+      }
+      await setBackgroundLocationConsent();
       const granted = await requestBackgroundLocationPermission();
       const running = granted ? await startBackgroundLocationUpdates() : false;
       setState(running ? 'running' : 'declined');

@@ -16,6 +16,7 @@ import { DesignPage } from '../../components/DesignPage';
 import { Button, GlassCard } from '../../design';
 import { useDesignTokens, type DesignTokens } from '../../theme/designTheme';
 import { Alert, Input, OtpInput } from '../../theme/primitives';
+import { useOtpAutoSubmit } from '../../auth/useOtpAutoSubmit';
 
 type Step = 'loading' | 'invalid' | 'accept' | 'mfa' | 'done';
 
@@ -119,6 +120,12 @@ export function AcceptInvitationScreen() {
     }
   }
 
+  const { onCodeChange: onOtpChange, submitCode: submitOtp } = useOtpAutoSubmit({
+    value: otp,
+    setValue: setOtp,
+    submit: handleMfaComplete,
+  });
+
   if (displayStep === 'loading') {
     return (
       <DesignPage>
@@ -194,10 +201,18 @@ export function AcceptInvitationScreen() {
         <OtpInput
           label="6-digit confirmation code"
           value={otp}
-          onChange={setOtp}
-          onComplete={handleMfaComplete}
+          onChange={onOtpChange}
           loading={isSubmitting}
         />
+        <View style={styles.actions}>
+          <Button
+            label="Verify"
+            testID="invitation-mfa-verify-button"
+            onPress={() => void submitOtp(otp)}
+            loading={isSubmitting}
+            disabled={otp.length !== 6}
+          />
+        </View>
       </DesignPage>
     );
   }

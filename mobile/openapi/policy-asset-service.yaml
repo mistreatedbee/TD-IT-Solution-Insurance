@@ -627,6 +627,53 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /admin/assets/counts:
+    get:
+      operationId: adminAssetCounts
+      summary: >-
+        Admin-only aggregate counts for the Assets page tiles (not used by mobile app).
+        Every count covers all statuses. Numbers only, no per-asset or per-person fields.
+        Audited as privileged_bulk_access (resultCount 0); an accountId filter also records
+        privileged_data_access for that account.
+      parameters:
+        - $ref: '#/components/parameters/AccountIdFilterParam'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [total, byAssetType, byStatus, legalHold, gpsPaired]
+                    properties:
+                      total: { type: integer, minimum: 0 }
+                      byAssetType:
+                        type: object
+                        description: Keyed by AssetType; every type present, zero-filled.
+                        additionalProperties: { type: integer, minimum: 0 }
+                      byStatus:
+                        type: object
+                        required: [active, inactive, removed]
+                        properties:
+                          active: { type: integer, minimum: 0 }
+                          inactive: { type: integer, minimum: 0 }
+                          removed: { type: integer, minimum: 0 }
+                      legalHold: { type: integer, minimum: 0 }
+                      gpsPaired: { type: integer, minimum: 0 }
+        '400':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /admin/assets/{assetId}:
     get:
       operationId: adminGetAsset

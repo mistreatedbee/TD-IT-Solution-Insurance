@@ -10,6 +10,7 @@ import {
   type LocationReportRequest,
 } from '../asset-location';
 import { ApiError } from '../errors';
+import { LOCATION_CONSENT_TEXT_VERSION, foregroundConsentScopes } from '../../location/consent';
 
 export const LOCATION_SUMMARY_QUERY_KEY = ['assets', 'location-summary'] as const;
 
@@ -68,7 +69,12 @@ export function useReportAssetLocationMutation() {
 export function useGrantAssetLocationConsentMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (assetId: string) => grantAssetLocationConsent(assetId),
+    // INC-001 A-7: always send the scoped, versioned body the consent screen stands for.
+    mutationFn: (assetId: string) =>
+      grantAssetLocationConsent(assetId, {
+        scopes: foregroundConsentScopes(),
+        consentTextVersion: LOCATION_CONSENT_TEXT_VERSION,
+      }),
     onSuccess: (_data, assetId) => {
       queryClient.invalidateQueries({ queryKey: LOCATION_SUMMARY_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: assetLocationQueryKey(assetId) });

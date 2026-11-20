@@ -18,8 +18,8 @@ export default function LiveTrackingIndexScreen() {
   return (
     <Screen>
       <Text style={styles.subtitle}>
-        Active recovery cases for your account. Location updates appear once GPS hardware sends its
-        first ping.
+        Active recovery cases for your account. Location updates appear once the device or its GPS
+        tracker shares its first location.
       </Text>
 
       {isLoading ? (

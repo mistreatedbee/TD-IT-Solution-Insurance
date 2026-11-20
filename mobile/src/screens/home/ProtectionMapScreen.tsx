@@ -51,6 +51,7 @@ import {
 } from '../../theme/tokens';
 import { AssetTypeImage } from './assetVisuals';
 import { ProtectionMapView, type ProtectionMapType } from './ProtectionMapView';
+import { trackingMethodDescription, trackingMethodFor } from '../../tracking/trackingMethod';
 
 const FILTERS: { id: ProtectionMapFilter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -524,7 +525,9 @@ function AssetMapSheet({
         <Text style={styles.sheetHint}>
           {asset.assetType === 'smartphone'
             ? 'Enable location tracking on this phone from the asset screen.'
-            : 'Hardware GPS tracker required for map location.'}
+            : trackingMethodFor(asset.assetType) === 'our_software'
+              ? trackingMethodDescription(asset.assetType)
+              : 'A GPS tracker is needed to show this item on the map.'}
         </Text>
       )}
 

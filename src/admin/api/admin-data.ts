@@ -139,6 +139,20 @@ export function listAdminAssets(params?: {
   return apiFetch<CursorPage<AdminAssetSummary>>(`/admin/assets${qs ? `?${qs}` : ''}`);
 }
 
+/** GET /admin/assets/counts — true platform (or one-account) totals; numbers only. */
+export interface AdminAssetCounts {
+  total: number;
+  byAssetType: Record<string, number>;
+  byStatus: { active: number; inactive: number; removed: number };
+  legalHold: number;
+  gpsPaired: number;
+}
+
+export function getAdminAssetCounts(params?: { accountId?: string }) {
+  const qs = params?.accountId ? `?${new URLSearchParams({ accountId: params.accountId }).toString()}` : '';
+  return apiFetch<{ data: AdminAssetCounts }>(`/admin/assets/counts${qs}`).then((r) => r.data);
+}
+
 export function getAdminAsset(id: string) {
   return apiFetch<AdminAssetDetail>(`/admin/assets/${encodeURIComponent(id)}`);
 }

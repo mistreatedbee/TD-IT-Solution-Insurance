@@ -15,6 +15,8 @@ export type UserFacingErrorContext =
   | 'security-case'
   | 'invitation'
   | 'location'
+  /** Sending this phone's location to the server (manual or automatic report). */
+  | 'location-report'
   | 'profile'
   | 'generic';
 
@@ -36,6 +38,7 @@ const CONTEXT_FALLBACK: Record<UserFacingErrorContext, string> = {
   'security-case': 'We could not load or update this case. Please try again.',
   invitation: 'We could not accept this invitation. Request a new link from your administrator.',
   location: 'We could not update or load location data. Check permissions and try again.',
+  'location-report': "We couldn't send this phone's location. We'll keep trying.",
   profile: 'We could not save your profile details. Check the fields and try again.',
   generic: GENERIC_FALLBACK,
 };
@@ -113,7 +116,7 @@ function mapApiErrorByCode(code: string, status: number, message: string, contex
     case 'VALIDATION_ERROR':
       return 'Some details look incorrect. Review the form and try again.';
     case 'NOT_FOUND':
-      if (context === 'location') {
+      if (context === 'location' || context === 'location-report') {
         return 'Location data is not available for this asset yet. Enable tracking on a smartphone asset, then refresh.';
       }
       if (context === 'profile') {
@@ -143,6 +146,11 @@ function mapApiErrorByCode(code: string, status: number, message: string, contex
     case 'RESET_TOKEN_EXPIRED':
       return 'This password reset link has expired. Request a new reset email from the sign-in screen.';
     case 'UPSTREAM_UNAVAILABLE':
+      // The location-report endpoint answers 503 when ingestion is switched off server-side
+      // (LOCATION_INGESTION_ENABLED) — that is not a cold start, so don't say "waking up".
+      if (context === 'location-report') {
+        return "Location tracking is paused on our side. We'll keep trying.";
+      }
       return 'Our service is waking up. Wait a few seconds and try again.';
     case 'INTERNAL_ERROR':
       return GENERIC_FALLBACK;
@@ -162,6 +170,9 @@ function mapApiErrorByCode(code: string, status: number, message: string, contex
     case 'DUPLICATE_OPEN_CLAIM':
       return 'There is already an open claim for this asset.';
     case 'DEVICE_MISMATCH':
+      if (context === 'location' || context === 'location-report') {
+        return 'This asset is linked to another phone. Location can only be sent from the phone it was linked on.';
+      }
       return 'Complete this action on the device you used to sign in.';
     case 'STEP_UP_REQUIRED':
       return 'Please verify your identity again before continuing.';

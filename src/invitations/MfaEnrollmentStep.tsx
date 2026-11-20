@@ -20,6 +20,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Accordion, AccordionItem, Button, Input, SectionHeading } from '../components';
 import { InlineAlert } from '../dashboard/components/ui';
 import { mapUserFacingError } from '../lib/user-facing-errors';
+import { useOtpAutoSubmit } from '../lib/useOtpAutoSubmit';
 import { ApiError } from '../dashboard/api/errors';
 import { mfaEnroll, mfaEnrollVerify, type MfaEnrollVerifyResult } from '../api/invitations';
 import { qrCodeImageSrc } from './qrCodeDataUri';
@@ -77,14 +78,13 @@ export function MfaEnrollmentStep({
     void loadEnrollment();
   }, [loadEnrollment]);
 
-  async function onSubmitCode(e: FormEvent) {
-    e.preventDefault();
+  async function verifyCode(value: string) {
     if (!enrollment) return;
     setVerifyError(null);
     setCodeError(null);
     setVerifying(true);
     try {
-      const result = await mfaEnrollVerify(enrollment.enrollmentId, code.trim());
+      const result = await mfaEnrollVerify(enrollment.enrollmentId, value.trim());
       onSuccess(result);
     } catch (err) {
       setCode('');
@@ -106,6 +106,20 @@ export function MfaEnrollmentStep({
     } finally {
       setVerifying(false);
     }
+  }
+
+  const { onCodeChange, submitCode } = useOtpAutoSubmit({
+    value: code,
+    setValue: setCode,
+    submit: verifyCode,
+    // Rate-limit cool-down: never auto-fire while the manual button is disabled.
+    autoSubmitDisabled: coolingDown,
+  });
+
+  function onSubmitCode(e: FormEvent) {
+    e.preventDefault();
+    if (coolingDown) return;
+    void submitCode(code);
   }
 
   async function copyManualKey() {
@@ -199,11 +213,10 @@ export function MfaEnrollmentStep({
           name="code"
           inputMode="numeric"
           autoComplete="one-time-code"
-          maxLength={6}
           required
           error={codeError ?? undefined}
           value={code}
-          onChange={(e) => setCode(e.target.value)}
+          onChange={(e) => onCodeChange(e.target.value)}
         />
         <Button type="submit" fullWidth loading={verifying} disabled={coolingDown}>
           Verify and finish

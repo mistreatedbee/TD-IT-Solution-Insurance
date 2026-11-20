@@ -4,6 +4,7 @@ import { TdButton, TdTextField } from '../components/td';
 import { useCustomerAuth } from '../customer/auth/CustomerAuthProvider';
 import { login as loginRequest, verifyMfaChallenge } from '../customer/api/auth';
 import { mapUserFacingError } from '../lib/user-facing-errors';
+import { useOtpAutoSubmit } from '../lib/useOtpAutoSubmit';
 import { warmUpApi } from '../dashboard/api/warmup';
 import { SLOW_LOGIN_MESSAGE, useSlowRequestHint } from '../dashboard/hooks/useSlowRequestHint';
 import { AuthAlert, AuthLink, MarketingAuthShell } from '../customer/components/MarketingAuthShell';
@@ -65,6 +66,12 @@ export function CustomerLoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const slowLogin = useSlowRequestHint(loading);
+  // Declared before the early returns below (rules of hooks); verifyMfaCode is hoisted.
+  const { onCodeChange: onMfaCodeChange, submitCode: submitMfaCode } = useOtpAutoSubmit({
+    value: mfaCode,
+    setValue: setMfaCode,
+    submit: verifyMfaCode,
+  });
 
   useEffect(() => {
     warmUpApi();
@@ -160,19 +167,24 @@ export function CustomerLoginPage() {
     await startLoginFlow();
   }
 
-  async function onSubmitMfa(e: FormEvent) {
-    e.preventDefault();
+  async function verifyMfaCode(code: string) {
     if (!mfaToken) return;
     setError(null);
     setLoading(true);
     try {
-      const tokens = await verifyMfaChallenge(mfaToken, mfaCode.trim());
+      const tokens = await verifyMfaChallenge(mfaToken, code.trim());
       await routeTokensByRole(tokens.accessToken, tokens.refreshToken);
     } catch (err) {
+      setMfaCode('');
       setError(mapUserFacingError(err, { context: 'mfa' }));
     } finally {
       setLoading(false);
     }
+  }
+
+  function onSubmitMfa(e: FormEvent) {
+    e.preventDefault();
+    void submitMfaCode(mfaCode);
   }
 
   async function onEnrollmentSuccess(tokens: { accessToken: string; refreshToken: string }) {
@@ -214,10 +226,9 @@ export function CustomerLoginPage() {
           <TdTextField
             label="Authentication code"
             value={mfaCode}
-            onChange={(e) => setMfaCode(e.target.value)}
+            onChange={(e) => onMfaCodeChange(e.target.value)}
             inputMode="numeric"
             autoComplete="one-time-code"
-            maxLength={6}
             required
           />
           <TdButton type="submit" className="w-full" loading={loading}>

@@ -9,7 +9,17 @@ import { Platform } from 'react-native';
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { renderWithProviders } from '../../test/renderWithProviders';
 import { BackgroundLocationOffer, __resetBackgroundOfferForTests } from '../BackgroundLocationOffer';
-import { clearLocalLocationState, setLinkedSmartphoneAssetId, setLocationTrackingConsent } from '../consent';
+import {
+  clearLocalLocationState,
+  hasBackgroundLocationConsent,
+  setBackgroundLocationConsent,
+  setLinkedSmartphoneAssetId,
+  setLocationTrackingConsent,
+} from '../consent';
+import { grantAssetLocationConsent } from '../../api/asset-location';
+
+jest.mock('../../api/asset-location', () => ({ grantAssetLocationConsent: jest.fn(async () => ({})) }));
+const grant = grantAssetLocationConsent as jest.Mock;
 
 const mockFlags = { background: true };
 jest.mock('../../config/features', () => ({
@@ -89,6 +99,48 @@ describe('BackgroundLocationOffer', () => {
     expect(requestBg).toHaveBeenCalledTimes(1);
     expect(start).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('background-location-result')).toBeTruthy();
+    // INC-001 A-7: the background scope is recorded server-side, before the OS prompt.
+    expect(grant).toHaveBeenCalledWith('asset-1', {
+      scopes: ['foreground', 'periodic', 'background'],
+      consentTextVersion: expect.any(String),
+    });
+    expect(grant.mock.invocationCallOrder[0]).toBeLessThan(requestBg.mock.invocationCallOrder[0]!);
+    expect(await hasBackgroundLocationConsent()).toBe(true);
+  });
+
+  it('INC-001 A-7: a refused server grant asks nothing of the OS and starts nothing', async () => {
+    await setLocationTrackingConsent('granted');
+    await setLinkedSmartphoneAssetId('asset-1');
+    grant.mockRejectedValueOnce(new Error('403'));
+    await render();
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('background-location-allow'));
+    });
+    await settle();
+    expect(requestBg).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    expect(await hasBackgroundLocationConsent()).toBe(false);
+  });
+
+  it('INC-001 A-7: OS "all the time" already granted but no server background consent - offer shown again', async () => {
+    await setLocationTrackingConsent('granted');
+    await setLinkedSmartphoneAssetId('asset-1');
+    getBg.mockResolvedValue({ granted: true });
+    await render();
+    expect(screen.getByTestId('background-location-offer')).toBeTruthy();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('INC-001 A-7: OS permission and server background consent both present - updates resume, no offer', async () => {
+    await setLocationTrackingConsent('granted');
+    await setLinkedSmartphoneAssetId('asset-1');
+    await setBackgroundLocationConsent();
+    getBg.mockResolvedValue({ granted: true });
+    (Location.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ granted: true, canAskAgain: true });
+    (Location.hasServicesEnabledAsync as jest.Mock).mockResolvedValue(true);
+    await render();
+    expect(screen.queryByTestId('background-location-offer')).toBeNull();
+    expect(start).toHaveBeenCalledTimes(1);
   });
 
   it('declining the OS permission starts nothing and says foreground reporting continues', async () => {

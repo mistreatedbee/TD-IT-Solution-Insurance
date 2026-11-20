@@ -6,6 +6,7 @@ import { AuthAlert, MarketingAuthShell } from '../customer/components/MarketingA
 import { resetPasswordConfirm, resetPasswordMfaVerify, type ResetCredential } from '../customer/api/auth';
 import { ApiError } from '../customer/api/errors';
 import { mapUserFacingError } from '../lib/user-facing-errors';
+import { useOtpAutoSubmit } from '../lib/useOtpAutoSubmit';
 
 // FR-15 / INC-003 F-6: this is a UX hint only, matching the customer
 // minimum. The backend is the sole authority on the real minimum, which is
@@ -205,8 +206,7 @@ export function CustomerResetPasswordPage() {
     await endAndRedirectToLogin();
   }
 
-  async function onSubmitMfa(e: FormEvent) {
-    e.preventDefault();
+  async function verifyMfaCode(code: string) {
     setMfaError(null);
 
     if (!mfaVerificationToken) return;
@@ -220,7 +220,7 @@ export function CustomerResetPasswordPage() {
 
     setSubmittingMfa(true);
     try {
-      await resetPasswordMfaVerify({ mfaVerificationToken, code: mfaCode });
+      await resetPasswordMfaVerify({ mfaVerificationToken, code });
       await endAndRedirectToLoginWithSuccess();
     } catch (err) {
       if (err instanceof ApiError && err.code === 'RATE_LIMITED') {
@@ -242,6 +242,19 @@ export function CustomerResetPasswordPage() {
     } finally {
       if (mountedRef.current) setSubmittingMfa(false);
     }
+  }
+
+  const { onCodeChange: onMfaCodeChange, submitCode: submitMfaCode } = useOtpAutoSubmit({
+    value: mfaCode,
+    setValue: setMfaCode,
+    submit: verifyMfaCode,
+    // Never auto-fire during the rate-limit window or after expiry.
+    autoSubmitDisabled: Boolean(mfaChallengeExpired || (mfaRetrySecondsRemaining && mfaRetrySecondsRemaining > 0)),
+  });
+
+  function onSubmitMfa(e: FormEvent) {
+    e.preventDefault();
+    void submitMfaCode(mfaCode);
   }
 
   if (step === 'loading') {
@@ -315,8 +328,7 @@ export function CustomerResetPasswordPage() {
               inputMode="numeric"
               autoComplete="one-time-code"
               value={mfaCode}
-              onChange={(e) => setMfaCode(e.target.value)}
-              maxLength={6}
+              onChange={(e) => onMfaCodeChange(e.target.value)}
               required
             />
             <TdButton

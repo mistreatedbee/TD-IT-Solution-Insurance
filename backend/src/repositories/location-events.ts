@@ -122,6 +122,11 @@ export function createLocationEventsRepo(db: Db) {
       return rows.map(toDocument);
     },
 
+    /** Stage 8 PR #44 F-1: events present when a withdrawal is recorded (before the purge). */
+    async countByAsset(accountId: string, assetId: string): Promise<number> {
+      return collection().countDocuments({ accountId, assetId });
+    },
+
     /**
      * INC-002 §9.6 C-5 — POPIA s18 withdrawal. Purges this asset's ping
      * history on the owning account and returns the number of records

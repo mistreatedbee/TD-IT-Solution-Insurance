@@ -38,6 +38,8 @@ export type PushTemplateId =
   | 'asset.updated'
   | 'asset.removed'
   | 'asset.recovered'
+  | 'location.tracking.enabled'
+  | 'location.tracking.disabled'
   | 'auth.password.changed'
   | 'auth.login.new_device'
   | 'auth.mfa.enabled'
@@ -387,6 +389,29 @@ export function buildBrandedPushMessage(
           deepLink: deepLink('profile'),
         },
       };
+    case 'location.tracking.enabled':
+    case 'location.tracking.disabled': {
+      const on = templateId === 'location.tracking.enabled';
+      const asset = variables.assetName ?? 'an asset';
+      return {
+        eventId: templateId,
+        title: on ? 'Location tracking turned on' : 'Location tracking turned off',
+        body: on
+          ? `Location tracking was turned on for ${asset}${variables.deviceName ? ` on ${variables.deviceName}` : ''}. Not you? Turn it off and reset your password.`
+          : `Location tracking was turned off for ${asset}.`,
+        subtitle,
+        category: 'account',
+        deepLink: deepLink(variables.assetId ? `assets/${variables.assetId}` : 'assets'),
+        priority: 'high',
+        data: {
+          event: templateId,
+          brand: NOTIFICATION_BRAND.name,
+          logoUrl: NOTIFICATION_BRAND.logoUrl,
+          deepLink: deepLink(variables.assetId ? `assets/${variables.assetId}` : 'assets'),
+          ...(variables.assetId ? { assetId: variables.assetId } : {}),
+        },
+      };
+    }
     case 'auth.login.new_device':
       return {
         eventId: templateId,

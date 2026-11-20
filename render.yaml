@@ -59,6 +59,16 @@ services:
       # set KYC_API_ENABLED=true in the Render dashboard BEFORE deploying this.
       - key: KYC_API_ENABLED
         sync: false
+      # INC-001 A-7 / ADR-0009 SDL-4: refuse location reports (403 CONSENT_REQUIRED)
+      # without an active server-side consent record for account + asset + device + scope.
+      # Unset = off (today's behaviour). Only "true" enables it. Turn on only AFTER the
+      # owner-test APK that records scoped consent is installed. Set in the Render dashboard.
+      - key: LOCATION_CONSENT_ENFORCED
+        sync: false
+      # ADR-0009 SDL-9: opt-in requires a fresh step-up. Leave unset until the mobile enable
+      # flow can perform a step-up (it cannot yet) - turning it on blocks opt-in.
+      - key: LOCATION_CONSENT_STEP_UP_ENFORCED
+        sync: false
       # INC-003 A-16 / ADR-0014 G-1: web signup/resend go through the backend
       # (client: 'web'). Declared WITHOUT a value: the project owner sets it to
       # this environment's web origin + /auth/callback?type=signup in the Render
