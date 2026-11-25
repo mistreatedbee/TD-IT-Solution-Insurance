@@ -99,3 +99,12 @@ Recorded by `backend-engineer`. `GET /v1/admin/assets/{assetId}/location` and th
 - R6: a real (non-waiver) Stage 8 manifest entry covering this endpoint and `/admin/locations`.
 
 Reversal, added to the list above: set `ADMIN_LOCATIONS_ENABLED` off. This route then returns 404, and the page says the location view is not switched on.
+
+## Addendum 2026-11-25: widening for the admin asset location view (cto MERGE once CI green, with conditions)
+Recorded by `backend-engineer` under `cto`'s MERGE-with-conditions ruling on PR #49. This exception is widened to cover the backend flag `ADMIN_LOCATIONS_ENABLED` and the new route `GET /v1/admin/assets/:assetId/location`, which sits behind that flag alongside `GET /v1/admin/locations`.
+- **Default is off.** The flag is unset by default, is not in `render.yaml`, and the route returns 404 when it is unset.
+- **Why it is on now.** It is set to `true` on the single Render environment only, because all data there is the owner's own test data and there are no real users.
+- **When it must go off.** Switch it off before any real customer data exists on that environment, and keep it off until R1–R6 close (listed in the 2026-11-20 addendum above and in `docs/features/004-policy-asset-management/security-review-admin-surface.md`). Nothing in this addendum clears it for public launch.
+- **Stage 8.** cybersecurity-architect PASS for owner-test only (2026-11-20). Manifest entry `backend-admin-asset-location`: verdict `pass-owner-test-only-concurrence-pending`.
+
+Reversal, added to the list above: unset `ADMIN_LOCATIONS_ENABLED` on Render.
