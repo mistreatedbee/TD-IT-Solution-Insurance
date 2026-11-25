@@ -22,7 +22,9 @@ function auditBase(req: Request) {
   };
 }
 
-/** Out-of-band notice (SDL-9 pattern). Fire-and-forget: failure is audited, never thrown. */
+/** Out-of-band notice (SDL-9 pattern). Fire-and-forget: failure is audited, never thrown.
+ * Resolves `true` when the notice was handed off successfully, `false` when it failed (so a
+ * caller can, e.g., set a dedupe key only after a successful send - Feature 008 F-6). */
 export function dispatchProtectionNotice(
   ctx: AppContext,
   req: Request,
@@ -32,10 +34,11 @@ export function dispatchProtectionNotice(
     assetDisplayName?: string | null;
     contactPhoneMasked?: string | null;
   },
-): Promise<void> {
+): Promise<boolean> {
   const base = auditBase(req);
   return Promise.resolve()
     .then(() => ctx.authNotifications.notifyProtectionChanged({ ...params, accountId: base.accountId, at: new Date() }))
+    .then(() => true)
     .catch(async () => {
       try {
         await ctx.auditLog.record({
@@ -47,6 +50,7 @@ export function dispatchProtectionNotice(
         // eslint-disable-next-line no-console
         console.error('[protection-change] notice failure could not be audited');
       }
+      return false;
     });
 }
 

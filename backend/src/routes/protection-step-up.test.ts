@@ -327,7 +327,7 @@ describe('5/7. P-INV-1 and P-INV-4: password re-auth write scope', () => {
     expect(err?.code).toBe('STEP_UP_REQUIRED');
     // and the admin policy table is untouched / the customer table is separate
     expect(STEP_UP_ACTIONS.every((a) => a.status === 'enforced')).toBe(true);
-    expect(CUSTOMER_PROTECTION_STEP_UP_ACTIONS.map((a) => a.status)).toEqual(['enforced', 'enforced', 'reserved']);
+    expect(CUSTOMER_PROTECTION_STEP_UP_ACTIONS.map((a) => a.status)).toEqual(['enforced', 'enforced', 'reserved', 'enforced']);
   });
 });
 

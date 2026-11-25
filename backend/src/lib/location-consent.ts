@@ -13,14 +13,13 @@ import type { LocationConsentEventDocument, LocationConsentScope } from '../repo
 
 /**
  * Which consent scope a report trigger needs. Unknown/omitted triggers need `foreground`.
- * `remote_request` ("Locate now") needs `background` unless the phone says the app was open
- * (`remoteContext: 'foreground'`), in which case `foreground` is enough.
+ * `remote_request` ("Locate now") ALWAYS needs `background` (Stage 8 2026-11-25 F-2). The
+ * report body may still carry the old client `remoteContext` field (accepted so older apps do
+ * not get a 400), but it is never passed here and can never lower the scope: it is a client
+ * claim the server cannot verify.
  */
-export function scopeForTrigger(
-  trigger: LocationEventTrigger | undefined,
-  remoteContext?: 'foreground' | 'background',
-): LocationConsentScope {
-  if (trigger === 'remote_request') return remoteContext === 'foreground' ? 'foreground' : 'background';
+export function scopeForTrigger(trigger: LocationEventTrigger | undefined): LocationConsentScope {
+  if (trigger === 'remote_request') return 'background';
   if (trigger === 'background') return 'background';
   if (trigger === 'periodic_foreground') return 'periodic';
   return 'foreground';

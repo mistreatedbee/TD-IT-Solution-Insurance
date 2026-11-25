@@ -29,12 +29,10 @@ describe('scopeForTrigger', () => {
     expect(scopeForTrigger('background')).toBe('background');
   });
 
-  it("remote_request needs background unless the app was in the foreground", () => {
+  it('Stage 8 F-2: remote_request always needs background (no client claim can lower it)', () => {
     expect(scopeForTrigger('remote_request')).toBe('background');
-    expect(scopeForTrigger('remote_request', 'background')).toBe('background');
-    expect(scopeForTrigger('remote_request', 'foreground')).toBe('foreground');
-    // remoteContext never relaxes any other trigger
-    expect(scopeForTrigger('background', 'foreground')).toBe('background');
+    // The old two-argument form is gone: there is no parameter a client value could reach.
+    expect(scopeForTrigger.length).toBe(1);
   });
 });
 
