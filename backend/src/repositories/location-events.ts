@@ -13,11 +13,15 @@ export const LOCATION_EVENT_TRIGGERS = [
   'manual_refresh',
   'periodic_foreground',
   'background',
+  // "Locate now" (owner-test): one fix sent because the owner asked from another signed-in
+  // device. Also needs REMOTE_LOCATE_ENABLED=true and an open locate request.
+  'remote_request',
 ] as const;
 export type LocationEventTrigger = (typeof LOCATION_EVENT_TRIGGERS)[number];
 export const EXTENDED_LOCATION_EVENT_TRIGGERS: readonly LocationEventTrigger[] = [
   'periodic_foreground',
   'background',
+  'remote_request',
 ];
 
 export interface LocationEventDocument {
@@ -120,6 +124,11 @@ export function createLocationEventsRepo(db: Db) {
         .toArray();
 
       return rows.map(toDocument);
+    },
+
+    /** Stage 8 PR #44 F-1: events present when a withdrawal is recorded (before the purge). */
+    async countByAsset(accountId: string, assetId: string): Promise<number> {
+      return collection().countDocuments({ accountId, assetId });
     },
 
     /**

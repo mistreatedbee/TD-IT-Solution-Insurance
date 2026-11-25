@@ -106,7 +106,7 @@ describe('AccountDetailPage account-state step-up (ADR-0012 SU-FU-1)', () => {
 
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() =>
       expect(screen.getByText(/All sessions were revoked and push tokens disabled/)).toBeInTheDocument(),
@@ -145,7 +145,7 @@ describe('AccountDetailPage account-state step-up (ADR-0012 SU-FU-1)', () => {
 
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '000000');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText(/2 attempts remaining/)).toBeInTheDocument());
     expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument();
@@ -167,7 +167,7 @@ describe('AccountDetailPage account-state step-up (ADR-0012 SU-FU-1)', () => {
     await user.click(screen.getByRole('button', { name: 'Suspend account' }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(updateAdminAccountState).toHaveBeenCalledTimes(2));
     // Still on the account detail page — no redirect to a sign-in screen.
@@ -209,7 +209,7 @@ describe('AccountDetailPage — reactivation from a deactivated account', () => 
     await user.click(reactivateButton);
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() =>
       expect(screen.getByText(/Push notifications stay disabled until the customer re-registers/)).toBeInTheDocument(),

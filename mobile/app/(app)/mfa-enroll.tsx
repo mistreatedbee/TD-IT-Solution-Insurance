@@ -14,6 +14,8 @@ import { mfaEnroll, mfaEnrollVerify } from '../../src/api/auth';
 import { setRefreshToken } from '../../src/auth/secure-storage';
 import { useSessionStore } from '../../src/auth/session-store';
 import { mapUserFacingError } from '../../src/lib/user-facing-errors';
+import { useOtpAutoSubmit } from '../../src/auth/useOtpAutoSubmit';
+import { Button } from '../../src/design';
 import { Alert, OtpInput, Screen } from '../../src/theme/primitives';
 import { colors, spacing, typography } from '../../src/theme/tokens';
 
@@ -54,6 +56,12 @@ export default function MfaEnrollScreen() {
       setIsVerifying(false);
     }
   }
+
+  const { onCodeChange, submitCode } = useOtpAutoSubmit({
+    value: code,
+    setValue: setCode,
+    submit: handleComplete,
+  });
 
   if (loadError) {
     return (
@@ -107,11 +115,20 @@ export default function MfaEnrollScreen() {
       <OtpInput
         label="6-digit confirmation code"
         value={code}
-        onChange={setCode}
-        onComplete={handleComplete}
+        onChange={onCodeChange}
         status={verifyError ? 'error' : 'idle'}
         loading={isVerifying}
       />
+
+      <View style={styles.verifySpacing}>
+        <Button
+          label="Verify"
+          testID="mfa-enroll-verify-button"
+          onPress={() => void submitCode(code)}
+          loading={isVerifying}
+          disabled={code.length !== 6}
+        />
+      </View>
     </Screen>
   );
 }
@@ -166,5 +183,8 @@ const styles = StyleSheet.create({
   },
   alertSpacing: {
     marginBottom: spacing.lg,
+  },
+  verifySpacing: {
+    marginTop: spacing.lg,
   },
 });

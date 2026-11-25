@@ -16,6 +16,7 @@ import { validateBody } from '../lib/validation.js';
 import { ProfileVerificationLockedError } from '../repositories/customer-profiles.js';
 import { createAuthenticateMiddleware } from '../middleware/authenticate.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
+import { requireUserType } from '../middleware/require-role.js';
 import { resolveMfaStatusCached } from '../lib/mfa-enrollment.js';
 import { syncAccountAlerts } from '../lib/sync-account-alerts.js';
 import { assertProtectionStepUp } from '../lib/step-up.js';
@@ -51,6 +52,8 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
   router.get(
     '/account/profile',
     authenticate,
+    // Stage 8 KYC-2 — staff accounts must not create/submit customer profiles.
+    requireUserType('customer'),
     createRateLimiter(
       ctx.kv,
       DEFAULT_AUTHENTICATED_LIMIT,
@@ -79,6 +82,8 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
   router.patch(
     '/account/profile',
     authenticate,
+    // Stage 8 KYC-2 — staff accounts must not create/submit customer profiles.
+    requireUserType('customer'),
     createRateLimiter(
       ctx.kv,
       { attempts: 30, windowSeconds: 900 },
@@ -172,7 +177,17 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
 
   router.post(
     '/account/profile/verification/submit',
+    // Stage 8 KYC-2 — fail-closed server switch; runs before authentication.
+    (_req, _res, next) => {
+      if (ctx.env.kycApiEnabled !== true) {
+        next(apiError('NOT_FOUND'));
+        return;
+      }
+      next();
+    },
     authenticate,
+    // Stage 8 KYC-2 — staff accounts must not create/submit customer profiles.
+    requireUserType('customer'),
     createRateLimiter(
       ctx.kv,
       { attempts: 5, windowSeconds: 3600 },
@@ -213,6 +228,8 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
   router.put(
     '/account/profile/picture',
     authenticate,
+    // Stage 8 KYC-2 — staff accounts must not create/submit customer profiles.
+    requireUserType('customer'),
     createRateLimiter(
       ctx.kv,
       { attempts: 10, windowSeconds: 3600 },
@@ -270,6 +287,8 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
   router.get(
     '/account/profile/picture',
     authenticate,
+    // Stage 8 KYC-2 — staff accounts must not create/submit customer profiles.
+    requireUserType('customer'),
     createRateLimiter(
       ctx.kv,
       DEFAULT_AUTHENTICATED_LIMIT,
@@ -296,6 +315,8 @@ export function createCustomerProfileRouter(ctx: AppContext): Router {
   router.delete(
     '/account/profile/picture',
     authenticate,
+    // Stage 8 KYC-2 — staff accounts must not create/submit customer profiles.
+    requireUserType('customer'),
     createRateLimiter(
       ctx.kv,
       { attempts: 10, windowSeconds: 3600 },

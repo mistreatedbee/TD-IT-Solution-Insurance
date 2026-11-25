@@ -4,6 +4,7 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { OSM_TILE_LAYER_OPTIONS, OSM_TILE_URL } from './tile-source';
 
 export interface ProtectionMapPin {
   id: string;
@@ -39,14 +40,21 @@ export function ProtectionMapCanvas({
       attributionControl: true,
     }).setView(DEFAULT_CENTER, 11);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map);
+    L.tileLayer(OSM_TILE_URL, OSM_TILE_LAYER_OPTIONS).addTo(map);
 
     mapRef.current = map;
 
+    // Leaflet measures its container once at creation; if that happens while the
+    // container is hidden or still being laid out, tiles render grey. Re-measure
+    // after mount and whenever the container's size changes.
+    const raf = requestAnimationFrame(() => map.invalidateSize());
+    const observer =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => map.invalidateSize()) : null;
+    observer?.observe(containerRef.current);
+
     return () => {
+      cancelAnimationFrame(raf);
+      observer?.disconnect();
       map.remove();
       mapRef.current = null;
       markersRef.current = [];
@@ -57,6 +65,7 @@ export function ProtectionMapCanvas({
     const map = mapRef.current;
     if (!map) return;
 
+    map.invalidateSize();
     markersRef.current.forEach((marker) => marker.remove());
     markersRef.current = [];
 

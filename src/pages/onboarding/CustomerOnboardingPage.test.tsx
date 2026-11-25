@@ -252,7 +252,7 @@ describe('CustomerOnboardingPage — ADR-0014 AE-4 (MFA completion in the wizard
     expect(screen.queryByText(/Additional verification is required/)).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/Authentication code/), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(completeMfa).toHaveBeenCalledWith('mfa-challenge-token', '123456'));
   });
@@ -281,7 +281,7 @@ describe('CustomerOnboardingPage — ADR-0014 AE-4 (MFA completion in the wizard
     expect(screen.queryByText(/Additional verification is required/)).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/Authentication code/), '654321');
-    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(completeMfa).toHaveBeenCalledWith('verify-mfa-token', '654321'));
     await waitFor(() => expect(refreshAccount).toHaveBeenCalled());

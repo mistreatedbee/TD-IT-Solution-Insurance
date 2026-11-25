@@ -10,12 +10,14 @@ import { bootstrapFeature004Collections } from './feature004-collections.js';
 import { bootstrapRecoveryCollections } from './recovery-collections.js';
 import { bootstrapNotificationCollections } from './notification-collections.js';
 import { bootstrapCustomerProfileCollections } from './customer-profile-collections.js';
+import { bootstrapCustomerVerificationNoteCollections } from './customer-verification-note-collections.js';
 import { bootstrapTrackingDeviceCollections } from './tracking-device-collections.js';
 import { bootstrapLocationEventsCollections } from './location-events-collections.js';
 import { bootstrapAlertsCollections } from './alerts-collections.js';
 import { bootstrapProductEventsCollections } from './product-events-collections.js';
 import { bootstrapSupportCaseCollections } from './support-case-collections.js';
 import { bootstrapLocationConsentCollections } from './location-consent-collections.js';
+import { bootstrapLocateRequestCollections } from './locate-request-collections.js';
 import { bootstrapClaimsCollections } from './claims-collections.js';
 import { bootstrapRetentionJobRunsCollections } from './retention-job-runs-collections.js';
 import { bootstrapRecoveryCaseEventsCollections } from '../repositories/recovery-case-events.js';
@@ -38,6 +40,14 @@ export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
   } catch (err) {
     console.error(
       '[startup] Customer profile collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+    await bootstrapCustomerVerificationNoteCollections(db);
+  } catch (err) {
+    console.error(
+      '[startup] Customer verification note collection bootstrap failed:',
       err instanceof Error ? err.message : err,
     );
   }
@@ -86,6 +96,14 @@ export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
   } catch (err) {
     console.error(
       '[startup] Location consent collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+    await bootstrapLocateRequestCollections(db);
+  } catch (err) {
+    console.error(
+      '[startup] Locate request collection bootstrap failed:',
       err instanceof Error ? err.message : err,
     );
   }

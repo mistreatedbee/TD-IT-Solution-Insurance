@@ -230,7 +230,21 @@ export function createAdminAssetsRouter(ctx: AppContext): Router {
           userAgent: req.header('user-agent') ?? null,
         });
 
-        res.status(200).json(serializeAdminAsset(asset));
+        // Links only (id + status), no case/claim content: the admin opens the audited claim/case page for that.
+        const [openClaim, openCase] = await Promise.all([
+          ctx.claims.findNonTerminalByAssetForAccount(asset.accountId, asset.id),
+          ctx.recoveryCases.findOpenByAssetForAccount(asset.accountId, asset.id),
+        ]);
+
+        res.status(200).json({
+          ...serializeAdminAsset(asset),
+          related: {
+            openClaim: openClaim ? { id: openClaim.id, status: openClaim.status } : null,
+            openRecoveryCase: openCase
+              ? { id: openCase.id, referenceNumber: openCase.referenceNumber, status: openCase.status }
+              : null,
+          },
+        });
       } catch (err) {
         next(err);
       }

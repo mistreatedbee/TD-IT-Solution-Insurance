@@ -12,6 +12,8 @@ import { mapUserFacingError } from '../../src/lib/user-facing-errors';
 import { SubpageHeader } from '../../src/navigation/SubpageHeader';
 import { AuthMasthead } from '../../src/navigation/AuthMasthead';
 import { AuthCard, AuthPage } from '../../src/screens/auth/AuthScaffold';
+import { useOtpAutoSubmit } from '../../src/auth/useOtpAutoSubmit';
+import { Button } from '../../src/design';
 import { Alert, OtpInput } from '../../src/theme/primitives';
 import { useDesignTokens } from '../../src/theme/designTheme';
 
@@ -39,6 +41,12 @@ export default function MfaChallengeScreen() {
     }
   }
 
+  const { onCodeChange, submitCode } = useOtpAutoSubmit({
+    value: code,
+    setValue: setCode,
+    submit: handleComplete,
+  });
+
   return (
     <AuthPage>
       <SubpageHeader compact />
@@ -59,12 +67,21 @@ export default function MfaChallengeScreen() {
         <OtpInput
           label="6-digit verification code"
           value={code}
-          onChange={setCode}
-          onComplete={handleComplete}
+          onChange={onCodeChange}
           status={errorMessage ? 'error' : 'idle'}
           loading={isVerifying}
           autoFocus
         />
+
+        <View style={{ marginTop: t.spacing.s4 }}>
+          <Button
+            label="Verify"
+            testID="mfa-verify-button"
+            onPress={() => void submitCode(code)}
+            loading={isVerifying}
+            disabled={code.length !== 6}
+          />
+        </View>
       </AuthCard>
     </AuthPage>
   );

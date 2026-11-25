@@ -10,3 +10,4 @@ export {
 export { AssetCard, AssetCard as TdAssetCard, maskIdentifier, type AssetCardProps, type AssetCardType } from './AssetCard';
 export { TabBar, TabBar as TdTabBar, TAB_BAR_ITEMS, type TabBarItem, type TabBarKey, type TabBarProps } from './TabBar';
 export { Backdrop, Backdrop as TdBackdrop, PATTERN_TILE, type BackdropProps, type BackdropPattern, type BackdropVariant } from './Backdrop';
+export { TDAssistantIcon, type TDAssistantIconProps } from './icons';

@@ -93,6 +93,12 @@ export const ERROR_CATALOG = {
     statusCode: 403,
     message: 'This action must be performed from the device associated with your current session.',
   },
+  // INC-001 A-7 / ADR-0009 SDL-4: no active server-side location consent for this
+  // account + asset + device + scope. The client should show the consent screen again.
+  CONSENT_REQUIRED: {
+    statusCode: 403,
+    message: 'Location tracking consent is required for this phone before its location can be sent.',
+  },
   STEP_UP_REQUIRED: { statusCode: 401, message: 'Please re-verify your identity to continue.' },
   // ADR-0012 §2.2.3 — no password fallback and no bypass for a privileged
   // account that has no verified TOTP factor on file; there is no session to
@@ -108,6 +114,11 @@ export const ERROR_CATALOG = {
   UPSTREAM_UNAVAILABLE: {
     statusCode: 503,
     message: 'The service is temporarily unavailable. Please try again shortly.',
+  },
+  // Feature 023 Phase A BR-2 / AC-A6 — behind KYC_CLAIM_GATE_ENABLED. Customer-safe copy.
+  VERIFICATION_REQUIRED: {
+    statusCode: 403,
+    message: 'Finish verification to file a claim.',
   },
   // Feature 018 (claims filing and adjudication) — business-requirements.md §1/§5/§7.
   POLICY_NOT_ACTIVE: {

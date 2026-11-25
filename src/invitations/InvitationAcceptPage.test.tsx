@@ -151,7 +151,7 @@ describe('InvitationAcceptPage (Feature 017 D-1)', () => {
     expect(screen.getByRole('heading', { name: 'Step 3 of 3: Set up two-factor authentication' })).toBeInTheDocument();
 
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and finish' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByRole('heading', { name: "You're all set" })).toBeInTheDocument());
     expect(sessionStorage.getItem('td-admin-refresh-token')).toBe('refresh-1');
@@ -188,7 +188,7 @@ describe('InvitationAcceptPage (Feature 017 D-1)', () => {
 
     await waitFor(() => byName('code'));
     await user.type(byName('code'), '000000');
-    await user.click(screen.getByRole('button', { name: 'Verify and finish' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText(/That code is incorrect/)).toBeInTheDocument());
     expect(byName('code')).toHaveValue('');

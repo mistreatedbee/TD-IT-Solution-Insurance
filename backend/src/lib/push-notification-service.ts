@@ -13,6 +13,7 @@ import {
   buildExpoPushPayload,
   isPushEnabledForCategory,
   sendExpoPushMessages,
+  type ExpoPushMessage,
   type ExpoPushSendResult,
 } from './expo-push.js';
 
@@ -29,6 +30,19 @@ export interface PushNotificationService {
      */
     excludeDeviceIds?: string[];
   }): Promise<ExpoPushSendResult>;
+  /**
+   * "Locate now" (owner-test): a security notice to ONE device of the account (by `deviceId`),
+   * sent regardless of the customer's push preference (like the security email), optionally
+   * followed by a data-only message carrying `silentData` so a background task can act on it.
+   * Resolves `{ delivered: false }` when that device has no enabled push token.
+   */
+  sendToDevice(params: {
+    accountId: string;
+    deviceId: string;
+    templateId: PushTemplateId;
+    variables?: PushTemplateVariables;
+    silentData?: Record<string, string>;
+  }): Promise<{ delivered: boolean }>;
 }
 
 export function createPushNotificationService(deps: {
@@ -65,6 +79,31 @@ export function createPushNotificationService(deps: {
       }
 
       return result;
+    },
+
+    async sendToDevice({ accountId, deviceId, templateId, variables, silentData }) {
+      const rows = (await deps.pushTokens.listEnabledForAccount(accountId)).filter((row) => row.deviceId === deviceId);
+      if (rows.length === 0) return { delivered: false };
+      const content = buildBrandedPushMessage(templateId, variables);
+      const messages: ExpoPushMessage[] = [];
+      for (const row of rows) {
+        if (silentData) {
+          messages.push({
+            to: row.expoPushToken,
+            data: { ...silentData },
+            priority: 'high',
+            ttl: 600,
+            _contentAvailable: true,
+          });
+        }
+        messages.push(buildExpoPushPayload(row.expoPushToken, content));
+      }
+      const result = await sendExpoPushMessages(deps.env, messages);
+      for (const invalidToken of result.invalidTokens) {
+        const row = rows.find((t) => t.expoPushToken === invalidToken);
+        if (row) await deps.pushTokens.disableForDevice(accountId, row.deviceId);
+      }
+      return { delivered: result.tickets.some((t) => t.status === 'ok') };
     },
   };
 }

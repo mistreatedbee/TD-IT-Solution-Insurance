@@ -103,7 +103,7 @@ describe('PlanEditPage step-up (ADR-0012 SU-FU-1)', () => {
 
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText('Plan updated.')).toBeInTheDocument());
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -142,7 +142,7 @@ describe('PlanEditPage step-up (ADR-0012 SU-FU-1)', () => {
 
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '000000');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText(/2 attempts remaining/)).toBeInTheDocument());
     expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument();
@@ -164,7 +164,7 @@ describe('PlanEditPage step-up (ADR-0012 SU-FU-1)', () => {
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(updateAdminPlan).toHaveBeenCalledTimes(2));
     expect(screen.getByRole('heading', { name: /Edit plan/ })).toBeInTheDocument();
@@ -192,7 +192,7 @@ describe('PlanEditPage — delete plan (business-owner gap report item 5)', () =
     await user.click(screen.getByRole('button', { name: 'Delete plan' }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/admin/plans'));
     expect(deleteAdminPlan).toHaveBeenCalledTimes(2);

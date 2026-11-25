@@ -184,6 +184,35 @@ export interface Env {
   locationExtendedTriggersEnabled?: boolean;
 
   /**
+   * "Locate now" (owner-test only, OWNER-EXCEPTION-2026-11-17): fail-closed switch for
+   * `POST/GET /v1/assets/:assetId/locate-request*`, the phone's pending-request check-in, and
+   * the `remote_request` report trigger. `true` only when `REMOTE_LOCATE_ENABLED` is exactly
+   * `"true"`. When off the router is not mounted and `remote_request` reports are refused with
+   * VALIDATION_ERROR. Does not bypass locationIngestionEnabled / locationExtendedTriggersEnabled /
+   * locationConsentEnforced. Optional so hand-built `Env` fixtures compile; `undefined` = off.
+   */
+  remoteLocateEnabled?: boolean;
+
+  /**
+   * INC-001 A-7 / ADR-0009 SDL-4: when on, `POST /v1/assets/:assetId/location-report` refuses a
+   * report (403 CONSENT_REQUIRED) unless the latest `location_consent_events` row for the
+   * account + asset is an active grant from the reporting session's device covering the
+   * report's scope (foreground / periodic / background). Fail-closed: only the exact string
+   * `"true"` turns it on. Off = today's behaviour (no server consent check), kept off until the
+   * owner has installed an APK whose enable flow records the scoped consent.
+   */
+  locationConsentEnforced?: boolean;
+
+  /**
+   * ADR-0009 SDL-9: when on, `POST /v1/assets/:assetId/location-consent` (opt-in) requires a
+   * fresh protection step-up (MFA or password re-auth, `assertProtectionStepUp`). Fail-closed
+   * convention (`"true"` only). Separate switch because the mobile app has no step-up UI on the
+   * enable flow yet: turning this on before that ships makes opt-in impossible. While off,
+   * SDL-9's step-up requirement is NOT met.
+   */
+  locationConsentStepUpEnforced?: boolean;
+
+  /**
    * Sign-up for an already-registered address emails the existing owner ("you already have an account").
    * The on-screen response stays the identical uniform 202 either way (FR-5/AC-2); only an email is added.
    * Fail-closed, same convention as `locationIngestionEnabled`: only the exact string "true" enables it.
@@ -239,6 +268,26 @@ export interface Env {
    * is discharged.
    */
   claimsApiEnabled?: boolean;
+
+  /**
+   * Feature 023 Phase A, BR-2 (CTO review §13 item 2/4) — when on, a customer whose
+   * identity verification is not `verified` cannot FILE a claim (`POST /v1/claims`
+   * returns 403 `VERIFICATION_REQUIRED`). Theft/recovery reports are never gated
+   * (BR-3). The owner has not confirmed BR-2 yet, so this defaults OFF. Fail-closed,
+   * same convention as `claimsApiEnabled`: only the exact string `"true"` enables it.
+   */
+  kycClaimGateEnabled?: boolean;
+
+  /**
+   * Stage 8 KYC-2 (security-engineer review of the KYC surface) — server-side kill switch
+   * for the identity-verification flow: `POST /v1/account/profile/verification/submit` and
+   * the admin verification queue/count/decision/history/notes routes. Before this, the
+   * mobile `FEATURE_KYC_ENABLED` flag was the only gate (a rendering decision, not a trust
+   * boundary). Fail-closed: only the exact string `"true"` enables it; off -> 404 before
+   * authentication. Profile read/edit/picture routes are NOT gated (non-KYC features such
+   * as the emergency contact depend on them).
+   */
+  kycApiEnabled?: boolean;
 
   /**
    * OB-03 (docs/features/009-customer-experience-redesign/
@@ -535,6 +584,38 @@ export function loadEnv(): Env {
     );
   }
 
+  // "Locate now" (owner-test): same "true"-only, fail-closed convention.
+  const remoteLocateEnabledRaw = process.env.REMOTE_LOCATE_ENABLED;
+  const remoteLocateEnabled = remoteLocateEnabledRaw === 'true';
+  if (remoteLocateEnabledRaw !== undefined && !remoteLocateEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] REMOTE_LOCATE_ENABLED is set to an unrecognized value ` +
+        `("${remoteLocateEnabledRaw}"). Treating as disabled (fail-closed). ` +
+        'Set it to exactly "true" to enable, or unset it to disable.',
+    );
+  }
+
+  // INC-001 A-7: server-side consent enforcement + opt-in step-up. Same "true"-only convention.
+  const locationConsentEnforced = process.env.LOCATION_CONSENT_ENFORCED === 'true';
+  if (remoteLocateEnabled && (!locationIngestionEnabled || !locationConsentEnforced)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[config/env] REMOTE_LOCATE_ENABLED is "true" but LOCATION_INGESTION_ENABLED and/or ' +
+        'LOCATION_CONSENT_ENFORCED is not. Locate now stays OFF (Stage 8 C-1, fail-closed).',
+    );
+  }
+  const locationConsentStepUpEnforced = process.env.LOCATION_CONSENT_STEP_UP_ENFORCED === 'true';
+  for (const [name, on] of [
+    ['LOCATION_CONSENT_ENFORCED', locationConsentEnforced],
+    ['LOCATION_CONSENT_STEP_UP_ENFORCED', locationConsentStepUpEnforced],
+  ] as const) {
+    if (process.env[name] !== undefined && !on) {
+      // eslint-disable-next-line no-console
+      console.warn(`[config/env] ${name} is not exactly "true". Treating as off.`);
+    }
+  }
+
   // Fail-closed: only the exact string "true" turns on the existing-owner sign-up email.
   const signupExistingAccountEmailEnabled = process.env.SIGNUP_EXISTING_ACCOUNT_EMAIL_ENABLED === 'true';
 
@@ -548,6 +629,30 @@ export function loadEnv(): Env {
     console.warn(
       `[config/env] CLAIMS_API_ENABLED is set to an unrecognized value ` +
         `("${claimsApiEnabledRaw}"). Treating as disabled (fail-closed, SR-018-2). ` +
+        'Set it to exactly "true" to enable, or unset it to disable.',
+    );
+  }
+
+  // Feature 023 Phase A BR-2 — claim filing verification gate. Only "true" enables it.
+  const kycClaimGateEnabledRaw = process.env.KYC_CLAIM_GATE_ENABLED;
+  const kycClaimGateEnabled = kycClaimGateEnabledRaw === 'true';
+  if (kycClaimGateEnabledRaw !== undefined && !kycClaimGateEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] KYC_CLAIM_GATE_ENABLED is set to an unrecognized value ` +
+        `("${kycClaimGateEnabledRaw}"). Treating as disabled (fail-closed). ` +
+        'Set it to exactly "true" to enable, or unset it to disable.',
+    );
+  }
+
+  // Stage 8 KYC-2 — identity-verification API kill switch. Only "true" enables it.
+  const kycApiEnabledRaw = process.env.KYC_API_ENABLED;
+  const kycApiEnabled = kycApiEnabledRaw === 'true';
+  if (kycApiEnabledRaw !== undefined && !kycApiEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] KYC_API_ENABLED is set to an unrecognized value ` +
+        `("${kycApiEnabledRaw}"). Treating as disabled (fail-closed, Stage 8 KYC-2). ` +
         'Set it to exactly "true" to enable, or unset it to disable.',
     );
   }
@@ -689,9 +794,14 @@ export function loadEnv(): Env {
     expoAccessToken,
     locationIngestionEnabled,
     locationExtendedTriggersEnabled,
+    remoteLocateEnabled,
+    locationConsentEnforced,
+    locationConsentStepUpEnforced,
     signupExistingAccountEmailEnabled,
     claimsNotice,
     claimsApiEnabled,
+    kycClaimGateEnabled,
+    kycApiEnabled,
     directedDispatchEnabled,
     partnerLocationSharingEnabled,
     recoveryCaseEventsEnabled,

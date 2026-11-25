@@ -38,6 +38,9 @@ export type PushTemplateId =
   | 'asset.updated'
   | 'asset.removed'
   | 'asset.recovered'
+  | 'location.tracking.enabled'
+  | 'location.tracking.disabled'
+  | 'location.locate.requested'
   | 'auth.password.changed'
   | 'auth.login.new_device'
   | 'auth.mfa.enabled'
@@ -47,7 +50,10 @@ export type PushTemplateId =
   | 'onboarding.incomplete'
   | 'policy.activated'
   | 'policy.renewal.upcoming'
-  | 'safety.alert';
+  | 'safety.alert'
+  | 'account.verification.verified'
+  | 'account.verification.action_required'
+  | 'account.verification.rejected';
 
 export interface PushTemplateVariables {
   assetName?: string;
@@ -384,6 +390,47 @@ export function buildBrandedPushMessage(
           deepLink: deepLink('profile'),
         },
       };
+    case 'location.locate.requested':
+      // "Locate now" (owner-test): shown on the phone being located (POPIA transparency).
+      // Never carries coordinates.
+      return {
+        eventId: templateId,
+        title: 'Location requested',
+        body: 'Your location was requested from another device signed in to your account. Not you? Reset your password.',
+        subtitle,
+        category: 'account',
+        deepLink: deepLink(variables.assetId ? `assets/${variables.assetId}` : 'assets'),
+        priority: 'high',
+        data: {
+          event: templateId,
+          brand: NOTIFICATION_BRAND.name,
+          logoUrl: NOTIFICATION_BRAND.logoUrl,
+          ...(variables.assetId ? { assetId: variables.assetId } : {}),
+        },
+      };
+    case 'location.tracking.enabled':
+    case 'location.tracking.disabled': {
+      const on = templateId === 'location.tracking.enabled';
+      const asset = variables.assetName ?? 'an asset';
+      return {
+        eventId: templateId,
+        title: on ? 'Location tracking turned on' : 'Location tracking turned off',
+        body: on
+          ? `Location tracking was turned on for ${asset}${variables.deviceName ? ` on ${variables.deviceName}` : ''}. Not you? Turn it off and reset your password.`
+          : `Location tracking was turned off for ${asset}.`,
+        subtitle,
+        category: 'account',
+        deepLink: deepLink(variables.assetId ? `assets/${variables.assetId}` : 'assets'),
+        priority: 'high',
+        data: {
+          event: templateId,
+          brand: NOTIFICATION_BRAND.name,
+          logoUrl: NOTIFICATION_BRAND.logoUrl,
+          deepLink: deepLink(variables.assetId ? `assets/${variables.assetId}` : 'assets'),
+          ...(variables.assetId ? { assetId: variables.assetId } : {}),
+        },
+      };
+    }
     case 'auth.login.new_device':
       return {
         eventId: templateId,
@@ -523,6 +570,41 @@ export function buildBrandedPushMessage(
           ...(variables.assetId ? { assetId: variables.assetId } : {}),
         },
       };
+    // Feature 023 Phase A — identity verification decision. Lock-screen safe: the push never
+    // carries the reason text, only that a decision was made (reason is in-app and email).
+    case 'account.verification.verified':
+    case 'account.verification.action_required':
+    case 'account.verification.rejected': {
+      const copy = {
+        'account.verification.verified': {
+          title: 'Identity verified',
+          body: 'Your identity has been verified. You now have full protection and recovery support.',
+        },
+        'account.verification.action_required': {
+          title: 'Verification needs attention',
+          body: 'Please update your details and submit your verification again. Open the app for details.',
+        },
+        'account.verification.rejected': {
+          title: 'Verification update',
+          body: 'We could not verify your identity. Open the app for details.',
+        },
+      }[templateId];
+      return {
+        eventId: templateId,
+        title: copy.title,
+        body: copy.body,
+        subtitle,
+        category: 'account',
+        deepLink: deepLink('account/verification'),
+        priority: 'default',
+        data: {
+          event: templateId,
+          brand: NOTIFICATION_BRAND.name,
+          logoUrl: NOTIFICATION_BRAND.logoUrl,
+          deepLink: deepLink('account/verification'),
+        },
+      };
+    }
     default: {
       const _exhaustive: never = templateId;
       throw new Error(`Unknown push template: ${_exhaustive}`);

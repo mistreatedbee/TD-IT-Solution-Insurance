@@ -157,6 +157,8 @@ function mapApiErrorByCode(code: string, status: number, message: string, contex
     case 'CONFLICT':
     case 'IDEMPOTENCY_KEY_REUSE':
       return 'This action was already processed. Refresh the screen to see the latest state.';
+    case 'VERIFICATION_REQUIRED':
+      return 'Finish verification to file a claim.';
     case 'POLICY_NOT_ACTIVE':
       return 'That policy is not active, so a claim cannot be filed against it right now.';
     case 'ASSET_NOT_ELIGIBLE':

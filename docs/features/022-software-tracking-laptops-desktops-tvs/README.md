@@ -320,3 +320,12 @@ exception, which stays limited to the `owner-test` EAS profile.
   OD-3 `mobile-architect` owns all device agents. OD-5 remote lock/wipe out of MVP. OD-6 tablets
   on the mobile-app path. OD-7 stays with `integration-architect`, needs a scorecard first, no
   vendor until then. OD-1 and OD-8 need the owner's decision.
+
+## Owner decisions — 2026-11-20 (recorded by product-manager)
+
+The owner answered "Yes to all" to the `cto` recommendations below. This does not ratify the feature (still **Proposed**, §12) and does not authorize code beyond Phase 0.
+
+| # | Decision | Accepts | Unlocks | Still blocks |
+|---|----------|---------|---------|--------------|
+| 13 | OD-1 platform order: Windows, then macOS, then Android/Google TV. Samsung Tizen, LG webOS, Apple tvOS and Fire TV are not tracked; those TVs get cover and a recorded serial number only. | `cto` recommendation on OD-1 (§12) | Phase 0 copy and Phase 1 spike can target Windows first | Ratification (`cybersecurity-architect`, `compliance-specialist`); Phase 1 Tauri spike (OD-2); desktop engineer role not staffed |
+| 14 | OD-8 budget approved for code-signing certificates and an Apple Developer account (about USD 220 to 700 a year). | `cto` recommendation on OD-8 (§12) | Purchase can go ahead when Phase 1 needs signed builds | Owner still has to buy them; certificate vendor not chosen |

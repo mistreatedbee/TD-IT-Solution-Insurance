@@ -452,6 +452,32 @@ describe('routes/recovery', () => {
       expect((event.occurredAt as Date).toISOString()).toBe(new Date('2026-08-01T12:00:00.000Z').toISOString());
     });
 
+    it('Feature 023 BR-3 / AC-A7: a theft report is never gated on verification, even with KYC_CLAIM_GATE_ENABLED on', async () => {
+      const assetId = '507f1f77bcf86cd799439021';
+      const acctId = randomUUID();
+      // The harness has no customerProfiles repo at all: any verification lookup on this
+      // path would throw and fail the request, so a 201 proves the path does not consult it.
+      const { app, accountId, sessionId, env } = createHarness({
+        accountId: acctId,
+        assets: [sampleAsset(acctId, assetId)],
+        envOverrides: { kycClaimGateEnabled: true },
+      });
+      const listened = await listen(app);
+      server = listened.server;
+
+      const res = await fetch(`${listened.baseUrl}/recovery/cases`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${customerToken(env, accountId, sessionId)}`,
+          'content-type': 'application/json',
+          'idempotency-key': randomUUID(),
+        },
+        body: JSON.stringify({ assetId, notes: 'Stolen yesterday' }),
+      });
+
+      expect(res.status).toBe(201);
+    });
+
     it('does not append when RECOVERY_CASE_EVENTS_ENABLED-equivalent flag is off', async () => {
       const assetId = '507f1f77bcf86cd799439021';
       const acctId = randomUUID();

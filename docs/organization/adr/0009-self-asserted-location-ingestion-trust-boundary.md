@@ -548,3 +548,34 @@ SDL-2 is unaffected by every option. A denser self-asserted trail is still a sel
 | `cto` | **Approval.** Picks option A, B or C |
 
 **Signed:** none. This section is a proposal. Until `cto` records a decision here, the operative position is the 2026-11-19 test-only allowance in §19.1, limited to the `owner-test` profile and the owner exception.
+
+## 20. Proposed amendment — remote-triggered report ("Locate now"), owner-test build only
+
+**Status:** Proposed, 2026-11-25. Filed by `gps-integration-engineer`. Not ratified. Appended; nothing above is changed.
+
+### 20.1 What changes
+
+Until now every self-device report was started by the reporting phone itself (§19: open, 2-minute timer, Android background task). This amendment adds one report the phone sends **because the account's owner asked from another device signed in to the same account**:
+
+1. `POST /v1/assets/:assetId/locate-request` — customer sessions only, the asset's owner only, active account; 6 per 15 min per account, 4 per 15 min per asset. Creates a `locate_requests` row (answerable 10 min, TTL-purged after 1 h, no coordinates), audits `protection_change` `location_locate_requested|session|<assetId>`, pushes a visible security notice plus a data-only wake-up **to the bound device only**, and sends the security email for the first request per account per UTC day.
+2. The bound phone answers through the **existing** `POST /assets/:assetId/location-report` with `triggeredBy: 'remote_request'`, accepted only when `REMOTE_LOCATE_ENABLED`, `LOCATION_EXTENDED_TRIGGERS_ENABLED` and `LOCATION_INGESTION_ENABLED` are all exactly `"true"`, the session device is the asset's `reportingDeviceId`, and an open request addressed to it exists. SDL-4 consent applies unchanged: `background` scope is required unless the phone states `remoteContext: 'foreground'`. A consent refusal stores nothing and answers the request `consent_required`; the phone can also decline itself when its local consent or OS permission is missing.
+3. `GET /v1/assets/:assetId/locate-request/latest` returns status and the answering fix's timestamp only. The owner reads the fix through the reads they already had (SDL-1 provenance unchanged: `source: 'self_device'`).
+
+### 20.2 Why this needs a decision
+
+A report triggered by a remote party is a new trust-boundary shape. The requester is the account holder, so this is not third-party access, but a compromised account (or a household member who knows the password) could locate the phone holder silently if the transparency notices fail. Mitigations in the build: on-device notice (server push, or local when no push arrived), daily security email, audit row, rate limits, no coordinates in the request API. Open questions for review: whether the notice may ever be suppressed (e.g. theft mode), retention of `locate_requests`, and whether a request should require recent step-up.
+
+### 20.3 Platform limits (honest)
+
+iOS does not reliably run background location from a silent push; iOS answers only on its next open/periodic check-in. Android wake-up via push needs FCM credentials configured for the EAS build; none exist in the repo as of this amendment, so Android also relies on check-ins (foreground every 2 min, background task about every 5 min) until FCM is configured.
+
+### 20.4 Reviewers
+
+| Role | Responsibility |
+|---|---|
+| `cybersecurity-architect` | Trust boundary, abuse/stalking risk, Stage 8 |
+| `compliance-specialist` | POPIA notice wording, consent scope, retention |
+| `integration-architect` | FCM/APNs credentials as a vendor dependency |
+| `cto` | **Approval** |
+
+**Signed:** none. Until `cto` records a decision here, this runs only in the `owner-test` profile under OWNER-EXCEPTION-2026-11-17, with `REMOTE_LOCATE_ENABLED` unset everywhere else.

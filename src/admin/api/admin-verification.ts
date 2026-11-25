@@ -64,3 +64,37 @@ export function reviewCustomerVerification(
     { method: 'PATCH', body },
   );
 }
+
+/** Feature 023 Phase A — one past decision, from the backend audit trail. */
+export interface VerificationDecisionHistoryEntry {
+  id: string;
+  decision: 'verified' | 'rejected' | 'action_required';
+  decidedAt: string;
+  reviewer: { accountId: string; email: string | null } | null;
+}
+
+/** Feature 023 Phase A — internal admin note. Never shown to the customer. */
+export interface VerificationInternalNote {
+  id: string;
+  text: string;
+  createdAt: string;
+  author: { accountId: string; email: string | null };
+}
+
+export interface VerificationHistoryResponse {
+  decisions: VerificationDecisionHistoryEntry[];
+  notes: VerificationInternalNote[];
+}
+
+export function getVerificationHistory(accountId: string) {
+  return apiFetch<VerificationHistoryResponse>(
+    `/admin/accounts/${encodeURIComponent(accountId)}/profile/verification-history`,
+  );
+}
+
+export function addVerificationNote(accountId: string, text: string) {
+  return apiFetch<{ note: VerificationInternalNote }>(
+    `/admin/accounts/${encodeURIComponent(accountId)}/profile/verification-notes`,
+    { method: 'POST', body: { text } },
+  ).then((r) => r.note);
+}

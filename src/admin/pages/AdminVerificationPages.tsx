@@ -4,9 +4,12 @@ import { Button, Card, Input, SectionHeading } from '../../components';
 import { DataTable, DetailGrid, InlineAlert, LoadingState, StatusBadge } from '../../dashboard/components/ui';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import {
+  addVerificationNote,
   getAdminCustomerProfile,
+  getVerificationHistory,
   listVerificationRequests,
   reviewCustomerVerification,
+  type VerificationHistoryResponse,
   type VerificationRequestSummary,
 } from '../api/admin-verification';
 import { AdminNavLink } from '../layout/AdminLayout';
@@ -72,6 +75,129 @@ export function VerificationQueuePage() {
   );
 }
 
+const DECISION_LABEL: Record<'verified' | 'rejected' | 'action_required', string> = {
+  verified: 'Approved',
+  rejected: 'Declined',
+  action_required: 'Action required',
+};
+
+const NOTE_MAX_LENGTH = 2000;
+
+/**
+ * Feature 023 Phase A — decision history (from the audit trail) and internal admin notes.
+ * Notes are staff-only: the backend never returns them on any customer route.
+ * `refreshKey` changes after a decision so the new row appears without a reload.
+ */
+function VerificationHistoryPanel({ accountId, refreshKey }: { accountId: string; refreshKey: number }) {
+  const [history, setHistory] = useState<VerificationHistoryResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getVerificationHistory(accountId)
+      .then((result) => {
+        if (!cancelled) setHistory(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(mapUserFacingError(err, { context: 'admin' }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, refreshKey]);
+
+  async function saveNote() {
+    const text = note.trim();
+    if (!text) return;
+    setSaving(true);
+    setNoteError(null);
+    try {
+      const created = await addVerificationNote(accountId, text);
+      setHistory((prev) => ({ decisions: prev?.decisions ?? [], notes: [created, ...(prev?.notes ?? [])] }));
+      setNote('');
+    } catch (err) {
+      setNoteError(mapUserFacingError(err, { context: 'admin' }));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card padding="lg" className="space-y-4">
+      <SectionHeading as="h2" title="Decision history" size="md" />
+      {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+      {!history && !error ? <LoadingState /> : null}
+      {history ? (
+        history.decisions.length === 0 ? (
+          <p className="text-sm text-td-ink-muted">No decisions have been made for this customer yet.</p>
+        ) : (
+          <DataTable
+            columns={[
+              {
+                key: 'decision',
+                header: 'Decision',
+                render: (row) => (
+                  <StatusBadge value={DECISION_LABEL[row.decision as keyof typeof DECISION_LABEL] ?? String(row.decision)} />
+                ),
+              },
+              {
+                key: 'reviewer',
+                header: 'Reviewer',
+                render: (row) => {
+                  const reviewer = row.reviewer as { email: string | null; accountId: string } | null;
+                  return reviewer ? (reviewer.email ?? reviewer.accountId) : '—';
+                },
+              },
+              {
+                key: 'decidedAt',
+                header: 'When',
+                render: (row) => new Date(String(row.decidedAt)).toLocaleString(),
+              },
+            ]}
+            rows={history.decisions as unknown as Array<Record<string, unknown>>}
+          />
+        )
+      ) : null}
+
+      <SectionHeading as="h2" title="Internal notes" size="md" />
+      <p className="text-sm text-td-ink-muted">
+        Staff only. The customer never sees these notes. Do not record ID numbers or document details.
+      </p>
+      {noteError ? <InlineAlert tone="danger">{noteError}</InlineAlert> : null}
+      <Input
+        label="Add an internal note"
+        name="internalNote"
+        value={note}
+        maxLength={NOTE_MAX_LENGTH}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="For example: called the customer to confirm their surname."
+      />
+      <div>
+        <Button variant="secondary" disabled={saving || !note.trim()} onClick={() => void saveNote()}>
+          {saving ? 'Saving…' : 'Add note'}
+        </Button>
+      </div>
+      {history && history.notes.length > 0 ? (
+        <ul className="space-y-3">
+          {history.notes.map((n) => (
+            <li key={n.id} className="rounded-xl border border-td-border p-3 text-sm">
+              <p className="whitespace-pre-wrap text-td-ink">{n.text}</p>
+              <p className="mt-1 text-xs text-td-ink-muted">
+                {n.author.email ?? n.author.accountId} · {new Date(n.createdAt).toLocaleString()}
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : history ? (
+        <p className="text-sm text-td-ink-muted">No internal notes yet.</p>
+      ) : null}
+    </Card>
+  );
+}
+
 export function VerificationReviewPage() {
   const { accountId = '' } = useParams();
   const [loading, setLoading] = useState(true);
@@ -89,6 +215,7 @@ export function VerificationReviewPage() {
   const [pendingDecision, setPendingDecision] = useState<
     'verified' | 'rejected' | 'action_required' | null
   >(null);
+  const [historyKey, setHistoryKey] = useState(0);
 
   const { stepUpOpen, run, onStepUpVerified, onStepUpCancel } = useStepUpRetry(reviewCustomerVerification);
 
@@ -130,6 +257,7 @@ export function VerificationReviewPage() {
       setData(result);
       setActionInfo(describeDecision(decision));
       setPendingDecision(null);
+      setHistoryKey((k) => k + 1);
     } catch (err) {
       setActionError(mapUserFacingError(err, { context: 'admin' }));
     } finally {
@@ -144,6 +272,7 @@ export function VerificationReviewPage() {
       if (!result || !pendingDecision) return;
       setData(result);
       setActionInfo(describeDecision(pendingDecision));
+      setHistoryKey((k) => k + 1);
     } catch (err) {
       setActionError(mapUserFacingError(err, { context: 'admin' }));
     } finally {
@@ -273,6 +402,8 @@ export function VerificationReviewPage() {
             : null}
         </InlineAlert>
       )}
+
+      <VerificationHistoryPanel accountId={accountId} refreshKey={historyKey} />
 
       {stepUpOpen ? (
         <StepUpDialog

@@ -86,3 +86,35 @@ Not covered by this addendum: Phase 1b (the AI assistant itself, the Render `ASS
 Before any other profile gets this: a real Stage 8 review by `cybersecurity-architect`, Stage 10 QA, `design-system-manager` sign-off on the header change and the new screen, and the owner's real support channels.
 
 Reversal, added to the list above: set `EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY` to "false" (or delete it with the `owner-test` profile). The Home header then shows the Alerts bell again.
+
+## Addendum 2026-11-20: admin asset detail location (cybersecurity-architect PASS for owner-test only)
+Recorded by `backend-engineer`. `GET /v1/admin/assets/{assetId}/location` and the Location section of the admin asset detail page are added under this exception. Like `/admin/locations`, the route is mounted only when `ADMIN_LOCATIONS_ENABLED=true`. Review: "Stage 8 review — feat/admin-asset-detail-full (owner-test phase)" in `docs/features/004-policy-asset-management/security-review-admin-surface.md`. Its three cheap fixes are already in: fail closed with no consent record, no location for archived assets, and the `asset_location` audit type.
+
+**Must change before real users (none of this is done):**
+- R1: serve exact location only with an open recovery case. Otherwise require a reason code, free-text justification and step-up MFA (no more than 5 minutes old), with the reason stored in the audit row.
+- R2: with no open case, show coarse location only (rounded coordinates, no history).
+- R3: a per-admin daily cap on distinct owners viewed, with an alert when it is crossed.
+- R4: an ADR-0009 amendment, a compliance-specialist POPIA sign-off and a privacy-notice disclosure.
+- R5: reverse this owner exception and remove the `ADMIN_LOCATIONS_ENABLED` dependency, so the gating is structural.
+- R6: a real (non-waiver) Stage 8 manifest entry covering this endpoint and `/admin/locations`.
+
+Reversal, added to the list above: set `ADMIN_LOCATIONS_ENABLED` off. This route then returns 404, and the page says the location view is not switched on.
+
+## Addendum 2026-11-25: widening for the admin asset location view (cto MERGE once CI green, with conditions)
+Recorded by `backend-engineer` under `cto`'s MERGE-with-conditions ruling on PR #49. This exception is widened to cover the backend flag `ADMIN_LOCATIONS_ENABLED` and the new route `GET /v1/admin/assets/:assetId/location`, which sits behind that flag alongside `GET /v1/admin/locations`.
+- **Default is off.** The flag is unset by default, is not in `render.yaml`, and the route returns 404 when it is unset.
+- **Why it is on now.** It is set to `true` on the single Render environment only, because all data there is the owner's own test data and there are no real users.
+- **When it must go off.** Switch it off before any real customer data exists on that environment, and keep it off until R1–R6 close (listed in the 2026-11-20 addendum above and in `docs/features/004-policy-asset-management/security-review-admin-surface.md`). Nothing in this addendum clears it for public launch.
+- **Stage 8.** cybersecurity-architect PASS for owner-test only (2026-11-20). Manifest entry `backend-admin-asset-location`: verdict `pass-owner-test-only-concurrence-pending`.
+
+Reversal, added to the list above: unset `ADMIN_LOCATIONS_ENABLED` on Render.
+
+## Addendum 2026-11-25: "Locate now" from another signed-in device (cto go/no-go pending)
+Recorded by `gps-integration-engineer`. Built on branch `feat/remote-locate-request` for the **owner-test build only**, behind the new 12th flag `EXPO_PUBLIC_FEATURE_REMOTE_LOCATE` ("true" in `owner-test`, "false" in every other profile), the web flag `VITE_FEATURE_REMOTE_LOCATE` (off unless "true") and the backend switch `REMOTE_LOCATE_ENABLED` (render.yaml `sync: false`, unset = off, router not mounted). `cto` has not yet given a go/no-go on merging it.
+
+What was added: signed in on any device, the owner can press Locate now on a smartphone asset whose location comes from another phone (mobile asset detail, web protection map). The bound phone sends one fresh location through the existing report path (`triggeredBy: 'remote_request'`), only with its consent; otherwise the request is answered "consent required" and no location is sent. The phone shows "Your location was requested from another device signed in to your account", and the account gets the security email for the first request each day. ADR-0009 §20 (Proposed). Stage 8 waivers: `backend-remote-locate-requests`, `backend-remote-locate-pending-checkin`, `mobile-remote-locate`, `web-remote-locate`.
+
+Reversal, added to the list above: unset `REMOTE_LOCATE_ENABLED` in Render, set `EXPO_PUBLIC_FEATURE_REMOTE_LOCATE` and `VITE_FEATURE_REMOTE_LOCATE` to "false" (or delete with the `owner-test` profile).
+
+### 2026-11-25 follow-up: Stage 8 review filed for "Locate now"
+`cybersecurity-architect` gave a PASS for owner-test only, with conditions C-1 to C-3. The review is filed in `docs/features/008-self-device-gps-tracking/security-review.md` (sections dated 2026-11-25). C-1 is now enforced in code: Locate now does not work unless `REMOTE_LOCATE_ENABLED`, `LOCATION_INGESTION_ENABLED` and `LOCATION_CONSENT_ENFORCED` are all "true". Stale fixes (F-7) are also refused. **Must-haves before any real user:** step-up on `POST locate-request`; ignore the client `remoteContext` claim; fail-closed audit with a dedicated event type plus outcome audit; security email for each new requesting device; ADR-0009 §20 ratification; joint gate sign-off; and an account-takeover abuse test.

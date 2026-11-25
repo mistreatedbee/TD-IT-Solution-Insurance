@@ -59,6 +59,9 @@ export function FileClaimScreen() {
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [duplicateClaimId, setDuplicateClaimId] = useState<string | null>(null);
+  // Feature 023 BR-2 / AC-A6 — server says the customer must finish identity
+  // verification before filing (KYC_CLAIM_GATE_ENABLED). Links to Verification.
+  const [verificationRequired, setVerificationRequired] = useState(false);
   const [submittedClaimId, setSubmittedClaimId] = useState<string | null>(null);
 
   const amountNumber = Number(claimedAmount);
@@ -103,6 +106,12 @@ export function FileClaimScreen() {
       });
       setSubmittedClaimId(claim.id);
     } catch (err) {
+      setVerificationRequired(false);
+      if (err instanceof ApiError && err.code === 'VERIFICATION_REQUIRED') {
+        setVerificationRequired(true);
+        setSubmitError(mapUserFacingError(err, { context: 'claim' }));
+        return;
+      }
       if (
         err instanceof ApiError &&
         err.code === 'DUPLICATE_OPEN_CLAIM' &&
@@ -254,6 +263,14 @@ export function FileClaimScreen() {
             <Button
               label="View existing claim"
               onPress={() => router.push(`/claims/${duplicateClaimId}` as Href)}
+              variant="glass"
+              style={styles.stretch}
+            />
+          ) : null}
+          {verificationRequired ? (
+            <Button
+              label="Go to verification"
+              onPress={() => router.push('/account/verification' as Href)}
               variant="glass"
               style={styles.stretch}
             />

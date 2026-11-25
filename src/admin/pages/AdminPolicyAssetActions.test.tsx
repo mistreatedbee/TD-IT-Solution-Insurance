@@ -22,6 +22,13 @@ vi.mock('../api/admin-data', () => ({
   setAdminAssetLegalHold: vi.fn(),
   listAdminPlans: vi.fn().mockResolvedValue({ data: [] }),
   listAdminAssets: vi.fn().mockResolvedValue({ data: [], pagination: { nextCursor: null, hasMore: false } }),
+  listAdminPolicies: vi.fn().mockResolvedValue({ data: [], pagination: { nextCursor: null, hasMore: false } }),
+}));
+vi.mock('../api/admin-locations', () => ({
+  getAdminAssetLocation: vi.fn().mockResolvedValue({
+    assetId: 'asset-1', accountId: 'acct-1', trackingOff: false, trackingOffReason: null, source: null, freshness: 'never',
+    lastLocation: null, history: [], trackingDevice: null,
+  }),
 }));
 vi.mock('../api/admin-plans', () => ({
   listAdminPlans: vi.fn().mockResolvedValue({ data: [] }),
@@ -118,7 +125,7 @@ describe('PolicyDetailPage actions', () => {
     await user.click(await screen.findByRole('button', { name: 'Cancel policy' }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText('Policy cancelled.')).toBeInTheDocument());
     expect(cancelAdminPolicy).toHaveBeenCalledTimes(2);
@@ -159,7 +166,7 @@ describe('PolicyDetailPage actions', () => {
     await user.click(await screen.findByRole('button', { name: 'Place legal hold' }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText('Legal hold placed on this policy.')).toBeInTheDocument());
     expect(setAdminPolicyLegalHold).toHaveBeenCalledWith('pol-1', { legalHold: true });
@@ -194,7 +201,7 @@ describe('AssetDetailPage actions', () => {
     await user.click(await screen.findByRole('button', { name: 'Archive asset' }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText('Asset archived.')).toBeInTheDocument());
     expect(archiveAdminAsset).toHaveBeenCalledWith('asset-1', { status: 'removed' });
@@ -234,7 +241,7 @@ describe('AssetDetailPage actions', () => {
     await user.click(await screen.findByRole('button', { name: 'Remove legal hold' }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument());
     await user.type(byName('code'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    // The 6th digit auto-submits the code (no Verify click needed).
 
     await waitFor(() => expect(screen.getByText('Legal hold removed from this asset.')).toBeInTheDocument());
     expect(setAdminAssetLegalHold).toHaveBeenCalledWith('asset-1', { legalHold: false });

@@ -9,6 +9,8 @@ import {
 } from '../../src/location/backgroundLocation';
 import { FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED } from '../../src/config/features';
 import { useLocationReporter } from '../../src/location/useLocationReporter';
+import { useRemoteLocateResponder } from '../../src/location/useRemoteLocateResponder';
+import { LocationReconsentPrompt } from '../../src/location/LocationReconsentPrompt';
 import { registerPushTokenIfPermitted } from '../../src/notifications/push';
 import { useAppStackScreenOptions } from '../../src/navigation/useAppStackScreenOptions';
 
@@ -16,6 +18,9 @@ export default function AppLayout() {
   const screenOptions = useAppStackScreenOptions();
   // Reports on open/resume when tracking is enabled, consent + linked asset + OS permission exist.
   useLocationReporter();
+  // Owner-test only (FEATURE_REMOTE_LOCATE_ENABLED): answer "Locate now" requests made from
+  // another device signed in to this account.
+  useRemoteLocateResponder();
   // Owner-test Android only: resume background updates on sign-in if "all the time" was already
   // granted and every gate passes. Never shows a permission dialog.
   useEffect(() => {
@@ -28,23 +33,27 @@ export default function AppLayout() {
   }, []);
 
   return (
-    <Stack screenOptions={{ ...screenOptions, headerShown: false }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="notification-preferences"
-        options={{ headerShown: true, title: 'Notification preferences' }}
-      />
-      <Stack.Screen
-        name="mfa-enroll"
-        options={{ headerShown: true, title: 'Two-factor authentication' }}
-      />
-      <Stack.Screen name="policy" options={{ headerShown: false }} />
-      <Stack.Screen name="profile" options={{ headerShown: false }} />
-      <Stack.Screen name="report-theft" options={{ headerShown: false }} />
-      <Stack.Screen name="claims" options={{ headerShown: false }} />
-      <Stack.Screen name="live-tracking" options={{ headerShown: false }} />
-      <Stack.Screen name="device-locations" options={{ headerShown: false }} />
-      <Stack.Screen name="assistant" options={{ headerShown: false }} />
-    </Stack>
+    <>
+      <Stack screenOptions={{ ...screenOptions, headerShown: false }}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="notification-preferences"
+          options={{ headerShown: true, title: 'Notification preferences' }}
+        />
+        <Stack.Screen
+          name="mfa-enroll"
+          options={{ headerShown: true, title: 'Two-factor authentication' }}
+        />
+        <Stack.Screen name="policy" options={{ headerShown: false }} />
+        <Stack.Screen name="profile" options={{ headerShown: false }} />
+        <Stack.Screen name="report-theft" options={{ headerShown: false }} />
+        <Stack.Screen name="claims" options={{ headerShown: false }} />
+        <Stack.Screen name="live-tracking" options={{ headerShown: false }} />
+        <Stack.Screen name="device-locations" options={{ headerShown: false }} />
+        <Stack.Screen name="assistant" options={{ headerShown: false }} />
+      </Stack>
+      {/* INC-001 A-7: re-asks for consent when the server answers CONSENT_REQUIRED. */}
+      <LocationReconsentPrompt />
+    </>
   );
 }

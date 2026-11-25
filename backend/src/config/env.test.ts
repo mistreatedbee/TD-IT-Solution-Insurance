@@ -110,6 +110,35 @@ describe('loadEnv — SR-018-11 / CR-018-10 production placeholder-notice-config
     expect(() => loadEnv()).not.toThrow();
   });
 
+  describe('KYC_CLAIM_GATE_ENABLED — fail-closed switch (Feature 023 BR-2)', () => {
+    it('defaults to false when unset', () => {
+      resetEnv({ KYC_CLAIM_GATE_ENABLED: undefined });
+      expect(loadEnv().kycClaimGateEnabled).toBe(false);
+    });
+
+    it('enables only on the exact string "true"', () => {
+      resetEnv({ KYC_CLAIM_GATE_ENABLED: 'true' });
+      expect(loadEnv().kycClaimGateEnabled).toBe(true);
+    });
+
+    it.each(['TRUE', '1', 'yes', ''])('treats %j as disabled', (value) => {
+      resetEnv({ KYC_CLAIM_GATE_ENABLED: value });
+      expect(loadEnv().kycClaimGateEnabled).toBe(false);
+    });
+  });
+
+  describe('KYC_API_ENABLED — fail-closed switch (Stage 8 KYC-2)', () => {
+    it('defaults to false when unset', () => {
+      resetEnv({ KYC_API_ENABLED: undefined });
+      expect(loadEnv().kycApiEnabled).toBe(false);
+    });
+
+    it.each([['true', true], ['TRUE', false], ['1', false]] as const)('%j -> %s', (value, expected) => {
+      resetEnv({ KYC_API_ENABLED: value });
+      expect(loadEnv().kycApiEnabled).toBe(expected);
+    });
+  });
+
   describe('LOCATION_EXTENDED_TRIGGERS_ENABLED — fail-closed switch', () => {
     it('defaults to false when unset', () => {
       resetEnv({ LOCATION_EXTENDED_TRIGGERS_ENABLED: undefined });

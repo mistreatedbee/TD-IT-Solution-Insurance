@@ -12,13 +12,27 @@ import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import React from 'react';
 import { Linking } from 'react-native';
-import { act, fireEvent, screen } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, screen } from '@testing-library/react-native';
 import { apiFetch } from '../../api/client';
 import { renderWithProviders } from '../../test/renderWithProviders';
 import { LaunchPermissionsPrompt } from '../LaunchPermissionsPrompt';
 import { REOFFER_INTERVAL_MS } from '../launchPermissions';
 import { registerPushTokenIfPermitted } from '../../notifications/push';
 import { sessionStore } from '../../auth/session-store';
+
+// Root cause of the CI flake (runs 44710280295, 45569887315): react-native exposes Modal (and its
+// dependency tree) through lazy getters, so the first render in this file transforms and evaluates
+// them — about 3.5 s with a cold transform cache, far more on a loaded CI runner — inside the first
+// test's 5 s budget. When that test timed out its render kept running into the next test, which
+// is why every later test failed too. The cost is now paid once in beforeAll (its own budget), the
+// purely decorative Backdrop (react-native-svg, background image) is mocked, and the per-test
+// timeout below is only a backstop.
+jest.setTimeout(20_000);
+
+jest.mock('../../design/Backdrop', () => {
+  const { View } = require('react-native');
+  return { Backdrop: () => <View testID="td-backdrop-mock" />, PATTERN_TILE: {} };
+});
 
 jest.mock('../../api/client', () => ({ apiFetch: jest.fn(async () => ({})) }));
 
@@ -62,17 +76,31 @@ async function press(label: string) {
   await flush();
 }
 
+const SIGNED_OUT = { status: 'signed-out', accessToken: null, sessionId: null } as const;
+
+async function clearStoredState() {
+  for (const key of [LOCATION_KEY, CAMERA_KEY, NOTIFICATIONS_KEY, CONSENT_KEY, LINKED_KEY]) {
+    await SecureStore.deleteItemAsync(key);
+  }
+  sessionStore.setState(SIGNED_OUT);
+}
+
 describe('LaunchPermissionsPrompt', () => {
   let openSettings: jest.SpyInstance;
   let nowSpy: jest.SpyInstance | null = null;
 
+  // Warm-up: one full render so the lazy react-native modules (Modal, Pressable, Text …) and the
+  // design components are loaded before any test's clock starts. Leaves no state behind.
+  beforeAll(async () => {
+    (ImagePicker.getCameraPermissionsAsync as jest.Mock).mockResolvedValue(askable);
+    await renderPrompt();
+    await screen.findByTestId('launch-permission-camera');
+    await cleanup();
+    await clearStoredState();
+  }, 60_000);
+
   beforeEach(async () => {
-    jest.clearAllMocks();
-    await SecureStore.deleteItemAsync(LOCATION_KEY);
-    await SecureStore.deleteItemAsync(CAMERA_KEY);
-    await SecureStore.deleteItemAsync(NOTIFICATIONS_KEY);
-    await SecureStore.deleteItemAsync(CONSENT_KEY);
-    await SecureStore.deleteItemAsync(LINKED_KEY);
+    await clearStoredState();
     (Location.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue(askable);
     (Location.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue(granted);
     (ImagePicker.getCameraPermissionsAsync as jest.Mock).mockResolvedValue(askable);
@@ -81,13 +109,17 @@ describe('LaunchPermissionsPrompt', () => {
     (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue(granted);
     (Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue(granted);
     openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+    // Clears call history only; the resolved values above stay.
     jest.clearAllMocks();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Unmount before restoring spies so no in-flight effect from this test reaches the next one.
+    await cleanup();
     openSettings.mockRestore();
     nowSpy?.mockRestore();
     nowSpy = null;
+    sessionStore.setState(SIGNED_OUT);
   });
 
   it('shows the location step first, with the plain-language wording', async () => {
@@ -196,10 +228,6 @@ describe('LaunchPermissionsPrompt', () => {
       (Location.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue(granted);
       (ImagePicker.getCameraPermissionsAsync as jest.Mock).mockResolvedValue(granted);
       (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue(askable);
-    });
-
-    afterEach(() => {
-      sessionStore.setState({ status: 'signed-out', accessToken: null, sessionId: null });
     });
 
     it('comes after location and camera, with honest copy', async () => {

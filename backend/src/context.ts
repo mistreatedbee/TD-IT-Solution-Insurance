@@ -7,6 +7,14 @@
  * equivalent context against fakes instead.
  */
 import type { Pool } from 'pg';
+import {
+  createCustomerVerificationNotesRepo,
+  type CustomerVerificationNotesRepo,
+} from './repositories/customer-verification-notes.js';
+import {
+  createVerificationNotificationService,
+  type VerificationNotificationService,
+} from './lib/verification-notification-service.js';
 import type { Env } from './config/env.js';
 import { getPgPool } from './db/pg.js';
 import { getKeyValueStore, type KeyValueStore } from './db/redis.js';
@@ -96,6 +104,7 @@ import {
   createLocationConsentLogRepo,
   type LocationConsentLogRepo,
 } from './repositories/location-consent-log.js';
+import { createLocateRequestsRepo, type LocateRequestsRepo } from './repositories/locate-requests.js';
 import { createAlertsRepo, type AlertsRepo } from './repositories/alerts.js';
 import { createProductEventsRepo, type ProductEventsRepo } from './repositories/product-events.js';
 import { createSupportCasesRepo, type SupportCasesRepo } from './repositories/support-cases.js';
@@ -140,10 +149,13 @@ export interface AppContext {
   policyActivation: PolicyActivationService;
   recoveryNotifications: RecoveryNotificationService;
   customerProfiles: CustomerProfilesRepo;
+  customerVerificationNotes: CustomerVerificationNotesRepo;
+  verificationNotifications: VerificationNotificationService;
   customerProfilePictures: CustomerProfilePicturesRepo;
   trackingDevices: TrackingDevicesRepo;
   locationEvents: LocationEventsRepo;
   locationConsentLog: LocationConsentLogRepo;
+  locateRequests: LocateRequestsRepo;
   alerts: AlertsRepo;
   productEvents: ProductEventsRepo;
   supportCases: SupportCasesRepo;
@@ -238,10 +250,18 @@ export function buildAppContext(env: Env): AppContext {
     policyActivation,
     recoveryNotifications,
     customerProfiles: createCustomerProfilesRepo(getDb(), auditLog),
+    customerVerificationNotes: createCustomerVerificationNotesRepo(getDb()),
+    verificationNotifications: createVerificationNotificationService({
+      env,
+      accounts,
+      notificationPreferences,
+      pushNotifications,
+    }),
     customerProfilePictures: createCustomerProfilePicturesRepo(getDb()),
     trackingDevices: createTrackingDevicesRepo(getDb()),
     locationEvents: createLocationEventsRepo(getDb()),
     locationConsentLog: createLocationConsentLogRepo(getDb()),
+    locateRequests: createLocateRequestsRepo(getDb()),
     alerts: createAlertsRepo(getDb()),
     productEvents: createProductEventsRepo(getDb()),
     supportCases: createSupportCasesRepo(getDb()),

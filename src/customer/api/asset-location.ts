@@ -17,6 +17,8 @@ export interface AssetLocationSummaryItem {
   assetType: string;
   lastLocation?: AssetLocationPoint | null;
   locationSource?: 'self_device' | null;
+  /** Opaque id of the phone this asset's location comes from (the "Locate now" target). */
+  reportingDeviceId?: string | null;
   /** Convenience copies of the last-location fields; the backend may send either shape. */
   recordedAt?: string | null;
   accuracy?: number | null;

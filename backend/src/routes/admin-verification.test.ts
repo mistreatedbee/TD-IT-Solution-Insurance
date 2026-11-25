@@ -18,7 +18,7 @@ import type {
   CustomerProfilesRepo,
 } from '../repositories/customer-profiles.js';
 
-function fakeEnv(): Env {
+function fakeEnv(overrides: Partial<Env> = {}): Env {
   return {
     nodeEnv: 'test',
     isProduction: false,
@@ -37,6 +37,8 @@ function fakeEnv(): Env {
     emailVerificationRedirectUrl: 'tditinsurance://verify-email',
     passwordResetRedirectUrl: 'tditinsurance://reset-password',
     invitationAcceptRedirectUrl: 'tditinsurance://invitations/accept',
+    kycApiEnabled: true,
+    ...overrides,
   };
 }
 
@@ -138,6 +140,25 @@ describe('admin verification routes', () => {
   // request to exercise the step-up gate itself.
   let sessionMfaVerifiedAt: Date | null = new Date();
   let sessionRevokedAt: Date | null = null;
+  let notifyCalls: unknown[] = [];
+  let notes: Array<{ id: string; accountId: string; authorAccountId: string; text: string; createdAt: Date }> = [];
+  let decisionRows: Array<{ id: string; decision: string; actorAccountId: string | null; createdAt: Date }> = [];
+  let auditShouldFail = false;
+
+  function customerToken(): string {
+    return signAccessToken(
+      {
+        sub: customerId,
+        user_type: 'customer',
+        mfa_required: false,
+        account_state: 'active',
+        partner_organization_id: null,
+        session_id: randomUUID(),
+      },
+      env.jwtSigningKeys,
+      env.jwtActiveKid,
+    ).token;
+  }
 
   function adminToken(): string {
     return signAccessToken(
@@ -161,6 +182,11 @@ describe('admin verification routes', () => {
     auditCalls = [];
     sessionMfaVerifiedAt = new Date();
     sessionRevokedAt = null;
+    notifyCalls = [];
+    notes = [];
+    decisionRows = [];
+    auditShouldFail = false;
+    env.kycApiEnabled = true;
 
     const ctx = {
       env,
@@ -197,12 +223,31 @@ describe('admin verification routes', () => {
       recoveryCases: { async listByAccount() { return []; } },
       auditLog: {
         async record(event: { accountId: string }) {
+          if (auditShouldFail) throw new Error('audit write failed');
           auditEvents.push(event.accountId);
           auditCalls.push({ kind: 'record', event });
         },
         async recordBulkDisclosure(event: { disclosedAccountIds: string[] }) {
           auditEvents.push(...event.disclosedAccountIds);
           auditCalls.push({ kind: 'bulk', event });
+        },
+        async listVerificationDecisions(accountId: string, limit: number) {
+          return accountId === customerId ? decisionRows.slice(0, limit) : [];
+        },
+      },
+      verificationNotifications: {
+        async notifyVerificationDecision(params: unknown) {
+          notifyCalls.push(params);
+        },
+      },
+      customerVerificationNotes: {
+        async create(input: { accountId: string; authorAccountId: string; text: string }) {
+          const note = { id: randomUUID().replace(/-/g, '').slice(0, 24), ...input, createdAt: new Date() };
+          notes.unshift(note);
+          return note;
+        },
+        async listByAccount(accountId: string, limit: number) {
+          return notes.filter((n) => n.accountId === accountId).slice(0, limit);
         },
       },
       alerts: {
@@ -490,6 +535,229 @@ describe('admin verification routes', () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as { profile: { verificationStatus: string } };
       expect(body.profile.verificationStatus).toBe('verified');
+    });
+  });
+
+  describe('Feature 023 Phase A — decision notice (email + push)', () => {
+    it('approve triggers the decision notice with no reason', async () => {
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 0 }),
+      });
+      expect(res.status).toBe(200);
+      expect(notifyCalls).toEqual([{ accountId: customerId, decision: 'verified', reasonCustomerSafe: null }]);
+    });
+
+    it('action required passes only the customer-safe reason', async () => {
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision: 'action_required',
+          rejectionReasonCustomerSafe: 'Please check your surname.',
+          expectedRevision: 0,
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(notifyCalls).toEqual([
+        { accountId: customerId, decision: 'action_required', reasonCustomerSafe: 'Please check your surname.' },
+      ]);
+    });
+
+    it('no notice is sent when the decision fails (stale revision)', async () => {
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 9 }),
+      });
+      expect(res.status).toBe(409);
+      expect(notifyCalls).toHaveLength(0);
+    });
+  });
+
+  describe('Feature 023 Phase A — history and internal notes', () => {
+    it('AC-A9: history lists past decisions with reviewer and time, plus notes, and is audited', async () => {
+      decisionRows = [
+        { id: randomUUID(), decision: 'action_required', actorAccountId: adminId, createdAt: new Date('2026-11-01T10:00:00Z') },
+      ];
+      await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification-notes`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Called customer, surname spelling confirmed.' }),
+      });
+      auditCalls = [];
+
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification-history`, {
+        headers: { Authorization: `Bearer ${adminToken()}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        decisions: Array<{ decision: string; decidedAt: string; reviewer: { email: string } }>;
+        notes: Array<{ text: string; author: { email: string } }>;
+      };
+      expect(body.decisions).toEqual([
+        expect.objectContaining({
+          decision: 'action_required',
+          decidedAt: '2026-11-01T10:00:00.000Z',
+          reviewer: { accountId: adminId, email: 'admin@example.com' },
+        }),
+      ]);
+      expect(body.notes).toHaveLength(1);
+      expect(body.notes[0]?.text).toBe('Called customer, surname spelling confirmed.');
+      expect(body.notes[0]?.author.email).toBe('admin@example.com');
+      expect(auditCalls).toEqual([
+        expect.objectContaining({
+          kind: 'record',
+          event: expect.objectContaining({ accountId: customerId, actorAccountId: adminId, eventType: 'privileged_data_access' }),
+        }),
+      ]);
+    });
+
+    it('adds an internal note (201), audited, without the note text in the audit row', async () => {
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification-notes`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: '  Secret internal remark  ' }),
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { note: { text: string } };
+      expect(body.note.text).toBe('Secret internal remark');
+      expect(notes).toHaveLength(1);
+      expect(auditCalls).toHaveLength(1);
+      expect(JSON.stringify(auditCalls)).not.toContain('Secret internal remark');
+    });
+
+    it.each([
+      ['empty', '   '],
+      ['too long', 'x'.repeat(2001)],
+    ])('rejects a %s note with 400 and stores nothing', async (_label, text) => {
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification-notes`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      expect(res.status).toBe(400);
+      expect(notes).toHaveLength(0);
+    });
+
+    it('404s for a subject that is not a customer', async () => {
+      const res = await fetch(`${baseUrl}/admin/accounts/${adminId}/profile/verification-notes`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'x' }),
+      });
+      expect(res.status).toBe(404);
+      const hist = await fetch(`${baseUrl}/admin/accounts/${adminId}/profile/verification-history`, {
+        headers: { Authorization: `Bearer ${adminToken()}` },
+      });
+      expect(hist.status).toBe(404);
+    });
+
+    it('a customer token cannot read history or add notes (403)', async () => {
+      const hist = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification-history`, {
+        headers: { Authorization: `Bearer ${customerToken()}` },
+      });
+      expect(hist.status).toBe(403);
+      const add = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification-notes`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'x' }),
+      });
+      expect(add.status).toBe(403);
+      expect(notes).toHaveLength(0);
+    });
+
+    it('AC-A8: the admin profile detail response never carries internal notes', async () => {
+      await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification-notes`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Do not leak me' }),
+      });
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile`, {
+        headers: { Authorization: `Bearer ${adminToken()}` },
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).not.toContain('Do not leak me');
+    });
+  });
+
+  describe('Stage 8 fixes (KYC-1, KYC-2, KYC-4, KYC-5)', () => {
+    it('KYC-1: a failed audit write fails the decision and leaves the profile unchanged (fail-closed)', async () => {
+      auditShouldFail = true;
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 0 }),
+      });
+      expect(res.status).toBe(500);
+      const profile = await customerProfiles.findByAccountId(customerId);
+      expect(profile?.verificationStatus).toBe('pending_review');
+      expect(notifyCalls).toHaveLength(0);
+    });
+
+    it('KYC-1: audit rows are written before the decision is applied', async () => {
+      const order: string[] = [];
+      const originalReview = customerProfiles.reviewVerification.bind(customerProfiles);
+      customerProfiles.reviewVerification = async (...args) => {
+        order.push(`review-after-${auditCalls.length}-audit-rows`);
+        return originalReview(...args);
+      };
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 0 }),
+      });
+      expect(res.status).toBe(200);
+      expect(order).toEqual(['review-after-2-audit-rows']);
+    });
+
+    it('KYC-1: a stale revision is refused before any decision audit row is written', async () => {
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile/verification`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'verified', expectedRevision: 3 }),
+      });
+      expect(res.status).toBe(409);
+      expect(auditCalls).toHaveLength(0);
+    });
+
+    it.each([
+      ['GET', '/admin/verification-requests'],
+      ['GET', '/admin/verification-requests/count'],
+      ['PATCH', '/admin/accounts/CUSTOMER/profile/verification'],
+      ['GET', '/admin/accounts/CUSTOMER/profile/verification-history'],
+      ['POST', '/admin/accounts/CUSTOMER/profile/verification-notes'],
+    ])('KYC-2: %s %s 404s when KYC_API_ENABLED is off', async (method, path) => {
+      env.kycApiEnabled = false;
+      const res = await fetch(`${baseUrl}${path.replace('CUSTOMER', customerId)}`, {
+        method,
+        headers: { Authorization: `Bearer ${adminToken()}`, 'Content-Type': 'application/json' },
+        ...(method === 'GET' ? {} : { body: JSON.stringify({ decision: 'verified', expectedRevision: 0, text: 'x' }) }),
+      });
+      expect(res.status).toBe(404);
+      expect(auditCalls).toHaveLength(0);
+    });
+
+    it('KYC-4: the admin detail view masks the emergency contact phone to the last 4 digits', async () => {
+      await customerProfiles.updateForAccount(customerId, {
+        emergencyContact: { name: 'Sam', relationship: 'brother', phone: '+27821234567' },
+      });
+      const res = await fetch(`${baseUrl}/admin/accounts/${customerId}/profile`, {
+        headers: { Authorization: `Bearer ${adminToken()}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { profile: { emergencyContact: { phone: string } } };
+      expect(body.profile.emergencyContact.phone).toBe('*******4567');
+      expect(JSON.stringify(body)).not.toContain('821234567');
+    });
+
+    it('KYC-5: the admin detail view 404s for a non-customer account even if it has a profile', async () => {
+      await customerProfiles.getOrCreateForAccount(adminId);
+      const res = await fetch(`${baseUrl}/admin/accounts/${adminId}/profile`, {
+        headers: { Authorization: `Bearer ${adminToken()}` },
+      });
+      expect(res.status).toBe(404);
     });
   });
 });

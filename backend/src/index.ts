@@ -48,6 +48,7 @@ import { createAdminAuditLogRouter } from './routes/admin-audit-log.js';
 import { createPlansRouter } from './routes/plans.js';
 import { createPoliciesRouter } from './routes/policies.js';
 import { createSubscriptionRouter } from './routes/subscription.js';
+import { createLocateRequestsRouter, isRemoteLocateFullyEnabled } from './routes/locate-requests.js';
 import { createAssetsRouter } from './routes/assets.js';
 import { createRecoveryRouter } from './routes/recovery.js';
 import { createSecurityCasesRouter } from './routes/security-cases.js';
@@ -185,6 +186,9 @@ async function main(): Promise<void> {
   v1.use(createPoliciesRouter(ctx));
   v1.use(createSubscriptionRouter(ctx));
   v1.use(createAssetsRouter(ctx));
+  // "Locate now" (owner-test only): literally unmounted unless REMOTE_LOCATE_ENABLED,
+  // LOCATION_INGESTION_ENABLED and LOCATION_CONSENT_ENFORCED are all "true" (Stage 8 C-1).
+  if (isRemoteLocateFullyEnabled(env)) v1.use(createLocateRequestsRouter(ctx));
   v1.use(createRecoveryRouter(ctx));
   v1.use(createSecurityCasesRouter(ctx));
   v1.use(createInternalRouter(ctx));

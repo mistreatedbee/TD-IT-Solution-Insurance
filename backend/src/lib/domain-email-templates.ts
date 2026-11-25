@@ -334,6 +334,57 @@ export function buildAccountLockedEmail(): { subject: string; html: string; preh
   };
 }
 
+export type VerificationDecisionValue = 'verified' | 'rejected' | 'action_required';
+
+/**
+ * Feature 023 Phase A item 3 / §6 — identity verification decision notice. Carries only
+ * the decision and the admin's customer-safe reason (never the ID number, internal note,
+ * reviewer identity, or any document detail — C-013-6 / §5.2).
+ */
+export function buildVerificationDecisionEmail(params: {
+  decision: VerificationDecisionValue;
+  reasonCustomerSafe: string | null;
+}): { subject: string; html: string; preheader: string } {
+  const copy = {
+    verified: {
+      subject: 'Your identity is verified',
+      title: 'Identity verified',
+      lead: 'Good news: our team has verified your identity. Your account now has full protection and recovery support.',
+      cta: 'Open the app',
+    },
+    action_required: {
+      subject: 'Action needed on your identity verification',
+      title: 'Please update your details',
+      lead: 'Our team reviewed your identity details and needs a change before we can verify you. Update your details in the app and submit again.',
+      cta: 'Update my details',
+    },
+    rejected: {
+      subject: 'Update on your identity verification',
+      title: 'We could not verify your identity',
+      lead: 'Our team reviewed your identity details and could not verify them. You can review your details in the app.',
+      cta: 'Review my details',
+    },
+  }[params.decision];
+  const reasonHtml =
+    params.decision !== 'verified' && params.reasonCustomerSafe
+      ? `<p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#14202D;"><strong>Reason:</strong> ${escapeHtml(params.reasonCustomerSafe)}</p>`
+      : '';
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">${escapeHtml(copy.lead)}</p>
+  ${reasonHtml}<p style="margin:0;font-size:14px;color:#4A5A6C;">If you did not expect this email, contact support from the app.</p>`;
+
+  return {
+    preheader: copy.title,
+    subject: copy.subject,
+    html: wrapBrandedEmail({
+      preheader: copy.title,
+      title: copy.title,
+      bodyHtml,
+      ctaLabel: copy.cta,
+      ctaUrl: `${NOTIFICATION_BRAND.siteUrl}`,
+    }),
+  };
+}
+
 export function buildWelcomeEmail(): { subject: string; html: string; preheader: string } {
   const preheader = `Welcome to ${NOTIFICATION_BRAND.name}.`;
   const bodyHtml = `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#14202D;">
@@ -670,7 +721,15 @@ export function buildRecoveryCaseClosedEmail(params: {
  * change. A security notice - sent regardless of the customer's email preference. Content is
  * deliberately minimal: what changed, when, which device. NEVER coordinates, an address, the
  * contact's name, or more than the last 3 digits of the contact's phone. */
-export type ProtectionChangeNoticeAction = 'asset_removed' | 'emergency_contact_changed' | 'reauth_exhausted';
+export type ProtectionChangeNoticeAction =
+  | 'asset_removed'
+  | 'emergency_contact_changed'
+  | 'reauth_exhausted'
+  // INC-001 A-7 / ADR-0009 SDL-9: out-of-band notice on location opt-in / opt-out.
+  | 'location_tracking_enabled'
+  | 'location_tracking_disabled'
+  // "Locate now" (owner-test): first remote locate request of the day for the account.
+  | 'location_locate_requested';
 
 export function maskPhoneLast3(phone: string): string {
   const digits = phone.replace(/\D/g, '');
@@ -698,6 +757,18 @@ export function buildProtectionChangedEmail(params: {
       what = `Your emergency contact was changed${
         params.contactPhoneMasked ? ` (new number ending ${escapeHtml(params.contactPhoneMasked)})` : ''
       }.`;
+      break;
+    case 'location_tracking_enabled':
+      title = 'Location tracking turned on';
+      what = `Location tracking was turned on for <strong>${escapeHtml(params.assetDisplayName ?? 'an asset')}</strong> on ${device}. That phone can now send its location to TD Insurance.`;
+      break;
+    case 'location_tracking_disabled':
+      title = 'Location tracking turned off';
+      what = `Location tracking was turned off for <strong>${escapeHtml(params.assetDisplayName ?? 'an asset')}</strong>. No further location reports are accepted for it.`;
+      break;
+    case 'location_locate_requested':
+      title = 'Your phone was asked for its location';
+      what = `Someone signed in to your account on ${device} asked <strong>${escapeHtml(params.assetDisplayName ?? 'your phone')}</strong> to send its current location. We send this email for the first request each day.`;
       break;
     default:
       title = 'Too many incorrect password attempts';
