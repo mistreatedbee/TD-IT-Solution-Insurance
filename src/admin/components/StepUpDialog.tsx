@@ -8,15 +8,17 @@
  * properties ADR-0012 §2.4 / RR-3 rely on. Pair with `useStepUpRetry` from
  * `src/admin/hooks/useStepUpRetry.ts` for the catch/retry bookkeeping.
  *
- * New shared design-system-adjacent component — per house rules ("new
- * one-off UI components require design-system-manager sign-off"), this is
- * pending that review before merge. No shared `Modal` primitive exists in
- * `src/components/*` yet (same gap noted in the original `InviteStaffPage`
- * header), so this remains a page-independent but still bespoke
- * fixed-position overlay built from existing primitives
+ * Shared design-system-adjacent component. No shared `Modal` primitive
+ * exists in `src/components/*` yet (same gap noted in the original
+ * `InviteStaffPage` header), so this remains a page-independent but still
+ * bespoke fixed-position overlay built from existing primitives
  * (`Card`, `Input`, `Button`, `SectionHeading`) rather than a new overlay
- * primitive — flagged to `design-system-manager` as a candidate for
- * promotion to `src/components/*` once a second non-admin consumer exists.
+ * primitive. A non-admin consumer now exists (customer web "Locate now") and
+ * design-system-manager has approved promotion to `src/components/*`, with
+ * conditions. FOLLOW-UP (not done here): the move needs the default
+ * challenge/verify calls (`../api/step-up`, admin API) and `InlineAlert`
+ * (`src/dashboard/components/ui`) decoupled from this file first, so it is
+ * not a trivial `git mv`.
  *
  * 2026-11-25 (Locate now step-up): generalised, backward-compatibly, for its
  * first non-admin consumer - the customer web "Locate now" action, which the
@@ -31,7 +33,7 @@
  * the password route answers `MFA_STEP_UP_REQUIRED` (anti-downgrade) the
  * dialog switches back to the authenticator-code step.
  */
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Button, Card, Input, SectionHeading } from '../../components';
 import { InlineAlert } from '../../dashboard/components/ui';
 import { ApiError } from '../../dashboard/api/errors';
@@ -100,17 +102,28 @@ export function StepUpDialog({
   passwordDescription = DEFAULT_PASSWORD_DESCRIPTION,
 }: StepUpDialogProps) {
   const [password, setPassword] = useState('');
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Move focus into the dialog on open; put it back where it was on close.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, []);
   const [phase, setPhase] = useState<StepUpPhase>('requesting-challenge');
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
   const [expired, setExpired] = useState(false);
+  const [challengeFailed, setChallengeFailed] = useState(false);
 
   const startChallenge = useCallback(async () => {
     setPhase('requesting-challenge');
     setError(null);
     setExpired(false);
+    setChallengeFailed(false);
     try {
       const { stepUpChallengeToken } = await requestChallenge();
       setChallengeToken(stepUpChallengeToken);
@@ -122,6 +135,9 @@ export function StepUpDialog({
       }
       setError(mapUserFacingError(err, { context: 'mfa' }));
       setExpired(true);
+      setChallengeFailed(true);
+      // Leave the "preparing" phase so the Retry button below is shown.
+      setPhase('awaiting-code');
     }
   }, [requestChallenge, passwordReauth]);
 
@@ -174,6 +190,7 @@ export function StepUpDialog({
     setPhase('verifying-password');
     try {
       const result = await passwordReauth(password);
+      setPassword(''); // S-6: never keep the password in state once it has been used.
       onVerified(result);
     } catch (err) {
       setPassword('');
@@ -204,13 +221,17 @@ export function StepUpDialog({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-labelledby={titleId}
+      tabIndex={-1}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
       <Card padding="lg" interactive={false} className="w-full max-w-sm">
-        <SectionHeading as="h2" title={title} size="md" className="mb-1" />
+        <div id={titleId}>
+          <SectionHeading as="h2" title={title} size="md" className="mb-1" />
+        </div>
         <p className="mb-4 text-sm text-td-ink-muted">{passwordStep ? passwordDescription : description}</p>
 
         {error ? (
@@ -242,7 +263,7 @@ export function StepUpDialog({
           <p className="text-sm text-td-ink-muted">Preparing verification…</p>
         ) : expired ? (
           <Button fullWidth onClick={() => void startChallenge()}>
-            Get a new code prompt
+            {challengeFailed ? 'Retry' : 'Get a new code prompt'}
           </Button>
         ) : (
           <form className="space-y-4" onSubmit={onSubmitCode}>

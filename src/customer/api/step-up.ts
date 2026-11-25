@@ -1,7 +1,7 @@
 /**
  * Customer protection step-up (ADR-0020 / Feature 021 stage b; backend `assertProtectionStepUp`
  * in backend/src/lib/step-up.ts). A guarded customer action answers 401 `STEP_UP_REQUIRED` unless
- * the CURRENT session re-proved presence in the last ~10 minutes, by either:
+ * the CURRENT session re-proved presence in the last 5 minutes (PROTECTION_CHANGE_STEP_UP_WINDOW_SECONDS), by either:
  *   - TOTP: `POST /auth/mfa/step-up/challenge` then `POST /auth/mfa/step-up/verify`
  *     (the challenge answers 409 `MFA_NOT_ENROLLED` when the account has no authenticator app), or
  *   - password: `POST /auth/reauth/password` (customers with NO verified TOTP factor only; an
