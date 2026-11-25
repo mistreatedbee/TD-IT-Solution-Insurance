@@ -11,6 +11,12 @@ import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { ProtectionMapCanvas } from '../../customer/map/ProtectionMapCanvas';
 import { isRemoteLocateEnabled } from '../../lib/features';
 import { locateNowMessage, useLocateNow } from '../../customer/tracking/useLocateNow';
+import { StepUpDialog } from '../../admin/components/StepUpDialog';
+import {
+  reauthWithPassword,
+  requestCustomerStepUpChallenge,
+  verifyCustomerStepUp,
+} from '../../customer/api/step-up';
 
 type MapFilter = 'all' | 'on_map';
 
@@ -233,17 +239,35 @@ export function CustomerProtectionMapPage() {
 
 /** "Locate now" (owner-test): ask the bound phone for a fresh fix, then refresh the map. */
 function LocateNow({ assetId, onAnswered }: { assetId: string; onAnswered: () => Promise<void> }) {
-  const { state, locate } = useLocateNow(assetId, onAnswered);
+  const { state, locate, stepUpOpen, onStepUpVerified, onStepUpCancel } = useLocateNow(assetId, onAnswered);
   const message = locateNowMessage(state);
   return (
     <div className="mt-4 flex flex-wrap items-center gap-3">
-      <Button variant="secondary" size="sm" onClick={() => void locate()} disabled={state.kind === 'asking'}>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => void locate()}
+        disabled={state.kind === 'asking' || stepUpOpen}
+      >
         Locate now
       </Button>
       {message ? (
         <p role="status" aria-live="polite" className="text-sm text-text-secondary">
           {message}
         </p>
+      ) : null}
+      {stepUpOpen ? (
+        <StepUpDialog
+          title="Confirm it's you"
+          description="Confirm it's you to locate this device. Enter the 6-digit code from your authenticator app."
+          passwordDescription="Confirm it's you to locate this device. Enter your account password."
+          submitLabel="Confirm and locate"
+          requestChallenge={requestCustomerStepUpChallenge}
+          verify={verifyCustomerStepUp}
+          passwordReauth={reauthWithPassword}
+          onVerified={() => void onStepUpVerified()}
+          onCancel={onStepUpCancel}
+        />
       ) : null}
     </div>
   );

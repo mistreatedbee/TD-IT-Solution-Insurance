@@ -54,6 +54,21 @@ describe('customer apiFetch — STEP_UP_REQUIRED vs session-expiry 401 handling'
     expect(calledUrls.some((url) => url.includes('/session/refresh'))).toBe(false);
   });
 
+  it('does not refresh and re-send a wrong password (INVALID_CREDENTIALS) on /auth/reauth/password', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(401, {
+        error: { code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password.', details: { attemptsRemaining: 4 } },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      apiFetch('/auth/reauth/password', { method: 'POST', body: { password: 'wrong' } }),
+    ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS', status: 401 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('still refreshes and retries on a genuine session-expiry 401 (regression guard)', async () => {
     const fetchMock = vi
       .fn()
