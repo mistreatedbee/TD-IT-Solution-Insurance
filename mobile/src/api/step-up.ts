@@ -3,7 +3,7 @@
  *
  * The server guards some customer actions with `assertProtectionStepUp`
  * (backend/src/lib/step-up.ts): the CURRENT session must have a fresh `mfaVerifiedAt` OR
- * `passwordReauthAt` (protection-change window, about 10 minutes). A miss is
+ * `passwordReauthAt` (protection-change window, 5 minutes). A miss is
  * `401 STEP_UP_REQUIRED`. Two ways to satisfy it, both on the current session, neither
  * mints tokens (backend/src/routes/step-up.ts):
  *  - TOTP: `POST /auth/mfa/step-up/challenge` then `POST /auth/mfa/step-up/verify`.

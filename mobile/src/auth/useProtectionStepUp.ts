@@ -9,7 +9,7 @@
  *  - `onStepUpCancel()` closes the prompt and sends nothing.
  * Render `ProtectionStepUpSheet` with `visible={stepUpOpen}`.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/errors';
 
 export function isStepUpRequiredError(err: unknown): boolean {
@@ -27,7 +27,9 @@ export function useProtectionStepUp<TArgs extends unknown[], TResult>(
   action: (...args: TArgs) => Promise<TResult>,
 ): UseProtectionStepUpResult<TArgs, TResult> {
   const actionRef = useRef(action);
-  actionRef.current = action;
+  useEffect(() => {
+    actionRef.current = action;
+  }, [action]);
   const pendingArgsRef = useRef<TArgs | null>(null);
   const [stepUpOpen, setStepUpOpen] = useState(false);
 

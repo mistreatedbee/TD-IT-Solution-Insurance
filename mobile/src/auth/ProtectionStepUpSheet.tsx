@@ -9,11 +9,15 @@
  * Flow: on open it asks for a TOTP challenge. An account with a verified authenticator gets a
  * 6-digit code field; an account without one (`MFA_NOT_ENROLLED`) gets a password field instead.
  * If the password route says the account has a factor after all (`MFA_STEP_UP_REQUIRED`) it
- * switches to the code. Nothing here stores the password or the code.
+ * switches to the code. Nothing here stores the password or the code. A security prompt is not
+ * dismissed by tapping outside it; only Cancel (or the Android back button) closes it.
+ *
+ * The body is mounted only while `visible`, so every open starts from fresh state (no reset
+ * effects). The confirmation stays valid for 5 minutes on the server.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ApiError } from '../api/errors';
+import { KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, View } from 'react-native';
+import { ApiError, SessionTerminatedError } from '../api/errors';
 import { reauthWithPassword, requestStepUpChallenge, verifyStepUp } from '../api/step-up';
 import { Button, GlassCard, TextField } from '../design';
 import { PasswordField } from '../screens/auth/AuthScaffold';
@@ -35,14 +39,14 @@ type Mode =
   | { kind: 'loading' }
   | { kind: 'mfa'; token: string }
   | { kind: 'password' }
-  | { kind: 'unavailable' };
+  | { kind: 'unavailable'; message: string };
 
 export interface ProtectionStepUpSheetProps {
   visible: boolean;
   /** Called after the server accepted the code or password. Retry the protected action here. */
   onVerified: () => void;
   onCancel: () => void;
-  /** One line saying what is being confirmed, e.g. "Locate now asks your other phone…". */
+  /** One line saying what is being confirmed. */
   reason?: string;
 }
 
@@ -50,7 +54,35 @@ function codeOf(err: unknown): string | null {
   return err instanceof ApiError ? err.code : null;
 }
 
+/** Too many failures: the server rate-limits, or revokes the session (401 / session ended). */
+function isLockout(err: unknown): boolean {
+  if (err instanceof SessionTerminatedError) return true;
+  const code = codeOf(err);
+  return code === 'RATE_LIMITED' || code === 'UNAUTHORIZED' || code === 'REFRESH_TOKEN_INVALID';
+}
+
+async function fetchMode(): Promise<Mode> {
+  try {
+    const { stepUpChallengeToken } = await requestStepUpChallenge();
+    return { kind: 'mfa', token: stepUpChallengeToken };
+  } catch (err) {
+    if (codeOf(err) === 'MFA_NOT_ENROLLED') return { kind: 'password' };
+    return {
+      kind: 'unavailable',
+      message: isLockout(err) ? STEP_UP_SHEET_COPY.tooMany : STEP_UP_SHEET_COPY.unavailable,
+    };
+  }
+}
+
 export function ProtectionStepUpSheet({ visible, onVerified, onCancel, reason }: ProtectionStepUpSheetProps) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
+      {visible ? <SheetBody onVerified={onVerified} onCancel={onCancel} reason={reason} /> : null}
+    </Modal>
+  );
+}
+
+function SheetBody({ onVerified, onCancel, reason }: Omit<ProtectionStepUpSheetProps, 'visible'>) {
   const t = useDesignTokens();
   const styles = useMemo(
     () =>
@@ -68,27 +100,22 @@ export function ProtectionStepUpSheet({ visible, onVerified, onCancel, reason }:
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
-  const startChallenge = useCallback(async () => {
-    setMode({ kind: 'loading' });
-    setValue('');
-    try {
-      const { stepUpChallengeToken } = await requestStepUpChallenge();
-      setMode({ kind: 'mfa', token: stepUpChallengeToken });
-    } catch (err) {
-      if (codeOf(err) === 'MFA_NOT_ENROLLED') {
-        setMode({ kind: 'password' });
-        return;
-      }
-      setError(codeOf(err) === 'RATE_LIMITED' ? STEP_UP_SHEET_COPY.tooMany : STEP_UP_SHEET_COPY.unavailable);
-      setMode({ kind: 'unavailable' });
-    }
+  // First challenge on open. State is only set after the request resolves (never synchronously).
+  useEffect(() => {
+    let cancelled = false;
+    void fetchMode().then((next) => {
+      if (!cancelled) setMode(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    if (!visible) return;
-    setError(undefined);
-    void startChallenge();
-  }, [visible, startChallenge]);
+  const restart = useCallback(async () => {
+    setMode({ kind: 'loading' });
+    setValue('');
+    setMode(await fetchMode());
+  }, []);
 
   const submit = useCallback(async () => {
     if (busy) return;
@@ -107,7 +134,7 @@ export function ProtectionStepUpSheet({ visible, onVerified, onCancel, reason }:
     } catch (err) {
       const code = codeOf(err);
       if (code === 'MFA_STEP_UP_REQUIRED' || code === 'MFA_CHALLENGE_EXPIRED') {
-        await startChallenge();
+        await restart();
       } else if (code === 'MFA_CHALLENGE_INVALID') {
         setValue('');
         setError(STEP_UP_SHEET_COPY.wrongCode);
@@ -119,29 +146,25 @@ export function ProtectionStepUpSheet({ visible, onVerified, onCancel, reason }:
             ? `${STEP_UP_SHEET_COPY.wrongPassword} ${left} ${left === 1 ? 'try' : 'tries'} left.`
             : STEP_UP_SHEET_COPY.wrongPassword,
         );
-      } else if (code === 'RATE_LIMITED') {
-        setError(STEP_UP_SHEET_COPY.tooMany);
+      } else if (isLockout(err)) {
+        // Re-auth lockout: the server ended this session. Say so plainly; no retry is offered.
+        setValue('');
+        setMode({ kind: 'unavailable', message: STEP_UP_SHEET_COPY.tooMany });
       } else {
         setError(STEP_UP_SHEET_COPY.unavailable);
       }
     } finally {
       setBusy(false);
     }
-  }, [busy, mode, value, onVerified, startChallenge]);
-
-  const cancel = useCallback(() => {
-    setValue('');
-    setError(undefined);
-    onCancel();
-  }, [onCancel]);
+  }, [busy, mode, value, onVerified, restart]);
 
   const canSubmit =
     (mode.kind === 'mfa' && value.length === OTP_LENGTH) || (mode.kind === 'password' && value.length > 0);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={cancel}>
-      <Pressable style={styles.backdrop} onPress={cancel} accessible={false}>
-        <Pressable onPress={() => undefined} accessible={false}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.backdrop}>
+        <View accessibilityViewIsModal>
           <GlassCard variant="solid" testID="protection-step-up-sheet">
             <Text style={styles.title} accessibilityRole="header">
               {STEP_UP_SHEET_COPY.title}
@@ -160,6 +183,7 @@ export function ProtectionStepUpSheet({ visible, onVerified, onCancel, reason }:
                   textContentType="oneTimeCode"
                   autoComplete="one-time-code"
                   maxLength={OTP_LENGTH}
+                  autoFocus
                   error={error}
                 />
               </View>
@@ -167,17 +191,26 @@ export function ProtectionStepUpSheet({ visible, onVerified, onCancel, reason }:
             {mode.kind === 'password' ? (
               <View>
                 <Text style={styles.body}>{STEP_UP_SHEET_COPY.passwordBody}</Text>
-                <PasswordField testID="step-up-password" label="Password" value={value} onChangeText={setValue} error={error} />
+                <PasswordField
+                  testID="step-up-password"
+                  label="Password"
+                  value={value}
+                  onChangeText={setValue}
+                  autoFocus
+                  error={error}
+                />
               </View>
             ) : null}
-            {mode.kind === 'unavailable' && error ? (
+            {mode.kind === 'unavailable' ? (
               <Text accessibilityRole="alert" style={styles.body}>
-                {error}
+                {mode.message}
               </Text>
             ) : null}
             <View style={styles.actions}>
               {mode.kind === 'unavailable' ? (
-                <Button label="Try again" onPress={() => void startChallenge()} />
+                mode.message === STEP_UP_SHEET_COPY.tooMany ? null : (
+                  <Button label="Try again" onPress={() => void restart()} />
+                )
               ) : (
                 <Button
                   label="Confirm"
@@ -187,11 +220,11 @@ export function ProtectionStepUpSheet({ visible, onVerified, onCancel, reason }:
                   onPress={() => void submit()}
                 />
               )}
-              <Button label="Cancel" variant="glass" testID="step-up-cancel" onPress={cancel} />
+              <Button label="Cancel" variant="glass" testID="step-up-cancel" onPress={onCancel} />
             </View>
           </GlassCard>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }

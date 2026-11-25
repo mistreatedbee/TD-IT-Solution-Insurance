@@ -14,6 +14,15 @@ jest.mock('../../api/step-up', () => ({
   verifyStepUp: jest.fn(),
   reauthWithPassword: jest.fn(),
 }));
+jest.mock('react-native/Libraries/Components/Keyboard/KeyboardAvoidingView', () => {
+  const { View } = jest.requireActual('react-native');
+  const MockKav = ({ children, ...rest }: { children: React.ReactNode }) => (
+    <View testID="step-up-keyboard-avoiding" {...rest}>
+      {children}
+    </View>
+  );
+  return { __esModule: true, default: MockKav };
+});
 const challenge = requestStepUpChallenge as jest.Mock;
 const verify = verifyStepUp as jest.Mock;
 const reauth = reauthWithPassword as jest.Mock;
@@ -75,5 +84,42 @@ describe('ProtectionStepUpSheet', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(verify).not.toHaveBeenCalled();
     expect(reauth).not.toHaveBeenCalled();
+  });
+
+  it('says "too many attempts" when the password re-auth locks the session out', async () => {
+    challenge.mockRejectedValue(apiErr(409, 'MFA_NOT_ENROLLED'));
+    reauth.mockRejectedValue(apiErr(401, 'UNAUTHORIZED'));
+    const onVerified = jest.fn();
+    await renderWithProviders(<ProtectionStepUpSheet visible onVerified={onVerified} onCancel={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText(STEP_UP_SHEET_COPY.passwordBody)).toBeTruthy());
+    await fireEvent.changeText(screen.getByLabelText('Password'), 'x');
+    await fireEvent.press(screen.getByTestId('step-up-confirm'));
+    await waitFor(() => expect(screen.getByText(STEP_UP_SHEET_COPY.tooMany)).toBeTruthy());
+    expect(screen.queryByText(STEP_UP_SHEET_COPY.unavailable)).toBeNull();
+    expect(screen.queryByText('Try again')).toBeNull();
+    expect(onVerified).not.toHaveBeenCalled();
+  });
+
+  it('says "too many attempts" when the challenge itself is rate limited', async () => {
+    challenge.mockRejectedValue(apiErr(429, 'RATE_LIMITED'));
+    await renderWithProviders(<ProtectionStepUpSheet visible onVerified={jest.fn()} onCancel={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText(STEP_UP_SHEET_COPY.tooMany)).toBeTruthy());
+  });
+
+  it('focuses the field, is modal for screen readers and avoids the keyboard', async () => {
+    challenge.mockResolvedValue({ stepUpChallengeToken: 'tok', expiresIn: 300 });
+    await renderWithProviders(<ProtectionStepUpSheet visible onVerified={jest.fn()} onCancel={jest.fn()} />);
+    await waitFor(() => expect(screen.getByLabelText('6-digit code').props.autoFocus).toBe(true));
+    expect(screen.getByTestId('step-up-keyboard-avoiding')).toBeTruthy();
+    expect(JSON.stringify(screen.toJSON())).toContain('"accessibilityViewIsModal":true');
+  });
+
+  it('does not dismiss when the backdrop is tapped (Cancel is the only way out)', async () => {
+    challenge.mockResolvedValue({ stepUpChallengeToken: 'tok', expiresIn: 300 });
+    const onCancel = jest.fn();
+    await renderWithProviders(<ProtectionStepUpSheet visible onVerified={jest.fn()} onCancel={onCancel} />);
+    await waitFor(() => expect(screen.getByText(STEP_UP_SHEET_COPY.mfaBody)).toBeTruthy());
+    expect(screen.queryByLabelText('Dismiss')).toBeNull();
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });
