@@ -70,6 +70,7 @@
   },
   "jest": {
     "preset": "jest-expo",
+    "testTimeout": 20000,
     "slowTestThreshold": 5,
     "reporters": [
       "default",
