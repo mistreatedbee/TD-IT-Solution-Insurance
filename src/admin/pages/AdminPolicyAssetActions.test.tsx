@@ -22,6 +22,13 @@ vi.mock('../api/admin-data', () => ({
   setAdminAssetLegalHold: vi.fn(),
   listAdminPlans: vi.fn().mockResolvedValue({ data: [] }),
   listAdminAssets: vi.fn().mockResolvedValue({ data: [], pagination: { nextCursor: null, hasMore: false } }),
+  listAdminPolicies: vi.fn().mockResolvedValue({ data: [], pagination: { nextCursor: null, hasMore: false } }),
+}));
+vi.mock('../api/admin-locations', () => ({
+  getAdminAssetLocation: vi.fn().mockResolvedValue({
+    assetId: 'asset-1', accountId: 'acct-1', trackingOff: false, trackingOffReason: null, source: null, freshness: 'never',
+    lastLocation: null, history: [], trackingDevice: null,
+  }),
 }));
 vi.mock('../api/admin-plans', () => ({
   listAdminPlans: vi.fn().mockResolvedValue({ data: [] }),
