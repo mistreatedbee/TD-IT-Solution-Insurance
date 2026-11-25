@@ -129,6 +129,9 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       err instanceof ApiError &&
       err.status === 401 &&
       err.code !== 'STEP_UP_REQUIRED' &&
+      // A wrong password on an authenticated route (e.g. /auth/reauth/password) is not an
+      // expired token: refreshing and re-sending it would count the same failure twice.
+      err.code !== 'INVALID_CREDENTIALS' &&
       path !== '/session/refresh';
     if (!shouldRefresh) throw err;
     await refreshAccessToken();
