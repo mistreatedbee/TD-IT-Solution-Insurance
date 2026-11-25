@@ -184,6 +184,16 @@ export interface Env {
   locationExtendedTriggersEnabled?: boolean;
 
   /**
+   * "Locate now" (owner-test only, OWNER-EXCEPTION-2026-11-17): fail-closed switch for
+   * `POST/GET /v1/assets/:assetId/locate-request*`, the phone's pending-request check-in, and
+   * the `remote_request` report trigger. `true` only when `REMOTE_LOCATE_ENABLED` is exactly
+   * `"true"`. When off the router is not mounted and `remote_request` reports are refused with
+   * VALIDATION_ERROR. Does not bypass locationIngestionEnabled / locationExtendedTriggersEnabled /
+   * locationConsentEnforced. Optional so hand-built `Env` fixtures compile; `undefined` = off.
+   */
+  remoteLocateEnabled?: boolean;
+
+  /**
    * INC-001 A-7 / ADR-0009 SDL-4: when on, `POST /v1/assets/:assetId/location-report` refuses a
    * report (403 CONSENT_REQUIRED) unless the latest `location_consent_events` row for the
    * account + asset is an active grant from the reporting session's device covering the
@@ -574,6 +584,18 @@ export function loadEnv(): Env {
     );
   }
 
+  // "Locate now" (owner-test): same "true"-only, fail-closed convention.
+  const remoteLocateEnabledRaw = process.env.REMOTE_LOCATE_ENABLED;
+  const remoteLocateEnabled = remoteLocateEnabledRaw === 'true';
+  if (remoteLocateEnabledRaw !== undefined && !remoteLocateEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[config/env] REMOTE_LOCATE_ENABLED is set to an unrecognized value ` +
+        `("${remoteLocateEnabledRaw}"). Treating as disabled (fail-closed). ` +
+        'Set it to exactly "true" to enable, or unset it to disable.',
+    );
+  }
+
   // INC-001 A-7: server-side consent enforcement + opt-in step-up. Same "true"-only convention.
   const locationConsentEnforced = process.env.LOCATION_CONSENT_ENFORCED === 'true';
   const locationConsentStepUpEnforced = process.env.LOCATION_CONSENT_STEP_UP_ENFORCED === 'true';
@@ -765,6 +787,7 @@ export function loadEnv(): Env {
     expoAccessToken,
     locationIngestionEnabled,
     locationExtendedTriggersEnabled,
+    remoteLocateEnabled,
     locationConsentEnforced,
     locationConsentStepUpEnforced,
     signupExistingAccountEmailEnabled,

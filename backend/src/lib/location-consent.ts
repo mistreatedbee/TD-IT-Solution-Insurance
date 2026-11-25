@@ -11,8 +11,16 @@ import type { LocationEventTrigger } from '../repositories/location-events.js';
 import type { LocationConsentEventDocument, LocationConsentScope } from '../repositories/location-consent-log.js';
 
 
-/** Which consent scope a report trigger needs. Unknown/omitted triggers need `foreground`. */
-export function scopeForTrigger(trigger: LocationEventTrigger | undefined): LocationConsentScope {
+/**
+ * Which consent scope a report trigger needs. Unknown/omitted triggers need `foreground`.
+ * `remote_request` ("Locate now") needs `background` unless the phone says the app was open
+ * (`remoteContext: 'foreground'`), in which case `foreground` is enough.
+ */
+export function scopeForTrigger(
+  trigger: LocationEventTrigger | undefined,
+  remoteContext?: 'foreground' | 'background',
+): LocationConsentScope {
+  if (trigger === 'remote_request') return remoteContext === 'foreground' ? 'foreground' : 'background';
   if (trigger === 'background') return 'background';
   if (trigger === 'periodic_foreground') return 'periodic';
   return 'foreground';

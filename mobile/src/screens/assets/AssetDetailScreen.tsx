@@ -19,7 +19,13 @@ import { useAssetQuery } from '../../api/hooks/useAssets';
 import { usePlanEntitlements } from '../../api/hooks/usePlanEntitlements';
 import { NetworkUnavailableError } from '../../api/errors';
 import { useIsOnline } from '../../network/NetworkProvider';
-import { FEATURE_HARDWARE_TRACKING_ENABLED, FEATURE_LOCATION_TRACKING_ENABLED } from '../../config/features';
+import {
+  FEATURE_HARDWARE_TRACKING_ENABLED,
+  FEATURE_LOCATION_TRACKING_ENABLED,
+  FEATURE_REMOTE_LOCATE_ENABLED,
+} from '../../config/features';
+import { getOrCreateDeviceId } from '../../auth/device';
+import { LocateNowAction } from '../../location/LocateNowAction';
 import { formatAssetType, formatDate } from '../../lib/asset-labels';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import {
@@ -142,6 +148,33 @@ export function AssetDetailScreen() {
 
   const isThisPhoneLinked = linkedAssetId === id;
   const trackingActive = isSmartphone && consentGranted && isThisPhoneLinked;
+
+  // "Locate now" (owner-test): this asset's location comes from a DIFFERENT phone signed in to
+  // this account, so this device can ask that phone for a fresh fix.
+  const [thisDeviceId, setThisDeviceId] = useState<string | null>(null);
+  useEffect(() => {
+    if (FEATURE_REMOTE_LOCATE_ENABLED !== true) return;
+    let cancelled = false;
+    void getOrCreateDeviceId().then(
+      (deviceId) => {
+        if (!cancelled) setThisDeviceId(deviceId);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const boundDeviceId =
+    locationSummary.data?.data.find((item) => item.assetId === id)?.reportingDeviceId ?? null;
+  const canLocateRemotely =
+    FEATURE_REMOTE_LOCATE_ENABLED === true &&
+    FEATURE_LOCATION_TRACKING_ENABLED &&
+    isSmartphone &&
+    !isThisPhoneLinked &&
+    boundDeviceId !== null &&
+    thisDeviceId !== null &&
+    boundDeviceId !== thisDeviceId;
 
   const handleEnableTracking = useCallback(() => {
     // INC-001: defense in depth — the button that invokes this is hidden
@@ -506,6 +539,16 @@ export function AssetDetailScreen() {
                variant="glass" style={styles.stretch} />
               {/* Background ("all the time") offer — owner-test Android only, after protection is on. */}
               <BackgroundLocationOffer />
+            </View>
+          ) : canLocateRemotely && id ? (
+            <View style={styles.trackingActiveActions}>
+              <LocateNowAction
+                assetId={id}
+                onAnswered={async () => {
+                  await refetchLocation();
+                  await locationSummary.refetch();
+                }}
+              />
             </View>
           ) : linkedAssetId && !isThisPhoneLinked ? (
             <Alert tone="info">

@@ -19,7 +19,8 @@
         "EXPO_PUBLIC_FEATURE_SECURITY_OPERATOR": "true",
         "EXPO_PUBLIC_FEATURE_LAUNCH_LOCATION_PROMPT": "true",
         "EXPO_PUBLIC_FEATURE_BACKGROUND_LOCATION": "false",
-        "EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY": "false"
+        "EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY": "false",
+        "EXPO_PUBLIC_FEATURE_REMOTE_LOCATE": "false"
       }
     },
     "preview": {
@@ -41,7 +42,8 @@
         "EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST": "false",
         "EXPO_PUBLIC_FEATURE_LAUNCH_LOCATION_PROMPT": "false",
         "EXPO_PUBLIC_FEATURE_BACKGROUND_LOCATION": "false",
-        "EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY": "false"
+        "EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY": "false",
+        "EXPO_PUBLIC_FEATURE_REMOTE_LOCATE": "false"
       }
     },
     "playInternal": {
@@ -62,7 +64,8 @@
         "EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST": "false",
         "EXPO_PUBLIC_FEATURE_LAUNCH_LOCATION_PROMPT": "false",
         "EXPO_PUBLIC_FEATURE_BACKGROUND_LOCATION": "false",
-        "EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY": "false"
+        "EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY": "false",
+        "EXPO_PUBLIC_FEATURE_REMOTE_LOCATE": "false"
       }
     },
     "preview-simulator": {
@@ -84,7 +87,8 @@
         "EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST": "false",
         "EXPO_PUBLIC_FEATURE_LAUNCH_LOCATION_PROMPT": "false",
         "EXPO_PUBLIC_FEATURE_BACKGROUND_LOCATION": "false",
-        "EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY": "false"
+        "EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY": "false",
+        "EXPO_PUBLIC_FEATURE_REMOTE_LOCATE": "false"
       }
     },
     "production": {
@@ -103,7 +107,8 @@
         "EXPO_PUBLIC_FEATURE_PROTECTION_CHECKLIST": "false",
         "EXPO_PUBLIC_FEATURE_LAUNCH_LOCATION_PROMPT": "false",
         "EXPO_PUBLIC_FEATURE_BACKGROUND_LOCATION": "false",
-        "EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY": "false"
+        "EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY": "false",
+        "EXPO_PUBLIC_FEATURE_REMOTE_LOCATE": "false"
       }
     },
     "owner-test": {
@@ -126,6 +131,7 @@
         "EXPO_PUBLIC_FEATURE_LAUNCH_LOCATION_PROMPT": "true",
         "EXPO_PUBLIC_FEATURE_BACKGROUND_LOCATION": "true",
         "EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY": "true",
+        "EXPO_PUBLIC_FEATURE_REMOTE_LOCATE": "true",
         "_comment_OWNER_EXCEPTION": "OWNER EXCEPTION 2026-11-17 (docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md): TEST-ONLY build for the owner. Every gated feature is ON. There are no real users. Never submit, never share the install link. REMOVE this profile before public launch."
       }
     }

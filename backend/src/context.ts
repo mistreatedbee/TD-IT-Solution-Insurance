@@ -104,6 +104,7 @@ import {
   createLocationConsentLogRepo,
   type LocationConsentLogRepo,
 } from './repositories/location-consent-log.js';
+import { createLocateRequestsRepo, type LocateRequestsRepo } from './repositories/locate-requests.js';
 import { createAlertsRepo, type AlertsRepo } from './repositories/alerts.js';
 import { createProductEventsRepo, type ProductEventsRepo } from './repositories/product-events.js';
 import { createSupportCasesRepo, type SupportCasesRepo } from './repositories/support-cases.js';
@@ -154,6 +155,7 @@ export interface AppContext {
   trackingDevices: TrackingDevicesRepo;
   locationEvents: LocationEventsRepo;
   locationConsentLog: LocationConsentLogRepo;
+  locateRequests: LocateRequestsRepo;
   alerts: AlertsRepo;
   productEvents: ProductEventsRepo;
   supportCases: SupportCasesRepo;
@@ -259,6 +261,7 @@ export function buildAppContext(env: Env): AppContext {
     trackingDevices: createTrackingDevicesRepo(getDb()),
     locationEvents: createLocationEventsRepo(getDb()),
     locationConsentLog: createLocationConsentLogRepo(getDb()),
+    locateRequests: createLocateRequestsRepo(getDb()),
     alerts: createAlertsRepo(getDb()),
     productEvents: createProductEventsRepo(getDb()),
     supportCases: createSupportCasesRepo(getDb()),

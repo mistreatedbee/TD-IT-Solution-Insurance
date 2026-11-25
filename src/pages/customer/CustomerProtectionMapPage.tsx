@@ -9,6 +9,8 @@ import { listAssetLocationSummary, type AssetLocationSummaryItem } from '../../c
 import { listAssets, type Asset } from '../../customer/api/assets';
 import { mapUserFacingError } from '../../lib/user-facing-errors';
 import { ProtectionMapCanvas } from '../../customer/map/ProtectionMapCanvas';
+import { isRemoteLocateEnabled } from '../../lib/features';
+import { locateNowMessage, useLocateNow } from '../../customer/tracking/useLocateNow';
 
 type MapFilter = 'all' | 'on_map';
 
@@ -37,6 +39,7 @@ function mergeAssets(
     recordedAt: string | null;
     accuracy: number | null;
     source: string | null;
+    reportingDeviceId: string | null;
   }
 > {
   const byId = new Map(locations.map((item) => [item.assetId, item]));
@@ -46,6 +49,7 @@ function mergeAssets(
     recordedAt: byId.get(asset.id)?.lastLocation?.recordedAt ?? byId.get(asset.id)?.recordedAt ?? null,
     accuracy: byId.get(asset.id)?.lastLocation?.accuracyMeters ?? byId.get(asset.id)?.accuracy ?? null,
     source: byId.get(asset.id)?.lastLocation?.source ?? byId.get(asset.id)?.source ?? null,
+    reportingDeviceId: byId.get(asset.id)?.reportingDeviceId ?? null,
   }));
 }
 
@@ -215,10 +219,31 @@ export function CustomerProtectionMapPage() {
               </Badge>
             </div>
           </div>
+          {isRemoteLocateEnabled() && selected.assetType === 'smartphone' && selected.reportingDeviceId ? (
+            <LocateNow assetId={selected.id} onAnswered={() => load(false)} />
+          ) : null}
           <Link to={`/dashboard`} className="mt-4 inline-block text-sm font-semibold text-td-link hover:underline">
             Manage assets in dashboard
           </Link>
         </Card>
+      ) : null}
+    </div>
+  );
+}
+
+/** "Locate now" (owner-test): ask the bound phone for a fresh fix, then refresh the map. */
+function LocateNow({ assetId, onAnswered }: { assetId: string; onAnswered: () => Promise<void> }) {
+  const { state, locate } = useLocateNow(assetId, onAnswered);
+  const message = locateNowMessage(state);
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3">
+      <Button variant="secondary" size="sm" onClick={() => void locate()} disabled={state.kind === 'asking'}>
+        Locate now
+      </Button>
+      {message ? (
+        <p role="status" aria-live="polite" className="text-sm text-text-secondary">
+          {message}
+        </p>
       ) : null}
     </div>
   );

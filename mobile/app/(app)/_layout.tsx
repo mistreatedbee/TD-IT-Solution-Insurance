@@ -9,6 +9,7 @@ import {
 } from '../../src/location/backgroundLocation';
 import { FEATURE_LAUNCH_LOCATION_PROMPT_ENABLED } from '../../src/config/features';
 import { useLocationReporter } from '../../src/location/useLocationReporter';
+import { useRemoteLocateResponder } from '../../src/location/useRemoteLocateResponder';
 import { LocationReconsentPrompt } from '../../src/location/LocationReconsentPrompt';
 import { registerPushTokenIfPermitted } from '../../src/notifications/push';
 import { useAppStackScreenOptions } from '../../src/navigation/useAppStackScreenOptions';
@@ -17,6 +18,9 @@ export default function AppLayout() {
   const screenOptions = useAppStackScreenOptions();
   // Reports on open/resume when tracking is enabled, consent + linked asset + OS permission exist.
   useLocationReporter();
+  // Owner-test only (FEATURE_REMOTE_LOCATE_ENABLED): answer "Locate now" requests made from
+  // another device signed in to this account.
+  useRemoteLocateResponder();
   // Owner-test Android only: resume background updates on sign-in if "all the time" was already
   // granted and every gate passes. Never shows a permission dialog.
   useEffect(() => {

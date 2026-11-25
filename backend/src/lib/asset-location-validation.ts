@@ -12,6 +12,9 @@ export const locationReportBodySchema = z.object({
   // The two extended values (periodic_foreground / background) parse here but
   // are refused by the route unless LOCATION_EXTENDED_TRIGGERS_ENABLED=true.
   triggeredBy: z.enum(LOCATION_EVENT_TRIGGERS).optional(),
+  // "Locate now": was the app in the foreground when it answered? Only meaningful with
+  // triggeredBy 'remote_request'; omitted = background (the stricter consent scope).
+  remoteContext: z.enum(['foreground', 'background']).optional(),
 });
 
 export type LocationReportBody = z.infer<typeof locationReportBodySchema>;

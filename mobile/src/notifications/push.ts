@@ -12,6 +12,11 @@ import { configureBrandedNotificationChannels } from './channels';
 
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
+    // "Locate now" wake-up: a data-only message with nothing to show (the visible notice is a
+    // separate notification).
+    if (notification.request.content.data?.event === 'location.locate.request') {
+      return { shouldShowBanner: false, shouldShowList: false, shouldPlaySound: false, shouldSetBadge: false };
+    }
     const category = notification.request.content.data?.category;
     const isCritical = category === 'theft_critical';
 

@@ -84,8 +84,8 @@ if (callSites !== FLAGS.length) {
 if (/process\.env\s*\[/.test(code) || /process\.env\.(?!EXPO_PUBLIC_FEATURE_)/.test(code)) {
   failures.push('features.ts reads process.env dynamically or a non-flag variable');
 }
-if (FLAGS.length < 11) {
-  failures.push(`discovered only ${FLAGS.length} flags in features.ts (expected >= 11)`);
+if (FLAGS.length < 12) {
+  failures.push(`discovered only ${FLAGS.length} flags in features.ts (expected >= 12)`);
 }
 
 function evaluateFlags(profileEnv) {

@@ -30,3 +30,13 @@ function featureEnabled(raw: string | undefined): boolean {
 export function isSecurityOperatorEnabled(): boolean {
   return featureEnabled(import.meta.env.VITE_FEATURE_SECURITY_OPERATOR as string | undefined);
 }
+
+/**
+ * "Locate now" (owner-test only, OWNER-EXCEPTION-2026-11-17 addendum 2026-11-25): the button on
+ * the customer protection map that asks the account's bound phone for one fresh location. Needs
+ * REMOTE_LOCATE_ENABLED=true on the backend. Off unless exactly "true". No Stage 8 review has been
+ * performed - see the waiver in docs/organization/gates/stage8-manifest.json.
+ */
+export function isRemoteLocateEnabled(): boolean {
+  return featureEnabled(import.meta.env.VITE_FEATURE_REMOTE_LOCATE as string | undefined);
+}

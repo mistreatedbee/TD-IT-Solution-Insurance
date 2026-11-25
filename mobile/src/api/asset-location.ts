@@ -9,7 +9,14 @@ import type { AssetType } from './assets';
  * 'periodic_foreground' is the 2-minute in-app timer and 'background' the Android background task
  * (both owner-test flags only); the backend accepts both only behind LOCATION_EXTENDED_TRIGGERS_ENABLED.
  */
-export type LocationTrigger = 'foreground_open' | 'manual_refresh' | 'periodic_foreground' | 'background';
+export type LocationTrigger =
+  | 'foreground_open'
+  | 'manual_refresh'
+  | 'periodic_foreground'
+  | 'background'
+  // "Locate now" (owner-test, FEATURE_REMOTE_LOCATE_ENABLED): answering a request made from
+  // another device signed in to the account. Backend: REMOTE_LOCATE_ENABLED.
+  | 'remote_request';
 
 export interface AssetLocationPoint {
   latitude: number;
@@ -26,6 +33,8 @@ export interface LocationReportRequest {
   accuracyMeters?: number | null;
   capturedAt?: string;
   triggeredBy: LocationTrigger;
+  /** Only with 'remote_request': was the app open when it answered? Omitted = background. */
+  remoteContext?: 'foreground' | 'background';
 }
 
 export interface AssetLocationSummaryItem {

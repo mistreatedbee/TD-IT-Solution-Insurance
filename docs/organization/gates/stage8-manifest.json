@@ -1448,6 +1448,54 @@
         "reason": "2026-11-20 recorded by backend-engineer (INC-001 A-7 phone path, ADR-0009 SDL-4/SDL-9). Behaviour changes to already-listed routes plus a re-consent prompt; no new route paths. location_consent_events grants now carry deviceId, scopes (foreground/periodic/background) and consentTextVersion; the newest event per account+asset is the consent state (append-only). Report refusal (403 CONSENT_REQUIRED) is behind LOCATION_CONSENT_ENFORCED (\"true\" only, default off); opt-in step-up behind LOCATION_CONSENT_STEP_UP_ENFORCED (default off, so SDL-9 step-up is NOT met while off: the mobile enable flow has no step-up UI yet). Opt-in/opt-out send the Feature 021 security email + a push. Consent-state events are NOT yet on Trail A (app.account_audit_log needs an enum migration). NO Stage 8 review performed; a chaired Stage 8 with security-engineer and compliance-specialist is still required before INC-001 can close. 2026-11-20 UPDATE (appended; the sentence above stands as written at the time): Stage 8 review by cybersecurity-architect (FIX FIRST, then PASS for owner-test) is now recorded at docs/features/008-self-device-gps-tracking/security-review.md; F-1 (withdrawal written last) fixed in PR #44. A-7 partially closed, owner-test only (step-up SDL-9 off; Trail A audit pending). The chaired Stage 8 with security-engineer and compliance-specialist is still required before INC-001 can close or any non-owner use.",
         "owner": "cybersecurity-architect"
       }
+    },
+    {
+      "id": "backend-remote-locate-requests",
+      "kind": "backend_route_group",
+      "pattern": "/assets/:assetId/locate-request* + /devices/locate-requests/pending + remote_request trigger on POST /assets/:assetId/location-report",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-25 recorded by gps-integration-engineer under the owner test-only exception (docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md, 'Locate now' remote locate request). Owner-test only: backend behind REMOTE_LOCATE_ENABLED (render.yaml sync:false, exact 'true' only, router not mounted when off; also needs LOCATION_INGESTION_ENABLED + LOCATION_EXTENDED_TRIGGERS_ENABLED), mobile behind EXPO_PUBLIC_FEATURE_REMOTE_LOCATE (\"false\" in every other profile), web behind VITE_FEATURE_REMOTE_LOCATE (off unless 'true'). ADR-0009 section 20 is Proposed, not ratified. Covers backend/src/routes/locate-requests.ts (POST/GET latest/decline under /assets/:assetId/locate-request, GET /devices/locate-requests/pending) and the remote_request branch of the location-report route: customers only (staff/partner 403), owner only (another account's asset 404), active account; 6 per 15 min per account and 4 per 15 min per asset; locate_requests Mongo rows expire for answering after 10 min and are purged by TTL after 1 h; audited as protection_change 'location_locate_requested|session|<assetId>' (actor account, session, ip); security notice push + data-only wake-up push to the bound device only; security email for the first request per account per UTC day; never returns coordinates; remote_request reports only from the bound device answering an open request, consent-checked server-side (background scope unless remoteContext foreground), a refusal answers the request consent_required. NO Stage 8 review performed; before any other profile: a real review by cybersecurity-architect (owner-only authz, rate limits, remote wake-up abuse/stalking risk, audit completeness) and compliance-specialist (POPIA transparency notice wording, consent scope for remote-triggered fixes, locate_requests retention), Stage 10 QA, and design-system-manager sign-off on the Locate now action.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "backend-remote-locate-pending-checkin",
+      "kind": "backend_route",
+      "pattern": "GET /devices/locate-requests/pending",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-25 recorded by gps-integration-engineer under the owner test-only exception (docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md, 'Locate now' remote locate request). Owner-test only: backend behind REMOTE_LOCATE_ENABLED (render.yaml sync:false, exact 'true' only, router not mounted when off; also needs LOCATION_INGESTION_ENABLED + LOCATION_EXTENDED_TRIGGERS_ENABLED), mobile behind EXPO_PUBLIC_FEATURE_REMOTE_LOCATE (\"false\" in every other profile), web behind VITE_FEATURE_REMOTE_LOCATE (off unless 'true'). ADR-0009 section 20 is Proposed, not ratified. The bound phone's check-in for open locate requests addressed to its session deviceId (no coordinates). See backend-remote-locate-requests. NO Stage 8 review performed; before any other profile: a real review by cybersecurity-architect (owner-only authz, rate limits, remote wake-up abuse/stalking risk, audit completeness) and compliance-specialist (POPIA transparency notice wording, consent scope for remote-triggered fixes, locate_requests retention), Stage 10 QA, and design-system-manager sign-off on the Locate now action.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "mobile-remote-locate",
+      "kind": "mobile_component_group",
+      "pattern": "mobile/src/location/remoteLocate.ts + remoteLocateTask.ts + useRemoteLocateResponder.ts + useLocateNow.ts + LocateNowAction.tsx (Locate now on AssetDetailScreen)",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-25 recorded by gps-integration-engineer under the owner test-only exception (docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md, 'Locate now' remote locate request). Owner-test only: backend behind REMOTE_LOCATE_ENABLED (render.yaml sync:false, exact 'true' only, router not mounted when off; also needs LOCATION_INGESTION_ENABLED + LOCATION_EXTENDED_TRIGGERS_ENABLED), mobile behind EXPO_PUBLIC_FEATURE_REMOTE_LOCATE (\"false\" in every other profile), web behind VITE_FEATURE_REMOTE_LOCATE (off unless 'true'). ADR-0009 section 20 is Proposed, not ratified. Covers the target phone answering (push wake-up task registered from mobile/entry.ts, foreground listener + 2-minute check-in, Android background location run): one fix via the existing location-report path with triggeredBy remote_request only when canReportLocation() passes, plus background consent marker and 'Allow all the time' when not in the foreground, otherwise declined as consent_required with no location; transparency notice shown locally when no server push reached the phone; and the requesting side's Locate now button on the asset detail of a smartphone bound to another device, polling status only. NO Stage 8 review performed; before any other profile: a real review by cybersecurity-architect (owner-only authz, rate limits, remote wake-up abuse/stalking risk, audit completeness) and compliance-specialist (POPIA transparency notice wording, consent scope for remote-triggered fixes, locate_requests retention), Stage 10 QA, and design-system-manager sign-off on the Locate now action.",
+        "owner": "cybersecurity-architect"
+      }
+    },
+    {
+      "id": "web-remote-locate",
+      "kind": "web_route_group",
+      "pattern": "src/pages/customer/CustomerProtectionMapPage.tsx (Locate now) + src/customer/api/locate-requests.ts + src/customer/tracking/useLocateNow.ts",
+      "feature": "008",
+      "stage8": {
+        "waived": true,
+        "verdict": "waived-no-security-review-performed",
+        "reason": "2026-11-25 recorded by gps-integration-engineer under the owner test-only exception (docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md, 'Locate now' remote locate request). Owner-test only: backend behind REMOTE_LOCATE_ENABLED (render.yaml sync:false, exact 'true' only, router not mounted when off; also needs LOCATION_INGESTION_ENABLED + LOCATION_EXTENDED_TRIGGERS_ENABLED), mobile behind EXPO_PUBLIC_FEATURE_REMOTE_LOCATE (\"false\" in every other profile), web behind VITE_FEATURE_REMOTE_LOCATE (off unless 'true'). ADR-0009 section 20 is Proposed, not ratified. Covers the Locate now action on the customer web protection map for a smartphone with a bound reporting device: asks, polls status (never coordinates), refreshes the map on answer. NO Stage 8 review performed; before any other profile: a real review by cybersecurity-architect (owner-only authz, rate limits, remote wake-up abuse/stalking risk, audit completeness) and compliance-specialist (POPIA transparency notice wording, consent scope for remote-triggered fixes, locate_requests retention), Stage 10 QA, and design-system-manager sign-off on the Locate now action.",
+        "owner": "cybersecurity-architect"
+      }
     }
   ]
 }

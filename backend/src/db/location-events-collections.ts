@@ -27,7 +27,7 @@ export const locationEventsJsonSchemaValidator: Document = {
       receivedAt: { bsonType: 'date' },
       source: { enum: ['self_device', 'hardware'] },
       triggeredBy: {
-        enum: ['foreground_open', 'manual_refresh', 'periodic_foreground', 'background', null],
+        enum: ['foreground_open', 'manual_refresh', 'periodic_foreground', 'background', 'remote_request', null],
       },
       deviceId: { bsonType: ['string', 'null'] },
     },

@@ -16,7 +16,7 @@
  *          branch, no fail-open `!== 'false'`),
  *        - every `FEATURE_*_ENABLED = featureEnabled(<literal>)` has the literal that
  *          eas.json declares (`"true"`/`"false"`, or `undefined` when the profile omits it),
- *        - the number of such flags equals the number layer 2 discovers (>= 11).
+ *        - the number of such flags equals the number layer 2 discovers (>= 12).
  * Any mismatch exits 1. Profiles with identical flag env share one export (~20s each).
  *
  * Usage: node scripts/verify-feature-flags-bundle.mjs   (from mobile/ or anywhere)
@@ -77,7 +77,7 @@ function policyViolations(name, env, flags) {
 }
 
 const failures = [];
-if (FLAGS.length < 11) failures.push(`discovered only ${FLAGS.length} flags in features.ts (expected >= 11)`);
+if (FLAGS.length < 12) failures.push(`discovered only ${FLAGS.length} flags in features.ts (expected >= 12)`);
 
 const easJson = JSON.parse(readFileSync(easJsonPath, 'utf8'));
 const groups = new Map(); // signature -> { env, names[] }

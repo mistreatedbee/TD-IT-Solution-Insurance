@@ -26,7 +26,7 @@ function createFakeDb(existing: boolean) {
 }
 
 describe('locationEventsJsonSchemaValidator', () => {
-  it('allows the original and the two extended triggeredBy values, plus null', () => {
+  it('allows the original and the three extended triggeredBy values (incl. remote_request), plus null', () => {
     const props = (locationEventsJsonSchemaValidator.$jsonSchema as {
       properties: Record<string, { enum?: unknown[] }>;
     }).properties;
@@ -35,6 +35,7 @@ describe('locationEventsJsonSchemaValidator', () => {
       'manual_refresh',
       'periodic_foreground',
       'background',
+      'remote_request',
       null,
     ]);
   });

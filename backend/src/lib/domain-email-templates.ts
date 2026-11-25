@@ -727,7 +727,9 @@ export type ProtectionChangeNoticeAction =
   | 'reauth_exhausted'
   // INC-001 A-7 / ADR-0009 SDL-9: out-of-band notice on location opt-in / opt-out.
   | 'location_tracking_enabled'
-  | 'location_tracking_disabled';
+  | 'location_tracking_disabled'
+  // "Locate now" (owner-test): first remote locate request of the day for the account.
+  | 'location_locate_requested';
 
 export function maskPhoneLast3(phone: string): string {
   const digits = phone.replace(/\D/g, '');
@@ -763,6 +765,10 @@ export function buildProtectionChangedEmail(params: {
     case 'location_tracking_disabled':
       title = 'Location tracking turned off';
       what = `Location tracking was turned off for <strong>${escapeHtml(params.assetDisplayName ?? 'an asset')}</strong>. No further location reports are accepted for it.`;
+      break;
+    case 'location_locate_requested':
+      title = 'Your phone was asked for its location';
+      what = `Someone signed in to your account on ${device} asked <strong>${escapeHtml(params.assetDisplayName ?? 'your phone')}</strong> to send its current location. We send this email for the first request each day.`;
       break;
     default:
       title = 'Too many incorrect password attempts';

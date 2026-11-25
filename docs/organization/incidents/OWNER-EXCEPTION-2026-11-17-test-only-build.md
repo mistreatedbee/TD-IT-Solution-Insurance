@@ -86,3 +86,10 @@ Not covered by this addendum: Phase 1b (the AI assistant itself, the Render `ASS
 Before any other profile gets this: a real Stage 8 review by `cybersecurity-architect`, Stage 10 QA, `design-system-manager` sign-off on the header change and the new screen, and the owner's real support channels.
 
 Reversal, added to the list above: set `EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY` to "false" (or delete it with the `owner-test` profile). The Home header then shows the Alerts bell again.
+
+## Addendum 2026-11-25: "Locate now" from another signed-in device (cto go/no-go pending)
+Recorded by `gps-integration-engineer`. Built on branch `feat/remote-locate-request` for the **owner-test build only**, behind the new 12th flag `EXPO_PUBLIC_FEATURE_REMOTE_LOCATE` ("true" in `owner-test`, "false" in every other profile), the web flag `VITE_FEATURE_REMOTE_LOCATE` (off unless "true") and the backend switch `REMOTE_LOCATE_ENABLED` (render.yaml `sync: false`, unset = off, router not mounted). `cto` has not yet given a go/no-go on merging it.
+
+What was added: signed in on any device, the owner can press Locate now on a smartphone asset whose location comes from another phone (mobile asset detail, web protection map). The bound phone sends one fresh location through the existing report path (`triggeredBy: 'remote_request'`), only with its consent; otherwise the request is answered "consent required" and no location is sent. The phone shows "Your location was requested from another device signed in to your account", and the account gets the security email for the first request each day. ADR-0009 §20 (Proposed). Stage 8 waivers: `backend-remote-locate-requests`, `backend-remote-locate-pending-checkin`, `mobile-remote-locate`, `web-remote-locate`.
+
+Reversal, added to the list above: unset `REMOTE_LOCATE_ENABLED` in Render, set `EXPO_PUBLIC_FEATURE_REMOTE_LOCATE` and `VITE_FEATURE_REMOTE_LOCATE` to "false" (or delete with the `owner-test` profile).

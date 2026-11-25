@@ -246,3 +246,15 @@ export function isPrivilegedUserType(userType: string): userType is PrivilegedUs
 export function passwordMinLengthFor(userType: string): number {
   return isPrivilegedUserType(userType) ? PASSWORD_MIN_LENGTH.privileged : PASSWORD_MIN_LENGTH.customer;
 }
+
+/** "Locate now" (owner-test): remote locate requests per account, across all its assets. */
+export const LOCATE_REQUEST_ACCOUNT_LIMIT = {
+  attempts: 6,
+  windowSeconds: 15 * 60,
+} as const;
+
+/** "Locate now" (owner-test): remote locate requests per asset. */
+export const LOCATE_REQUEST_ASSET_LIMIT = {
+  attempts: 4,
+  windowSeconds: 15 * 60,
+} as const;
