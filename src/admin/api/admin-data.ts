@@ -57,12 +57,17 @@ export interface AdminAssetSummary {
 
 /** Detail read — full asset shape including polymorphic details. */
 export interface AdminAssetDetail extends AdminAssetSummary {
-  estimatedValue: number | null;
+  estimatedValue: { amount: number; currency: string; asOf: string } | null;
   photos: unknown[];
   details: Record<string, unknown>;
   gpsPairedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Links to the asset's open claim / recovery case (detail read only; absent on PATCH responses). */
+  related?: {
+    openClaim: { id: string; status: string } | null;
+    openRecoveryCase: { id: string; referenceNumber: string; status: string } | null;
+  };
 }
 
 export function listAdminAccounts(params?: {

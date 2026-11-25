@@ -35,6 +35,10 @@ import { StepUpDialog } from '../components/StepUpDialog';
 import { useStepUpRetry } from '../hooks/useStepUpRetry';
 import { getAdminCustomerProfile } from '../api/admin-verification';
 import { verificationStatusLabel } from '../../customer/api/profile';
+import { trackingMethodFor } from '../lib/tracking-method';
+import { maskTail } from '../lib/format';
+import { TrackingMethodBadge } from '../components/TrackingMethodBadge';
+import { AssetLocationSection } from './AssetLocationSection';
 
 function countRegisteredAdminAssets(assets: AdminAssetSummary[]): number {
   return assets.filter((a) => a.status !== 'removed' && a.status !== 'cancelled').length;
@@ -1006,6 +1010,97 @@ function AssetActions({
   );
 }
 
+/** Detail keys whose values identify a physical item: shown as the last four characters only. */
+const MASKED_DETAIL_KEYS = new Set(['serialNumber', 'imei', 'vin']);
+const DETAIL_LABELS: Record<string, string> = {
+  make: 'Make',
+  brand: 'Brand',
+  model: 'Model',
+  year: 'Year',
+  category: 'Category',
+  vin: 'VIN',
+  licensePlate: 'Registration (licence plate)',
+  color: 'Colour',
+  mileage: 'Mileage (km)',
+  serialNumber: 'Serial number',
+  imei: 'IMEI',
+  operatingSystem: 'Operating system',
+  screenSizeInches: 'Screen size (inches)',
+  components: 'Components',
+  description: 'Description',
+};
+
+function identityRows(asset: AdminAssetDetail): { label: string; value: React.ReactNode }[] {
+  const rows: { label: string; value: React.ReactNode }[] = [
+    { label: 'Name', value: asset.displayName },
+    { label: 'Type', value: asset.assetType.replace(/_/g, ' ') },
+  ];
+  for (const [key, raw] of Object.entries(asset.details ?? {})) {
+    if (raw === null || raw === undefined || raw === '') continue;
+    const label = DETAIL_LABELS[key] ?? key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+    const value = MASKED_DETAIL_KEYS.has(key) ? maskTail(String(raw)) : typeof raw === 'object' ? JSON.stringify(raw) : String(raw);
+    rows.push({ label, value });
+  }
+  if (asset.estimatedValue) {
+    rows.push({
+      label: 'Estimated value',
+      value: `${asset.estimatedValue.currency} ${asset.estimatedValue.amount.toLocaleString()} (as of ${new Date(asset.estimatedValue.asOf).toLocaleDateString()})`,
+    });
+  }
+  return rows;
+}
+
+function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mt-8 border-t border-td-border-subtle pt-6">
+      <SectionHeading as="h2" title={title} size="md" className="mb-3" />
+      {children}
+    </div>
+  );
+}
+
+function OwnerPolicies({ accountId }: { accountId: string }) {
+  const [policies, setPolicies] = useState<AdminPolicySummary[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    listAdminPolicies({ accountId })
+      .then((page) => live && setPolicies(page.data))
+      .catch(() => live && setPolicies([]));
+    return () => {
+      live = false;
+    };
+  }, [accountId]);
+  if (!policies) return <>Loading…</>;
+  if (policies.length === 0) return <>No policy on file</>;
+  return (
+    <ul className="space-y-1">
+      {policies.map((p) => (
+        <li key={p.id}>
+          <AdminNavLink to={`/admin/policies/${p.id}`}>{formatPlanTierLabel(p.planTier)}</AdminNavLink>{' '}
+          <StatusBadge value={p.status} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function PhotoList({ photos }: { photos: unknown[] }) {
+  const urls = photos.filter((p): p is string => typeof p === 'string' && p.startsWith('https://'));
+  if (photos.length === 0) return <p className="text-sm text-td-ink-muted">No photos on file.</p>;
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-td-ink-muted">{photos.length} photo{photos.length === 1 ? '' : 's'} on file.</p>
+      {urls.length > 0 ? (
+        <div className="flex flex-wrap gap-3">
+          {urls.map((u) => (
+            <img key={u} src={u} alt="Asset photo" className="h-28 w-28 rounded-td-md border border-td-border-subtle object-cover" />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function AssetDetailPage({ assetId }: { assetId: string }) {
   const [asset, setAsset] = useState<AdminAssetDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1019,23 +1114,93 @@ export function AssetDetailPage({ assetId }: { assetId: string }) {
   if (error) return <InlineAlert tone="danger">{error}</InlineAlert>;
   if (!asset) return <LoadingState />;
 
+  const related = asset.related;
+  // PATCH responses carry no `related` block: keep the links from the detail read.
+  const onUpdated = (next: AdminAssetDetail) => setAsset((prev) => ({ ...next, related: next.related ?? prev?.related }));
+
   return (
     <Card padding="lg">
       <SectionHeading as="h1" title={asset.displayName} size="md" className="mb-4" />
-      <DetailGrid
-        rows={[
-          { label: 'Type', value: asset.assetType.replace(/_/g, ' ') },
-          { label: 'Status', value: <StatusBadge value={asset.status} /> },
-          { label: 'Account', value: <AdminNavLink to={`/admin/accounts/${asset.accountId}`}>{asset.accountId}</AdminNavLink> },
-          { label: 'GPS device', value: asset.gpsDeviceId ?? 'Not paired' },
-          { label: 'Legal hold', value: asset.legalHold ? 'Yes' : 'No' },
-          { label: 'Registered', value: new Date(asset.registeredAt).toLocaleString() },
-        ]}
-      />
+
+      <SectionHeading as="h2" title="Identity" size="md" className="mb-3" />
+      <DetailGrid rows={identityRows(asset)} />
+
+      <DetailSection title="Status">
+        <DetailGrid
+          rows={[
+            { label: 'Status', value: <StatusBadge value={asset.status} /> },
+            { label: 'Legal hold', value: asset.legalHold ? 'Yes' : 'No' },
+            { label: 'Registered', value: new Date(asset.registeredAt).toLocaleString() },
+            { label: 'Last updated', value: new Date(asset.updatedAt).toLocaleString() },
+          ]}
+        />
+      </DetailSection>
+
+      <DetailSection title="Owner and policy">
+        <DetailGrid
+          rows={[
+            { label: 'Owner account', value: <AdminNavLink to={`/admin/accounts/${asset.accountId}`}>{asset.accountId}</AdminNavLink> },
+            { label: 'Policy', value: <OwnerPolicies accountId={asset.accountId} /> },
+          ]}
+        />
+      </DetailSection>
+
+      <DetailSection title="Tracking">
+        <DetailGrid
+          rows={[
+            { label: 'Tracking method', value: <TrackingMethodBadge method={trackingMethodFor(asset)} /> },
+            {
+              label: 'GPS tracker',
+              value: asset.gpsDeviceId
+                ? `Paired${asset.gpsPairedAt ? ` on ${new Date(asset.gpsPairedAt).toLocaleDateString()}` : ''}`
+                : 'Not paired',
+            },
+          ]}
+        />
+      </DetailSection>
+
+      <DetailSection title="Photos">
+        <PhotoList photos={asset.photos ?? []} />
+      </DetailSection>
+
+      <DetailSection title="Recovery case and claims">
+        <DetailGrid
+          rows={[
+            {
+              label: 'Open recovery case',
+              value: related?.openRecoveryCase ? (
+                <>
+                  <AdminNavLink to={`/admin/dispatch/cases/${related.openRecoveryCase.id}`}>
+                    {related.openRecoveryCase.referenceNumber}
+                  </AdminNavLink>{' '}
+                  <StatusBadge value={related.openRecoveryCase.status} />
+                </>
+              ) : (
+                'None'
+              ),
+            },
+            {
+              label: 'Open claim',
+              value: related?.openClaim ? (
+                <>
+                  <AdminNavLink to={`/admin/claims/${related.openClaim.id}`}>View claim</AdminNavLink>{' '}
+                  <StatusBadge value={related.openClaim.status} />
+                </>
+              ) : (
+                'None'
+              ),
+            },
+          ]}
+        />
+      </DetailSection>
+
       <div className="mt-8 border-t border-td-border-subtle pt-6">
-        <SectionHeading as="h2" title="Asset actions" size="md" className="mb-3" />
-        <AssetActions asset={asset} onUpdated={setAsset} />
+        <AssetLocationSection assetId={asset.id} assetName={asset.displayName} />
       </div>
+
+      <DetailSection title="Asset actions">
+        <AssetActions asset={asset} onUpdated={onUpdated} />
+      </DetailSection>
     </Card>
   );
 }

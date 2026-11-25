@@ -323,3 +323,67 @@ Nits (no fix needed for owner-test):
 - **N41-2 Info:** a filtered call works as a per-customer holdings lookup. It is audited and rate-limited, so the residual risk is accepted, the same as for the list route.
 
 **Remediation note (backend-engineer, 2026-11-20):** N41-1 fixed in PR #41 (`Object.hasOwn` replaces the `in` checks in `countsForAdmin`). N41-2 accepted as stated.
+
+
+---
+
+## Stage 8 review — feat/admin-asset-detail-full (owner-test phase)
+
+Reviewer: cybersecurity-architect, 2026-11-20. Scope: `GET /v1/admin/assets/:assetId/location`
+(`backend/src/routes/admin-locations.ts:182-239`), asset-detail related links
+(`backend/src/routes/admin-assets.ts:233-246`), web `src/admin/pages/AssetLocationSection.tsx`.
+
+### Verdict: PASS for owner-test only. NOT approved for real users.
+
+This sits outside ADR-0009 and my 2026-10-05 ruling (no exact customer location for admins
+without a recovery case). It is allowed only because it rides the existing
+OWNER-EXCEPTION-2026-11-17: the router is mounted only when `ADMIN_LOCATIONS_ENABLED === 'true'`
+(`backend/src/index.ts:179`). The flag must stay unset on every environment except the owner's
+test environment.
+
+### What I checked
+- AuthZ / IDOR: `authenticate` + `requireUserType('admin')` (`:184-185`). The id is validated to a
+  24-hex string (`:28`), and the owner is taken from the asset row, not the request. History is
+  scoped by `(asset.accountId, asset.id)` (`:215`). Tests cover customer 403 (even the owner),
+  operator exclusion and no-token. No IDOR.
+- Audit: `recordDetail` runs before the response on every 200, including empty and tracking-off
+  answers. Subject is the owner (`:220-230`). A 404 is not audited, which is fine because nothing
+  is disclosed.
+- Consent/purge: if the latest consent event is `withdrawn`, the endpoint skips the history query
+  and nulls the position at serialization (`:83, :98, :211-215`). A later grant restores only
+  post-grant data.
+- History: capped at 20 (`:27`). No pagination cursor is exposed, so it cannot be used for bulk
+  export.
+- Rate limits: per-admin and per-IP, with separate keys (`:186-195`).
+- Logging: no coordinates go to logs. Errors go through `next(err)`.
+- Related links: id/status/reference only, with no location (`admin-assets.ts:233-246`).
+
+### Non-blocking notes (fix before real users)
+1. `:211`: if an asset has no consent record at all (for example hardware-tracked or legacy), the
+   endpoint treats tracking as on. Real users need an explicit consent basis per source.
+2. `:204`: archived or removed assets still return location. Real users need a defined retention
+   rule.
+3. The audit row uses `resourceType: 'asset'`. Only the endpoint string tells a location view
+   apart from an ordinary asset view. Add a distinct `asset_location` type for DSAR/POPIA reporting.
+
+### Required before any real user (gate conditions)
+- R1: Serve the endpoint only when the asset has an open recovery case (`findOpenByAssetForAccount`).
+  Otherwise require a reason code plus free-text justification and step-up MFA (no more than
+  5 minutes old). Store the reason in the audit row.
+- R2: With no open case, show coarse location only (no history, rounded coordinates). Exact
+  coordinates and history require a case.
+- R3: A per-admin daily cap on distinct owners viewed, plus an alert when it is crossed.
+- R4: An ADR-0009 amendment, a compliance-specialist POPIA sign-off, and customer-facing
+  disclosure in the privacy notice.
+- R5: Reverse the owner exception and remove the `ADMIN_LOCATIONS_ENABLED` dependency, so the
+  gating becomes structural rather than a flag.
+- R6: Add a real (non-waiver) entry in `stage8-manifest.json` covering both this endpoint and
+  `/admin/locations`.
+
+### Remediation note (backend-engineer, 2026-11-20)
+All three non-blocking notes are fixed before merge, with tests in `backend/src/routes/admin-locations.test.ts`:
+1. **Fail closed on no consent record.** Tracking is on only when the newest location consent event is a grant. With no consent record at all (hardware-tracked or legacy assets included), the endpoint returns `trackingOff: true`, `trackingOffReason: 'no_consent'`, no position and no history. Until a per-source consent basis exists, GPS-tracker assets therefore show no location here.
+2. **Archived assets.** A `removed` asset returns `trackingOff: true`, `trackingOffReason: 'archived'`, no position and no history. The history store is not queried.
+3. **Distinct audit type.** Location views are audited with `resourceType: 'asset_location'`. The type is added to both the `AdminAccessResourceType` union and the `admin_access_log` `$jsonSchema` enum in `backend/src/db/feature004-collections.ts`, which is applied on startup. Ordinary asset views stay `asset`.
+
+The web page shows "No location — tracking is off" followed by the reason. R1–R6 above remain open. They are also appended to the pre-launch list in `docs/organization/incidents/OWNER-EXCEPTION-2026-11-17-test-only-build.md`.

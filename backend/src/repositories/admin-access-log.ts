@@ -33,7 +33,7 @@ export const ADMIN_ACCESS_LOG_RETENTION_MONTHS = 12;
 // 'claim' added — Feature 018 (claims filing and adjudication). Same
 // "extend, don't fork" posture §18.2 set for this collection: claim
 // disclosures/decisions reuse Trail B/§18.4 exactly, no new audit mechanism.
-export type AdminAccessResourceType = 'policy' | 'asset' | 'recovery_case' | 'plan' | 'claim';
+export type AdminAccessResourceType = 'policy' | 'asset' | 'recovery_case' | 'plan' | 'claim' | 'asset_location';
 // ADR-0006 §18.4 — 'privileged_state_change' records an operator DECISION (a claim or
 // a status transition), not a read/disclosure. Same collection, same join key, same
 // retention clock, per §18.2's "extend, don't fork" ruling (confirmed by

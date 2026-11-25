@@ -270,7 +270,7 @@ const adminAccessLogJsonSchemaBase: Document = {
         'Soft reference to Supabase app.accounts.id. Non-null on privileged_data_access; null on privileged_bulk_access (enforced below).',
     },
     resourceType: {
-      enum: ['policy', 'asset', 'recovery_case', 'plan', 'claim'],
+      enum: ['policy', 'asset', 'recovery_case', 'plan', 'claim', 'asset_location'],
       description:
         'ADR-0006 §18.7 item 5 — widened to add recovery_case for the Security Company ' +
         'Dashboard partner-case audit trail (PDM-8). Widened again (business-owner gap ' +
@@ -279,7 +279,8 @@ const adminAccessLogJsonSchemaBase: Document = {
         'Widened again (SR-018-1, Feature 018) to add claim for admin claims list/detail/' +
         'adjudication audit rows — this enum must stay in sync with the TypeScript ' +
         '`AdminAccessResourceType` union in repositories/admin-access-log.ts; widen both in the ' +
-        'same commit.',
+        'same commit. Widened again (Stage 8 2026-11-20, admin asset location) to add asset_location ' +
+        'for GET /admin/assets/{assetId}/location views; resourceId is the assets._id.',
     },
     resourceId: {
       bsonType: ['objectId', 'null'],
