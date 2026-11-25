@@ -133,6 +133,15 @@ export const CUSTOMER_PROTECTION_STEP_UP_ACTIONS: readonly CustomerProtectionSte
     status: 'reserved',
     rationale: 'Any future unlink, re-link or deactivate route must be born guarded, with the A-6 open-case refusal.',
   },
+  {
+    id: 'G-4',
+    action: 'locate_now_request',
+    route: 'POST /v1/assets/:assetId/locate-request',
+    windowSeconds: STEP_UP_WINDOW_SECONDS.protectionChange,
+    status: 'enforced',
+    rationale:
+      'Feature 008 Stage 8 2026-11-25 F-3: a stolen session must not get a fresh fix of the phone (where the person is) on demand. Owner-test escape hatch REMOTE_LOCATE_STEP_UP_BYPASS (exact "true" only).',
+  },
 ] as const;
 
 export type ProtectionStepUpMethod = 'mfa' | 'password';

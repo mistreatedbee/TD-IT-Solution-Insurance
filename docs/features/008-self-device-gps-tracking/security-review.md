@@ -181,3 +181,85 @@ Filed verbatim by `gps-integration-engineer` from the `cybersecurity-architect` 
   6. Joint gate sign-off (`security-engineer` + `compliance-specialist`).
   7. An account-takeover abuse test of the path from takeover to live locate.
   8. `compliance-specialist` note on the F-8 notice trade-off.
+
+## 2026-11-25: Remediation of "Locate now" F-2 to F-6, backend (backend-engineer, branch `feat/locate-now-hardening`)
+
+Appended; nothing above is changed. This covers items 1 to 4 of the "Still open" list in the
+previous section. Backend only: no web or mobile code is touched. Items 5 to 8 stay open.
+
+- **F-3 fixed (step-up).** `POST /v1/assets/:assetId/locate-request` now calls the existing
+  `assertProtectionStepUp` (`backend/src/lib/step-up.ts`): a fresh MFA (`mfa_verified_at`) or
+  password re-auth (`password_reauth_at`) on the current session, read live from `app.sessions`,
+  within `PROTECTION_CHANGE_STEP_UP_WINDOW_SECONDS` (5 minutes). The check runs after the owner
+  check and before anything else happens. Otherwise it returns 401 `STEP_UP_REQUIRED`, and no row,
+  audit, push or email is created. It is listed as row G-4 in `CUSTOMER_PROTECTION_STEP_UP_ACTIONS`.
+  There is a fail-closed, owner-test-only escape hatch, `REMOTE_LOCATE_STEP_UP_BYPASS`, modelled on
+  `LOCATION_CONSENT_STEP_UP_ENFORCED`. Only the exact string `"true"` skips the step-up; unset or
+  any other value keeps it enforced. It is declared in `render.yaml` with `sync: false`, and the
+  backend logs a startup warning while it is on. A bypassed request is still audited, with method
+  `bypass`. **The hatch must be unset before any real user.**
+- **F-2 fixed.** `scopeForTrigger('remote_request')` always returns `background`. The
+  `remoteContext` parameter is gone, so no client value can reach the consent decision. The body
+  schema still accepts the field, so older apps do not get a 400, but the server ignores it.
+  Request creation also checks for `background` scope. A bound phone that has only foreground
+  consent is not woken, and its request is declined (`consent_required`) at once.
+  Residual: a modified client with foreground consent can still send ordinary `foreground_open`
+  reports. That is SDL-4's general client-honesty limit and is not specific to Locate now.
+- **F-4 fixed (fail closed).** The `location_locate_requested` audit row is written before the
+  `locate_requests` row exists, using a pre-allocated request id. If that write fails, the request
+  is not created, the phone is not woken, no email is sent, and the caller gets 500
+  `INTERNAL_ERROR`. The `remote_request` answer path does the same: the `answered` outcome is
+  audited before the fix is stored. If that write fails, nothing is stored, the request stays
+  open, and the phone gets 500. A failed audit of a decline also leaves the request open; it is
+  audited later as `expired`. Residual: if the Mongo insert fails after the audit write succeeded,
+  a `requested` row exists with no request behind it. This over-records, which is the safe
+  direction.
+- **F-5 fixed (dedicated types and outcome audit).** There are two new `app.audit_event_type`
+  values in **`backend/migrations/043_feature008_locate_now_audit_event_types.sql`**: written,
+  **not applied to any database**. Migrations live in `backend/migrations/`, not
+  `supabase/migrations/`. Both values reuse `protection_detail`, which never holds coordinates:
+  - `location_locate_requested`: `method|assetId|requestId`, where method is `mfa`, `password`
+    or `bypass`.
+  - `location_locate_answered`: `outcome|assetId|requestId`, where outcome is `answered`,
+    `declined` or `expired`.
+
+  Outcomes are audited one row per open request:
+  - The actor of an answer or a decline is the phone's session.
+  - A declined-at-creation request gets the `requested` row and then the `declined` row.
+  - If the post-write consent re-check (the PR #44 F-1 undo) refuses a report, a `declined` row
+    voids the earlier `answered` row (best effort).
+  - `expired` is audited lazily, with no actor. This happens on the owner's next
+    `GET .../locate-request/latest` and on the next request for the asset. A claim flag on the
+    row (`expiryAuditedAt`) prevents duplicates, and a failed write is released and retried.
+    Residual: a request nobody reads again before the 1 h purge gets no `expired` row. The
+    `requested` row with no matching outcome still shows, durably, that it was not answered.
+
+  **Deploy order: apply 043 before Render deploys this build.** Until it is applied, Postgres
+  rejects the new values and Locate now fails closed: every request returns 500.
+- **F-6 fixed.** The security email is now sent for the first request of the UTC day, AND for any
+  request from a device that has not made a locate request before (keyed by session id when the
+  session has no device id). The day key and the known-requester key (180 days) are set only after
+  `dispatchProtectionNotice` reports success; that function now resolves `true` or `false`. A
+  failed send sets no key, so the next request emails again. The send failure itself is still
+  audited as `protection_change_notice_failed`. If the dedupe lookup fails, the email is sent.
+  The email names the requesting device (session `deviceName`), as F-8 asks. Known-requester keys
+  live in the KV store, so if that is in-memory, a restart forgets them and causes extra emails,
+  which is the safe direction.
+- **Tests.** `backend/src/routes/locate-requests.test.ts` has new "Stage 8 2026-11-25 F-3",
+  "F-4/F-5" and "F-6" blocks, plus two F-2 tests that replace the old foreground-claim test.
+  `backend/src/lib/location-consent.test.ts` and `backend/src/routes/protection-step-up.test.ts`
+  are adjusted. Full backend suite: 112 files, 1505 tests passed. `npm run typecheck` is clean.
+- **Now stale, owners to update by targeted edit:**
+  - ADR-0009 §20 items 1 and 2 still describe the reused `protection_change` audit and the
+    `remoteContext` relaxation.
+  - The reason string of the `backend-remote-locate-requests` entry in
+    `docs/organization/gates/stage8-manifest.json` says the same.
+- **Still open before any real user (blocking):**
+  1. ADR-0009 §20 ratified by `cto`.
+  2. Joint gate sign-off (`security-engineer` + `compliance-specialist`), including a re-review of
+     this remediation.
+  3. An account-takeover abuse test of the path from takeover to live locate (now through
+     step-up).
+  4. `compliance-specialist` note on the F-8 notice trade-off.
+  5. Client step-up UI for Locate now (web and mobile), then `REMOTE_LOCATE_STEP_UP_BYPASS` unset.
+  6. Migration 043 applied by the owner.

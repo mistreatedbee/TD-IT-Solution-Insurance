@@ -213,6 +213,18 @@ export interface Env {
   locationConsentStepUpEnforced?: boolean;
 
   /**
+   * Stage 8 2026-11-25 F-3: `POST /v1/assets/:assetId/locate-request` ("Locate now") requires a
+   * fresh protection step-up (`assertProtectionStepUp`, MFA or password re-auth) BY DEFAULT.
+   * This is an owner-test-only ESCAPE HATCH, not an enable switch: only the exact string
+   * `"true"` in `REMOTE_LOCATE_STEP_UP_BYPASS` skips the check; unset or any other value keeps
+   * step-up enforced (fail-closed). It exists only because the mobile/web clients have no
+   * step-up UI on Locate now yet. It must be unset before any real user. A bypassed request is
+   * still audited, with method `bypass`. Optional so hand-built `Env` fixtures compile;
+   * `undefined` = enforced.
+   */
+  remoteLocateStepUpBypass?: boolean;
+
+  /**
    * Sign-up for an already-registered address emails the existing owner ("you already have an account").
    * The on-screen response stays the identical uniform 202 either way (FR-5/AC-2); only an email is added.
    * Fail-closed, same convention as `locationIngestionEnabled`: only the exact string "true" enables it.
@@ -616,6 +628,20 @@ export function loadEnv(): Env {
     }
   }
 
+  // Stage 8 F-3: step-up on Locate now is ON unless this escape hatch is exactly "true".
+  const remoteLocateStepUpBypassRaw = process.env.REMOTE_LOCATE_STEP_UP_BYPASS;
+  const remoteLocateStepUpBypass = remoteLocateStepUpBypassRaw === 'true';
+  if (remoteLocateStepUpBypass) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[config/env] REMOTE_LOCATE_STEP_UP_BYPASS is "true": Locate now requests skip step-up. ' +
+        'Owner-test only (Stage 8 F-3); unset it before any real user.',
+    );
+  } else if (remoteLocateStepUpBypassRaw !== undefined) {
+    // eslint-disable-next-line no-console
+    console.warn('[config/env] REMOTE_LOCATE_STEP_UP_BYPASS is not exactly "true". Step-up stays enforced.');
+  }
+
   // Fail-closed: only the exact string "true" turns on the existing-owner sign-up email.
   const signupExistingAccountEmailEnabled = process.env.SIGNUP_EXISTING_ACCOUNT_EMAIL_ENABLED === 'true';
 
@@ -797,6 +823,7 @@ export function loadEnv(): Env {
     remoteLocateEnabled,
     locationConsentEnforced,
     locationConsentStepUpEnforced,
+    remoteLocateStepUpBypass,
     signupExistingAccountEmailEnabled,
     claimsNotice,
     claimsApiEnabled,

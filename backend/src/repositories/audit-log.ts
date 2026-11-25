@@ -91,7 +91,17 @@ export type AuditEventType =
   | 'protection_change'
   | 'protection_change_notice_failed'
   // Feature 021 stage (c) - one row per safety-alert channel attempt. Added by migrations/042.
-  | 'safety_alert_dispatch';
+  | 'safety_alert_dispatch'
+  // Feature 008 "Locate now" - Stage 8 2026-11-25 F-4/F-5. Added by migrations/043 (written, NOT
+  // applied by this change). Both carry `protectionDetail` (fixed vocabulary, never coordinates):
+  //   location_locate_requested  -> `method|assetId|requestId` (method in mfa, password, bypass)
+  //   location_locate_answered   -> `outcome|assetId|requestId` (outcome in answered, declined, expired)
+  // Until 043 is applied, Postgres rejects these values, the audit write throws, and the
+  // locate-request route fails closed (no request is created).
+  | 'location_locate_requested'
+  | 'location_locate_answered';
+
+export type LocateAuditOutcome = 'answered' | 'declined' | 'expired';
 
 export type ProtectionChangeAction = 'asset_removed' | 'emergency_contact_changed';
 export type ProtectionChangeMethod = 'mfa' | 'password';

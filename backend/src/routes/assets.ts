@@ -38,6 +38,7 @@ import { assertProtectionStepUp, requireProtectionStepUp } from '../lib/step-up.
 import { isReportConsented, notifyLocationConsentChange, scopeForTrigger } from '../lib/location-consent.js';
 import { LOCATION_CONSENT_SCOPES } from '../repositories/location-consent-log.js';
 import { recordProtectionChange } from '../lib/protection-change.js';
+import { auditLocateOutcomeForOpenRequests } from '../lib/locate-audit.js';
 import { createRateLimiter, clientIp } from '../middleware/rate-limit.js';
 
 const assetIdParamsSchema = z.object({
@@ -184,7 +185,9 @@ export function createAssetsRouter(ctx: AppContext): Router {
           return;
         }
         const isRemoteRequest = triggeredBy === 'remote_request';
-        const remoteContext = (req.body as LocationReportBody).remoteContext;
+        // Stage 8 2026-11-25 F-2: the body's `remoteContext` is still accepted by the schema (so
+        // older apps do not get a 400) but is deliberately never read: a remote_request answer
+        // always needs `background` consent, whatever the client says about the app state.
 
         const parsed = assetIdParamsSchema.safeParse(req.params);
         if (!parsed.success) {
@@ -236,9 +239,12 @@ export function createAssetsRouter(ctx: AppContext): Router {
         // covers this report's scope; a withdrawal refuses the next report immediately.
         if (ctx.env.locationConsentEnforced === true) {
           const latest = await ctx.locationConsentLog.findLatestByAsset(accountId, parsed.data.assetId);
-          const scope = scopeForTrigger((req.body as LocationReportBody).triggeredBy, remoteContext);
+          const scope = scopeForTrigger((req.body as LocationReportBody).triggeredBy);
           if (!isReportConsented(latest, session.deviceId, scope)) {
             if (isRemoteRequest) {
+              // Stage 8 F-5: 'declined' outcome audited before resolving (a failed write -> 500,
+              // the request stays open and is audited 'expired' later).
+              await auditLocateOutcomeForOpenRequests(ctx, req, accountId, parsed.data.assetId, 'declined');
               await ctx.locateRequests.resolvePendingForAsset(accountId, parsed.data.assetId, {
                 status: 'consent_required',
               });
@@ -255,6 +261,21 @@ export function createAssetsRouter(ctx: AppContext): Router {
         } catch {
           next(apiError('VALIDATION_ERROR'));
           return;
+        }
+
+        // Stage 8 2026-11-25 F-4/F-5: a remote answer discloses the phone's location to the
+        // requester, so its 'answered' outcome is audited BEFORE anything is stored. Fail closed:
+        // if the audit write fails (e.g. migrations/043 not applied), the fix is not stored, the
+        // request stays open, and the phone gets 500 (it may retry until the request expires).
+        if (isRemoteRequest) {
+          try {
+            await auditLocateOutcomeForOpenRequests(ctx, req, accountId, parsed.data.assetId, 'answered');
+          } catch {
+            // eslint-disable-next-line no-console
+            console.error('[location-report] locate outcome audit failed; answer refused (fail closed)');
+            next(apiError('INTERNAL_ERROR'));
+            return;
+          }
         }
 
         const result = await ctx.assets.reportSelfDeviceLocation(accountId, parsed.data.assetId, session.deviceId, {
@@ -294,11 +315,17 @@ export function createAssetsRouter(ctx: AppContext): Router {
         // what this report wrote and refuse it - a report must never survive a withdrawal.
         if (ctx.env.locationConsentEnforced === true) {
           const latestAfter = await ctx.locationConsentLog.findLatestByAsset(accountId, parsed.data.assetId);
-          const scopeAfter = scopeForTrigger(body.triggeredBy, body.remoteContext);
+          const scopeAfter = scopeForTrigger(body.triggeredBy);
           if (!isReportConsented(latestAfter, session.deviceId, scopeAfter)) {
             await ctx.assets.clearLocationForAccount(accountId, parsed.data.assetId);
             await ctx.locationEvents.deleteByAsset(accountId, parsed.data.assetId);
             if (isRemoteRequest) {
+              // The 'answered' row above is voided by this later 'declined' row. Best-effort: the
+              // write is already undone, so a failed audit here must not mask CONSENT_REQUIRED.
+              await auditLocateOutcomeForOpenRequests(ctx, req, accountId, parsed.data.assetId, 'declined').catch(() => {
+                // eslint-disable-next-line no-console
+                console.error('[location-report] locate declined-after-undo audit failed');
+              });
               await ctx.locateRequests.resolvePendingForAsset(accountId, parsed.data.assetId, {
                 status: 'consent_required',
               });

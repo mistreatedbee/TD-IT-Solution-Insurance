@@ -76,6 +76,12 @@ services:
       # flow can perform a step-up (it cannot yet) - turning it on blocks opt-in.
       - key: LOCATION_CONSENT_STEP_UP_ENFORCED
         sync: false
+      # Stage 8 2026-11-25 F-3: "Locate now" requires a fresh step-up BY DEFAULT. This is an
+      # owner-test-only escape hatch: only the exact string "true" skips the step-up (unset or
+      # anything else = enforced, fail-closed). Declared WITHOUT a value. Never set it for real
+      # users; unset it once the clients can perform step-up on Locate now.
+      - key: REMOTE_LOCATE_STEP_UP_BYPASS
+        sync: false
       # INC-003 A-16 / ADR-0014 G-1: web signup/resend go through the backend
       # (client: 'web'). Declared WITHOUT a value: the project owner sets it to
       # this environment's web origin + /auth/callback?type=signup in the Render

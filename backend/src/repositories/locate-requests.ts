@@ -6,7 +6,9 @@
  * location-report path and is read through the owner's existing asset-location reads. Each row
  * is answerable for LOCATE_REQUEST_TTL_MS (10 min); the TTL index then removes it at `purgeAt`
  * (1 h after creation, so the requesting screen can still read "expired"/"answered"). The
- * durable audit row lives in Postgres `account_audit_log` (protection_change).
+ * durable audit rows live in Postgres `account_audit_log`: `location_locate_requested` (written
+ * BEFORE this row, fail-closed) and `location_locate_answered` (outcome answered / declined /
+ * expired; migrations/043, Stage 8 2026-11-25 F-4/F-5).
  */
 import { ObjectId, type Db, type Collection } from 'mongodb';
 
@@ -33,6 +35,9 @@ export interface LocateRequestDocument {
   createdAt: Date;
   expiresAt: Date;
   purgeAt: Date;
+  /** Stage 8 F-5: set once the lazy `expired` outcome audit row has been written. Absent on
+   * older rows and on rows that never expired. */
+  expiryAuditedAt?: Date | null;
 }
 
 interface LocateRequestDbRow extends Omit<LocateRequestDocument, 'id'> {
@@ -57,6 +62,14 @@ export interface CreateLocateRequestInput {
   requesterSessionId: string;
   requesterDeviceId: string | null;
   status: StoredLocateRequestStatus;
+  /** Optional pre-allocated id (24-hex, from `newLocateRequestId()`), so the fail-closed audit row
+   * can name the request BEFORE it is persisted (Stage 8 F-4). */
+  id?: string;
+}
+
+/** Pre-allocate a request id (Stage 8 F-4: the audit is written before the row exists). */
+export function newLocateRequestId(): string {
+  return new ObjectId().toHexString();
 }
 
 export function createLocateRequestsRepo(db: Db) {
@@ -65,8 +78,9 @@ export function createLocateRequestsRepo(db: Db) {
   return {
     async create(input: CreateLocateRequestInput): Promise<LocateRequestDocument> {
       const now = new Date();
+      const { id, ...fields } = input;
       const doc: Omit<LocateRequestDbRow, '_id'> = {
-        ...input,
+        ...fields,
         pushSent: false,
         locationRecordedAt: null,
         answeredAt: input.status === 'pending' ? null : now,
@@ -74,8 +88,45 @@ export function createLocateRequestsRepo(db: Db) {
         expiresAt: new Date(now.getTime() + LOCATE_REQUEST_TTL_MS),
         purgeAt: new Date(now.getTime() + LOCATE_REQUEST_PURGE_MS),
       };
-      const result = await collection().insertOne(doc as LocateRequestDbRow);
-      return toDocument({ _id: result.insertedId, ...doc });
+      const _id = id && ObjectId.isValid(id) ? new ObjectId(id) : new ObjectId();
+      await collection().insertOne({ _id, ...doc } as LocateRequestDbRow);
+      return toDocument({ _id, ...doc });
+    },
+
+    /** Pending, unexpired requests for the asset (each one gets its own outcome audit row). */
+    async listPendingForAsset(accountId: string, assetId: string, now: Date = new Date()): Promise<LocateRequestDocument[]> {
+      const rows = await collection()
+        .find({ accountId, assetId, status: 'pending', expiresAt: { $gt: now } })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(20)
+        .toArray();
+      return rows.map(toDocument);
+    },
+
+    /** Stage 8 F-5 (lazy expiry audit): pending rows past their window with no expiry audit yet. */
+    async listExpiredUnaudited(accountId: string, assetId: string, now: Date = new Date()): Promise<LocateRequestDocument[]> {
+      const rows = await collection()
+        .find({ accountId, assetId, status: 'pending', expiresAt: { $lte: now }, expiryAuditedAt: { $in: [null] } })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(20)
+        .toArray();
+      return rows.map(toDocument);
+    },
+
+    /** Claim the expiry audit for one row (true = this caller won and must write the audit). */
+    async claimExpiryAudit(id: string, now: Date = new Date()): Promise<boolean> {
+      if (!ObjectId.isValid(id)) return false;
+      const result = await collection().updateOne(
+        { _id: new ObjectId(id), expiryAuditedAt: { $in: [null] } },
+        { $set: { expiryAuditedAt: now } },
+      );
+      return result.modifiedCount === 1;
+    },
+
+    /** Undo a claim whose audit write failed, so the next read retries it. */
+    async releaseExpiryAudit(id: string): Promise<void> {
+      if (!ObjectId.isValid(id)) return;
+      await collection().updateOne({ _id: new ObjectId(id) }, { $set: { expiryAuditedAt: null } });
     },
 
     async markPushSent(id: string): Promise<void> {

@@ -99,6 +99,12 @@ interface HarnessOpts {
   /** bound phone has a push token */
   pushToken?: boolean;
   mountLocate?: boolean;
+  /** requester sessions' step-up state; default 'password' (fresh password re-auth) */
+  stepUp?: 'password' | 'mfa' | 'stale';
+  /** make every audit write throw (e.g. migrations/043 not applied) */
+  auditFails?: boolean;
+  /** make the security email send fail */
+  noticeFails?: boolean;
 }
 
 function harness(opts: HarnessOpts = {}) {
@@ -109,19 +115,44 @@ function harness(opts: HarnessOpts = {}) {
     [PHONE2_ID, phone(PHONE2_ID, OWNER, 'device-phone')],
   ]);
 
-  const sessions = new Map<string, { id: string; accountId: string; deviceId: string | null; deviceName: string }>();
+  interface FakeSession {
+    id: string;
+    accountId: string;
+    deviceId: string | null;
+    deviceName: string;
+    revokedAt: Date | null;
+    mfaVerifiedAt: Date | null;
+    passwordReauthAt: Date | null;
+  }
+  const sessions = new Map<string, FakeSession>();
+  const stepUp = opts.stepUp ?? 'password';
+  const stale = new Date(Date.now() - 60 * 60_000);
+  const fresh = () => new Date(Date.now() - 1000);
   const addSession = (accountId: string, deviceId: string | null, deviceName = 'Test device') => {
     const id = randomUUID();
-    sessions.set(id, { id, accountId, deviceId, deviceName });
+    sessions.set(id, {
+      id,
+      accountId,
+      deviceId,
+      deviceName,
+      revokedAt: null,
+      mfaVerifiedAt: stepUp === 'mfa' ? fresh() : stale,
+      passwordReauthAt: stepUp === 'password' ? fresh() : stale,
+    });
     return id;
   };
   const requesterSession = addSession(OWNER, 'device-tablet', 'Galaxy Tab');
+  const laptopSession = addSession(OWNER, 'device-laptop', 'Work laptop');
   const phoneSession = addSession(OWNER, 'device-phone', 'Galaxy A15');
   const strangerPhoneSession = addSession(OWNER, 'device-stray', 'Old phone');
   const otherSession = addSession(OTHER, 'device-other');
   const staffSession = addSession(OWNER, 'device-staff');
 
   const requests: LocateRequestDocument[] = [];
+  const consent: { scopes: string[] | null } = {
+    scopes: opts.consentScopes === undefined ? ['foreground', 'periodic', 'background'] : opts.consentScopes,
+  };
+  const failures = { audit: opts.auditFails === true, notice: opts.noticeFails === true };
   const audits: Array<Record<string, unknown>> = [];
   const pushes: Array<{ deviceId: string; templateId: string; silentData?: Record<string, string> }> = [];
   const notices: Array<{ action: string }> = [];
@@ -159,11 +190,11 @@ function harness(opts: HarnessOpts = {}) {
     },
     locationConsentLog: {
       async findLatestByAsset() {
-        if (opts.consentScopes === null) return null;
+        if (consent.scopes === null) return null;
         return {
           eventType: 'granted',
           deviceId: 'device-phone',
-          scopes: opts.consentScopes ?? ['foreground', 'periodic', 'background'],
+          scopes: consent.scopes,
           createdAt: new Date(Date.now() - 60_000),
         };
       },
@@ -171,9 +202,10 @@ function harness(opts: HarnessOpts = {}) {
     locateRequests: {
       async create(input: CreateLocateRequestInput) {
         const now = new Date();
+        const { id, ...fields } = input;
         const doc: LocateRequestDocument = {
-          id: `507f1f77bcf86cd7994390${String(requests.length).padStart(2, '0')}`,
-          ...input,
+          id: id ?? `507f1f77bcf86cd7994390${String(requests.length).padStart(2, '0')}`,
+          ...fields,
           pushSent: false,
           locationRecordedAt: null,
           answeredAt: input.status === 'pending' ? null : now,
@@ -216,8 +248,40 @@ function harness(opts: HarnessOpts = {}) {
         }
         return n;
       },
+      async listPendingForAsset(acct: string, assetId: string, now = new Date()) {
+        return requests
+          .filter((r) => r.accountId === acct && r.assetId === assetId && live(r, now))
+          .map((r) => ({ ...r }));
+      },
+      async listExpiredUnaudited(acct: string, assetId: string, now = new Date()) {
+        return requests
+          .filter(
+            (r) =>
+              r.accountId === acct &&
+              r.assetId === assetId &&
+              r.status === 'pending' &&
+              r.expiresAt.getTime() <= now.getTime() &&
+              !r.expiryAuditedAt,
+          )
+          .map((r) => ({ ...r }));
+      },
+      async claimExpiryAudit(id: string) {
+        const r = requests.find((x) => x.id === id);
+        if (!r || r.expiryAuditedAt) return false;
+        r.expiryAuditedAt = new Date();
+        return true;
+      },
+      async releaseExpiryAudit(id: string) {
+        const r = requests.find((x) => x.id === id);
+        if (r) r.expiryAuditedAt = null;
+      },
     },
-    auditLog: { async record(e: Record<string, unknown>) { audits.push(e); } },
+    auditLog: {
+      async record(e: Record<string, unknown>) {
+        if (failures.audit) throw new Error('invalid input value for enum app.audit_event_type');
+        audits.push(e);
+      },
+    },
     pushNotifications: {
       async sendToDevice(p: { deviceId: string; templateId: string; silentData?: Record<string, string> }) {
         if (!opts.pushToken) return { delivered: false };
@@ -226,7 +290,10 @@ function harness(opts: HarnessOpts = {}) {
       },
     },
     authNotifications: {
-      async notifyProtectionChanged(p: { action: string }) { notices.push(p); },
+      async notifyProtectionChanged(p: { action: string; deviceName?: string | null }) {
+        if (failures.notice) throw new Error('email not sent');
+        notices.push(p);
+      },
     },
     idempotency: { async find() { return null; }, async store() { return undefined; } },
   } as unknown as AppContext;
@@ -239,9 +306,10 @@ function harness(opts: HarnessOpts = {}) {
   app.use(errorHandler);
 
   return {
-    app, env, requests, audits, pushes, notices, events, assets,
+    app, env, kv, requests, audits, pushes, notices, events, assets, consent, failures, sessions,
     auth: {
       requester: token(env, OWNER, requesterSession),
+      laptop: token(env, OWNER, laptopSession),
       phone: token(env, OWNER, phoneSession),
       strayPhone: token(env, OWNER, strangerPhoneSession),
       other: token(env, OTHER, otherSession),
@@ -294,10 +362,11 @@ describe('POST /assets/:assetId/locate-request', () => {
     expect(t.pushes).toHaveLength(1);
     expect(t.pushes[0]).toMatchObject({ deviceId: 'device-phone', templateId: 'location.locate.requested' });
     expect(t.pushes[0]!.silentData).toMatchObject({ event: 'location.locate.request', assetId: PHONE_ID });
+    expect(t.audits).toHaveLength(1);
     expect(t.audits[0]).toMatchObject({
-      eventType: 'protection_change',
+      eventType: 'location_locate_requested',
       actorAccountId: OWNER,
-      protectionDetail: `location_locate_requested|session|${PHONE_ID}`,
+      protectionDetail: `password|${PHONE_ID}|${body.requestId as string}`,
     });
     expect(JSON.stringify(t.audits)).not.toMatch(/-26\.1|28\.0/);
   });
@@ -344,9 +413,11 @@ describe('POST /assets/:assetId/locate-request', () => {
     expect(t.pushes).toHaveLength(0);
   });
 
-  it('sends the security email only for the first request of the day', async () => {
+  it('sends the security email only for the first request of the day (same requesting device)', async () => {
     const t = await start();
     await t.ask();
+    // Stage 8 F-6: the dedupe key is set only after the send succeeds (in the background).
+    await new Promise((r) => setTimeout(r, 10));
     await t.ask();
     await new Promise((r) => setTimeout(r, 10));
     expect(t.notices.filter((n) => n.action === 'location_locate_requested')).toHaveLength(1);
@@ -439,18 +510,30 @@ describe("location-report with triggeredBy 'remote_request'", () => {
     expect((await t.report()).status).toBe(400);
   });
 
-  it('needs background scope unless the app was in the foreground; refusal answers consent_required', async () => {
-    const t = await start({ consentScopes: ['foreground', 'periodic'] });
+  it('Stage 8 F-2: always needs background scope; a client remoteContext "foreground" claim is ignored', async () => {
+    const t = await start();
     await t.ask();
-    const bg = await t.report();
-    expect(bg.status).toBe(403);
-    expect(await code(bg)).toBe('CONSENT_REQUIRED');
+    // Background consent is withdrawn to foreground-only after the request was made.
+    t.consent.scopes = ['foreground', 'periodic'];
+    for (const extra of [{}, { remoteContext: 'foreground' }, { remoteContext: 'background' }]) {
+      const res = await t.report(t.auth.phone, extra);
+      expect(res.status === 403 || res.status === 409).toBe(true);
+    }
     expect(t.events).toHaveLength(0);
     expect(((await (await t.latest()).json()) as { status: string }).status).toBe('consent_required');
+    // The first refusal (403 CONSENT_REQUIRED) audited 'declined' exactly once.
+    expect(t.audits.filter((a) => String(a.protectionDetail).startsWith('declined|'))).toHaveLength(1);
+  });
 
-    await t.ask();
+  it("Stage 8 F-2: a phone with foreground-only consent is never woken; the request is declined at once", async () => {
+    const t = await start({ consentScopes: ['foreground', 'periodic'], pushToken: true });
+    const res = await t.ask();
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ status: 'consent_required' });
+    expect(t.pushes).toHaveLength(0);
     const fg = await t.report(t.auth.phone, { remoteContext: 'foreground' });
-    expect(fg.status).toBe(200);
+    expect(fg.status).toBe(409);
+    expect(t.events).toHaveLength(0);
   });
 
   it('is refused without an open request (409) and from a device that is not the bound phone', async () => {
@@ -472,5 +555,166 @@ describe("location-report with triggeredBy 'remote_request'", () => {
     const ok = await t.call('POST', `/assets/${PHONE_ID}/locate-request/decline`, t.auth.phone, { reason: 'consent_required' });
     expect(ok.status).toBe(200);
     expect(((await (await t.latest()).json()) as { status: string }).status).toBe('consent_required');
+  });
+});
+
+const errorBody = async (res: Response) => ((await res.json()) as { error: Record<string, unknown> }).error;
+
+describe('Stage 8 2026-11-25 F-3: step-up on POST locate-request', () => {
+  it('a stale step-up gets 401 STEP_UP_REQUIRED and nothing happens (no row, no audit, no push, no email)', async () => {
+    const t = await start({ stepUp: 'stale', pushToken: true });
+    const res = await t.ask();
+    expect(res.status).toBe(401);
+    const err = await errorBody(res);
+    expect(err).toMatchObject({ code: 'STEP_UP_REQUIRED', message: 'Please re-verify your identity to continue.' });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(t.requests).toHaveLength(0);
+    expect(t.audits).toHaveLength(0);
+    expect(t.pushes).toHaveLength(0);
+    expect(t.notices).toHaveLength(0);
+  });
+
+  it('a fresh MFA step-up passes and is audited as method mfa', async () => {
+    const t = await start({ stepUp: 'mfa' });
+    const res = await t.ask();
+    expect(res.status).toBe(201);
+    expect(String(t.audits[0]!.protectionDetail)).toMatch(/^mfa\|/);
+  });
+
+  it('owner-test escape hatch: only remoteLocateStepUpBypass === true skips step-up, audited as bypass', async () => {
+    const off = await start({ stepUp: 'stale', env: { remoteLocateStepUpBypass: false } });
+    expect((await off.ask()).status).toBe(401);
+    await new Promise<void>((r) => server!.close(() => r()));
+    server = undefined;
+    const on = await start({ stepUp: 'stale', env: { remoteLocateStepUpBypass: true } });
+    const res = await on.ask();
+    expect(res.status).toBe(201);
+    expect(on.audits[0]).toMatchObject({ eventType: 'location_locate_requested' });
+    expect(String(on.audits[0]!.protectionDetail)).toMatch(/^bypass\|/);
+  });
+
+  it('step-up is not required for the poll, the phone check-in or the answer', async () => {
+    const t = await start();
+    await t.ask();
+    for (const s of t.sessions.values()) s.passwordReauthAt = null;
+    expect((await t.latest()).status).toBe(200);
+    expect((await t.call('GET', '/devices/locate-requests/pending', t.auth.phone)).status).toBe(200);
+    expect((await t.report()).status).toBe(200);
+  });
+});
+
+describe('Stage 8 2026-11-25 F-4/F-5: fail-closed, dedicated, outcome audit', () => {
+  it('audit write failure (e.g. migrations/043 not applied): 500, nothing persisted, no push, no email', async () => {
+    const t = await start({ auditFails: true, pushToken: true });
+    const res = await t.ask();
+    expect(res.status).toBe(500);
+    expect(await code(res)).toBe('INTERNAL_ERROR');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(t.requests).toHaveLength(0);
+    expect(t.pushes).toHaveLength(0);
+    expect(t.notices).toHaveLength(0);
+  });
+
+  it("a request declined at creation (no consent) records 'requested' then 'declined' with the same request id", async () => {
+    const t = await start({ consentScopes: null });
+    const body = (await (await t.ask()).json()) as { requestId: string };
+    expect(t.audits.map((a) => a.eventType)).toEqual(['location_locate_requested', 'location_locate_answered']);
+    expect(t.audits[1]!.protectionDetail).toBe(`declined|${PHONE_ID}|${body.requestId}`);
+  });
+
+  it("an answer records 'answered' (actor = the phone's session), never coordinates", async () => {
+    const t = await start();
+    const body = (await (await t.ask()).json()) as { requestId: string };
+    expect((await t.report()).status).toBe(200);
+    const answered = t.audits.filter((a) => a.eventType === 'location_locate_answered');
+    expect(answered).toHaveLength(1);
+    expect(answered[0]!.protectionDetail).toBe(`answered|${PHONE_ID}|${body.requestId}`);
+    expect(JSON.stringify(t.audits)).not.toMatch(/-26\.1|28\.0|latitude|longitude/);
+  });
+
+  it('an answer whose audit write fails stores nothing and leaves the request open', async () => {
+    const t = await start();
+    await t.ask();
+    t.failures.audit = true;
+    const res = await t.report();
+    expect(res.status).toBe(500);
+    expect(t.events).toHaveLength(0);
+    expect(t.assets.get(PHONE_ID)!.lastLocation).toBeNull();
+    t.failures.audit = false;
+    expect(((await (await t.latest()).json()) as { status: string }).status).toBe('pending');
+    // a retry once the audit works again is accepted
+    expect((await t.report()).status).toBe(200);
+  });
+
+  it("the phone's decline records 'declined'; a failed decline audit leaves the request open", async () => {
+    const t = await start();
+    const body = (await (await t.ask()).json()) as { requestId: string };
+    t.failures.audit = true;
+    const failed = await t.call('POST', `/assets/${PHONE_ID}/locate-request/decline`, t.auth.phone, { reason: 'consent_required' });
+    expect(failed.status).toBe(500);
+    t.failures.audit = false;
+    expect(((await (await t.latest()).json()) as { status: string }).status).toBe('pending');
+    const ok = await t.call('POST', `/assets/${PHONE_ID}/locate-request/decline`, t.auth.phone, { reason: 'consent_required' });
+    expect(ok.status).toBe(200);
+    expect(t.audits.filter((a) => a.protectionDetail === `declined|${PHONE_ID}|${body.requestId}`)).toHaveLength(1);
+  });
+
+  it("an unanswered request is audited 'expired' lazily on the next read, exactly once, with no actor", async () => {
+    const t = await start();
+    const body = (await (await t.ask()).json()) as { requestId: string };
+    t.requests[0]!.expiresAt = new Date(Date.now() - 1000);
+    await t.latest();
+    await t.latest();
+    const expired = t.audits.filter((a) => a.protectionDetail === `expired|${PHONE_ID}|${body.requestId}`);
+    expect(expired).toHaveLength(1);
+    expect(expired[0]).toMatchObject({ eventType: 'location_locate_answered', accountId: OWNER });
+    expect(expired[0]!.actorAccountId).toBeUndefined();
+  });
+
+  it('a failed expiry audit never fails the read and is retried on the next one', async () => {
+    const t = await start();
+    await t.ask();
+    t.requests[0]!.expiresAt = new Date(Date.now() - 1000);
+    t.failures.audit = true;
+    expect((await t.latest()).status).toBe(200);
+    t.failures.audit = false;
+    await t.latest();
+    expect(t.audits.filter((a) => String(a.protectionDetail).startsWith('expired|'))).toHaveLength(1);
+  });
+});
+
+describe('Stage 8 2026-11-25 F-6: security email per new requesting device, dedupe after send', () => {
+  const settle = () => new Promise((r) => setTimeout(r, 15));
+  const locateNotices = (t: { notices: Array<{ action: string; deviceName?: string | null }> }) =>
+    t.notices.filter((n) => n.action === 'location_locate_requested');
+
+  it('emails again when a device that never asked before asks on the same day, naming that device', async () => {
+    const t = await start();
+    await t.ask();
+    await settle();
+    await t.ask(t.auth.laptop, PHONE2_ID);
+    await settle();
+    expect(locateNotices(t)).toHaveLength(2);
+    expect(locateNotices(t)[1]!.deviceName).toBe('Work laptop');
+    // the same laptop again: no new email
+    await t.ask(t.auth.laptop, PHONE2_ID);
+    await settle();
+    expect(locateNotices(t)).toHaveLength(2);
+  });
+
+  it('a failed send sets no dedupe key, so the next request emails again', async () => {
+    const t = await start({ noticeFails: true });
+    await t.ask();
+    await settle();
+    expect(locateNotices(t)).toHaveLength(0);
+    const day = new Date().toISOString().slice(0, 10);
+    expect(await t.kv.exists(`locate-notice:${OWNER}:${day}`)).toBe(false);
+    // the failure itself was audited as a notice failure
+    expect(t.audits.some((a) => a.eventType === 'protection_change_notice_failed')).toBe(true);
+    t.failures.notice = false;
+    await t.ask();
+    await settle();
+    expect(locateNotices(t)).toHaveLength(1);
+    expect(await t.kv.exists(`locate-notice:${OWNER}:${day}`)).toBe(true);
   });
 });
