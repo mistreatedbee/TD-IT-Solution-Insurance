@@ -75,6 +75,19 @@ describe('api/client', () => {
     expect(useSessionStore.getState().status).toBe('signed-in');
   });
 
+  it.each(['STEP_UP_REQUIRED', 'INVALID_CREDENTIALS'])(
+    'does not refresh or retry on a 401 %s (not an expired token)',
+    async (code) => {
+      useSessionStore.getState().setSignedIn({ accessToken: 'access-1', sessionId: 'sess-1' });
+      const fetchMock = jest
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(jsonResponse(401, { error: { code, message: 'x', requestId: 'r1' } }));
+      await expect(apiFetch('/assets/a1/locate-request', { method: 'POST' })).rejects.toMatchObject({ code, status: 401 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(useSessionStore.getState().status).toBe('signed-in');
+    },
+  );
+
   it('includes the locally-generated deviceId on every /session/refresh request', async () => {
     useSessionStore.getState().setSignedIn({ accessToken: 'expired-token', sessionId: 'sess-1' });
     jest.spyOn(secureStorage, 'getRefreshToken').mockResolvedValue('refresh-1');

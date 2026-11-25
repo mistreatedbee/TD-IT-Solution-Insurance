@@ -70,6 +70,16 @@ export interface RequestOptions {
 
 const TRANSIENT_STATUSES = new Set([502, 503, 504]);
 
+/**
+ * 401s that are NOT an expired access token, so refresh-and-retry would be wrong:
+ *  - STEP_UP_REQUIRED: the session is valid but not freshly re-verified. A refresh never renews
+ *    step-up (ADR-0012 INV-2), so retrying only wastes a round trip. Callers show the step-up
+ *    prompt instead (src/auth/useProtectionStepUp.ts). Same rule as the web customer client.
+ *  - INVALID_CREDENTIALS: a wrong password on POST /auth/reauth/password. Retrying would send
+ *    the same wrong password twice and burn two of the customer's re-auth attempts.
+ */
+const NO_REFRESH_401_CODES = new Set(['STEP_UP_REQUIRED', 'INVALID_CREDENTIALS']);
+
 export function isTransientFailure(err: unknown): boolean {
   return (
     err instanceof NetworkUnavailableError ||
@@ -241,6 +251,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       !options._isRetry &&
       err instanceof ApiError &&
       err.status === 401 &&
+      !NO_REFRESH_401_CODES.has(err.code) &&
       path !== '/session/refresh';
 
     if (!shouldAttemptRefresh) throw err;

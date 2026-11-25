@@ -10,10 +10,12 @@
  *
  * It answers through the EXISTING location-report path with `triggeredBy: 'remote_request'`,
  * and only when every gate the normal reporter uses passes (`canReportLocation()`: flag, local
- * consent, linked smartphone asset, OS permission). Answering while the app is NOT in the
- * foreground additionally needs the background consent marker and "Allow all the time"
- * (Android owner-test only). Any missing consent/permission answers the request as
- * 'consent_required' WITHOUT sending a location. The server re-checks consent itself.
+ * consent, linked smartphone asset, OS permission). Every answer - app open or not - also
+ * needs the background consent marker and "Allow all the time" (Android owner-test only; iOS
+ * always declines), because the server requires 'background' consent for every remote_request
+ * answer. Any missing consent/permission answers the request as 'consent_required' WITHOUT
+ * sending a location. The server re-checks consent itself. `context` is kept for callers and
+ * logs only; it no longer relaxes anything and is not sent to the server.
  *
  * Transparency (POPIA): the phone always shows "Your location was requested from another device
  * signed in to your account" - pushed by the server, or shown locally here when no push reached
@@ -121,7 +123,9 @@ export async function answerPendingLocateRequests(context: RemoteLocateContext):
   if (inFlight) return 'skipped_in_flight';
   inFlight = true;
   try {
-    const outcome = await answer(context);
+    // `context` (foreground/background) no longer changes the consent rule; see header.
+    void context;
+    const outcome = await answer();
     log(outcome);
     return outcome;
   } catch {
@@ -132,7 +136,7 @@ export async function answerPendingLocateRequests(context: RemoteLocateContext):
   }
 }
 
-async function answer(context: RemoteLocateContext): Promise<RemoteLocateOutcome> {
+async function answer(): Promise<RemoteLocateOutcome> {
   const assetId = await getLinkedSmartphoneAssetId();
   if (!assetId) return 'no_linked_asset';
   if (!(await ensureSession())) return 'no_session';
@@ -150,7 +154,11 @@ async function answer(context: RemoteLocateContext): Promise<RemoteLocateOutcome
 
   const gate = await canReportLocation();
   if (!gate.ok && gate.reason === 'flag_off') return 'flag_off';
-  const consented = gate.ok && gate.assetId === assetId && (context === 'foreground' || (await mayAnswerInBackground()));
+  // Every remote_request answer needs the BACKGROUND consent marker + "Allow all the time",
+  // whether or not this app happens to be open: the person who asked is on another device, so
+  // this phone's user did not start the read. The server requires 'background' consent for
+  // every remote_request too (it no longer trusts a client "I'm in the foreground" claim).
+  const consented = gate.ok && gate.assetId === assetId && (await mayAnswerInBackground());
   if (!consented) {
     await declineLocateRequest(assetId).catch(() => undefined);
     return 'declined_no_consent';
@@ -170,7 +178,9 @@ async function answer(context: RemoteLocateContext): Promise<RemoteLocateOutcome
       accuracyMeters: fix.accuracyMeters,
       capturedAt: fix.capturedAt,
       triggeredBy: 'remote_request',
-      remoteContext: context,
+      // No `remoteContext`: older servers treat a missing value as 'background' (the strict
+      // scope), which is exactly what this phone already checked above, and newer servers
+      // ignore it. Sending it could only ever relax an older server's check.
     });
   } catch (err) {
     // CONSENT_REQUIRED: the server already marked the request 'consent_required'.

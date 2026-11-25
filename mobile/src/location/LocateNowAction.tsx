@@ -5,6 +5,7 @@
  */
 import React from 'react';
 import { Text, View } from 'react-native';
+import { ProtectionStepUpSheet } from '../auth/ProtectionStepUpSheet';
 import { Button } from '../design';
 import { useDesignTokens } from '../theme/designTheme';
 import { locateNowMessage, useLocateNow } from './useLocateNow';
@@ -19,7 +20,7 @@ export function LocateNowAction({
   testID?: string;
 }) {
   const t = useDesignTokens();
-  const { state, locate } = useLocateNow(assetId, onAnswered);
+  const { state, locate, stepUpOpen, onStepUpVerified, onStepUpCancel } = useLocateNow(assetId, onAnswered);
   const message = locateNowMessage(state);
   return (
     <View testID={testID} style={{ gap: t.spacing.s2, alignSelf: 'stretch' }}>
@@ -35,6 +36,12 @@ export function LocateNowAction({
           {message}
         </Text>
       ) : null}
+      <ProtectionStepUpSheet
+        visible={stepUpOpen}
+        reason="Locate now asks your other phone for its location, so we check it's really you first."
+        onVerified={() => void onStepUpVerified()}
+        onCancel={onStepUpCancel}
+      />
     </View>
   );
 }
