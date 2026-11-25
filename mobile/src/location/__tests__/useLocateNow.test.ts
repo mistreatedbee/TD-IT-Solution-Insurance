@@ -74,6 +74,54 @@ describe('useLocateNow', () => {
     expect(latest).not.toHaveBeenCalled();
   });
 
+  const stepUpError = () =>
+    new ApiError(401, { error: { code: 'STEP_UP_REQUIRED', message: 'x', requestId: 'r' } } as never);
+
+  it('opens the step-up prompt on STEP_UP_REQUIRED, then re-sends the request once', async () => {
+    ask.mockRejectedValueOnce(stepUpError()).mockResolvedValueOnce(req('pending'));
+    const { result } = await renderHook(() => useLocateNow('a1'));
+    await act(async () => {
+      await result.current.locate();
+    });
+    expect(result.current.stepUpOpen).toBe(true);
+    expect(locateNowMessage(result.current.state)).toBe(LOCATE_NOW_COPY.step_up);
+    await act(async () => {
+      await result.current.onStepUpVerified();
+    });
+    expect(ask).toHaveBeenCalledTimes(2);
+    expect(ask).toHaveBeenLastCalledWith('a1');
+    expect(result.current.stepUpOpen).toBe(false);
+    expect(locateNowMessage(result.current.state)).toBe(LOCATE_NOW_COPY.asking);
+  });
+
+  it('does not loop when step-up is still required after confirming', async () => {
+    ask.mockRejectedValue(stepUpError());
+    const { result } = await renderHook(() => useLocateNow('a1'));
+    await act(async () => {
+      await result.current.locate();
+    });
+    await act(async () => {
+      await result.current.onStepUpVerified();
+    });
+    expect(ask).toHaveBeenCalledTimes(2);
+    expect(result.current.stepUpOpen).toBe(false);
+    expect(locateNowMessage(result.current.state)).toBe(LOCATE_NOW_COPY.step_up_failed);
+  });
+
+  it('sends nothing when the customer cancels the step-up prompt', async () => {
+    ask.mockRejectedValueOnce(stepUpError());
+    const { result } = await renderHook(() => useLocateNow('a1'));
+    await act(async () => {
+      await result.current.locate();
+    });
+    await act(async () => {
+      result.current.onStepUpCancel();
+    });
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(result.current.stepUpOpen).toBe(false);
+    expect(locateNowMessage(result.current.state)).toBe(LOCATE_NOW_COPY.step_up_cancelled);
+  });
+
   it('explains a rate limit', async () => {
     ask.mockRejectedValue(new ApiError(429, { error: { code: 'RATE_LIMITED', message: 'x', requestId: 'r' } } as never));
     const { result } = await renderHook(() => useLocateNow('a1'));

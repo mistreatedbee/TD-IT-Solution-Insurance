@@ -82,23 +82,37 @@ describe('answerPendingLocateRequests', () => {
   });
   afterEach(() => warn.mockRestore());
 
-  it("sends one fix with triggeredBy 'remote_request' and the app context", async () => {
+  it("sends one fix with triggeredBy 'remote_request' and no remoteContext claim", async () => {
     expect(await answerPendingLocateRequests('foreground')).toBe('sent');
     expect(report).toHaveBeenCalledTimes(1);
-    expect(report).toHaveBeenCalledWith(
-      'asset-1',
-      expect.objectContaining({ triggeredBy: 'remote_request', remoteContext: 'foreground' }),
-    );
+    expect(report).toHaveBeenCalledWith('asset-1', expect.objectContaining({ triggeredBy: 'remote_request' }));
+    expect(report.mock.calls[0][1]).not.toHaveProperty('remoteContext');
     expect(decline).not.toHaveBeenCalled();
   });
 
-  it('answers in the background only with background consent + "all the time"', async () => {
-    expect(await answerPendingLocateRequests('background')).toBe('sent');
-    expect(report).toHaveBeenLastCalledWith('asset-1', expect.objectContaining({ remoteContext: 'background' }));
+  it.each(['foreground', 'background'] as const)(
+    'needs background consent + "all the time" even when answering in the %s',
+    async (context) => {
+      expect(await answerPendingLocateRequests(context)).toBe('sent');
 
-    report.mockClear();
-    await clearBackgroundLocationConsent();
-    expect(await answerPendingLocateRequests('background')).toBe('declined_no_consent');
+      report.mockClear();
+      await clearBackgroundLocationConsent();
+      expect(await answerPendingLocateRequests(context)).toBe('declined_no_consent');
+      expect(report).not.toHaveBeenCalled();
+      expect(decline).toHaveBeenCalledWith('asset-1');
+
+      decline.mockClear();
+      await setBackgroundLocationConsent();
+      (Location.getBackgroundPermissionsAsync as jest.Mock).mockResolvedValue({ granted: false });
+      expect(await answerPendingLocateRequests(context)).toBe('declined_no_consent');
+      expect(report).not.toHaveBeenCalled();
+      expect(decline).toHaveBeenCalledWith('asset-1');
+    },
+  );
+
+  it('declines on iOS (no background consent path there)', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    expect(await answerPendingLocateRequests('foreground')).toBe('declined_no_consent');
     expect(report).not.toHaveBeenCalled();
     expect(decline).toHaveBeenCalledWith('asset-1');
   });

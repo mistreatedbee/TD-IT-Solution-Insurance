@@ -33,8 +33,8 @@ export interface LocationReportRequest {
   accuracyMeters?: number | null;
   capturedAt?: string;
   triggeredBy: LocationTrigger;
-  /** Only with 'remote_request': was the app open when it answered? Omitted = background. */
-  remoteContext?: 'foreground' | 'background';
+  // `remoteContext` was removed on purpose: the server requires 'background' consent for every
+  // 'remote_request' answer and ignores that claim; older servers treat it missing as background.
 }
 
 export interface AssetLocationSummaryItem {
