@@ -67,6 +67,9 @@ const assetListFiltersSchema = z.object({
   status: z.enum(['active', 'inactive', 'removed']).optional(),
 });
 
+/** Stage 8 F-7: how far before the locate request a remote_request fix may be (clock skew). */
+const REMOTE_FIX_CLOCK_SKEW_MS = 2 * 60 * 1000;
+
 export function createAssetsRouter(ctx: AppContext): Router {
   const router = Router();
   const authenticate = createAuthenticateMiddleware(ctx.env, ctx.kv);
@@ -168,7 +171,11 @@ export function createAssetsRouter(ctx: AppContext): Router {
 
         // "Locate now" (owner-test): `remote_request` additionally needs REMOTE_LOCATE_ENABLED,
         // refused the same way while it is off.
-        if (triggeredBy === 'remote_request' && ctx.env.remoteLocateEnabled !== true) {
+        // Stage 8 C-1: also requires server-side consent enforcement (ingestion is checked above).
+        if (
+          triggeredBy === 'remote_request' &&
+          (ctx.env.remoteLocateEnabled !== true || ctx.env.locationConsentEnforced !== true)
+        ) {
           next(
             apiError('VALIDATION_ERROR', {
               details: ["Invalid enum value. Expected 'foreground_open' | 'manual_refresh'"],
@@ -210,6 +217,16 @@ export function createAssetsRouter(ctx: AppContext): Router {
           const pending = await ctx.locateRequests.findPendingForAsset(accountId, parsed.data.assetId);
           if (!pending || pending.targetDeviceId !== session.deviceId) {
             next(apiError('CONFLICT', { details: ['There is no open locate request for this asset.'] }));
+            return;
+          }
+          // Stage 8 F-7: a remote answer must be a fix taken after the request was made (2 min
+          // allowance for phone clock skew), not a stale cached position replayed as "fresh".
+          const remoteBody = req.body as LocationReportBody;
+          if (
+            !remoteBody.capturedAt ||
+            new Date(remoteBody.capturedAt).getTime() < pending.createdAt.getTime() - REMOTE_FIX_CLOCK_SKEW_MS
+          ) {
+            next(apiError('VALIDATION_ERROR', { details: ['capturedAt must be after the locate request was made.'] }));
             return;
           }
         }

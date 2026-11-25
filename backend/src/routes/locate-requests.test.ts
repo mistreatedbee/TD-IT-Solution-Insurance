@@ -274,6 +274,7 @@ async function start(opts: HarnessOpts = {}) {
       latitude: -26.1,
       longitude: 28.0,
       triggeredBy: 'remote_request',
+      capturedAt: new Date(Date.now() + 1000).toISOString(),
       ...extra,
     });
   return { ...h, call, ask, latest, report };
@@ -351,6 +352,19 @@ describe('POST /assets/:assetId/locate-request', () => {
     expect(t.notices.filter((n) => n.action === 'location_locate_requested')).toHaveLength(1);
   });
 
+  it('Stage 8 C-1: unreachable unless ingestion AND consent enforcement are also on', async () => {
+    for (const env of [{ locationIngestionEnabled: false }, { locationConsentEnforced: false }, { locationConsentEnforced: undefined }]) {
+      const t = await start({ env, pushToken: true });
+      const res = await t.ask();
+      expect(res.status).toBe(404);
+      expect((await t.latest()).status).toBe(404);
+      expect(t.requests).toHaveLength(0);
+      expect(t.pushes).toHaveLength(0);
+      await new Promise<void>((r) => server!.close(() => r()));
+      server = undefined;
+    }
+  });
+
   it('is unreachable while REMOTE_LOCATE_ENABLED is off (fail-closed)', async () => {
     const t = await start({ env: { remoteLocateEnabled: undefined } });
     expect((await t.ask()).status).toBe(404);
@@ -396,6 +410,27 @@ describe("location-report with triggeredBy 'remote_request'", () => {
     expect(res.status).toBe(400);
     expect(await code(res)).toBe('VALIDATION_ERROR');
     expect(t.events).toHaveLength(0);
+  });
+
+  it('Stage 8 C-1: a remote_request report is refused while consent enforcement is off', async () => {
+    const t = await start({ env: { locationConsentEnforced: false }, mountLocate: false });
+    const res = await t.report();
+    expect(res.status).toBe(400);
+    expect(t.events).toHaveLength(0);
+  });
+
+  it('refuses a stale fix taken before the request was made (and a fix with no capturedAt)', async () => {
+    const t = await start();
+    await t.ask();
+    const stale = await t.report(t.auth.phone, { capturedAt: new Date(Date.now() - 5 * 60_000).toISOString() });
+    expect(stale.status).toBe(400);
+    expect(await code(stale)).toBe('VALIDATION_ERROR');
+    const missing = await t.report(t.auth.phone, { capturedAt: undefined });
+    expect(missing.status).toBe(400);
+    // within the 2-minute clock-skew allowance is accepted below
+    expect(t.events).toHaveLength(0);
+    // the request stays open; a fix 60 s "before" it (phone clock skew) is still accepted
+    expect((await t.report(t.auth.phone, { capturedAt: new Date(Date.now() - 60_000).toISOString() })).status).toBe(200);
   });
 
   it('is refused while LOCATION_EXTENDED_TRIGGERS_ENABLED is off', async () => {

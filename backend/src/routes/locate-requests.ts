@@ -45,13 +45,26 @@ export function serializeLocateRequest(doc: LocateRequestDocument, now: Date = n
   };
 }
 
+/** Stage 8 C-1: all three switches must be exactly "true". */
+export function isRemoteLocateFullyEnabled(env: AppContext['env']): boolean {
+  return (
+    env.remoteLocateEnabled === true &&
+    env.locationIngestionEnabled === true &&
+    env.locationConsentEnforced === true
+  );
+}
+
 export function createLocateRequestsRouter(ctx: AppContext): Router {
   const router = Router();
   const authenticate = createAuthenticateMiddleware(ctx.env, ctx.kv);
 
-  /** Fail-closed switch + customers only (staff, partners and support are refused). */
+  /**
+   * Fail-closed switch + customers only (staff, partners and support are refused).
+   * Stage 8 C-1: enforced in code, not left to Render settings - Locate now is unreachable
+   * (same response as switch-off) unless ingestion AND server-side consent are also on.
+   */
   function gate(req: Request): void {
-    if (ctx.env.remoteLocateEnabled !== true) throw apiError('NOT_FOUND');
+    if (!isRemoteLocateFullyEnabled(ctx.env)) throw apiError('NOT_FOUND');
     if (req.auth?.userType !== 'customer') throw apiError('FORBIDDEN');
   }
 

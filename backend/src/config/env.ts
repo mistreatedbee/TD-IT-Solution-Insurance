@@ -598,6 +598,13 @@ export function loadEnv(): Env {
 
   // INC-001 A-7: server-side consent enforcement + opt-in step-up. Same "true"-only convention.
   const locationConsentEnforced = process.env.LOCATION_CONSENT_ENFORCED === 'true';
+  if (remoteLocateEnabled && (!locationIngestionEnabled || !locationConsentEnforced)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[config/env] REMOTE_LOCATE_ENABLED is "true" but LOCATION_INGESTION_ENABLED and/or ' +
+        'LOCATION_CONSENT_ENFORCED is not. Locate now stays OFF (Stage 8 C-1, fail-closed).',
+    );
+  }
   const locationConsentStepUpEnforced = process.env.LOCATION_CONSENT_STEP_UP_ENFORCED === 'true';
   for (const [name, on] of [
     ['LOCATION_CONSENT_ENFORCED', locationConsentEnforced],
