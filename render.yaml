@@ -47,6 +47,13 @@ services:
       # LOCATION_INGESTION_ENABLED=true. Set in the Render dashboard, not here.
       - key: LOCATION_EXTENDED_TRIGGERS_ENABLED
         sync: false
+      # "Locate now" (owner-test only): ask a signed-in account's bound phone for one
+      # fresh fix from another device. Declared WITHOUT a value (unset = off,
+      # fail-closed); only the exact string "true" enables it, and only alongside
+      # LOCATION_INGESTION_ENABLED + LOCATION_EXTENDED_TRIGGERS_ENABLED. Set in the
+      # Render dashboard, not here.
+      - key: REMOTE_LOCATE_ENABLED
+        sync: false
       # Feature 023 Phase A BR-2: unverified customers cannot file a claim.
       # Declared WITHOUT a value (unset = off, fail-closed). Owner has not
       # confirmed the rule yet; only the exact string "true" enables it.

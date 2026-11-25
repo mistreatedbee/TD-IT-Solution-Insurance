@@ -24,6 +24,7 @@ import { bootstrapCustomerProfileCollections } from '../src/db/customer-profile-
 import { bootstrapCustomerVerificationNoteCollections } from '../src/db/customer-verification-note-collections.js';
 import { bootstrapTrackingDeviceCollections } from '../src/db/tracking-device-collections.js';
 import { bootstrapLocationEventsCollections } from '../src/db/location-events-collections.js';
+import { bootstrapLocateRequestCollections } from '../src/db/locate-request-collections.js';
 import { bootstrapAlertsCollections } from '../src/db/alerts-collections.js';
 import { bootstrapProductEventsCollections } from '../src/db/product-events-collections.js';
 import { bootstrapRetentionJobRunsCollections } from '../src/db/retention-job-runs-collections.js';
@@ -120,6 +121,10 @@ async function main(): Promise<void> {
     console.log(
       `[bootstrap-mongo] location_events: ${locationEventsCreated ? 'created' : 'already existed (validator re-applied via collMod)'}, indexes ensured`,
     );
+
+    await bootstrapLocateRequestCollections(db);
+    // eslint-disable-next-line no-console
+    console.log('[bootstrap-mongo] locate_requests: validator + indexes ensured (TTL on purgeAt)');
 
     await bootstrapAlertsCollections(db);
     // eslint-disable-next-line no-console

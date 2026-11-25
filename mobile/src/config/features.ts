@@ -114,3 +114,15 @@ export const FEATURE_BACKGROUND_LOCATION_ENABLED = featureEnabled(
 export const FEATURE_ASSISTANT_ENTRY_ENABLED = featureEnabled(
   process.env.EXPO_PUBLIC_FEATURE_ASSISTANT_ENTRY,
 );
+
+/**
+ * OWNER EXCEPTION 2026-11-17 (test-only build), addendum 2026-11-25: "Locate now" - from any
+ * device signed in to the account, ask the account's bound phone for one fresh location, and
+ * let that phone answer (push wake-up, or its next foreground/periodic/background check-in).
+ * Needs REMOTE_LOCATE_ENABLED=true server-side. "true" in the owner-test profile only, "false"
+ * in every distributed profile. No Stage 8 review has been performed - see the waiver in
+ * docs/organization/gates/stage8-manifest.json. ADR-0009 section 20 (Proposed).
+ */
+export const FEATURE_REMOTE_LOCATE_ENABLED = featureEnabled(
+  process.env.EXPO_PUBLIC_FEATURE_REMOTE_LOCATE,
+);

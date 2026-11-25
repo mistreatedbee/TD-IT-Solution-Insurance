@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_IOS_APP_STORE_URL?: string;
   readonly VITE_ANDROID_PLAY_STORE_URL?: string;
   readonly VITE_FEATURE_SECURITY_OPERATOR?: string;
+  readonly VITE_FEATURE_REMOTE_LOCATE?: string;
 }
 
 interface ImportMeta {

@@ -111,3 +111,73 @@ A-7 cannot be marked closed while step-up is off. It is "partially closed, owner
   updates) before sending the turn-off request; reporting stays suspended until protection is
   turned on again. **NB-2 open** (notice cooldown, before public launch).
 - **A-7 status: partially closed, owner-test only (step-up SDL-9 off; Trail A audit pending).**
+
+## 2026-11-25: Stage 8 review of "Locate now" remote locate request (`feat/remote-locate-request`, PR #51), owner-test phase
+
+Filed verbatim by `gps-integration-engineer` from the `cybersecurity-architect` review; heading levels shifted one down so it nests under this dated section.
+
+#### Stage 8 Security Review: "Locate now" remote locate request (owner-test phase)
+
+- Branch: `feat/remote-locate-request` (read-only file review; no shell, tests not run by reviewer)
+- Reviewer: cybersecurity-architect, 2026-11-25
+- Scope: owner-test only (OWNER-EXCEPTION-2026-11-17, `owner-test` profile). ADR-0009 §20 is **Proposed**.
+- **Verdict: PASS for owner-test, with conditions C-1 to C-3. NOT approved for real users** (see §4).
+
+### 1. Files reviewed
+- `backend/src/routes/locate-requests.ts` (4 endpoints)
+- `backend/src/repositories/locate-requests.ts`, `backend/src/db/locate-request-collections.ts`
+- `backend/src/routes/assets.ts:130-306` (location-report `remote_request` handling)
+- `backend/src/lib/location-consent.ts`, `backend/src/lib/asset-location-validation.ts`
+- `backend/src/lib/push-notification-service.ts:33-107` (`sendToDevice`), `backend/src/lib/notification-brand.ts:393-404`, `backend/src/lib/domain-email-templates.ts:769-771`
+- `backend/src/config/env.ts:186-204, 588-606`, `backend/src/lib/policy.ts:251-260`, `backend/src/index.ts:190`
+- `mobile/src/location/remoteLocate.ts`, `remoteLocateTask.ts`, `useRemoteLocateResponder.ts`, `mobile/src/notifications/push.ts:14-19`
+
+### 2. What holds up
+| Check | Result |
+|---|---|
+| Owner-only authZ | Pass. `findByIdForAccount(accountId, assetId)` and a 404 for other accounts' assets (`locate-requests.ts:81-82`). Customer sessions only (`:55`). Active account checked (`:78`). |
+| Fail-closed flag | Pass. Router mounted only when `REMOTE_LOCATE_ENABLED === 'true'` (`index.ts:190`), checked again in `gate()` (`:54`). `remote_request` refused when off (`assets.ts:171`). |
+| Bound phone cannot answer for another asset | Pass. The server-side `session.deviceId` must equal `asset.reportingDeviceId` AND the open request's `targetDeviceId` (`assets.ts:200-215`), and `reportSelfDeviceLocation` checks the device again. Device identity comes from the server session, not the client. Decline checks the device too (`locate-requests.ts:224`). |
+| Replay / expiry | Pass. Answerable only while `status: 'pending'` and `expiresAt > now` (10 min). Answering resolves all open rows, so a later replay gets CONFLICT. |
+| Consent scope | Pass when `LOCATION_CONSENT_ENFORCED=true`. Background answers need `background` scope. Foreground needs `foreground`. Consent is checked again after the write (F-1 race undo, `assets.ts:278-292`). A withdrawal blocks the next answer. |
+| Push payload | Pass. The data-only message carries `event`, `locateRequestId`, `assetId` (`:134`). The visible notice has fixed text and no coordinates. Expo push TTL 600 s. The API never returns coordinates, only `locationRecordedAt`. |
+| Transparency on the target phone | Pass. A visible notice goes to the bound device whatever its push preference (`push-notification-service.ts:84-107`). The phone shows a local notice if no push reached it (`remoteLocate.ts:149`). |
+| Security email | Pass for owner-test. The first request per account per UTC day sends the email (`:145-160`). |
+| Rate limits | Pass. 6 per 15 min per account and 4 per 15 min per asset (`policy.ts:251-260`). |
+| TTL purge | Pass. The TTL index on `purgeAt` (1 h) removes rows. No coordinates are stored. Validator enum is OK. |
+| Data minimisation | Pass. `locate_requests` holds no coordinates. Mobile logs record outcomes only. |
+
+### 3. Findings
+| ID | Sev | Location | Finding | Required |
+|---|---|---|---|---|
+| F-1 | High (Medium in owner-test) | `locate-requests.ts:53-56`, `:95`; `assets.ts:220` | When `LOCATION_CONSENT_ENFORCED` is off, the server makes no consent check for request creation or `remote_request` answers. Only the phone's own local check protects the location. "Does not bypass" in `env.ts:191` is true, but remote locate should not run at all without server consent. | **C-1 (owner-test):** set `LOCATION_CONSENT_ENFORCED=true` on Render whenever `REMOTE_LOCATE_ENABLED=true`. **Before real users:** in code, `gate()` must throw NOT_FOUND unless `locationConsentEnforced === true && locationIngestionEnabled === true`. That check is fail-closed and also stops a pointless wake-up and notice when ingestion is off. |
+| F-2 | Medium | `location-consent.ts:23`; `remoteLocate.ts:173` | `remoteContext: 'foreground'` comes from the client and lowers the required scope to `foreground`. An honest app is fine. A modified client or a stolen access token on the bound phone could claim foreground to answer with only foreground consent. The impact is limited because device binding still applies. | Before real users: have the server require `background` scope for every `remote_request`, or base the foreground case on evidence the server can check. Document the residual in ADR-0009 §20. |
+| F-3 | Medium | `locate-requests.ts:64-107` | No step-up. Any stolen or compromised customer session anywhere can get a fresh location of the owner's phone on demand, which for a phone means where the person is. Mitigations today: rate limits, a visible notice on the phone, and the daily email. Acceptable for owner-test because the owner is the only data subject. | **Before real users:** require `assertProtectionStepUp` (MFA or password re-auth, about 10 min freshness) for `POST locate-request`. Reuse the existing protection step-up. |
+| F-4 | Medium | `locate-requests.ts:110-124` | The audit write fails open: if the write fails, the locate still goes ahead. | C-2 (owner-test): accepted, because there is an error log. **Before real users:** fail closed (no audit row means no request). |
+| F-5 | Low-Med | `locate-requests.ts:118-119` | The audit reuses `protection_change` with a string in `protectionDetail`. That records who, from which session and IP, and which asset, so it is enough for owner-test. The answer (answered / declined / expired) is not durably audited. The `location_events` row is deleted on withdrawal, and `locate_requests` is purged after 1 h, so there is no lasting record that the phone actually disclosed its location. | Before real users: add a dedicated audit event type (e.g. `location_locate_requested` / `location_locate_answered`) to the Postgres enum, and audit the outcome with no coordinates. |
+| F-6 | Low | `locate-requests.ts:145-155` | Only the first request each day sends an email. The dedupe key is set before the fire-and-forget dispatch, so a failed send means no email for that day. An attacker's request after the owner's own one that day sends no email. | Before real users: also email when the request comes from a device or session that has not made a locate request before. Set the dedupe key only after the send succeeds. |
+| F-7 | Low | `asset-location-validation.ts:22-30`; `assets.ts:237` | `capturedAt` has no lower bound, so a `remote_request` answer can carry an old fix and still mark the request "answered". | Before real users: for `remote_request`, reject `capturedAt` older than `request.createdAt` minus about 2 min. |
+| F-8 | Info | `notification-brand.ts:399`; `remoteLocate.ts:46` | The visible notice also tells whoever is holding the phone, including a thief. POPIA transparency comes first here. The product and compliance-specialist should record this trade-off. The notice should name the requesting device (session `deviceName`) so the owner can spot a request that was not theirs. | compliance-specialist note in ADR-0009 §20. |
+| F-9 | Info | `locate-requests.ts:67-72` | The rate limiters run before `gate()` and before the asset id is validated, so the per-asset key uses the raw param. This is harmless, because the account limiter bounds it. | None. |
+
+### 4. Conditions and must-haves
+**Owner-test (conditions of this PASS):**
+- C-1: `LOCATION_CONSENT_ENFORCED=true` and `LOCATION_INGESTION_ENABLED=true` on Render whenever `REMOTE_LOCATE_ENABLED=true`. The mobile flag stays only in the `owner-test` profile, and the exception must not be widened.
+- C-2: The fail-open audit (F-4) and the reused `protection_change` type (F-5) are accepted for owner-test only.
+- C-3: Update the stage8-manifest entry for this surface by targeted splice, citing this review, as an owner-test scope verdict and not a real-user approval.
+
+**Before any real user (blocking):** F-1 code-level gate, F-2, F-3 step-up, F-4 fail-closed audit, F-5 dedicated audit event plus outcome audit, F-6, F-7. ADR-0009 §20 ratified by cto. security-engineer and compliance-specialist concurrence (joint gate). A pentest or abuse-case test of the account-takeover → live-locate path (attack tree "attacker locates customer in real time").
+
+## 2026-11-25: Remediation of the "Locate now" review (gps-integration-engineer, PR #51)
+
+- **F-1 / C-1 fixed in code.** `gate()` in `backend/src/routes/locate-requests.ts` now calls `isRemoteLocateFullyEnabled(env)`. That function refuses with NOT_FOUND, the same response as switch-off, unless `REMOTE_LOCATE_ENABLED`, `LOCATION_INGESTION_ENABLED` and `LOCATION_CONSENT_ENFORCED` are all exactly `"true"`. `backend/src/index.ts` mounts the router only under the same condition. A `remote_request` report is refused with VALIDATION_ERROR unless `remoteLocateEnabled` and `locationConsentEnforced` are both on (ingestion is already checked first). `backend/src/config/env.ts` logs a startup warning when `REMOTE_LOCATE_ENABLED=true` but either of the other two is not. Tests: `backend/src/routes/locate-requests.test.ts` ("Stage 8 C-1 ...").
+- **F-7 fixed.** A `remote_request` report must carry `capturedAt` no earlier than the open request's `createdAt` minus 2 minutes (allowance for phone clock skew, as §3 F-7 suggests). Otherwise it gets VALIDATION_ERROR, nothing is stored, and the request stays open. Tests: same file ("refuses a stale fix ...").
+- **Still open before any real user (blocking):**
+  1. Step-up on `POST locate-request` (F-3).
+  2. Ignore the client `remoteContext` claim and require `background` scope for every `remote_request`, or base it on evidence the server can verify (F-2).
+  3. Fail-closed audit with a dedicated event type and an outcome audit (F-4, F-5).
+  4. Security email for each new requesting device or session, with dedupe set only after the send succeeds (F-6).
+  5. ADR-0009 §20 ratified by `cto`.
+  6. Joint gate sign-off (`security-engineer` + `compliance-specialist`).
+  7. An account-takeover abuse test of the path from takeover to live locate.
+  8. `compliance-specialist` note on the F-8 notice trade-off.

@@ -17,6 +17,7 @@ import { bootstrapAlertsCollections } from './alerts-collections.js';
 import { bootstrapProductEventsCollections } from './product-events-collections.js';
 import { bootstrapSupportCaseCollections } from './support-case-collections.js';
 import { bootstrapLocationConsentCollections } from './location-consent-collections.js';
+import { bootstrapLocateRequestCollections } from './locate-request-collections.js';
 import { bootstrapClaimsCollections } from './claims-collections.js';
 import { bootstrapRetentionJobRunsCollections } from './retention-job-runs-collections.js';
 import { bootstrapRecoveryCaseEventsCollections } from '../repositories/recovery-case-events.js';
@@ -95,6 +96,14 @@ export async function ensurePolicyAssetCollections(db: Db): Promise<void> {
   } catch (err) {
     console.error(
       '[startup] Location consent collection bootstrap failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  try {
+    await bootstrapLocateRequestCollections(db);
+  } catch (err) {
+    console.error(
+      '[startup] Locate request collection bootstrap failed:',
       err instanceof Error ? err.message : err,
     );
   }

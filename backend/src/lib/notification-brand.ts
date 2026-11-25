@@ -40,6 +40,7 @@ export type PushTemplateId =
   | 'asset.recovered'
   | 'location.tracking.enabled'
   | 'location.tracking.disabled'
+  | 'location.locate.requested'
   | 'auth.password.changed'
   | 'auth.login.new_device'
   | 'auth.mfa.enabled'
@@ -387,6 +388,24 @@ export function buildBrandedPushMessage(
           brand: NOTIFICATION_BRAND.name,
           logoUrl: NOTIFICATION_BRAND.logoUrl,
           deepLink: deepLink('profile'),
+        },
+      };
+    case 'location.locate.requested':
+      // "Locate now" (owner-test): shown on the phone being located (POPIA transparency).
+      // Never carries coordinates.
+      return {
+        eventId: templateId,
+        title: 'Location requested',
+        body: 'Your location was requested from another device signed in to your account. Not you? Reset your password.',
+        subtitle,
+        category: 'account',
+        deepLink: deepLink(variables.assetId ? `assets/${variables.assetId}` : 'assets'),
+        priority: 'high',
+        data: {
+          event: templateId,
+          brand: NOTIFICATION_BRAND.name,
+          logoUrl: NOTIFICATION_BRAND.logoUrl,
+          ...(variables.assetId ? { assetId: variables.assetId } : {}),
         },
       };
     case 'location.tracking.enabled':

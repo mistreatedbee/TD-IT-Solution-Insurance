@@ -47,6 +47,7 @@ import {
 import { isConsentRequiredError } from './serverConsentSignal';
 import { canReportLocation, markLocationSent, wasLocationSentRecently } from './useLocationReporter';
 import { recordLocationReportFailure } from './reportStatus';
+import { answerPendingLocateRequests } from './remoteLocate';
 
 export const BACKGROUND_LOCATION_TASK = 'td-insurance-background-location';
 
@@ -222,6 +223,9 @@ export async function runBackgroundLocationTask({
   }
   // The foreground timer owns reporting while the app is open.
   if (AppState.currentState === 'active') return 'skipped_foreground';
+  // "Locate now" (owner-test, own flag): an open request from another signed-in device is
+  // answered first with a fresh fix; that answer is this run's report.
+  if ((await answerPendingLocateRequests('background')) === 'sent') return 'sent';
   if (wasLocationSentRecently()) return 'skipped_recent';
 
   const fix = latestLocation(data);

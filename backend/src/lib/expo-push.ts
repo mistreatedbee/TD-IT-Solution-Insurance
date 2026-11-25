@@ -7,8 +7,9 @@ import { NOTIFICATION_BRAND } from './notification-brand.js';
 
 export interface ExpoPushMessage {
   to: string;
-  title: string;
-  body: string;
+  /** Omitted together with `body` for a data-only (headless) message. */
+  title?: string;
+  body?: string;
   subtitle?: string;
   data?: Record<string, unknown>;
   sound?: 'default' | null;
@@ -19,6 +20,8 @@ export interface ExpoPushMessage {
   ttl?: number;
   mutableContent?: boolean;
   _displayInForeground?: boolean;
+  /** iOS: deliver as a background (content-available) push. */
+  _contentAvailable?: boolean;
 }
 
 export interface ExpoPushTicket {

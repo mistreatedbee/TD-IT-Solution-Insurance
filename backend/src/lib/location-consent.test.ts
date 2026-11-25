@@ -28,6 +28,14 @@ describe('scopeForTrigger', () => {
     expect(scopeForTrigger('periodic_foreground')).toBe('periodic');
     expect(scopeForTrigger('background')).toBe('background');
   });
+
+  it("remote_request needs background unless the app was in the foreground", () => {
+    expect(scopeForTrigger('remote_request')).toBe('background');
+    expect(scopeForTrigger('remote_request', 'background')).toBe('background');
+    expect(scopeForTrigger('remote_request', 'foreground')).toBe('foreground');
+    // remoteContext never relaxes any other trigger
+    expect(scopeForTrigger('background', 'foreground')).toBe('background');
+  });
 });
 
 describe('isReportConsented', () => {
