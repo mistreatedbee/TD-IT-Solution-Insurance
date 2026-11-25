@@ -98,7 +98,9 @@ function TabButton({
     badgeCount > 0 ? `${label}, ${badgeCount} open alert${badgeCount === 1 ? '' : 's'}` : label;
 
   const iconColor = focused
-    ? designColorsDay.brandOrange
+    ? isDark
+      ? designColorsNight.accentText
+      : designColorsDay.accentText
     : isDark
       ? designColorsNight.ink
       : colors.textSecondary;
@@ -128,6 +130,7 @@ function createTabBarStyles(
   colors: ReturnType<typeof useTheme>['colors'],
   isDark: boolean,
   glassBorder: string,
+  solid: boolean,
 ) {
   return {
     styles: StyleSheet.create({
@@ -149,11 +152,15 @@ function createTabBarStyles(
         paddingVertical: spacing.sm,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: glassBorder,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: isDark ? 0.18 : 0.05,
-        shadowRadius: 16,
-        elevation: 6,
+        // Android: no elevation. It drew an opaque grey panel behind the bar (same fault as GlassCard).
+        ...(solid
+          ? null
+          : {
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: isDark ? 0.18 : 0.05,
+              shadowRadius: 16,
+            }),
       },
       tab: {
         flex: 1,
@@ -192,8 +199,9 @@ function createTabBarStyles(
         fontWeight: '600',
         color: isDark ? designColorsNight.ink : colors.textSecondary,
       },
-      // glassAccentDeep is only ~3.9:1 on white — fine for the icon, too low for a 10px label (WCAG AA).
-      // The active tab is still signalled by the teal icon; the label uses the text-grade colour.
+      // The active tab is signalled by the icon in the per-theme accentText token (day #8F5200 / night #F5A022,
+      // both above 3:1 on bgRaised for WCAG 1.4.11; raw brandOrange was ~2.1:1 on white). The label keeps the
+      // text-grade colour.
       tabLabelActive: {
         color: isDark ? designColorsNight.ink : colors.glassTextPrimary,
       },
@@ -206,8 +214,8 @@ export function FloatingTabBar({ state, navigation, variant = 'customer' }: Floa
   const { colors, isDark } = useTheme();
   const glass = useLiquidGlassChrome();
   const { styles } = useMemo(
-    () => createTabBarStyles(colors, isDark, glass.border),
-    [colors, glass.border, isDark],
+    () => createTabBarStyles(colors, isDark, glass.border, glass.solid),
+    [colors, glass.border, glass.solid, isDark],
   );
   const hidden = useTabBarHidden((v) => v.hidden);
   const activeRouteName = state.routes[state.index]?.name;
@@ -246,6 +254,7 @@ export function FloatingTabBar({ state, navigation, variant = 'customer' }: Floa
         tintColor={glass.tint}
         glassEffectStyle={glass.glassEffectStyle}
         blurIntensity={glass.blurIntensity}
+        solidFill={glass.solidFill}
       >
         {visibleRoutes.map((route) => {
           const config = tabConfig[route.name];
